@@ -1,5 +1,5 @@
 /**
- * text-tolerance.test.tsx — the panel's text seats against the worst shapes the backend can hand
+ * The panel's text seats against the worst shapes the backend can hand
  * them, at the seam a jsdom test can pin: the CSS that decides whether a hostile string wraps,
  * ellipsizes, or walks out of its card.
  *

@@ -1,3 +1,4 @@
+import { Pill } from '../primitives/Pill';
 /*
  * Terminal-card family for completed, capped, stopped, question-ending and archived jobs. All faces
  * share paper, stamps and action vocabulary while changing hierarchy for each outcome. Live rewind
@@ -10,28 +11,30 @@
  */
 import {
   useEffect, useLayoutEffect, useRef, useState,
-  type CSSProperties, type ReactNode, type RefObject,
+  type CSSProperties, type ReactNode,
 } from 'react';
 import { animate, useReducedMotionConfig } from 'framer-motion';
-import { CountPill, Pill, Stamp as StampLine, TapeBar } from './atoms';
+import { CountPill, Stamp as StampLine, TapeBar } from './atoms';
 import { editCount } from './job-stats';
 import { AskPrimary } from './GateBlock';
 import { Icon, type IconId } from './icons';
 import { ModelProse } from './model-prose';
+import { OpsList } from './OpRow';
+import { buildHistory } from './build-history';
+import { useHeightTransition } from '../hooks/use-height-transition';
+import { useViewportEpoch } from '../hooks/use-viewport-epoch';
 import { CARD_PAD, edge, POSTCARD, statePaper } from './tokens';
-import { withAlpha } from '../design/styles';
-import { CONFIRM_ARM, cssMotion, framerMotion } from './motion';
+import { withAlpha, colors, cursors, font, radii } from '../design/styles';
+import { CONFIRM_ARM, cssMotion, framerMotion } from '../design/motion';
 import { rewindConfirmCopy, rollbackCost, rollbackReaches } from './rollback';
 import { fmtClock } from './dock-face';
-import { InlineConfirm, HUSHED } from '../primitives/InlineConfirm';
+import { InlineConfirm } from '../primitives/InlineConfirm';
 import { INK, INSET, PLATE, PLATE_INK } from '../design/tokens';
-import { colors, cursors, font } from '../design/styles';
 import { roleFont } from '../design/text-weight';
-import { windowPill } from '../design/window-skin';
 import { useT } from '../../i18n/context';
-import type { T } from './setup-parts';
 import type { JobOutcome } from '../../agent/core/types';
 import type { JobView } from '../../agent/core/project-view';
+import type { Translate } from '../../core/model/types';
 
 /** Recorded job checkpoint shared by settled and live rewind controls. */
 export type Checkpoint = JobView['checkpoints'][number];
@@ -78,7 +81,7 @@ function statsOf(job: JobView): { key: string; n: number }[] {
 }
 
 /** Returns a stage's dominant non-zero result measure: cells, objects, then read operations. */
-function stageFigure(job: JobView, index: number, t: T): string | undefined {
+function stageFigure(job: JobView, index: number, t: Translate): string | undefined {
   let cells = 0;
   let objects = 0;
   let reads = 0;
@@ -154,7 +157,7 @@ const SUMMARY: CSSProperties = {
 const ON_MAP: CSSProperties = { ...SUMMARY, color: PLATE_INK };
 
 /** Formats aggregate thinking time, adding the turn count only when it exceeds one. */
-function thoughtLine(job: JobView, t: T): string | null {
+function thoughtLine(job: JobView, t: Translate): string | null {
   const thought = job.thought;
   if (!thought || thought.ms <= 0) return null;
   const clock = fmtClock(thought.ms / 1000);
@@ -185,36 +188,6 @@ const HEAD_STAMP: CSSProperties = {
 const CARD_FLOOR = 290;
 const COMPACT_FLOOR = 118;
 
-/** Measures both absolute faces before paint and settles the taller height in at most three passes. */
-const SIZE_PASSES = 3;
-
-function useFaceHeight(
-  inner: RefObject<HTMLDivElement | null>,
-  floor: number,
-  key: unknown,
-): void {
-  useLayoutEffect(() => {
-    const el = inner.current;
-    if (!el) return undefined;
-    const measure = () => {
-      for (let pass = 0; pass < SIZE_PASSES; pass++) {
-        let wanted = floor;
-        for (const face of el.querySelectorAll<HTMLElement>('[data-face-body]')) {
-          wanted = Math.max(wanted, face.scrollHeight);
-        }
-        if (el.style.height === `${wanted}px`) break;
-        el.style.height = `${wanted}px`;
-      }
-    };
-    measure();
-    // Observe rewraps caused by chrome zoom, locale or font changes.
-    if (typeof ResizeObserver === 'undefined') return undefined;
-    const ro = new ResizeObserver(measure);
-    for (const face of el.querySelectorAll<HTMLElement>('[data-face-body]')) ro.observe(face);
-    return () => { ro.disconnect(); };
-  }, [inner, floor, key]);
-}
-
 /* ── the pieces ───────────────────────────────────────────── */
 
 function Stamp({ outcome, rewound = false }: { outcome: JobOutcome; rewound?: boolean }) {
@@ -228,7 +201,7 @@ function Stamp({ outcome, rewound = false }: { outcome: JobOutcome; rewound?: bo
         display: 'inline-flex',
         alignItems: 'center',
         gap: 6,
-        borderRadius: 999,
+        borderRadius: radii.pill,
         padding: '5px 12px',
         background: stamp.paper,
         color: INK,
@@ -310,6 +283,7 @@ function StatRow({ job }: { job: JobView }) {
 /** One row of a step list, in whichever of the three lists is drawing it. */
 interface StepRow {
   name: string;
+  details?: ReactNode;
   /** The figure at the row's far end, where the row has one to state. */
   stat?: string;
   /** Stage the run did not reach. */
@@ -325,7 +299,7 @@ interface StepRow {
 const STEP_NO: CSSProperties = {
   width: 20,
   height: 20,
-  borderRadius: 999,
+  borderRadius: radii.pill,
   flex: '0 0 auto',
   background: PLATE,
   color: INK,
@@ -351,18 +325,15 @@ function StepList({ rows, testId }: { rows: readonly StepRow[]; testId: string }
           data-unreached={row.unreached === true}
           data-preview={row.preview === true}
           style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 9,
             borderRadius: 12,
             padding: '5px 8px',
-            opacity: row.rewound === true || row.preview === true ? 0.55 : 1,
             ...(row.unreached === true ? { border: UNREACHED_EDGE } : {}),
           }}
         >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
           <span
             data-testid={`${testId}-no`}
-            style={{ ...STEP_NO, ...(row.unreached === true ? { color: colors.revertAmber } : {}) }}
+            style={{ ...STEP_NO, opacity: row.preview ? 0.55 : 1, ...(row.unreached === true ? { color: colors.revertAmber } : {}) }}
           >
             {i + 1}
           </span>
@@ -372,6 +343,7 @@ function StepList({ rows, testId }: { rows: readonly StepRow[]; testId: string }
               ...roleFont('label'),
               fontFamily: font.family,
               color: row.unreached === true ? colors.revertAmber : PLATE_INK,
+              opacity: row.preview ? 0.55 : 1,
               minWidth: 0,
               overflow: 'hidden',
               textOverflow: 'ellipsis',
@@ -395,6 +367,8 @@ function StepList({ rows, testId }: { rows: readonly StepRow[]; testId: string }
             </span>
           )}
           {row.trailing}
+          </div>
+          {row.details && <div style={{ marginTop: 4, paddingLeft: 21 }}>{row.details}</div>}
         </div>
       ))}
     </div>
@@ -460,11 +434,9 @@ export function ArchiveFoot({
   return (
     <div data-testid="archive-foot" style={FOOT}>
       {onBack && (
-        <span style={asking ? HUSHED : undefined}>
-          <Pill variant="active" on="inset" data-testid="archive-back" onClick={onBack}>
-            {t('agent3.ticket_back_to_history')}
-          </Pill>
-        </span>
+        <Pill variant="active" on="inset" data-testid="archive-back" onClick={onBack}>
+          {t('agent3.ticket_back_to_history')}
+        </Pill>
       )}
       <span style={SPACER} />
       {onClear && (
@@ -536,8 +508,12 @@ export function FlipTicket({
   /** Checkpoint index awaiting confirmation, used to preview every discarded later row. */
   const [askingStep, setAskingStep] = useState<number | null>(null);
   const innerRef = useRef<HTMLDivElement>(null);
+  const frontFlipRef = useRef<HTMLButtonElement>(null);
+  const backFlipRef = useRef<HTMLButtonElement>(null);
+  const transferFocus = useRef(false);
   const capped = job.outcome === 'capped';
   const stats = statsOf(job);
+  const history = buildHistory(job);
   const thoughtTotal = thoughtLine(job, t);
   const canRewind = Boolean(onRewind) && !rolledBack;
   /** Whole-job rewind cost for confirmation copy. */
@@ -546,7 +522,7 @@ export function FlipTicket({
     : null;
   const wholeCopy = rewindConfirmCopy(t, wholeCost);
   /** Read-only jobs with no checkpoint retain a single face. */
-  const hasBack = job.checkpoints.length > 0;
+  const hasBack = job.checkpoints.length > 0 || job.ops.some(op => !op.isRead);
   /** Capped ledger reports plan stages rather than low-level checkpoints. */
   const ledger = capped ? job.plan?.stages ?? [] : [];
   /** A plan ledger leads capped cards; otherwise completed work remains primary. */
@@ -555,44 +531,47 @@ export function FlipTicket({
   const planFraction = capped && job.plan && job.plan.stages.length > 0
     ? Math.max(0, Math.min(1, job.plan.doneCount / job.plan.stages.length))
     : undefined;
-  /** Rewound opacity applied to each face without flattening the perspective context. */
-  const dimmed: CSSProperties = rolledBack ? { opacity: 0.55 } : {};
   /** Back-face heading reflects whether the steps built or removed the recorded work. */
   const storyKey = rolledBack ? 'agent3.ticket_what_taken_back' : 'agent3.ticket_how_built';
 
-  // Flipping does not require remeasurement because the container already fits the taller face.
-  useFaceHeight(
-    innerRef,
-    compact ? COMPACT_FLOOR : CARD_FLOOR,
-    `${job.orderSeq}:${job.checkpoints.length}:${job.summary ?? ''}:${String(rolledBack)}:${String(postcard !== undefined)}`,
-  );
+  const viewport = useViewportEpoch();
+  useHeightTransition(innerRef, { motionId: 'panel.height', resetKey: viewport });
+
+  useLayoutEffect(() => {
+    if (!transferFocus.current) return;
+    transferFocus.current = false;
+    (flipped ? backFlipRef : frontFlipRef).current?.focus({ preventScroll: true });
+  }, [flipped]);
 
   /** Flips the card and returns its top to the start of the scrollable reading area. */
   const flip = (): void => {
+    const focused = innerRef.current?.ownerDocument.activeElement;
+    transferFocus.current = false;
+    // Release focus before aria-hidden changes; the destination becomes focusable after commit.
+    if (focused instanceof HTMLElement && innerRef.current?.contains(focused)) {
+      focused.blur();
+      transferFocus.current = true;
+    }
+    setAskingAll(false);
+    setAskingStep(null);
     setFlipped((f) => !f);
     const el = innerRef.current;
     if (typeof el?.scrollIntoView === 'function') el.scrollIntoView({ block: 'start' });
   };
 
   /** Shared face toggle with direction-specific copy and `aria-pressed` state. */
-  const flipButton = (side: 'front' | 'back', small: boolean) => (
-    <button
-      type="button"
+  const flipButton = (side: 'front' | 'back') => (
+    <Pill
+      ref={side === 'front' ? frontFlipRef : backFlipRef}
+      variant="quiet"
+      on="inset"
       data-testid={side === 'front' ? 'flip-button' : 'flip-button-back'}
       aria-pressed={flipped}
       onClick={flip}
-      style={{
-        ...windowPill('quiet', false, 'inset'),
-        ...(small ? { padding: '5px 10px', ...roleFont('small') } : {}),
-        display: 'inline-flex',
-        alignItems: 'center',
-        gap: 6,
-        boxShadow: 'none',
-      }}
     >
       <Icon id="pw-rotate" size={13} />
       {t(side === 'back' ? 'agent3.ticket_back' : storyKey)}
-    </button>
+    </Pill>
   );
 
   const fileAway = onFileAway && (
@@ -603,7 +582,7 @@ export function FlipTicket({
 
   /** Header seat contains one of the story toggle, score or compact provenance stamp. */
   const headSeat = capped && hasBack
-    ? <span style={{ marginLeft: 'auto' }}>{flipButton('front', true)}</span>
+    ? <span style={{ marginLeft: 'auto' }}>{flipButton('front')}</span>
     : !capped && !rolledBack && score !== undefined
       ? (
         <span
@@ -614,7 +593,7 @@ export function FlipTicket({
             alignItems: 'center',
             gap: 6,
             background: PLATE,
-            borderRadius: 999,
+            borderRadius: radii.pill,
             padding: '5px 11px',
             color: INK,
             ...roleFont('small'),
@@ -651,7 +630,7 @@ export function FlipTicket({
           transition: cssMotion('panel.ticket.flip', ['transform'], reduced),
         }}
       >
-        <div data-testid="flip-face-front" data-face-body aria-hidden={flipped} style={{ ...FACE, ...dimmed }}>
+        <div data-testid="flip-face-front" data-face-body aria-hidden={flipped} {...(flipped ? { inert: '' } : {})} style={{ ...FACE, ...(!flipped ? { position: 'relative', minHeight: 'inherit' } : {}) }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             {job.outcome && <Stamp outcome={job.outcome} rewound={rolledBack} />}
             {headSeat}
@@ -742,8 +721,8 @@ export function FlipTicket({
           ) : (
             (hasBack || fileAway) && (
               <div style={FOOT}>
-                {hasBack && flipButton('front', compact)}
-                {!compact && fileAway}
+                {hasBack && flipButton('front')}
+                {fileAway}
               </div>
             )
           )}
@@ -754,19 +733,22 @@ export function FlipTicket({
           data-testid="flip-face-back"
           data-face-body
           aria-hidden={!flipped}
-          style={{ ...FACE, ...dimmed, transform: 'rotateY(180deg)' }}
+          {...(!flipped ? { inert: '' } : {})}
+          style={{ ...FACE, transform: 'rotateY(180deg)', ...(flipped ? { position: 'relative', minHeight: 'inherit' } : {}) }}
         >
           <div data-testid="ticket-back-head" style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
             <span style={{ ...roleFont('action'), fontFamily: font.family, color: INK }}>
               {t(storyKey)}
             </span>
             {/* Omit a zero-step count. */}
-            {job.ops.length > 0 && (
+            {history.count > 0 && (
               <span data-testid="ticket-back-stamp" style={HEAD_STAMP}>
-                {t(job.ops.length === 1 ? 'agent3.steps_count_one' : 'agent3.steps_count', { n: job.ops.length })}
+                {t(history.count === 1 ? 'agent3.steps_count_one' : 'agent3.steps_count', { n: history.count })}
               </span>
             )}
           </div>
+
+          {history.before.length > 0 && <OpsList ops={history.before} />}
 
           {/* Preview all later rows discarded by a per-step rewind; confirmation expands in place. */}
           <StepList
@@ -779,6 +761,7 @@ export function FlipTicket({
               const offers = canRewind && rollbackReaches(checkpoint.undoIndex, undoDepth);
               return {
                 name: stepName(job, checkpoint, i, t),
+                ...(history.steps[i]?.length ? { details: <OpsList ops={history.steps[i]!} /> } : {}),
                 ...(askingStep !== null && i >= askingStep && !rolledBack ? { preview: true } : {}),
                 ...(rolledBack ? { rewound: true, stat: t('agent3.ticket_step_rewound') } : {}),
                 ...(offers
@@ -789,7 +772,7 @@ export function FlipTicket({
                           question={stepCopy.question}
                           arm={CONFIRM_ARM}
                           open={asking}
-                          onOpenChange={(open) => setAskingStep(open ? i : null)}
+                          onOpenChange={(open) => { setAskingAll(false); setAskingStep(open ? i : null); }}
                           onConfirm={() => { setAskingStep(null); onRewind?.(checkpoint); }}
                           onCancel={() => setAskingStep(null)}
                         >
@@ -817,16 +800,15 @@ export function FlipTicket({
             })}
           />
 
-          {/* Whole-job rewind confirms at the far edge while the return action dims in place. */}
           <div style={FOOT}>
-            <span style={askingAll ? HUSHED : undefined}>{flipButton('back', compact)}</span>
+            {flipButton('back')}
             <span style={SPACER} />
             {canRewind && onRewindAll && (
               <InlineConfirm
                 question={wholeCopy.question}
                 arm={CONFIRM_ARM}
                 open={askingAll}
-                onOpenChange={setAskingAll}
+                onOpenChange={(open) => { setAskingStep(null); setAskingAll(open); }}
                 onConfirm={onRewindAll}
                 onCancel={() => setAskingAll(false)}
               >
@@ -879,7 +861,7 @@ export function StopCard({
     : null);
 
   return (
-    <div data-testid="stop-card" style={{ ...TICKET, opacity: rolledBack ? 0.55 : 1 }}>
+    <div data-testid="stop-card" style={TICKET}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
         <Stamp outcome="aborted" rewound={rolledBack} />
         {clock !== undefined && <span data-testid="stop-clock" style={HEAD_STAMP}>{clock}</span>}
@@ -924,11 +906,9 @@ export function StopCard({
         )}
         <span style={SPACER} />
         {onFileAway && (
-          <span style={asking ? HUSHED : undefined}>
-            <Pill variant="quiet" on="inset" data-testid="ticket-file-away" onClick={() => onFileAway(job.orderSeq)}>
-              {t('agent3.action_file_away')}
-            </Pill>
-          </span>
+          <Pill variant="quiet" on="inset" data-testid="ticket-file-away" onClick={() => onFileAway(job.orderSeq)}>
+            {t('agent3.action_file_away')}
+          </Pill>
         )}
       </div>
     </div>
@@ -972,8 +952,9 @@ export function ArchiveCard({
   onClear?(orderSeq: number): void;
 }) {
   const t = useT();
+  const history = buildHistory(job);
   return (
-    <div data-testid="archive-card" style={{ ...TICKET, opacity: rolledBack ? 0.55 : 1 }}>
+    <div data-testid="archive-card" style={TICKET}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
         {job.outcome && <Stamp outcome={job.outcome} rewound={rolledBack} />}
         {stamp !== undefined && <span data-testid="archive-stamp" style={HEAD_STAMP}>{stamp}</span>}
@@ -983,11 +964,13 @@ export function ArchiveCard({
 
       {job.summary && <ModelProse testId="ticket-summary" text={job.summary} style={ON_MAP} />}
 
+      {history.before.length > 0 && <OpsList ops={history.before} />}
       {job.checkpoints.length > 0 && (
         <StepList
           testId="archive-step"
           rows={job.checkpoints.map((checkpoint, i) => ({
             name: stepName(job, checkpoint, i, t),
+            ...(history.steps[i]?.length ? { details: <OpsList ops={history.steps[i]!} /> } : {}),
             ...(rolledBack ? { rewound: true, stat: t('agent3.ticket_step_rewound') } : {}),
           }))}
         />

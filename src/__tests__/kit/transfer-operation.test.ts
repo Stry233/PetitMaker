@@ -75,6 +75,15 @@ describe('the plaza is what the two planets are laid over each other by', () => 
     expect(plazaOffset(tafa, hexia)).toEqual({ x: 0, y: -1 });
   });
 
+  it('anchors a planet whose plaza lays no footprint at its middle', () => {
+    const hexia = getMapTemplate('hexia');
+    const bare = (plaza: MapTemplate['plaza']): MapTemplate => ({ ...hexia, plaza });
+    const middle = bare({ x: 0, y: 0, width: 0, height: 0, elevation: 1 });
+    for (const plaza of [{ x: 4, y: 4, width: -2, height: 6, elevation: 1 }, { x: 4, y: 4, width: 6, height: -2, elevation: 1 }]) {
+      expect(plazaOffset(bare(plaza), hexia)).toEqual(plazaOffset(middle, hexia));
+    }
+  });
+
   it('is zero between a planet and itself', () => {
     const hexia = getMapTemplate('hexia');
     expect(plazaOffset(hexia, hexia)).toEqual({ x: 0, y: 0 });
@@ -222,7 +231,7 @@ function build(at: MacroCoord[], trees: MacroCoord[]): void {
   });
   for (const t of trees) {
     kit.executor.execute({
-      type: CommandType.PlaceObject, timestamp: 0, loadValue: 0,
+      type: CommandType.PlaceObject, timestamp: 0,
       object: { id: `tree-${t.x}-${t.y}`, catalogId: 'tree-apple', position: { ...t }, rotation: 0, elevation: 0 },
     });
   }

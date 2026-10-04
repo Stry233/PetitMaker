@@ -10,14 +10,14 @@ import { AskCard, AskPill, QuickRow, VerdictChip, type VerdictMark } from './Gat
 import { Icon } from './icons';
 import { edge } from './tokens';
 import { ACTIVE, INK, INSET, PLATE } from '../design/tokens';
-import { cursors, font } from '../design/styles';
+import { cursors, font, radii } from '../design/styles';
 import { roleFont } from '../design/text-weight';
 import { useT } from '../../i18n/context';
 import type { AskRecord } from '../../agent/core/project-view';
 import type { GateOption } from '../../agent/core/types';
 
 /** A proposed option and an optional map capture supplied by the rendering caller. */
-export interface OptionCard {
+interface OptionCard {
   cap: string;
   thumb?: ReactNode;
 }
@@ -162,7 +162,7 @@ function OptionRow({
             alignItems: 'center',
             gap: 4,
             background: INSET,
-            borderRadius: 999,
+            borderRadius: radii.pill,
             padding: '3px 9px',
             ...roleFont('small'),
             fontFamily: font.family,

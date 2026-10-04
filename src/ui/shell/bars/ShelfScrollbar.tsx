@@ -1,13 +1,12 @@
-import { clientPoint } from '../../../core/runtime/viewport-space';
 /*
- * ShelfScrollbar.tsx — the bar under the item row.
+ * The bar under the item row.
  *
  * The row itself is a native scroll container (a wheel, a trackpad swipe and a keyboard tab all
  * move it for free); this draws the design's own track and thumb over it and writes back. The
  * platform scrollbar is hidden by `.pw-noscroll`, so this is the only one the user sees.
  *
  * The thumb's length reports how much of the row is on screen, which is the one thing that tells
- * someone browsing 40 flowers that there are 40, and it REACHES both ends: its travel is the track
+ * someone browsing a long category how long it is, and it REACHES both ends: its travel is the track
  * less its own length, against the row's own scrollable room.
  *
  * It fills whatever box it is given and places the thumb as a PERCENTAGE of it. The drawn track is
@@ -15,6 +14,7 @@ import { clientPoint } from '../../../core/runtime/viewport-space';
  * design px would be the one number here that could not follow the row. Both shapes are drawn from
  * the design's fills rather than placed as art, for the reason `object-shelf.ts:SCROLL` gives.
  */
+import { clientPoint } from '../../../core/runtime/viewport-space';
 import { useRef, type PointerEvent as ReactPointerEvent } from 'react';
 import { useT } from '../../../i18n/context';
 import { usePx } from '../../design/scale';
@@ -42,7 +42,7 @@ export function ShelfScrollbar({ scrollLeft, viewportW, contentW, onScrollTo }: 
   const trackW = SCROLL.track.w;
   // With nothing to scroll the thumb is the whole track: the row is entirely on screen, which is
   // what a full thumb says. An empty track would leave the bar reading as a control that lost its
-  // handle, and the three items in 设施 are as much a state to report as the forty in 花草.
+  // handle, and the three items in Facilities are as much a state to report as the forty in Flowers.
   const thumbW = room > 0
     ? Math.max(SCROLL.thumb.minW, trackW * (viewportW / contentW))
     : trackW;

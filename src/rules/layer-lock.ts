@@ -26,25 +26,12 @@ export const layerLockRule: PreCommandRule = {
   appliesTo: [CommandType.PaintTerrain, CommandType.EraseTerrain],
   validate(cmd: Command, state: GridState): ValidationError[] {
     if (state.lockedLayers.size === 0) return [];
+    if (cmd.type !== CommandType.PaintTerrain && cmd.type !== CommandType.EraseTerrain) return [];
+    const targetLocked = cmd.type === CommandType.PaintTerrain && state.lockedLayers.has(cmd.elevation);
     const errors: ValidationError[] = [];
-    if (cmd.type === CommandType.PaintTerrain) {
-      if (state.lockedLayers.has(cmd.elevation)) {
-        for (const coord of cmd.cells) {
-          errors.push({ ruleId: 'V-LOCK-01', message: 'error.layer_locked', cells: [coord], severity: 'error' });
-        }
-        return errors;
-      }
-      for (const coord of cmd.cells) {
-        if (isOccupyingLockedLayer(state, coord)) {
-          errors.push({ ruleId: 'V-LOCK-01', message: 'error.layer_locked', cells: [coord], severity: 'error' });
-        }
-      }
-    }
-    if (cmd.type === CommandType.EraseTerrain) {
-      for (const coord of cmd.cells) {
-        if (isOccupyingLockedLayer(state, coord)) {
-          errors.push({ ruleId: 'V-LOCK-01', message: 'error.layer_locked', cells: [coord], severity: 'error' });
-        }
+    for (const coord of cmd.cells) {
+      if (targetLocked || isOccupyingLockedLayer(state, coord)) {
+        errors.push({ ruleId: 'V-LOCK-01', message: 'error.layer_locked', cells: [coord], severity: 'error' });
       }
     }
     return errors;

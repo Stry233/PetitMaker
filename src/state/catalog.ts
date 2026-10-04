@@ -1,17 +1,12 @@
 import { ItemCategory, type CatalogItem, type Locale } from '../core/model/types';
 import { PLAZA_ID } from '../core/model/constants';
 import { fuzzyScore, tierAndBonus, MAX_BONUS } from '../core/model/fuzzy';
-import { facility } from '../config/catalog/facility';
-import { building } from '../config/catalog/building';
-import { tree } from '../config/catalog/tree';
-import { flora } from '../config/catalog/flora';
-import { road } from '../config/catalog/road';
-import { bridge } from '../config/catalog/bridge';
-import { ramp } from '../config/catalog/ramp';
+import { CATEGORIES } from '../config/catalog/categories';
+import landmark from '../config/catalog/landmark.json';
+import { PLANET_PROFILE } from '../core/model/game-profile';
 
-// The 7 category barrels are assembled in a FIXED order: generation determinism
-// depends on catalog iteration order, so this order must never change casually.
-const catalogData = [...facility, ...building, ...tree, ...flora, ...road, ...bridge, ...ramp];
+// Assembled in the category registry's order, which generation determinism depends on.
+const catalogData = CATEGORIES.flatMap((c) => c.items);
 
 // byId knows every item a save or renderer may meet; byCategory offers only what may still be placed.
 const byId = new Map<string, CatalogItem>();
@@ -28,17 +23,18 @@ function index(item: CatalogItem): void {
 
 for (const item of catalogData as CatalogItem[]) index(item);
 
-// The central plaza is an immutable, off-catalog object. It needs a catalog entry
-// only for its TRAITS (terrainBase) — its size is per-map, carried on the
-// PlacedObject (width/height). Registered byId only, so it never appears in any
-// placement list (getCatalogByCategory).
-const PLAZA_ITEM: CatalogItem = {
-  id: PLAZA_ID, category: ItemCategory.Facility,
-  name: { en: 'Central Plaza', zh: '中央广场' }, icon: 'plaza',
-  width: 1, height: 1, loadValue: 0, rotatable: false, placementMode: 'point',
-  traits: [{ type: 'terrainBase' }],
-};
-byId.set(PLAZA_ITEM.id, PLAZA_ITEM);
+// The template landmark is locked on every map outside the planet session.
+// It needs a catalog entry only for its traits and its one-per-map cap; its size is per-map,
+// carried on the PlacedObject (width/height). Registered byId only, so it never appears in any
+// placement list (getCatalogByCategory). Its halfStep trait is a game fact: the landmark sits on half
+// cells, as the built-in planets' plaza positions show.
+const LANDMARK_ITEM: CatalogItem = { ...(landmark as Omit<CatalogItem, 'id' | 'icon'>), id: PLAZA_ID, icon: PLANET_PROFILE.landmarkIcon };
+byId.set(LANDMARK_ITEM.id, LANDMARK_ITEM);
+
+/** The template landmark's item. */
+export function landmarkItem(): CatalogItem {
+  return LANDMARK_ITEM;
+}
 
 export function getCatalogItem(id: string): CatalogItem | undefined {
   return byId.get(id);
@@ -50,7 +46,7 @@ export function getOfferedItem(id: string): CatalogItem | undefined {
   return item && byCategory.get(item.category)?.includes(item) ? item : undefined;
 }
 
-/** The `LoadValueLookup` the CommandExecutor takes: an item's chunk-load cost, 0 off-catalog. */
+/** An item's regional load, 0 off-catalog: the one price every load check and display reads. */
 export function catalogLoadValue(catalogId: string): number {
   return byId.get(catalogId)?.loadValue ?? 0;
 }
@@ -103,24 +99,10 @@ export function getRoadMaterials(): CatalogItem[] {
   return getCatalogByCategory(ItemCategory.Road);
 }
 
-/** Placeable items in a category: the catalog category MINUS items whose placement rule is TBD
- *  Generation and the agent pick only from these, so a TBD item is never auto-placed.
- *
- *  EXTENSIBILITY CONTRACT — how future content/rules join generation automatically:
- *  - New catalog ITEMS: anything added to catalog.json enters its category pool here (buildings split
- *    into landmark "uniques" vs repeatable stalls by maxCount; fields/orchards/gardens sample any
- *    flora/tree). No generator change needed; set `ruleTBD` to keep an item out until its rule lands.
- *  - New placement RULES: every placement goes through tryPlace → the LIVE RuleRegistry
- *    (reject-and-skip), and terrain goes through repair.ts → validatePostStroke. A new rule is enforced
- *    on generated output the moment it registers — the generator never re-implements rule logic.
- *  - Editorial mappings (e.g. nature.ts TREE_BANDS climate bands) reference ids but FILTER against the
- *    live catalog and fall back to the full pool, so renames/removals degrade gracefully. */
+/** Placeable items in a category: the catalog category MINUS items whose placement rule is TBD.
+ *  Generation and the agent pick only from these, so a TBD item is never auto-placed. */
 export function getPlaceableByCategory(category: ItemCategory): CatalogItem[] {
   return getCatalogByCategory(category).filter((i) => !i.ruleTBD);
-}
-
-export function getAllCategories(): ItemCategory[] {
-  return [...byCategory.keys()] as ItemCategory[];
 }
 
 /** Every item still offered, in authored order: each barrel folder holds one category, so the
@@ -134,52 +116,11 @@ export function getKnownItems(): CatalogItem[] {
   return known;
 }
 
-/** Test-support oracle: header icon (a basename `iconUrl` resolves) + i18n title key per placeable
- *  category. The shelf and the command palette author their own tables; the tests hold all three to
- *  the same answers. Road has no entry: it's a brush surface laid from the Build panel, never a
- *  point-placed tab. */
-const CATEGORY_META: Partial<Record<ItemCategory, { icon: string; titleKey: string }>> = {
-  [ItemCategory.Building]: { icon: 'building', titleKey: 'menu.place_building' },
-  [ItemCategory.Facility]: { icon: 'facility', titleKey: 'menu.place_facility' },
-  [ItemCategory.Tree]: { icon: 'tree', titleKey: 'menu.place_tree' },
-  [ItemCategory.Flora]: { icon: 'flower', titleKey: 'menu.place_flower' },
-  [ItemCategory.Bridge]: { icon: 'bridge', titleKey: 'menu.place_bridge' },
-  [ItemCategory.Ramp]: { icon: 'ramp', titleKey: 'menu.place_ramp' },
-};
+/** The words a search may use for a category, supplied by the caller in its own locale. */
+export type CategoryTerms = (category: ItemCategory) => readonly string[];
 
-export function getCategoryMeta(category: ItemCategory): { icon: string; titleKey: string } | undefined {
-  return CATEGORY_META[category];
-}
-
-/** A category's own Chinese name, for the search category facet below. English needs no table of
- *  its own: `ItemCategory`'s enum VALUE already IS the English word ('building', 'tree', ...), so
- *  storing it again here would just be the same fact with a chance to drift from it. */
-const CATEGORY_LABEL_ZH: Partial<Record<ItemCategory, string>> = {
-  [ItemCategory.Building]: '建筑',
-  [ItemCategory.Tree]: '树木',
-  [ItemCategory.Flora]: '花卉',
-  [ItemCategory.Bridge]: '桥梁',
-  [ItemCategory.Ramp]: '坡道',
-  [ItemCategory.Facility]: '设施',
-};
-
-/** Extra words a person might type for a category that its own name doesn't carry — "house" for a
- *  building, "木" for a tree — authored once, beside `CATEGORY_META`, so the search category facet
- *  and the shelf's tab metadata sit together. */
-const CATEGORY_SYNONYMS: Partial<Record<ItemCategory, readonly string[]>> = {
-  [ItemCategory.Building]: ['house', 'home', 'cabin', '房', '屋', '家'],
-  [ItemCategory.Tree]: ['树', '木'],
-  [ItemCategory.Flora]: ['flower', 'plant', 'grass', '花', '草', '植物'],
-  [ItemCategory.Bridge]: ['桥'],
-  [ItemCategory.Ramp]: ['坡', 'slope'],
-  [ItemCategory.Facility]: ['设施'],
-};
-
-function categoryTerms(category: ItemCategory): readonly string[] {
-  const zh = CATEGORY_LABEL_ZH[category];
-  const synonyms = CATEGORY_SYNONYMS[category] ?? [];
-  return zh ? [category, zh, ...synonyms] : [category, ...synonyms];
-}
+/** Without a supplier a category answers to its own id, the English word. */
+const idTerms: CategoryTerms = (category) => [category];
 
 interface SearchEntry {
   item: CatalogItem;
@@ -189,9 +130,6 @@ interface SearchEntry {
   /** Authored alternate names (`CatalogItem.aliases`): nicknames, material/colour words, common
    *  names a person would type that the item's own name doesn't carry. */
   aliasFields: readonly string[];
-  /** The item's category, by every word a person might type for it (`categoryTerms`) — so "red
-   *  tree" finds a tree, not just a name/alias containing "tree" literally. */
-  categoryFields: readonly string[];
 }
 
 // Lazily built and memoized per locale (a catalog of this size makes a linear scan over a prebuilt
@@ -204,12 +142,11 @@ function indexForLocale(locale: Locale): SearchEntry[] {
   let entries = searchIndex.get(locale);
   if (!entries) {
     // Sourced from byCategory, the catalog's one list, so a fixture registerCatalogItem adds is
-    // searchable too (the plaza, byId-only, is correctly excluded — it's off-catalog).
+    // searchable too; the plaza, registered by id only, is not.
     entries = [...byCategory.values()].flat().map((item) => ({
       item,
       nameFields: [item.name[locale] ?? item.name.en, item.name.en],
       aliasFields: item.aliases ?? [],
-      categoryFields: categoryTerms(item.category),
     }));
     searchIndex.set(locale, entries);
   }
@@ -250,22 +187,24 @@ function bestOf(query: string, fields: readonly string[], isName: boolean): numb
   return best;
 }
 
-/** The best `fuzzyScore` for one query TERM across an item's name fields and its aliases, plus its
- *  category words when `includeCategory` — a category word alone must never widen a SINGLE-term
- *  query's matches (a lone "bridge" keeps meaning "named Bridge", not "is a Bridge"; see
- *  `scoreAllTerms`). The category facet shares the alias band (`reweight`'s `isName=false`): naming
- *  it explicitly here, rather than folding it into `aliasFields`, keeps a category word out of
- *  `CatalogItem.aliases` and so out of anything that iterates an item's own authored aliases (e.g.
- *  the codec, which never sees search facets at all). */
-function bestFieldScore(term: string, entry: SearchEntry, includeCategory: boolean): number | null {
+/** The best `fuzzyScore` for one query TERM across an item's name fields and its aliases, plus the
+ *  term's score against the item's category words when `category` is given — a category word alone
+ *  must never widen a SINGLE-term query's matches (a lone "bridge" keeps meaning "named Bridge", not
+ *  "is a Bridge"; see `scoreAllTerms`). The category facet shares the alias band (`reweight`'s
+ *  `isName=false`): naming it explicitly here, rather than folding it into `aliasFields`, keeps a
+ *  category word out of `CatalogItem.aliases` and so out of anything that iterates an item's own
+ *  authored aliases (e.g. the codec, which never sees search facets at all). */
+function bestFieldScore(term: string, entry: SearchEntry, category: number | null): number | null {
   const name = bestOf(term, entry.nameFields, true);
   const alias = bestOf(term, entry.aliasFields, false);
-  const category = includeCategory ? bestOf(term, entry.categoryFields, false) : null;
   let best = name;
   if (alias !== null && (best === null || alias > best)) best = alias;
   if (category !== null && (best === null || category > best)) best = category;
   return best;
 }
+
+/** Each term's score against one category's words, `null` where it misses. */
+type CategoryScores = (category: ItemCategory) => readonly (number | null)[];
 
 /** An item's score against a whole (already-tokenized) query: every term must match SOME facet
  *  (AND across terms — "red tree" is a red thing that is also a tree, not either alone), and the
@@ -275,11 +214,11 @@ function bestFieldScore(term: string, entry: SearchEntry, includeCategory: boole
  *  word (e.g. "bridge") would match every item of that category instead of only the ones actually
  *  named for it (pinned: the object shelf's "bridge" search means "named Bridge", and the category
  *  tab already covers "is a Bridge"). */
-function scoreAllTerms(terms: readonly string[], entry: SearchEntry): number | null {
-  const includeCategory = terms.length > 1;
+function scoreAllTerms(terms: readonly string[], entry: SearchEntry, categoryScores: CategoryScores | null): number | null {
+  const category = categoryScores ? categoryScores(entry.item.category) : null;
   let total = 0;
-  for (const term of terms) {
-    const score = bestFieldScore(term, entry, includeCategory);
+  for (const [i, term] of terms.entries()) {
+    const score = bestFieldScore(term, entry, category ? category[i]! : null);
     if (score === null) return null;
     total += score;
   }
@@ -291,27 +230,40 @@ function tokenize(query: string): string[] {
 }
 
 /** A whole-string CJK query with no spaces short enough to plausibly be two unspaced words typed
- *  together (2-4 characters: "红花", "红色花朵"-length territory, never a long sentence). */
+ *  together (2-4 characters: "red flower" to "red-coloured blossom" in length, never a long sentence). */
 const UNSPACED_CJK = /^[一-鿿]{2,4}$/;
 
 /** Every catalog item matching every whitespace-separated TERM in `query`, across its name
- *  (active locale or English), its authored aliases and its category (`categoryTerms`) — best
+ *  (active locale or English), its authored aliases and its category (by the words `categoryTerms` supplies) — best
  *  score first (ties keep catalog order — `Array.sort` is stable). An empty or whitespace-only
  *  query returns no items, not all of them.
  *
- *  CJK carries no spaces between words, so "红花" (a red flower) and "红 花" (the same, typed with
- *  a space) must both work. If the whole unspaced query matches nothing, and it's short enough to
+ *  CJK carries no spaces between words, so "red flower" written as two unspaced characters and the same typed
+ *  with a space must both work. If the whole unspaced query matches nothing, and it's short enough to
  *  plausibly BE two unspaced CJK words, retry once with each character as its own AND term. This
- *  fallback fires only on a total miss: a real whole-name match (e.g. "樱花", a single flower)
- *  already succeeds on the first pass and must never be split into "does something match 樱, and
- *  separately does something match 花" instead. */
-export function searchCatalog(query: string, locale: Locale): CatalogItem[] {
+ *  fallback fires only on a total miss: a real whole-name match (e.g. "cherry blossom", a single
+ *  flower) already succeeds on the first pass and must never be split into one term per character. */
+export function searchCatalog(query: string, locale: Locale, categoryTerms: CategoryTerms = idTerms): CatalogItem[] {
   const q = query.trim();
   if (!q) return [];
   const rank = (terms: readonly string[]): CatalogItem[] => {
+    // A term's category score depends only on the category, so each category's words (every
+    // locale's) are scored once per search rather than once per item.
+    const byCategory = new Map<ItemCategory, readonly (number | null)[]>();
+    const categoryScores: CategoryScores | null = terms.length > 1
+      ? (category) => {
+        let scores = byCategory.get(category);
+        if (!scores) {
+          const words = categoryTerms(category);
+          scores = terms.map((term) => bestOf(term, words, false));
+          byCategory.set(category, scores);
+        }
+        return scores;
+      }
+      : null;
     const scored: Array<{ item: CatalogItem; score: number }> = [];
     for (const entry of indexForLocale(locale)) {
-      const score = scoreAllTerms(terms, entry);
+      const score = scoreAllTerms(terms, entry, categoryScores);
       if (score !== null) scored.push({ item: entry.item, score });
     }
     scored.sort((a, b) => b.score - a.score);

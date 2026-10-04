@@ -12,7 +12,7 @@ import { roadLookup } from '../../../state/object-index';
 import { DrawingTool } from '../../../tools/paint/drawing-tool';
 import { ToolManager } from '../../../tools/runtime/tool-manager';
 import { setStoreState } from '../../_store';
-import { makeStubRenderer } from '../_tool-manager';
+import { makeStubView } from '../_tool-manager';
 import { makeState, setTerrain } from '../../rules/_helpers';
 
 function camera(view: '2d' | '3d', state: GridState): { projection: ViewProjection; point: (height: number) => { x: number; y: number } } {
@@ -50,7 +50,7 @@ describe.each(['2d', '3d'] as const)('%s terrain pointer alignment', (view) => {
     const state = makeState(20, 20);
     if (action !== 'build') setTerrain(state, 5, 5, TerrainType.Mountain, 1);
     const executor = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
-    const manager = new ToolManager(makeStubRenderer(), executor, state);
+    const manager = new ToolManager(makeStubView(), executor, state);
     const { projection, point } = camera(view, state);
     const showGhost = vi.fn();
     manager.setView({
@@ -76,7 +76,7 @@ describe.each(['2d', '3d'] as const)('%s terrain pointer alignment', (view) => {
   it('keeps road painting on the object grid', () => {
     const state = makeState(20, 20);
     const executor = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
-    const manager = new ToolManager(makeStubRenderer(), executor, state);
+    const manager = new ToolManager(makeStubView(), executor, state);
     const { projection, point } = camera(view, state);
     const showGhost = vi.fn();
     manager.setView({ projection, overlay: { showGhost, clearGhost() {} } as unknown as EditorView['overlay'], applyCameraTransform() {} });

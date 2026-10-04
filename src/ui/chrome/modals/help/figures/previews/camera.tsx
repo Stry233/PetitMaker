@@ -1,5 +1,5 @@
 /*
- * camera.tsx — the camera page's 3D figure: a DEMO in the 2D demos' own grammar, over a recording
+ * The camera page's 3D figure: a DEMO in the 2D demos' own grammar, over a recording
  * of the real 3D renderer. One hidden scene (`canvas/map3d/capture`) photographs the visitor's
  * planet along a continuous camera path walking EVERY 3D gesture the page teaches (the drag that
  * turns, the drag that tilts, the wheel's dolly, the sideways scroll that also turns, the pan) and
@@ -11,7 +11,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { captureCard3dAngles } from '../../../export/render-preview-bridge';
 import type { CameraAngle } from '../../../../../../canvas/map3d/capture';
 import type { GridState } from '../../../../../../core/model/types';
-import { isMotionReduced } from '../../../../../../canvas/map2d/motion-state';
+import { isMotionReduced } from '../../../../../../core/runtime/motion-state';
 import { useKeybinds } from '../../../../../../core/runtime/keybindings';
 import { useT } from '../../../../../../i18n/context';
 import { resolveTokenSpecs, type TokenSpec } from '../../../../../hints/catalogue';

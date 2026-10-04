@@ -111,7 +111,7 @@ function mazeOnIsland(seed: number, region: MacroCoord[] | null) {
     entrance: { x: fp.origin.x + (fp.dims.mazeW >> 1), y: fp.origin.y },
     exit: { x: fp.origin.x + (fp.dims.mazeW >> 1), y: fp.origin.y + fp.dims.mazeH - 1 },
   });
-  const violations = exec.commitStrokeGroup(start);
+  const violations = exec.commitStroke(start);
   return { state, fp, violations, ...result };
 }
 
@@ -200,7 +200,7 @@ describe('Maze endpoints', () => {
       entrance: { x: fp.origin.x, y: fp.origin.y + (fp.dims.mazeH >> 1) },
       exit: { x: fp.origin.x + (fp.dims.mazeW >> 1), y: fp.origin.y + (fp.dims.mazeH >> 1) },
     });
-    expect(exec.commitStrokeGroup(start)).toEqual([]);
+    expect(exec.commitStroke(start)).toEqual([]);
 
     const field = fieldOf(state, fp);
     const walk = walkLength(field, { cell: gates.entrance!, kind: 'hole' }, { cell: gates.exit!, kind: 'target' });
@@ -230,7 +230,7 @@ describe('Maze endpoints', () => {
       const start = exec.getUndoStackSize();
       const fp = mazeFootprint(state, region, cw)!;
       const { gates } = generateMaze(state, 11, 3, cw, region, (c: Command) => exec.execute(c));
-      exec.commitStrokeGroup(start);
+      exec.commitStroke(start);
 
       const field = fieldOf(state, fp);
       const entrance: MazeEnd = { cell: gates.entrance!, kind: 'hole' };
@@ -283,7 +283,7 @@ describe('Maze endpoints', () => {
     const start = exec.getUndoStackSize();
     const fp = mazeFootprint(state, region, 1)!;
     const { gates } = generateMaze(state, 11, 3, 1, region, (c: Command) => exec.execute(c));
-    exec.commitStrokeGroup(start);
+    exec.commitStroke(start);
 
     const field = fieldOf(state, fp);
     const chosen = walkLength(field, { cell: gates.entrance!, kind: 'hole' }, { cell: gates.exit!, kind: 'hole' })!;
@@ -328,7 +328,7 @@ describe('Maze endpoints', () => {
     const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
     const start = exec.getUndoStackSize();
     const { gates } = generateMaze(state, 5, 3, 1, region, (c: Command) => exec.execute(c));
-    expect(exec.commitStrokeGroup(start)).toEqual([]);
+    expect(exec.commitStroke(start)).toEqual([]);
 
     const exit = gates.exit!;
     expect(getCell(state.cells, exit.x, exit.y)?.terrain ?? null).toBeNull();
@@ -387,7 +387,7 @@ describe('Maze endpoints', () => {
       const start = exec.getUndoStackSize();
       const fp = mazeFootprint(state, null, 1)!;
       const { gates, walk } = generateMaze(state, 7 + i, 3, 1, null, (c: Command) => exec.execute(c), asked);
-      exec.commitStrokeGroup(start);
+      exec.commitStroke(start);
 
       expect(gates.entrance, `pair ${i}: entrance landed`).toBeTruthy();
       expect(gates.exit, `pair ${i}: exit landed`).toBeTruthy();

@@ -321,7 +321,7 @@ describe('the courts on the ground', () => {
     }
   });
 
-  it('is deterministic per seed', () => {
+  it('the court carve is deterministic per seed', () => {
     for (const seed of [12345, 42]) {
       expect(cellKeys(carve(seed).courts)).toEqual(cellKeys(carve(seed).courts));
     }

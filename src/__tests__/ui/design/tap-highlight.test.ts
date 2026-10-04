@@ -23,7 +23,8 @@ describe('scrollbars', () => {
 
   it('narrows the bar on a coarse pointer, where it is always visible', () => {
     const coarse = css.match(/@media \(pointer: coarse\)\s*\{([\s\S]*?)\n\}/)?.[1] ?? '';
-    expect(coarse).toMatch(/::-webkit-scrollbar\s*\{[^}]*width: 8px/);
+    expect(coarse).toContain('--scrollbar-size: 8px');
+    expect(css).toMatch(/::-webkit-scrollbar\s*\{[^}]*width: var\(--scrollbar-size\)/);
   });
 });
 

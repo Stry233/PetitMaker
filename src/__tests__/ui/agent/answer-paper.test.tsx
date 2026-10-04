@@ -1,5 +1,5 @@
 /**
- * answer-paper.test.tsx — the ANSWER FAMILY: a done job that issued no write, and the dance that
+ * The ANSWER FAMILY: a done job that issued no write, and the dance that
  * does not happen for one.
  *
  * THE BOUNDARY IS THE PROJECTION'S, NEVER THIS LAYER'S. `JobView.kind` says what a job turned out to
@@ -202,12 +202,12 @@ describe('the answer paper: the words are the product', () => {
   });
 
   /** A model's own heading is a LEAD LINE: the card already owns the hierarchy around this text. */
-  it('draws a heading the model wrote as a lead line rather than a rung of its own', () => {
+  it('preserves model headings inside the answer hierarchy', () => {
     const { getByTestId } = renderWithI18n(
       <AnswerPaper job={makeJob({ kind: 'answer', outcome: 'done', summary: '## The shoreline\n\nIt is clear.' })} />,
     );
     const text = getByTestId('answer-text');
-    expect(text.querySelectorAll('h1, h2, h3, h4')).toHaveLength(0);
+    expect(text.querySelectorAll('h3')).toHaveLength(1);
     expect(text.textContent).toContain('The shoreline');
     expect(text.textContent).not.toContain('##');
   });
@@ -295,10 +295,11 @@ describe('File it away', () => {
     expect(filed).toEqual([ANSWER.orderSeq]);
   });
 
-  /** The panel supplies the shared Cancel task action for standing questions. */
-  it('leaves question dismissal to the panel', () => {
-    const { queryByTestId } = renderWithI18n(<AnswerPaper job={QUESTION} onFileAway={() => {}} />);
-    expect(queryByTestId('answer-file-away')).toBeNull();
+  it('files a closing question with the same action as an answer', () => {
+    const filed: number[] = [];
+    const { getByTestId } = renderWithI18n(<AnswerPaper job={QUESTION} onFileAway={seq => filed.push(seq)} />);
+    fireEvent.click(getByTestId('answer-file-away'));
+    expect(filed).toEqual([QUESTION.orderSeq]);
   });
 
   it('grows no control where the caller has no verb for it', () => {

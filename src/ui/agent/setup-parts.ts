@@ -8,10 +8,7 @@ import { PROVIDER_IDS, type ProviderId } from '../../agent/providers/defaults';
 import { colors, cursors, font, radii } from '../design/styles';
 import { INSET, PLATE_INK } from '../design/tokens';
 import { roleFont } from '../design/text-weight';
-import { framerMotion } from './motion';
-
-/** Translator shape accepted by connection helpers. */
-export type T = (key: string, params?: Record<string, string | number>) => string;
+import { framerMotion } from '../design/motion';
 
 /** Manual provider roster; custom endpoints use a separate entry. */
 export const PROVIDER_ROSTER: readonly ProviderId[] = PROVIDER_IDS.filter((id) => id !== 'custom');
@@ -104,7 +101,7 @@ export function rawFailure(err: unknown): RawFailure {
 }
 
 /** `unreachable` means no usable response; `no-list` means the server responded without a model catalog. */
-export type EndpointVerdict = 'unreachable' | 'no-list';
+type EndpointVerdict = 'unreachable' | 'no-list';
 
 export function endpointCheckVerdict(err: unknown): EndpointVerdict {
   const cls = classify(rawFailure(err)).cls;
@@ -150,7 +147,7 @@ export const FOOT_STYLE: CSSProperties = { marginTop: 'auto', display: 'flex', f
 export const GATED: CSSProperties = { opacity: 0.4, cursor: cursors.blocked };
 
 /** Position-only, zoom-corrected setup-step motion; reduced motion returns no animation props. */
-export interface StepSlide {
+interface StepSlide {
   layout?: 'position';
   transition?: Transition;
   transformTemplate?: (values: object, generated: string) => string;

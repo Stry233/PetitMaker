@@ -1,6 +1,5 @@
-import { clientPoint } from '../../../core/runtime/viewport-space';
 /*
- * MazeEndpoints.tsx — the maze's two ends, on the map, and the drag that moves one.
+ * The maze's two ends, on the map, and the drag that moves one.
  *
  * BOTH ARE THERE FROM THE MOMENT A MAZE IS ON THE MAP, on a default that already makes sense: in
  * from the edge, out at the plaza. So the feature teaches itself by being visible, and most people
@@ -19,17 +18,18 @@ import { clientPoint } from '../../../core/runtime/viewport-space';
  * Portalled to the body: the marks belong over the map, and outside the bar's chrome-zoomed subtree
  * the projection's screen coordinates are already the right ones.
  */
+import { clientPoint } from '../../../core/runtime/viewport-space';
 import { useCallback, useEffect, useRef } from 'react';
 import type { CSSProperties } from 'react';
 import { createPortal } from 'react-dom';
 import { isDenseScript, readableWeight } from '../../design/text-weight';
-import { getActiveView, onActiveViewChange } from '../../../canvas/active-view';
+import { getActiveView, onProjectionChange } from '../../../canvas/active-view';
 import type { MacroCoord } from '../../../core/model/types';
 import { useT } from '../../../i18n/context';
 import { useEditorStore } from '../../../state/store';
 import type { MazeEnd } from '../../../tools/generation/maze';
 import { helpTargetAttr } from '../../chrome/modals/help/targets';
-import { cursors, font } from '../../design/styles';
+import { cursors, font, radii } from '../../design/styles';
 import { ACTIVE, PLATE_INK } from '../../design/tokens';
 
 /** Smallest a mark may draw at, in css px: below this the character stops being readable and the
@@ -46,7 +46,7 @@ export function gateMarkStyle(size: number, dpr = 1, dense = false): CSSProperti
     fontWeight: readableWeight(900, size * 0.42, dense, dpr),
     lineHeight: 1,
     whiteSpace: 'nowrap',
-    borderRadius: '999px',
+    borderRadius: radii.pill,
     height: `${size}px`,
     padding: `0 ${Math.round(size * 0.42)}px`,
     fontSize: `${size * 0.42}px`,
@@ -95,14 +95,7 @@ function Marker({ end, text, testId, onMove }: {
 
   useEffect(() => {
     place();
-    eventBus.on('viewport-changed', place);
-    window.addEventListener('resize', place);
-    const offView = onActiveViewChange(place);
-    return () => {
-      eventBus.off('viewport-changed', place);
-      window.removeEventListener('resize', place);
-      offView();
-    };
+    return onProjectionChange(eventBus, place, { cells: false });
   }, [eventBus, place]);
 
   /*

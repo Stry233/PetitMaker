@@ -3,18 +3,13 @@
  * and must not depend on the second, or a new shell takes the keymap with it.
  */
 import { describe, it, expect } from 'vitest';
-import { ACTIONS, ACTION_BY_ID, BUILD_ACTIONS, GRID_ACTIONS, FILE_ACTIONS } from '../../kit/actions';
+import { ACTIONS, ACTION_BY_ID } from '../../kit/actions';
 import { ItemCategory } from '../../core/model/types';
 
 describe('editor actions', () => {
   it('indexes every action by a unique id', () => {
     expect(ACTION_BY_ID.size).toBe(ACTIONS.length);
     expect(new Set(ACTIONS.map((a) => a.id)).size).toBe(ACTIONS.length);
-  });
-
-  it('groups the three rows without losing or inventing an action', () => {
-    expect([...FILE_ACTIONS, ...BUILD_ACTIONS, ...GRID_ACTIONS].map((a) => a.id).sort())
-      .toEqual(ACTIONS.map((a) => a.id).sort());
   });
 
   it('names a real catalog category on every placement action', () => {
@@ -39,6 +34,6 @@ describe('editor actions', () => {
 
   it('move is a grid action, distinct from the retired tile grid tile', () => {
     expect(ACTION_BY_ID.get('move')?.action).toBe('move');
-    expect(GRID_ACTIONS.find((a) => a.id === 'tile')).toBeUndefined();
+    expect(ACTION_BY_ID.get('tile')).toBeUndefined();
   });
 });

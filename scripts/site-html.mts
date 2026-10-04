@@ -1,14 +1,7 @@
 import { DEPLOY_TARGETS, type DeployTarget } from '../src/legal/deploy-targets.ts';
 import { brandName } from '../src/version.ts';
-
-export function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
-}
+import { CREAM } from '../src/core/runtime/brand-palette.ts';
+import { escapeHtml } from '../src/legal/markdown-html.ts';
 
 export function alternateLinks(urls: { en: string; zh: string }): string {
   return [
@@ -52,26 +45,24 @@ export function websiteData(target: DeployTarget) {
     '@context': 'https://schema.org',
     '@type': 'WebSite',
     url: `${target.canonicalOrigin}/`,
-    name: brandName(target.id === 'cn' ? 'zh' : 'en'),
-    alternateName:
-      target.id === 'cn' ? ['PetitMaker'] : ['Petit Maker', 'PetitMaker Map Editor', 'petitmaker.cc'],
+    name: brandName(target.lang),
+    alternateName: [...target.alternateNames],
   };
 }
 
 /** The installable app's manifest for one deployment; relative URLs keep it valid under a path prefix. */
 export function webManifest(target: DeployTarget): string {
-  const lang = target.id === 'cn' ? 'zh' : 'en';
   return `${JSON.stringify({
-    name: brandName(lang),
-    short_name: brandName(lang),
+    name: brandName(target.lang),
+    short_name: brandName(target.lang),
     description: target.description,
     lang: target.htmlLang,
     start_url: './',
     scope: './',
     display: 'standalone',
     orientation: 'landscape',
-    background_color: '#FFFBE1',
-    theme_color: '#FFFBE1',
+    background_color: CREAM,
+    theme_color: CREAM,
     icons: [
       { src: 'logo-256.png', sizes: '256x256', type: 'image/png' },
       { src: 'apple-touch-icon.png', sizes: '180x180', type: 'image/png' },
@@ -80,7 +71,6 @@ export function webManifest(target: DeployTarget): string {
 }
 
 export function transformHomepage(html: string, target: DeployTarget, basePath: string): string {
-  const lang = target.id === 'cn' ? 'zh' : 'en';
   const data = JSON.stringify(websiteData(target)).replace(/</g, '\\u003c');
   const tags =
     basePath === '/'
@@ -94,7 +84,7 @@ export function transformHomepage(html: string, target: DeployTarget, basePath: 
             en: `${DEPLOY_TARGETS.global.canonicalOrigin}/`,
             zh: `${DEPLOY_TARGETS.cn.canonicalOrigin}/`,
           }),
-          socialTags(target.title, target.description, `${target.canonicalOrigin}/`, lang),
+          socialTags(target.title, target.description, `${target.canonicalOrigin}/`, target.lang),
           `<script type="application/ld+json">${data}</script>`,
         ]
       : ['<meta name="robots" content="noindex, nofollow" />'];

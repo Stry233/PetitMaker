@@ -1,15 +1,16 @@
-import { CommandType, CellZone, TerrainType } from '../../../core/model/types';
+import { CommandType, TerrainType } from '../../../core/model/types';
 import type { Command, GridState, MacroCoord, MazeGates, ResolvedMazeGates, ValidationResult } from '../../../core/model/types';
-import { getCell, isBuildableZone } from '../../../core/model/grid-model';
+import { getCell, isBuildableZone, NEIGHBORS4 } from '../../../core/model/grid-model';
 import { buildObjectOccupancy, objectRect } from '../../../state/object-geometry';
 import { makeRng } from '../../../core/model/rng';
+import { BASE_SUPPORT } from '../../../core/model/game-profile';
 import { defaultEnds, mainland, resolveEnd, routeBetween, type MazeEnd, type MazeField } from './maze-endpoints';
 
 /** The cell-wall lattice a gate is expressed in. `cw` cells of corridor, then one of wall. */
-export interface MazeDims { mazeW: number; mazeH: number; cellsW: number; cellsH: number; step: number; cw: number }
+interface MazeDims { mazeW: number; mazeH: number; cellsW: number; cellsH: number; step: number; cw: number }
 
 /** The rectangle the maze occupies: its top-left corner in map coordinates plus the lattice it fills. */
-export interface MazeFootprint { origin: MacroCoord; dims: MazeDims }
+interface MazeFootprint { origin: MacroCoord; dims: MazeDims }
 
 /**
  * The rectangle `generateMaze` will lay its lattice into, for the same arguments — the region's bounding
@@ -32,7 +33,7 @@ export function mazeFootprint(state: GridState, region: MacroCoord[] | null, cor
     for (let y = 0; y < height; y++) {
       for (let x = 0; x < width; x++) {
         const cell = getCell(state.cells, x, y);
-        if (cell && cell.zone === CellZone.Grass && !occ.has(`${x},${y}`)) {
+        if (cell && isBuildableZone(cell.zone) && !occ.has(`${x},${y}`)) {
           if (x < minX) minX = x;
           if (x > maxX) maxX = x;
           if (y < minY) minY = y;
@@ -276,7 +277,7 @@ export function generateMaze(
     }
   }
   const bySquare = (c: MacroCoord): boolean => !square.has(`${c.x},${c.y}`)
-    && ([[1, 0], [-1, 0], [0, 1], [0, -1]] as const).some(([dx, dy]) => square.has(`${c.x + dx},${c.y + dy}`));
+    && NEIGHBORS4.some(([dx, dy]) => square.has(`${c.x + dx},${c.y + dy}`));
 
   /*
    * Asked-for ends snap INTO THE MAINLAND, never merely to the nearest cell: the rectangle also
@@ -314,10 +315,10 @@ export function generateMaze(
   // overlaps its up/left neighbours); skipping those edge cells keeps the maze rule-valid by construction —
   // otherwise an edge wall is rejected at layer 1 (left as bare grass), then layer 2 floats a mountain onto
   // it ("no terrain supported below"). Off-map neighbours are ignored (V-ZONE-01 skips null cells).
-  const grassOrOff = (x: number, y: number): boolean => { const c = getCell(state.cells, x, y); return !c || c.zone === CellZone.Grass; };
+  const grassOrOff = (x: number, y: number): boolean => { const c = getCell(state.cells, x, y); return !c || isBuildableZone(c.zone); };
   const buildable = (x: number, y: number): boolean => {
     const cell = getCell(state.cells, x, y);
-    if (!cell || cell.zone !== CellZone.Grass || occ.has(`${x},${y}`)) return false;
+    if (!cell || !isBuildableZone(cell.zone) || occ.has(`${x},${y}`)) return false;
     if (regionSet && !regionSet.has(`${x},${y}`)) return false;
     return grassOrOff(x, y - 1) && grassOrOff(x - 1, y);
   };
@@ -332,8 +333,8 @@ export function generateMaze(
   }
 
   let placed = 0, skipped = 0;
-  // A wall straight off flat ground tops out 3 above it: the game's 3×3 base-support window reaches 3 tiers.
-  const elev = Math.min(maxElevation, 3);
+  // A one-cell wall straight off flat ground stops below the layer from which V-MTN-03 asks for a base.
+  const elev = Math.min(maxElevation, BASE_SUPPORT.fromLayer - 1);
   for (let e = 1; e <= elev && live.length > 0; e++) {
     const cmd: Command = { type: CommandType.PaintTerrain, timestamp: Date.now(), cells: live, terrainType: TerrainType.Mountain, elevation: e };
     if (executeCommand(cmd).success) { placed += live.length; continue; }

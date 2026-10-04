@@ -156,7 +156,7 @@ describe('V-PLACE-BLOCK — a Γ fillet is judged by its corner quadrant, not it
   });
 });
 
-describe('EdgeCutTool — the notch beside a tree (#18)', () => {
+describe('EdgeCutTool — the notch beside a tree', () => {
   it('rounds the mountain Γ corner the tree does not stand under', () => {
     const state = notchState();
     addTree(state, 10, 4);

@@ -72,6 +72,12 @@ The layer readout opens a panel with three display sizes, including a grid of al
 <sub>The object shelf contains cabins, facilities, bridges, ramps, trees, flowers, and other plants. In-game path surfaces are drawn with a brush.</sub>
 </div>
 
+## Draw your own planet
+
+Besides the built-in planets, you can draw planets of your own. Open **Change a planet** from the menu and choose **New planet** to shape a planet on an empty sea: **Ground** turns sea or sand into grass, **Sand** lays beach, the water brush adds ponds, and the shore forms around the grass automatically. Place the Neighbor Center on flat grass, or leave it out. **Done** names the planet and saves it to **My planets**, where you can edit its shape later, rename or duplicate it, and start a map on it.
+
+**Export** downloads a saved planet as a planet file, and **Import planet** adds one to My planets. A JSON save or a share image made on one of your planets carries the planet with it, so importing the map on another device or sharing it with a friend also brings the planet.
+
 ## Import a map from its share image
 
 <div align="center">
@@ -105,7 +111,7 @@ Before exporting a 2D image, the map can be redrawn as an illustration. Built-in
 The generator provides four modes: **Planet**, **Maze**, **Letter**, and **Picture**. Planet and Maze use a recipe number and follow the same building rules as manual editing; the same app version, mode, settings, base map, and recipe produce the same result. Letter and Picture offer built-in designs. Letter converts text into terrain, water, or a pattern made from a selected item. Picture converts an image into terrain, water, objects, or paths.
 
 <div align="center">
-<img src="./docs/media/algorithms.png" alt="Two whole-map views side by side, labelled Planet and Maze: on the left a settled planet of terraced hills, roads and hundreds of placements; on the right the same map filled edge to edge with a maze of one-cell mountain walls around the central plaza" width="620">
+<img src="./docs/media/algorithms.png" alt="Two whole-map views side by side, labelled Planet and Maze: on the left a settled planet of terraced hills, roads and hundreds of placements; on the right the same map filled edge to edge with a maze of one-cell mountain walls around the Neighbor Center" width="620">
 
 <sub>The same recipe number produces different results in different modes: <b>Planet</b> creates a complete layout, while <b>Maze</b> creates connected corridors.</sub>
 </div>
@@ -121,7 +127,7 @@ The generator provides four modes: **Planet**, **Maze**, **Letter**, and **Pictu
 **Maze** uses recursive backtracking to create a connected maze on buildable ground. Its walls are ordinary terrain, so they can be edited, trimmed, and decorated after generation. A generation region can restrict the maze to part of the map. Its entrance and exit can be moved, and **Show the way** displays the solution route.
 
 <div align="center">
-<img src="./docs/media/corridor-strip.png" alt="Three panels of the same patch of map, labelled Corridor 1, Corridor 2 and Corridor 3: the maze walls thin out and the passages widen from left to right, with the central plaza in each panel for scale" width="620">
+<img src="./docs/media/corridor-strip.png" alt="Three panels of the same patch of map, labelled Corridor 1, Corridor 2 and Corridor 3: the maze walls thin out and the passages widen from left to right, with the Neighbor Center in each panel for scale" width="620">
 
 <sub>The same recipe with <b>Corridor</b> set to 1, 2, and 3. Wider corridors produce fewer walls.</sub>
 </div>
@@ -190,7 +196,7 @@ npm run dev          # Vite dev server
 
 ```bash
 npm run test:run     # Vitest (all tests)
-npm run lint         # TypeScript type-check (tsc --noEmit)
+npm run lint         # TypeScript type-check (app and scripts)
 npm run build        # Production build
 ```
 

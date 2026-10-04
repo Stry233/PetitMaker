@@ -25,6 +25,17 @@ const settle = () => new Promise((r) => setTimeout(r, 0));
 describe('vision-verdict', () => {
   beforeEach(forgetVisionVerdicts);
 
+  it.each([
+    { providerId: 'custom' as const, customBaseUrl: 'http://localhost:1234/v1', calls: 1 },
+    { providerId: 'custom' as const, calls: 0 },
+    { providerId: 'perplexity' as const, calls: 0 },
+  ])('allows an empty key only on an explicit custom endpoint %j', async ({ calls, ...connection }) => {
+    const adapter = answering([{ t: 'text', delta: 'Red' }, { t: 'done', stop: 'stop' }]);
+    ensureVisionVerdict({ ...connection, apiKey: '', model: 'gpt-4o-proxy', adapterForTest: adapter }, () => {});
+    await settle();
+    expect(adapter.calls).toBe(calls);
+  });
+
   it('files true when the endpoint reads the probe image, and reports it under the connection key', async () => {
     const adapter = answering([{ t: 'text', delta: 'Red' }, { t: 'done', stop: 'stop' }]);
     let settled = 0;

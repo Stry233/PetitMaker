@@ -24,7 +24,7 @@
  * throughout `tools/` (see the paint door for why).
  */
 export { planToCommands } from './commit';
-export { makeScratchState, repairPlan } from './repair';
+export { repairPlan } from './repair';
 export { readRegionBase, regionUnbuilt, repairRegionSeam } from './seam';
 export type { RegionBase, SeamRepair } from './seam';
 export type { TerrainPlan } from './types';

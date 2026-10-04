@@ -6,7 +6,7 @@
  * draws at its own visible tier.
  */
 import { describe, it, expect } from 'vitest';
-import { cellRenderSpec, renderTier } from '../../canvas/map2d/layers/layer-visibility';
+import { cellRenderSpec, renderTier } from '../../canvas/layer-visibility';
 import { cutBackingByCorner } from '../../core/edge-cut/cut-backing';
 import { TerrainType } from '../../core/model/types';
 import type { Corners } from '../../core/model/types';

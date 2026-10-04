@@ -9,7 +9,8 @@
  */
 import { detectWaterfalls } from '../../../../core/model/waterfall-geometry';
 import type { GridState } from '../../../../core/model/types';
-import { NB4, type EvalGrid } from './grid';
+import { type EvalGrid } from './grid';
+import { NEIGHBORS4 } from '../../../../core/model/grid-model';
 
 /** The largest body that counts as a named ACCENT rather than a feature. The style target carries 32
  *  bodies of six cells or fewer holding 2.6% of its water: a landscape pool beside a path, not
@@ -65,7 +66,7 @@ function waterBodiesUncached(g: EvalGrid, state: GridState): WaterBody[] {
       const p = stack.pop()!;
       cells.push(p);
       const x = p % W, y = (p / W) | 0;
-      for (const [dx, dy] of NB4) {
+      for (const [dx, dy] of NEIGHBORS4) {
         const nx = x + dx, ny = y + dy;
         if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
         const j = ny * W + nx;
@@ -108,7 +109,7 @@ function holesOf(g: EvalGrid, cells: number[], x0: number, y0: number, x1: numbe
   for (let head = 0; head < queue.length; head++) {
     const p = queue[head]!;
     const x = p % bw, y = (p / bw) | 0;
-    for (const [dx, dy] of NB4) {
+    for (const [dx, dy] of NEIGHBORS4) {
       const nx = x + dx, ny = y + dy;
       if (nx < 0 || ny < 0 || nx >= bw || ny >= bh) continue;
       push(nx, ny);
@@ -124,7 +125,7 @@ function holesOf(g: EvalGrid, cells: number[], x0: number, y0: number, x1: numbe
     while (stack.length) {
       const p = stack.pop()!;
       const px = p % bw, py = (p / bw) | 0;
-      for (const [dx, dy] of NB4) {
+      for (const [dx, dy] of NEIGHBORS4) {
         const nx = px + dx, ny = py + dy;
         if (nx < 0 || ny < 0 || nx >= bw || ny >= bh) continue;
         const j = ny * bw + nx;
@@ -247,7 +248,7 @@ export function touchesOffLand(g: EvalGrid, body: WaterBody): boolean {
   const { W, H } = g;
   for (const i of body.cells) {
     const x = i % W, y = (i / W) | 0;
-    for (const [dx, dy] of NB4) {
+    for (const [dx, dy] of NEIGHBORS4) {
       const nx = x + dx, ny = y + dy;
       if (nx < 0 || ny < 0 || nx >= W || ny >= H) return true;
       if (!g.land[ny * W + nx]) return true;

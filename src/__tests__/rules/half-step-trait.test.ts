@@ -13,7 +13,9 @@ import { objectBlocksTerrainRule } from '../../rules/object-blocks-terrain';
 import { CommandType, ItemCategory, TerrainType } from '../../core/model/types';
 import type { PlaceObjectCommand, PaintTerrainCommand } from '../../core/model/types';
 import { makeState, setTerrain, placeCmd } from './_helpers';
-import { registerCatalogItem } from '../../state/catalog';
+import { getCatalogItem, registerCatalogItem } from '../../state/catalog';
+import { PLAZA_ID } from '../../core/model/constants';
+import { hasHalfStep } from '../../state/object-geometry';
 
 registerCatalogItem({
   id: 'hs-pier', category: ItemCategory.Facility, name: { en: 'HalfStep Pier' },
@@ -54,6 +56,24 @@ describe('V-PLACE-TRAIT: off-grid guard', () => {
     for (const x of [7, 8, 9]) setTerrain(state, x, 5, TerrainType.Mountain, 1);
     const errors = traitPlacementRule.validate(place('hs-pier', 7.5, 5), state);
     expect(errors).toHaveLength(0);
+  });
+});
+
+describe('the plaza anchors on the half-cell grid', () => {
+  const plazaAt = (x: number, y: number) => placeCmd({ id: PLAZA_ID, catalogId: PLAZA_ID, position: { x, y }, width: 3, height: 4, rotation: 0, elevation: 1 });
+
+  it('carries the halfStep trait', () => {
+    expect(hasHalfStep(getCatalogItem(PLAZA_ID)!)).toBe(true);
+  });
+
+  it('passes the off-grid guard at a half-cell position on both axes', () => {
+    const errors = traitPlacementRule.validate(plazaAt(5.5, 6.5), makeState());
+    expect(errors.some((e) => e.message === 'error.placement_off_grid')).toBe(false);
+  });
+
+  it('refuses a position off the half-cell grid', () => {
+    const errors = traitPlacementRule.validate(plazaAt(5.25, 6), makeState());
+    expect(errors.some((e) => e.message === 'error.placement_off_grid')).toBe(true);
   });
 });
 

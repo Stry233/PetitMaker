@@ -3,8 +3,9 @@
 // image/image2/image3. No size param: an edit model follows its input's own shape.
 import type { AspectOption } from '../normalize';
 import { classify, scrub } from './errors';
-import { fetchProviderImage } from './fetch-image';
-import { StylizeError, type StylizeDialect, type StylizeImage } from './types';
+import { firstReplyImage } from './fetch-image';
+import { StylizeError, type StylizeDialect } from './types';
+import { roleOf } from './request';
 
 const ASPECTS: readonly AspectOption[] = [
   { id: '1:1', ratio: 1 },
@@ -13,12 +14,6 @@ const ASPECTS: readonly AspectOption[] = [
   { id: '16:9', ratio: 16 / 9 },
   { id: '9:16', ratio: 9 / 16 },
 ];
-
-function roleOf(images: readonly StylizeImage[], role: StylizeImage['role']): StylizeImage | undefined {
-  return images.find((i) => i.role === role);
-}
-
-interface GenerationsResponse { data?: Array<{ b64_json?: string; url?: string }> }
 
 export const openaiCompatibleDialect: StylizeDialect = {
   aspects: ASPECTS,
@@ -66,12 +61,6 @@ export const openaiCompatibleDialect: StylizeDialect = {
     try { json = raw ? JSON.parse(raw) : undefined; } catch { json = raw; }
     if (!res.ok) throw classify(res.status, json);
 
-    const item = (json as GenerationsResponse).data?.[0];
-    if (!item) throw new StylizeError('bad_response');
-    if (item.b64_json) return `data:image/png;base64,${item.b64_json}`;
-    // The url is short-lived: fetch it now and re-encode, since the caller keeps the result
-    // around for the session (versionStore never persists a remote reference).
-    if (item.url) return fetchProviderImage(item.url, signal);
-    throw new StylizeError('bad_response');
+    return firstReplyImage(json, signal);
   },
 };

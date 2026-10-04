@@ -1,4 +1,3 @@
-// src/io/export/render.ts
 import { computeComposition } from './compose';
 import { layersFor } from './layer-preview';
 import type { Badge, ExportComposition, ExportOptions } from './types';

@@ -21,6 +21,7 @@
  * because `PixiCanvas` tests the active tool against it with `instanceof`.
  */
 export { DrawingTool } from './drawing-tool';
+export { regionShapeCells } from './region-shape';
 export {
   endCurveSession, getCurveSession, isCurveSessionOpen, moveCurveAnchor, setCurveHandle,
   subscribeCurveSession,

@@ -1,5 +1,5 @@
 /**
- * steer-queue.test.tsx — the notes queued for the next step, ALL of them.
+ * The notes queued for the next step, ALL of them.
  *
  * THE QUEUE IS A LIST AND EVERY NOTE RENDERS. Drawing one member of it (`queuedSteers[0]`) shows a
  * user who typed three notes one chip and no way to take back the two behind it; three stand at a
@@ -121,7 +121,7 @@ describe('SteerQueue: the squeeze', () => {
     const { getByTestId } = renderWithI18n(<SteerQueue steers={steers(5)} onRecall={() => {}} />);
     const chips = getByTestId('steer-chips');
     expect(chips.style.overflowY).toBe('auto');
-    expect(chips.style.flex).toBe('0 1 auto');
+    expect(chips.parentElement!.style.flex).toBe('0 1 auto');
     expect(chips.style.minHeight).toBe('0');
     expect(getByTestId('steer-more').style.flex).toBe('0 0 auto');
   });

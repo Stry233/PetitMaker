@@ -1,25 +1,23 @@
 /**
- * No dot separator in anything the app says.
+ * No dot separator and no em dash in anything the app says.
  *
  * A middot (·) or bullet (•) chaining fragments is a punctuation mark English borrowed from
  * dashboards and no locale here writes by hand: Chinese joins with its own comma, Russian and French
  * with theirs, and a list that wants marks wants lines. It also cannot be read aloud, which makes it
  * the one separator that carries nothing. So facts join with the locale's own punctuation, or they
- * split into lines.
+ * split into lines. An em dash crowds the compact panels most copy stands in and reads as a pasted
+ * aside, so no locale string carries one either.
  *
  * TWO SWEEPS, because copy lives in two places. Every locale string is checked directly, and the
  * surfaces that write text INLINE (a build stamp, a filing bar, a watermark) are scanned for the two
  * characters outside their comments — a comment may hold either as arithmetic (`a · b`) or as a
  * keycap, and a comment is not something the app says.
- *
- * WHAT STAYS is a mark that is DATA rather than prose: the key field's mask glyph, which is a
- * drawing of a hidden character. Those files are named below and each must still carry one, so an
- * exemption cannot outlive the thing it was written for.
  */
 import { describe, it, expect } from 'vitest';
 // @ts-ignore - node:fs is untyped here (no @types/node)
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { translations } from '../../i18n/translations';
+import { HELP_TABLES } from '../../i18n/locales/help';
 
 // Minimal ambient shape for `process.cwd()` — this repo's convention for node globals in tests
 // (see legal/repo-hygiene.test.ts). Vitest runs from the repo root.
@@ -28,6 +26,13 @@ declare const process: { cwd(): string };
 const REPO = process.cwd();
 
 const DOTS = ['·', '•'];
+const EM_DASH = '—';
+
+/** Every locale table the app reads, the help chunk's included. */
+const TABLES: [string, Record<string, string>][] = [
+  ...Object.entries(translations),
+  ...Object.entries(HELP_TABLES).map(([locale, table]): [string, Record<string, string>] => [`${locale} help`, table]),
+];
 
 /** Everywhere the app writes user-facing text inline rather than through a locale table. The whole
  *  of `src/` is in, since a string can be written anywhere and a comment costs the scan nothing —
@@ -38,9 +43,6 @@ const ROOTS = [
   'src/kit', 'src/core', 'src/tools', 'src/canvas', 'src/rules', 'src/api',
   'scripts/legal-pages-core.mts',
 ];
-
-/** Files where a dot is data or artwork rather than prose; every exemption is presence-checked. */
-const DATA_DOTS: Record<string, string> = {};
 
 function walk(dir: string, out: string[] = []): string[] {
   for (const name of readdirSync(dir) as string[]) {
@@ -87,7 +89,7 @@ export function scanText(file: string, src: string): string[] {
 describe('no dot separator in user-facing text', () => {
   it('no locale string carries one', () => {
     const problems: string[] = [];
-    for (const [locale, table] of Object.entries(translations)) {
+    for (const [locale, table] of TABLES) {
       for (const [key, value] of Object.entries(table)) {
         for (const dot of DOTS) {
           if (value.includes(dot)) problems.push(`${locale} ${key}: '${dot}'`);
@@ -97,10 +99,23 @@ describe('no dot separator in user-facing text', () => {
     expect(problems.join('\n')).toBe('');
   });
 
+  it('no locale string carries an em dash', () => {
+    const problems: string[] = [];
+    for (const [locale, table] of TABLES) {
+      for (const [key, value] of Object.entries(table)) {
+        if (value.includes(EM_DASH)) problems.push(`${locale} ${key}`);
+      }
+    }
+    expect(problems.join('\n')).toBe('');
+  });
+
+  it('sweeps every locale, the help tables included', () => {
+    expect(TABLES.length).toBe(Object.keys(translations).length * 2);
+  });
+
   it('and no surface writes one inline', () => {
     const problems: string[] = [];
     for (const file of sources()) {
-      if (file in DATA_DOTS) continue;
       problems.push(...scanText(file, readFileSync(`${REPO}/${file}`, 'utf8')));
     }
     expect(problems.join('\n')).toBe('');
@@ -114,13 +129,6 @@ describe('no dot separator in user-facing text', () => {
     // The public pages are written by a script, so a root list that only walks src/ would let the
     // one shipped surface no locale table covers regress unwatched.
     expect(files).toContain('scripts/legal-pages-core.mts');
-  });
-
-  it('every exempted file still carries the data mark it was exempted for', () => {
-    for (const file of Object.keys(DATA_DOTS)) {
-      const src = readFileSync(`${REPO}/${file}`, 'utf8');
-      expect(DOTS.some((d) => src.includes(d)), `${file} no longer needs its exemption`).toBe(true);
-    }
   });
 
   it('reads a comment as a comment and a string as text', () => {

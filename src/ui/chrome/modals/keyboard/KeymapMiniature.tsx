@@ -1,10 +1,10 @@
-import { useToolbarContext } from '../../../shell/use-toolbar-context';
 /*
- * KeymapMiniature.tsx — the live keymap as a picture: the main typing block with every keycap
+ * The live keymap as a picture: the main typing block with every keycap
  * wearing its command's category color at the base layer, no key text. It reads the same binding
  * index the shortcuts board does, so a rebind or a preset switch repaints it. Drawn as one SVG so
  * the geometry never depends on flex rounding and the whole thing scales to its container's width.
  */
+import { useToolbarContext } from '../../../shell/use-toolbar-context';
 import { useMemo } from 'react';
 import type { CSSProperties, ReactNode } from 'react';
 import { aliasIndex, bindingIndex, useKeybinds } from '../../../../core/runtime/keybindings';

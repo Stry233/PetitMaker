@@ -1,5 +1,5 @@
 /*
- * focus-source.ts — what put the focus where it is, which is what decides whether a ring is drawn.
+ * What put the focus where it is, which is what decides whether a ring is drawn.
  *
  * `:focus-visible` is the browser's answer to that question and it is nearly the one this interface
  * wants, except for one heuristic in it: a browser also promotes the element that is ALREADY focused
@@ -46,7 +46,7 @@ export const FOCUS_SOURCE_ATTR = 'data-focus-source';
 export const FIELD_WRAP_CLASS = 'pw-field-wrap';
 export const FIELD_INPUT_CLASS = 'pw-field-input';
 
-export type FocusSource = 'pointer' | 'keyboard' | 'program';
+type FocusSource = 'pointer' | 'keyboard' | 'program';
 
 /**
  * Stamp every focus with what put it there, for as long as the caller is mounted.

@@ -18,17 +18,13 @@ import { getPlaceableByCategory } from '../../state/catalog';
 import { makeRng } from '../../core/model/rng';
 import { layRoadNetwork, plantPatch } from '../../tools/macros';
 import type { KitContext } from '../../kit/context';
-import { argError, parseSeed, revertedMsg, runStrokeBody } from './tools-common';
-import type { AgentToolDeps } from './tools';
-import type { ToolResultDetail } from '../core/types';
+import { argError, parseSeed, revertedMsg, runStrokeBody, type AgentToolDeps, type ToolResultBody } from './tools-common';
 
 // Default seed for reproducible calls when the caller omits seed.
 const DEFAULT_SEED = 0x4d616d65;
 
 export const THEMES = ['orchard', 'farm', 'garden', 'hamlet', 'waterfront', 'peak'] as const;
-type Theme = (typeof THEMES)[number];
-
-type ToolResultBody = { content: string; isError: boolean; detail?: ToolResultDetail };
+export type Theme = (typeof THEMES)[number];
 
 /** Clamp an {x,y,w,h} rect input to the map and build its cell list. Returns null
  *  when the clamped rect is empty (the caller reports the empty-rect error). Shared
@@ -85,8 +81,7 @@ export async function decorateZoneHandler(
   let placed = 0;
 
   const { reverted, violations, outOfRegion, detail } = await runStrokeBody(deps, () => {
-    // Restrict analysis to the rect so the open mask only covers our area,
-    // exactly mirroring the run_generator region-restricted path.
+    // Restrict analysis to the rect so the open mask only covers our area.
     const a = analyzeTerrain(state, rectCells);
 
     // Build the rect's placeable cells (intersect with a.open).

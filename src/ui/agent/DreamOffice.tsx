@@ -5,8 +5,8 @@
  * of the open map when available and falls back to its tool glyph.
  */
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type RefObject } from 'react';
-import { motion, useReducedMotionConfig } from 'framer-motion';
-import { HelpLink, zoneEnter } from './atoms';
+import { useReducedMotionConfig } from 'framer-motion';
+import { HelpLink } from './atoms';
 
 import { useT } from '../../i18n/context';
 import { colors, cursors, font } from '../design/styles';
@@ -253,7 +253,7 @@ export function DreamOffice({ onConnect, pinned = false }: {
   };
 
   return (
-    <motion.div {...zoneEnter(reduced)} data-testid="dream-office" style={WRAP_STYLE}>
+    <div data-testid="dream-office" style={WRAP_STYLE}>
       <div data-testid="dream-scroll" style={SCROLL_STYLE}>
         <p style={{ ...roleFont('label'), fontFamily: font.family, color: PLATE_INK, lineHeight: 1.5, margin: 0 }}>
           {t('agent3.dream_say')}
@@ -300,7 +300,7 @@ export function DreamOffice({ onConnect, pinned = false }: {
           {t('agent3.dream_connect')}
         </button>
       </div>
-    </motion.div>
+    </div>
   );
 }
 

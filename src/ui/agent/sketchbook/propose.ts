@@ -28,14 +28,15 @@ import { categoryOf } from '../../../state/catalog';
 import { getObjectIndex } from '../../../state/object-index';
 import { readGrid, segmentRegions, type EvalGrid, type Region } from '../../../tools/generation/designer/eval/grid';
 import { waterBodies } from '../../../tools/generation/designer/eval/water-bodies';
+import { NEIGHBORS4 } from '../../../core/model/grid-model';
 
-export type SketchKind = 'lane' | 'pond' | 'bridge' | 'grove';
+type SketchKind = 'lane' | 'pond' | 'bridge' | 'grove';
 
 /** A point in MACRO CELL coordinates. */
-export interface SketchPoint { x: number; y: number }
+interface SketchPoint { x: number; y: number }
 
 /** One pip of a grove sketch: a tree that STANDS there, or one the stand could take. */
-export interface SketchPip extends SketchPoint { r: number; standing: boolean }
+interface SketchPip extends SketchPoint { r: number; standing: boolean }
 
 /**
  * The figure she draws, in macro cells. One variant per family, each holding what its own drawing
@@ -206,7 +207,7 @@ function boxOf(g: EvalGrid, cells: readonly number[]): { x0: number; y0: number;
 function roadReaches(g: EvalGrid, region: Region): boolean {
   for (const i of region.cells) {
     const x = cellX(g, i); const y = cellY(g, i);
-    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
+    for (const [dx, dy] of NEIGHBORS4) {
       const nx = x + dx; const ny = y + dy;
       if (nx < 0 || ny < 0 || nx >= g.W || ny >= g.H) continue;
       const j = ny * g.W + nx;

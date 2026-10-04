@@ -1,5 +1,5 @@
 /**
- * desk-header.test.tsx — the desk: character slot + the ONE dock card, in every face it wears.
+ * The desk: character slot + the ONE dock card, in every face it wears.
  *
  * Renders through `I18nProvider` (matches `job-ticket.test.tsx`'s own wrapper) with a stubbed
  * `localStorage` the store's persistence can write to safely in jsdom, and under
@@ -953,7 +953,7 @@ describe('the two decks, and the clock that steps up beside the word', () => {
   /**
    * THE PAUSED SUB-LINE COUNTS STAGES, NOT ATTEMPTS. It borrowed `dock_try_of`, which is authored
    * for "attempt n of MAX_TURN_RETRIES" and carries the counter word inside the string in zh and ja
-   * (次 / 回) — so the card read as a retry ladder over a hold, while the pausemark chip two rows
+   * (a count of times) — so the card read as a retry ladder over a hold, while the pausemark chip two rows
    * below said stages. One fact in two units, one of them wrong.
    */
   describe('the paused step count is a step count in every locale', () => {
@@ -1397,6 +1397,39 @@ describe('the flip keys on state identity alone, never on the repaint', () => {
       </MotionConfig>
     );
   }
+
+  it('keeps work controls mounted and responsive across rapid working phases', () => {
+    const pause = vi.fn();
+    const { getByTestId, rerender } = render(
+      <DeskHeader view={FACES.thinking!.view} now={0} onPause={pause} />,
+      { wrapper: NeverWrapper },
+    );
+    const card = getByTestId('dock');
+    for (const phase of ['streaming', 'executing', 'thinking', 'executing']) {
+      rerender(<DeskHeader view={FACES[phase]!.view} now={0} onPause={pause} />);
+      expect(getByTestId('dock')).toBe(card);
+      expect(card.parentElement!.style.pointerEvents).not.toBe('none');
+    }
+    fireEvent.click(card.querySelector('[data-act="pause"]')!);
+    expect(pause).toHaveBeenCalledOnce();
+  });
+
+  it('keeps stop confirmation open across working phases and retires it when the task finishes', async () => {
+    const { getByTestId, queryByTestId, rerender } = render(
+      <DeskHeader view={FACES.thinking!.view} now={0} askStop={0} />,
+      { wrapper: NeverWrapper },
+    );
+    rerender(<DeskHeader view={FACES.thinking!.view} now={0} askStop={1} />);
+    await waitFor(() => expect(getByTestId('dock-confirm-stop')).toBeTruthy());
+    const confirm = getByTestId('dock');
+    for (const phase of ['streaming', 'executing', 'thinking']) {
+      rerender(<DeskHeader view={FACES[phase]!.view} now={0} askStop={1} />);
+      expect(getByTestId('dock')).toBe(confirm);
+      expect(getByTestId('dock-confirm-stop')).toBeTruthy();
+    }
+    rerender(<DeskHeader view={makeView({ phase: 'idle' })} now={0} askStop={1} />);
+    await waitFor(() => expect(queryByTestId('dock-confirm-stop')).toBeNull());
+  });
 
   it('holds the dock\'s own DOM node across a clock-only rerender, and swaps it on a real state change', async () => {
     const { getByTestId, rerender } = render(

@@ -36,7 +36,7 @@ import { buildHabitatField, dominantSpecies } from './habitat';
 
 /** What the press found beside it. `road` carries the paved cells themselves: the border follows
  *  what is actually under the disc, not a line refitted to it. */
-export type GrammarSite =
+type GrammarSite =
   | { kind: 'building'; building: PlacedObject }
   | { kind: 'road'; paved: MacroCoord[] };
 
@@ -80,7 +80,7 @@ export function readGrammar(
   return paved.length ? { kind: 'road', paved } : null;
 }
 
-export interface GrammarInput {
+interface GrammarInput {
   site: GrammarSite;
   cells: readonly MacroCoord[];
   centre: { x: number; y: number };

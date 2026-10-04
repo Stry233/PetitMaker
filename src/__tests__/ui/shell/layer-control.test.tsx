@@ -10,11 +10,11 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, cleanup } from '@testing-library/react';
 import { EventBus } from '../../../core/commands/event-bus';
-import { ELEVATION_MAX } from '../../../core/model/constants';
 import type { EditorEvents } from '../../../core/model/types';
 import { I18nProvider } from '../../../i18n/context';
 import { useEditorStore } from '../../../state/store';
 import { Rail } from '../../../ui/shell/Rail';
+import { ELEVATION_MAX } from '../../../core/model/game-profile';
 
 const mount = () => render(<I18nProvider><Rail hidden={false} onHide={() => {}} /></I18nProvider>);
 const step = (name: 'Add layer' | 'Remove layer') => screen.getByRole('button', { name }) as HTMLButtonElement;

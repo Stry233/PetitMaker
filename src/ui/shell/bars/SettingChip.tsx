@@ -5,7 +5,7 @@
  */
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { motion, useReducedMotionConfig } from 'framer-motion';
-import { btnReset, buttonMotion, cursors, springs } from '../../design/styles';
+import { btnReset, buttonMotion, cursors, springs, radii } from '../../design/styles';
 import { INK, PLATE, PLATE_INK } from '../../design/tokens';
 import { TEXT } from '../units';
 import { BarText } from './bar-atoms';
@@ -94,7 +94,7 @@ export function SettingChip({ state, name, label, on, glyph, onCycle }: {
       onPointerCancel={() => setHovered(false)}
       style={{
         ...btnReset, flex: 'none', pointerEvents: 'auto', cursor: cursors.clickable,
-        height: CHIP.h, borderRadius: 999, padding: `0 ${CHIP_PAD_X}px`,
+        height: CHIP.h, borderRadius: radii.pill, padding: `0 ${CHIP_PAD_X}px`,
         // At rest it wears the translucent capsule the smart pill's unarmed segments wear: still
         // plainly a pill to press, just not the one that is on. Transparent read as a bare word.
         background: on ? PLATE : `${PLATE}80`,

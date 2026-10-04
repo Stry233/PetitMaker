@@ -1,5 +1,5 @@
 /*
- * annotation-layer.ts — the plan-notes layer of the 2D map: zone washes with dashed rounded
+ * The plan-notes layer of the 2D map: zone washes with dashed rounded
  * outlines and their number + tag captions, tag chips, and route arrows, drawn between the
  * objects and the tool overlay.
  *
@@ -18,17 +18,19 @@ import * as PIXI from 'pixi.js-legacy';
 import { APP_FONT_FAMILY } from '../../../assets/fonts/family';
 import { TILE_SIZE } from '../../../core/model/constants';
 import {
-  ANNOTATION_INK, INK_CELLS, roundedZoneLoops, zoneCornerRadius, ZONE_GRID_SHIFT, zoneDashCells, routeSamples, zoneLabelAnchor,
+  INK_CELLS, INK_ZONE_DISC, isAnnotationInk, roundedZoneLoops, zoneCornerRadius, ZONE_GRID_SHIFT, zoneDashCells, routeSamples, zoneLabelAnchor,
   type AnnotationsState, type ChipNote, type MapAnnotation, type RouteNote, type TagId, type ZoneNote,
 } from '../../../core/model/annotations';
-import { cellBounds, dimensionDrawing, measureDrawing, type DimensionDrawing } from '../../../core/model/annotation-dimensions';
-import { isMotionReduced } from '../motion-state';
+import { cellEdges, dimensionDrawing, measureDrawing, type DimensionDrawing } from '../../../core/model/annotation-dimensions';
+import { isMotionReduced } from '../../../core/runtime/motion-state';
 import { requestRender } from '../render-scheduler';
+import { hexStringToNumber } from '../../../core/model/colors';
+import { MAP_EDGE_ALPHA, MAP_INK, MAP_TEXT as MAP_TEXT_HEX } from '../../../core/runtime/brand-palette';
+import { easeOutQuad } from '../../../core/runtime/anim-config';
 
-/** The lettering ink and its outline — the treatment every word standing on the map wears
- *  (`ui/design/tokens.ts:MAP_LABEL`), restated as numbers because a canvas takes no CSS. */
-const MAP_TEXT = 0xfffee3;
-const INK = 0x43413f;
+/** The map-label lettering ink and its outline, as numbers because a canvas takes no CSS. */
+const MAP_TEXT = hexStringToNumber(MAP_TEXT_HEX);
+const INK = hexStringToNumber(MAP_INK);
 
 const WASH_ALPHA = 0.3;
 const WASH_ALPHA_INK = 0.38;
@@ -38,7 +40,6 @@ const hex = (color: string): number => {
   const n = parseInt(color.slice(1, 7), 16);
   return Number.isFinite(n) ? n : 0xffffff;
 };
-const isInk = (color: string): boolean => color.toLowerCase() === ANNOTATION_INK.toLowerCase();
 
 export interface AnnotationDrawOpts {
   draft: MapAnnotation | null;
@@ -133,7 +134,7 @@ export class AnnotationLayer {
       const parts: PIXI.Container[] = [this.washPass.addChild(zoneBody(note, selected, opts.inkScale))];
       const caption = zoneLabel(note, label, opts.inkScale);
       if (caption) parts.push(this.labelPass.addChild(caption));
-      const bounds = cellBounds(note.cells);
+      const bounds = cellEdges(note.cells);
       if (bounds && (selected || note === opts.draft)) parts.push(this.labelPass.addChild(dimensionBody(dimensionDrawing(bounds, opts.inkScale), note.color, opts.inkScale)));
       return parts;
     }
@@ -182,7 +183,7 @@ export class AnnotationLayer {
         const f = node.fade;
         if (!f) continue;
         const t = Math.min(1, (now - f.start) / FADE_MS);
-        const eased = 1 - (1 - t) * (1 - t);
+        const eased = easeOutQuad(t);
         const alpha = f.from + (f.to - f.from) * eased;
         for (const part of node.parts) part.alpha = alpha;
         if (t >= 1) this.settleFade(id, node, f.to);
@@ -204,11 +205,11 @@ function zoneBody(zone: ZoneNote, selected: boolean, inkScale: number): PIXI.Gra
   const dashes = zoneDashCells(inkScale);
   const dash = dashes.dash * TILE_SIZE;
   const gap = dashes.gap * TILE_SIZE;
-  g.beginFill(color, isInk(zone.color) ? WASH_ALPHA_INK : WASH_ALPHA);
+  g.beginFill(color, isAnnotationInk(zone.color) ? WASH_ALPHA_INK : WASH_ALPHA);
   // Zone ink lives on the terrain grid (ZONE_GRID_SHIFT): the wash covers the drawn blocks.
   for (const c of zone.cells) g.drawRect((c.x + ZONE_GRID_SHIFT) * TILE_SIZE, (c.y + ZONE_GRID_SHIFT) * TILE_SIZE, TILE_SIZE, TILE_SIZE);
   g.endFill();
-  const strokeColor = isInk(zone.color) ? 0xffffff : color;
+  const strokeColor = isAnnotationInk(zone.color) ? 0xffffff : color;
   for (const loop of roundedZoneLoops(zone.cells, zoneCornerRadius(inkScale))) {
     const pts: number[] = [];
     for (const [x, y] of loop) pts.push((x + ZONE_GRID_SHIFT) * TILE_SIZE, (y + ZONE_GRID_SHIFT) * TILE_SIZE);
@@ -237,7 +238,7 @@ function zoneLabel(zone: ZoneNote, label: string, inkScale: number): PIXI.Contai
   if (withNum) {
     const g = new PIXI.Graphics();
     g.lineStyle(Math.max(1.6, fs * 0.06), 0xffffff, 0.85);
-    g.beginFill(isInk(zone.color) ? 0x8a9bae : hex(zone.color), 1);
+    g.beginFill(isAnnotationInk(zone.color) ? hexStringToNumber(INK_ZONE_DISC) : hex(zone.color), 1);
     g.drawCircle(x0 + numR, Y, numR);
     g.endFill();
     box.addChild(g);
@@ -264,7 +265,7 @@ function chipBody(note: ChipNote, label: string, selected: boolean, inkScale: nu
   const Y = note.y * TILE_SIZE;
   const fs = INK_CELLS.text[note.size] * inkScale * TILE_SIZE;
   const text = makeText(label, {
-    fontFamily: APP_FONT_FAMILY, fontSize: fs, fontWeight: '800', fill: isInk(note.color) ? INK : 0xffffff,
+    fontFamily: APP_FONT_FAMILY, fontSize: fs, fontWeight: '800', fill: isAnnotationInk(note.color) ? INK : 0xffffff,
   });
   const padX = fs * 0.5;
   const h = fs * 1.6;
@@ -299,7 +300,7 @@ function routeBody(route: RouteNote, selected: boolean, inkScale: number): PIXI.
     return g;
   }
   // Route arrows use a 1.77-line-width halo, 2.4/2 dash rhythm and a 2.2-line-width head.
-  g.lineStyle({ width: lw * 1.77, color: INK, alpha: 0.62, cap: PIXI.LINE_CAP.ROUND });
+  g.lineStyle({ width: lw * 1.77, color: INK, alpha: MAP_EDGE_ALPHA, cap: PIXI.LINE_CAP.ROUND });
   dashOpenPolyline(g, pts, route.dashed ? lw * 2.4 : Infinity, lw * 2);
   g.lineStyle({ width: lw, color, alpha: 1, cap: PIXI.LINE_CAP.ROUND });
   dashOpenPolyline(g, pts, route.dashed ? lw * 2.4 : Infinity, lw * 2);
@@ -312,7 +313,7 @@ function routeBody(route: RouteNote, selected: boolean, inkScale: number): PIXI.
   const qy = pts[Math.max(0, n - 7)]!;
   const ang = Math.atan2(ey - qy, ex - qx);
   const ah = lw * 2.2;
-  g.lineStyle(lw * 0.6, INK, 0.62);
+  g.lineStyle(lw * 0.6, INK, MAP_EDGE_ALPHA);
   g.beginFill(color, 1);
   g.drawPolygon([
     ex + Math.cos(ang) * ah * 0.9, ey + Math.sin(ang) * ah * 0.9,
@@ -324,7 +325,7 @@ function routeBody(route: RouteNote, selected: boolean, inkScale: number): PIXI.
   if (selected) {
     selectionStroke(g, pts, lw * 0.35);
     for (const p of route.points) {
-      g.lineStyle(lw * 0.3, INK, 0.62);
+      g.lineStyle(lw * 0.3, INK, MAP_EDGE_ALPHA);
       g.beginFill(0xffffff, 1);
       g.drawCircle(p.x * TILE_SIZE, p.y * TILE_SIZE, lw);
       g.endFill();
@@ -396,7 +397,7 @@ function dashPolyline(g: PIXI.Graphics, closedPts: number[], dash: number, gap: 
   dashOpenPolyline(g, closedPts, dash, gap);
 }
 
-function dimensionBody(drawing: DimensionDrawing, color: string, inkScale: number, selected = false): PIXI.Container {
+export function dimensionBody(drawing: DimensionDrawing, color: string, inkScale: number, selected = false): PIXI.Container {
   const box = new PIXI.Container();
   const g = new PIXI.Graphics();
   const width = Math.max(1, 0.065 * inkScale * TILE_SIZE);

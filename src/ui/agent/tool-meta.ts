@@ -3,6 +3,9 @@ import type { IconId } from './icons';
 import { TOOL_VERB_KEYS, toolVerbKey } from '../../agent/tool-labels';
 
 const TOOL_ICONS: Record<string, IconId> = {
+  get_annotations: 'pw-inspect',
+  set_annotation: 'pw-note',
+  remove_annotation: 'pw-eraser',
   inspect_region: 'pw-inspect',
   get_objects: 'pw-inspect',
   get_selection: 'pw-region-frame',

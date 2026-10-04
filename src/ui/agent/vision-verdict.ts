@@ -22,7 +22,7 @@ export function knownVision(key: string): boolean | undefined {
   return VERDICTS.get(key);
 }
 
-export type ProbeConnection = AdapterConfig & { model: string };
+type ProbeConnection = AdapterConfig & { model: string };
 
 /**
  * Files the connection's vision verdict if it is worth asking for and not already known or in
@@ -30,7 +30,7 @@ export type ProbeConnection = AdapterConfig & { model: string };
  */
 export function ensureVisionVerdict(conn: ProbeConnection, onSettled: () => void): void {
   if (!ID_OPAQUE.has(conn.providerId)) return;
-  if (conn.apiKey === '' || conn.model === '') return;
+  if (conn.model === '' || (conn.apiKey === '' && !(conn.providerId === 'custom' && conn.customBaseUrl))) return;
   if (!PROVIDER_META[conn.providerId].vision(conn.model)) return; // tokens-only is safe unprobed
   const key = visionKey(conn.providerId, conn.customBaseUrl, conn.model);
   if (VERDICTS.has(key) || IN_FLIGHT.has(key)) return;

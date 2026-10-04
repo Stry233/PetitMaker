@@ -1,4 +1,3 @@
-// src/io/export/sizing.ts
 // Export sizing — keeps four distinct concepts separate:
 //   - mapNativePx   : the 2D map at the renderer's native tile density (64 px/cell).
 //   - mapCapturePx  : what the map was ACTUALLY captured at (≤ native; GPU MAX_TEXTURE_SIZE
@@ -7,30 +6,28 @@
 //                     1:1 (no resample); presets letterbox into a layout band.
 //   - compositionPx : the final export image, bounded by browser canvas limits.
 import { TILE_SIZE } from '../../core/model/constants';
+import { mapCaptureFrame } from '../../core/model/map-chunks';
+import type { MapTemplate } from '../../core/model/types';
 
 export interface PixelSize { w: number; h: number }
 
-/** The map band's frame, in CELLS.
- *
- *  ONE definition, because two things must agree about it to the pixel: the 2D capture
- *  (`MapRenderer.captureMapImage`, which frames `(-half, -half, w*TILE + half, h*TILE + half)`) and
- *  any renderer that draws the same band from the map data instead. They are composited over each
- *  other at export time — the plan-notes ink is stretched across the band's full rect — so a
- *  renderer that framed the cells alone would land the user's ink half a cell off. */
+/** The same cell frame as the 2D capture, so separately rendered maps, grids and annotations align. */
 export interface BandGeometry {
-  /** Top-left of the frame in cell coordinates. A half cell of bleed is kept on top and left. */
+  /** Top-left of the capture in saved cell coordinates, including surrounding sea or terrain bleed. */
   originX: number;
   originY: number;
   widthCells: number;
   heightCells: number;
 }
-export function bandGeometry(t: { width: number; height: number }): BandGeometry {
-  const half = 0.5;
-  return { originX: -half, originY: -half, widthCells: t.width + half, heightCells: t.height + half };
+type CaptureTemplate = Pick<MapTemplate, 'width' | 'height' | 'chunkGrid'>;
+
+export function bandGeometry(t: CaptureTemplate): BandGeometry {
+  const frame = mapCaptureFrame(t);
+  return { originX: frame.x, originY: frame.y, widthCells: frame.width, heightCells: frame.height };
 }
 
 /** Native pixel size of the 2D map capture region. At capture resolution 1.0 this is 64 px/cell. */
-export function mapNativePx(t: { width: number; height: number }): PixelSize {
+export function mapNativePx(t: CaptureTemplate): PixelSize {
   const band = bandGeometry(t);
   return { w: band.widthCells * TILE_SIZE, h: band.heightCells * TILE_SIZE };
 }
@@ -54,7 +51,7 @@ export function canvasFitScale(w: number, h: number, limits: CanvasLimits = CANV
  *  canvas can allocate: the capture lands in a 2D canvas, so a request past the ceiling comes back
  *  blank rather than large. The renderer clamps this further to its GPU MAX_TEXTURE_SIZE, so the
  *  achieved capture may still be smaller — read it back from the loaded image. */
-export function clampedCaptureRequestPx(t: { width: number; height: number }, limits: CanvasLimits): number {
+export function clampedCaptureRequestPx(t: CaptureTemplate, limits: CanvasLimits): number {
   const n = mapNativePx(t);
   return Math.max(1, Math.floor(Math.max(n.w, n.h) * canvasFitScale(n.w, n.h, limits)));
 }

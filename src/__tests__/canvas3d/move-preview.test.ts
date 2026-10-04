@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as THREE from 'three';
 import { Overlay3D } from '../../canvas/map3d/scene/overlay3d';
-import { setReducedMotion } from '../../canvas/map2d/motion-state';
+import { setReducedMotion } from '../../core/runtime/motion-state';
 import { MoveOrigins3D } from '../../canvas/map3d/scene/move-origins';
 import { ThreeScene } from '../../canvas/map3d/scene/scene';
 import { InstanceSlots } from '../../canvas/map3d/build/instance-slots';

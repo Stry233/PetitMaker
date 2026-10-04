@@ -1,6 +1,7 @@
 import type { MacroCoord } from './types';
 
-export interface CellBounds { left: number; top: number; right: number; bottom: number }
+/** A box by its edge coordinates in cell units, cell centres sitting on whole numbers. */
+export interface CellEdges { left: number; top: number; right: number; bottom: number }
 export interface DimensionDrawing {
   guides: [MacroCoord, MacroCoord][];
   lines: [MacroCoord, MacroCoord][];
@@ -18,7 +19,7 @@ export function resizeMeasurement(points: readonly [MacroCoord, MacroCoord], end
 }
 
 /** Inclusive cell extents: cells 0 through 83 occupy 84 cells, not 83 centre-to-centre intervals. */
-export function cellBounds(cells: readonly MacroCoord[]): CellBounds | null {
+export function cellEdges(cells: readonly MacroCoord[]): CellEdges | null {
   if (!cells.length) return null;
   let left = Infinity, top = Infinity, right = -Infinity, bottom = -Infinity;
   for (const cell of cells) {
@@ -29,7 +30,7 @@ export function cellBounds(cells: readonly MacroCoord[]): CellBounds | null {
 }
 
 /** CAD-style dimensions in cell units, shared by drawing, selection and both projections. */
-export function dimensionDrawing(bounds: CellBounds, inkScale: number, axes: 'both' | 'x' | 'y' = 'both', flipped = false): DimensionDrawing {
+export function dimensionDrawing(bounds: CellEdges, inkScale: number, axes: 'both' | 'x' | 'y' = 'both', flipped = false): DimensionDrawing {
   const { left, top, right, bottom } = bounds;
   const drawing: DimensionDrawing = { guides: [], lines: [], labels: [] };
   const point = (x: number, y: number): MacroCoord => ({ x, y });
@@ -64,7 +65,7 @@ export function dimensionDrawing(bounds: CellBounds, inkScale: number, axes: 'bo
 }
 
 export function measureDrawing(points: readonly [MacroCoord, MacroCoord], inkScale: number, flipped = false): DimensionDrawing {
-  return dimensionDrawing(cellBounds(points)!, inkScale, points[0].y === points[1].y ? 'x' : 'y', flipped);
+  return dimensionDrawing(cellEdges(points)!, inkScale, points[0].y === points[1].y ? 'x' : 'y', flipped);
 }
 
 export function dimensionHit(p: MacroCoord, drawing: DimensionDrawing, inkScale: number): boolean {

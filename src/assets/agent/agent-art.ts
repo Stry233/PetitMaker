@@ -1,5 +1,5 @@
 /**
- * agent-art.ts — resolves the one-character system's PNG art (the base drawing plus its two PNG
+ * Resolves the one-character system's PNG art (the base drawing plus its two PNG
  * badges) to URLs via a Vite glob over the PNGs beside this file. Provenance: README.md in this
  * folder. Same glob pattern as `src/assets/cursors/cursor-art.ts` and `src/assets/icon-urls.ts`
  * (eager, `?url`, keyed by basename).

@@ -39,3 +39,22 @@ describe('Waterfall Detection', () => {
     expect(detectWaterfalls(state)).toHaveLength(0);
   });
 });
+
+describe('Waterfall detection: a water row in a mountain block', () => {
+  // Top-view at elev 2:
+  // M M M M M M
+  // M M M M M M
+  // M W W W W M  ← water should have south-flowing waterfall face
+  it('detects south-flowing waterfall after painting water row', () => {
+    const state = makeState(10, 10);
+    for (let y = 2; y <= 4; y++)
+      for (let x = 2; x <= 7; x++)
+        setTerrain(state, x, y, TerrainType.Mountain, 2);
+    for (let x = 3; x <= 6; x++)
+      setTerrain(state, x, 4, TerrainType.Water, 2);
+
+    const waterfalls = detectWaterfalls(state);
+    const southFaces = waterfalls.flatMap(w => w.faces).filter(f => f.flowDirection === 'south');
+    expect(southFaces.length).toBeGreaterThan(0);
+  });
+});

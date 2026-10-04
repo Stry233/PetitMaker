@@ -188,13 +188,13 @@ describe('ExportModal', () => {
       const done = vi.fn();
       const mark = vi.spyOn(useEditorStore.getState(), 'markExported');
       const deliveries = [{ id: 'album', label: 'Save to album', available: true, send }];
-      const { rerender } = render(<ExportPanel open onDone={done} deliveries={deliveries} />, { wrapper: Wrapper });
+      const { rerender } = render(<ExportPanel open entered onDone={done} deliveries={deliveries} />, { wrapper: Wrapper });
       fireEvent.click(screen.getByRole('button', { name: 'Save to album' }));
       await waitFor(() => expect(send).toHaveBeenCalledOnce());
       expect(send.mock.calls[0]?.[0]).toBeInstanceOf(Blob);
       expect(requestNotice).toHaveBeenCalled();
       expect(downloadBlob).not.toHaveBeenCalled();
-      if (closed) rerender(<ExportPanel open={false} onDone={done} deliveries={deliveries} />);
+      if (closed) rerender(<ExportPanel open={false} entered={false} onDone={done} deliveries={deliveries} />);
       await act(async () => complete());
       expect(done).toHaveBeenCalledTimes(closed ? 0 : 1);
       expect(mark).toHaveBeenCalledTimes(closed ? 0 : 1);
@@ -208,7 +208,7 @@ describe('ExportModal', () => {
       const toast = vi.spyOn(Toast, 'showToast');
       mountStateWith();
       const { container } = render(<ExportModal />, { wrapper: Wrapper });
-      const message = 'Image sharing: this map may not import after resizing. Share the original image or a map file.';
+      const message = 'This map may not import from a resized image. Share the original image or a map file.';
       await waitFor(() => expect(screen.getByText(message)).toBeTruthy(), { timeout: 3000 });
       await waitFor(() => expect(container.querySelector('[data-export-preview]')).toBeTruthy());
       fireEvent.click(screen.getByRole('button', { name: 'Export image' }));

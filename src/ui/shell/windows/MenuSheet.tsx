@@ -1,5 +1,5 @@
 /*
- * MenuSheet.tsx — what the menu button opens: the five windows, as one sheet of paper.
+ * What the menu button opens: the windows, as one sheet of paper.
  *
  * The design draws the sheet as a filled plate with one rule across it, and nothing else: no
  * gradient, no stroke, no effect (see tokens.ts). So it is DRAWN rather than placed as art, which is
@@ -21,7 +21,7 @@ import { btnReset, cursors, springs, z } from '../../design/styles';
 import { useReadableWeight } from '../../design/scale';
 import { MODE_ROW_BASE, TOP_RIGHT_TOP } from '../frame';
 import { useFrameLayout } from '../frame-layout';
-import { cssMotion } from '../motion/use-motion';
+import { cssMotion } from '../../design/motion';
 import { INSET, LINE, PANEL_EDGE, PLATE, PLATE_INK } from '../../design/tokens';
 import { EDGE_RIGHT, TEXT } from '../units';
 
@@ -33,27 +33,33 @@ const ROW_HELP: Partial<Record<ModalId, HelpPageId>> = {
   settings: 'settings',
 };
 
-/** A row: a window it opens, or an action it runs in place of one. */
-type MenuRow = { labelKey: string; rule?: boolean } & (
+/** A row: a window it opens, or an action it runs in place of one. `mapOnly` rows act on the map
+ *  itself, so a planet session, which has no map of its own to replace, leaves them out. */
+type MenuRow = { labelKey: string; rule?: boolean; mapOnly?: boolean } & (
   | { modal: ModalId }
   | { run: () => void }
 );
 
 /** The rows, top to bottom. `rule` marks the one the design draws its separator above. */
 const ROWS: readonly MenuRow[] = [
-  { modal: 'newProject', labelKey: 'modal.new_title' },
-  { modal: 'import', labelKey: 'import.title' },
+  { modal: 'newProject', labelKey: 'modal.new_title', mapOnly: true },
+  { modal: 'import', labelKey: 'import.title', mapOnly: true },
   { modal: 'settings', labelKey: 'modal.settings_title', rule: true },
   { modal: 'help', labelKey: 'modal.help_title' },
   { modal: 'about', labelKey: 'modal.about_title' },
 ];
+
+/** The rows the menu offers over a map, or inside a planet session. */
+export function menuRows(inSession: boolean): readonly MenuRow[] {
+  return inSession ? ROWS.filter((row) => !row.mapOnly) : ROWS;
+}
 
 /** Clear of the top-right cluster, with air between the two so the sheet reads as a thing the
  *  button opened rather than as part of it. Measured from the line that cluster stands on, which is
  *  where the button the sheet belongs to ends. */
 const SHEET_TOP = MODE_ROW_BASE + 14;
 
-export interface MenuSheetProps {
+interface MenuSheetProps {
   open: boolean;
   onDismiss: () => void;
 }
@@ -64,6 +70,7 @@ export function MenuSheet({ open, onDismiss }: MenuSheetProps) {
   const layout = useFrameLayout();
   const top = SHEET_TOP + (layout ? layout.cornerTop - TOP_RIGHT_TOP : 0);
   const setModal = useEditorStore((s) => s.setModal);
+  const rows = menuRows(useEditorStore((s) => s.planetSession !== null));
 
   // Escape closes the sheet. It is not a modal — nothing is locked out behind it — so this is its
   // own listener rather than `ModalShell`'s topmost-shell stack.
@@ -93,7 +100,7 @@ export function MenuSheet({ open, onDismiss }: MenuSheetProps) {
               top,
               maxHeight: layout ? layout.height - top - 16 : undefined,
               overflowY: 'auto',
-              transition: cssMotion('frame.layout.adapt', 'top', 'max-height'),
+              transition: cssMotion('frame.layout.adapt', ['top', 'max-height']),
               right: layout?.edgeRight ?? EDGE_RIGHT,
               // The frame's plane is deaf so the map keeps its presses; a surface standing on it
               // claims its own (`shell/Shell.tsx`'s frame style).
@@ -115,9 +122,9 @@ export function MenuSheet({ open, onDismiss }: MenuSheetProps) {
               zIndex: z.opened,
             }}
           >
-            {ROWS.map((row) => (
+            {rows.map((row, i) => (
               <Fragment key={row.labelKey}>
-                {row.rule ? (
+                {row.rule && i > 0 ? (
                   <span style={{ height: 2, background: LINE, margin: '6px 10px', borderRadius: 2 }} />
                 ) : null}
                 <button

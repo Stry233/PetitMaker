@@ -1,5 +1,5 @@
 /*
- * chrome.tsx — the Help Center's figures for the chrome modals: Settings, the keyboard board, and
+ * The Help Center's figures for the chrome modals: Settings, the keyboard board, and
  * Change a planet, each the real component mounted live inside `PreviewFrame` rather than a drawing
  * of it. Every callback is a no-op (the frame already strips pointer events); only `UiScaleSlider`
  * inside SettingsModal reads the live store directly, which is fine here too — it shows the visitor's
@@ -10,7 +10,8 @@ import { SettingsModal } from '../../../SettingsModal';
 import { KeyboardModal } from '../../../keyboard/KeyboardModal';
 import { ChangePlanetModal } from '../../../ChangePlanetModal';
 import { useEditorStore } from '../../../../../../state/store';
-import { useT, localizedName } from '../../../../../../i18n/context';
+import { useT } from '../../../../../../i18n/context';
+import { usePlanetName } from '../../../planet/use-planet-library';
 import { iconUrl } from '../../../../../../assets/icon-urls';
 import { DEFAULT_MAP, MAP_LIST } from '../../../../../../config/maps';
 import { ArrivalCard } from '../../../../floating/ArrivalToast';
@@ -58,9 +59,9 @@ export function KeyboardPreview() {
 }
 
 export function PlanetPreview() {
-  // With a subject that holds a build, the carry row the page describes is in the picture even
-  // for a visitor whose own planet is still empty. The OTHER planet stands picked, so the figure
-  // shows what the page promises: the confirm button naming its destination, live.
+  // With a subject that holds a build, the window reads as it does over a built map even for a
+  // visitor whose own planet is still empty. The OTHER planet stands picked, so the figure shows its
+  // preview beside the list.
   const subject = useShownMap();
   const destination = MAP_LIST.find((m) => m.id !== (subject?.template.id ?? DEFAULT_MAP.id))?.id;
   return (
@@ -81,14 +82,14 @@ export function PlanetPreview() {
 /** The arrival notice as a picture: the real card over the visitor's own planet, countdown held. */
 export function ArrivalPreview() {
   const t = useT();
-  const locale = useEditorStore((s) => s.locale);
   const template = useEditorStore((s) => s.gridState?.template) ?? DEFAULT_MAP;
+  const planetName = usePlanetName(template);
   return (
     <PreviewFrame height={110}>
       <ArrivalCard
         art={iconUrl(`planet-${template.id}`)}
         eyebrow={t(ARRIVAL_LEAD_KEY.boot)}
-        name={localizedName(template.name, locale)}
+        name={planetName}
         seq={0}
         paused
         onOk={() => {}}

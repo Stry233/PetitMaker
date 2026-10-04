@@ -52,9 +52,18 @@ const fromBool = (v: boolean): string => (v ? '1' : '0');
 const raw = (r: string): string => r;
 const none = (): string => '';
 
+/** The UI scale preference's range. */
+export const UI_ZOOM_MIN = 0.6;
+export const UI_ZOOM_MAX = 1.8;
+
+/** A UI scale clamped to its range and rounded to two decimals, as the preference stores it. */
+export function clampUiZoom(z: number): number {
+  return Math.max(UI_ZOOM_MIN, Math.min(UI_ZOOM_MAX, +z.toFixed(2)));
+}
+
 export const PREFS = {
   locale:         pref<Locale>({    key: 'petit-planet-locale',          parse: oneOf(SUPPORTED_LOCALES), fallback: browserLocale }),
-  uiZoom:         pref<number>({    key: 'petit-planet-ui-zoom',         parse: inRange(0.6, 1.8),        fallback: () => 1 }),
+  uiZoom:         pref<number>({    key: 'petit-planet-ui-zoom',         parse: inRange(UI_ZOOM_MIN, UI_ZOOM_MAX), fallback: () => 1 }),
   viewMode:       pref<ViewMode>({  key: 'petit-planet-view-mode',       parse: oneOf(['2d', '3d'] as const), fallback: () => '2d' }),
   hintLevel:      pref<HintLevel>({ key: 'petit-planet-hint-level',      parse: oneOf(['full', 'concise', 'off'] as const), fallback: () => 'full' }),
   quality3d:      pref<Quality3d>({ key: 'petit-planet-3d-quality',      parse: oneOf(['auto', 'full', 'lite'] as const), fallback: () => 'auto' }),
@@ -66,6 +75,7 @@ export const PREFS = {
   // Dock state persists; transient open/closed state does not.
   assistantPinned: pref<boolean>({  key: 'petit-planet-assistant-pinned', parse: asBool, fallback: () => false, write: fromBool }),
   assistantDockSide: pref<DockSide>({ key: 'petit-planet-assistant-dock-side', parse: oneOf(['left', 'right'] as const), fallback: () => 'left' }),
+  enforceChunkLoad: pref<boolean>({ key: 'petit-planet-enforce-chunk-load', parse: asBool, fallback: () => true, write: fromBool }),
   showGrid:       pref<boolean>({   key: 'petit-planet-show-grid',       parse: asBool, fallback: () => true, write: fromBool }),
   showChunkBounds: pref<boolean>({  key: 'petit-planet-chunk-bounds',    parse: asBool, fallback: () => true, write: fromBool }),
   keybinds:       pref<string>({    key: 'petit-planet-keybinds',        parse: raw, fallback: none }),
@@ -76,8 +86,8 @@ export const PREFS = {
   // The app version this browser last opened; empty until a first visit records one.
   lastSeenVersion: pref<string>({  key: 'petit-planet-last-seen-version', parse: raw, fallback: none }),
 
-  // Structured blobs are parsed by their owning modules. `tourSeen` is accessed directly because
-  // missing storage means unseen, while unavailable storage suppresses the tour.
+  // Structured blobs are parsed by their owning modules. `tourSeen` is read through
+  // `readStoredPref` because an unset flag means unseen, while unavailable storage suppresses the tour.
   tourSeen:      pref<string>({ key: 'petit-planet-tour-seen',  parse: raw, fallback: none }),
   autosave:      pref<string>({ key: 'petit-planet-autosave',    parse: raw, fallback: none }),
   // Undo history is separate so quota pressure cannot discard the autosaved map.
@@ -95,6 +105,8 @@ export const PREFS = {
   ownImageExports: pref<string>({ key: 'petit-planet-own-image-exports', parse: raw, fallback: none }),
   // Export preset, parts, footer template, and size; title and description are not persisted.
   exportOptions: pref<string>({ key: 'petit-planet-export-options', parse: raw, fallback: none }),
+  // Custom planets the player saved or opened, as one JSON record.
+  customPlanets: pref<string>({ key: 'petit-planet-custom-planets', parse: raw, fallback: none }),
 } as const;
 
 export type PrefId = keyof typeof PREFS;
@@ -109,6 +121,24 @@ export function readPref<K extends PrefId>(id: K): ValueOf<K> {
   try { stored = localStorage.getItem(def.key); } catch { /* storage disabled */ }
   if (stored === null) return def.fallback();
   return def.parse(stored) ?? def.fallback();
+}
+
+/** A stored value before parsing. `available: false` means storage cannot be read at all, which
+ *  some callers treat differently from a key that was never written (`raw: null`). */
+export type StoredPref = { readonly available: false } | { readonly available: true; readonly raw: string | null };
+
+export function readStoredPref(id: PrefId): StoredPref {
+  try { return { available: true, raw: localStorage.getItem(PREFS[id].key) }; } catch { return { available: false }; }
+}
+
+/** Whether localStorage can be read in this browser session. */
+export function prefStorageAvailable(): boolean {
+  try { void localStorage.length; return true; } catch { return false; }
+}
+
+/** Whether the key is gone afterwards; false when storage refused the removal. */
+export function removePref(id: PrefId): boolean {
+  try { localStorage.removeItem(PREFS[id].key); return true; } catch { return false; }
 }
 
 /** Whether localStorage accepted the write. */

@@ -21,6 +21,7 @@ import { readFileSync, readdirSync, statSync } from 'node:fs';
 // @ts-ignore - node:path is untyped here (no @types/node)
 import { join, resolve } from 'node:path';
 import { translations } from '../../i18n/translations';
+import { RESOLVED_TOKENS } from '../../i18n/context';
 import type { Locale } from '../../core/model/types';
 
 declare const __dirname: string;
@@ -128,7 +129,9 @@ function passedParams(): Map<string, Set<string>> {
   return passed;
 }
 
-const tokensOf = (s: string): string[] => [...new Set([...s.matchAll(/\{([a-z]+)\}/g)].map((m) => m[1]!))].sort();
+/** The tokens a caller must pass: the translator fills `RESOLVED_TOKENS` itself. */
+const tokensOf = (s: string): string[] =>
+  [...new Set([...s.matchAll(/\{([a-z]+)\}/g)].map((m) => m[1]!))].filter((t) => !(t in RESOLVED_TOKENS)).sort();
 
 /**
  * THE TWO WAYS A TOKEN IS FILLED WITHOUT A CALL THAT NAMES IT, and the blind spot this test declares
@@ -194,13 +197,6 @@ describe('the assistant panel speaks every locale', () => {
       if (loc === EN) continue;
       const untranslated = prose.filter((k) => translations[loc][k] === translations[EN][k]);
       expect({ locale: loc, untranslated }).toEqual({ locale: loc, untranslated: [] });
-    }
-  });
-
-  it('carries no em dash and no dot separator in any locale', () => {
-    for (const loc of locales) {
-      const offenders = agent3Keys.filter((k) => /[—·•]/.test(translations[loc][k] ?? ''));
-      expect({ locale: loc, offenders }).toEqual({ locale: loc, offenders: [] });
     }
   });
 

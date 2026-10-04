@@ -1,4 +1,3 @@
-// src/io/share/raster/png-raster.ts
 // Minimal, dependency-free PNG raster codec for the pixel-payload carrier: decode an 8-bit
 // truecolor PNG (color type 2 = RGB or 6 = RGBA, no interlace) to straight RGBA, and encode
 // straight RGBA back to a type-6 PNG. Enough to read/write the pixels a browser canvas emits.

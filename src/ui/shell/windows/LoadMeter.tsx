@@ -1,8 +1,7 @@
-import { clientPoint } from '../../../core/runtime/viewport-space';
 /*
- * LoadMeter.tsx — the corner disc: how full the region under the pointer is.
+ * The corner disc: how full the region under the pointer is.
  *
- * THE READING FOLLOWS THE POINTER. The game calls this 区域负荷, a REGIONAL load, and the limit it
+ * THE READING FOLLOWS THE POINTER. The game calls this Regional load, and the limit it
  * reports is per chunk: what decides whether the next placement is refused is what the chunk you
  * are about to build in holds, not a total for the planet. So the disc reads the region under the
  * cursor and changes as the cursor crosses into the next one. It HOLDS the last region once the
@@ -23,6 +22,10 @@ import { clientPoint } from '../../../core/runtime/viewport-space';
  * against the visible surface, the pointer machine already runs one per move for its own hover, and
  * a readout does not need sixty answers a second.
  */
+import { tourTargetAttr } from '../../chrome/tour/steps';
+import { formatLoad } from '../../../i18n/load';
+import { cssMotion } from '../../design/motion';
+import { clientPoint } from '../../../core/runtime/viewport-space';
 import { useEffect, useState, useSyncExternalStore, type CSSProperties } from 'react';
 import { motion } from 'framer-motion';
 import { getActiveView } from '../../../canvas/active-view';
@@ -31,12 +34,13 @@ import { useUiPreview } from '../../primitives/ui-preview';
 import { useT } from '../../../i18n/context';
 import { getMapStats, subscribeMapStats } from '../../../state/map-stats';
 import { useEditorStore } from '../../../state/store';
-import { btnReset, cursors, pressable } from '../../design/styles';
+import { btnReset, cursors, pressable, radii } from '../../design/styles';
 import { topRightHeight, type FrameArt } from '../frame';
 import {
-  chunkAt, chunkLoad, CHUNK_LOAD_MAX, getPointerRegion, MAP_LOAD_SHOWN, setPointerRegion,
+  chunkLoad, CHUNK_LOAD_MAX, getPointerRegion, MAP_LOAD_SHOWN, setPointerRegion,
   subscribePointerRegion, type ChunkLoad,
 } from './map-load';
+import { mapChunkAt, mapFrame } from '../../../core/model/map-chunks';
 import { INK, LOAD_FILL } from '../../design/tokens';
 
 /**
@@ -49,7 +53,7 @@ import { INK, LOAD_FILL } from '../../design/tokens';
  * a soft bean rather than as a slice of pie.
  */
 export const DISC = { r: 50, hole: 10, arc: 30, band: 30 } as const;
-export const CIRCUMFERENCE = 2 * Math.PI * DISC.arc;
+const CIRCUMFERENCE = 2 * Math.PI * DISC.arc;
 
 /**
  * The track's opacity over whatever is behind it.
@@ -59,7 +63,7 @@ export const CIRCUMFERENCE = 2 * Math.PI * DISC.arc;
  * flat colour that read correctly on water would go wrong on land. So the map shows through,
  * which is also why the hole is a hole.
  */
-export const TRACK_ALPHA = 0.44;
+const TRACK_ALPHA = 0.44;
 
 /** Unique per document, and there is one of these. */
 const HOLE_MASK = 'shell-load-hole';
@@ -70,6 +74,7 @@ const SAMPLE_MS = 100;
 
 export function LoadMeter({ art }: { art: FrameArt }) {
   const t = useT();
+  const locale = useEditorStore((s) => s.locale);
   // A pictured meter shows the reading and samples nothing (`ui-preview.tsx`): its global
   // pointermove would be a second surface pick per pointer step for a figure that cannot be hovered.
   const preview = useUiPreview();
@@ -106,9 +111,9 @@ export function LoadMeter({ art }: { art: FrameArt }) {
       const cell = getActiveView()?.projection.screenToMacro(clientPoint(e).x, clientPoint(e).y);
       const grid = useEditorStore.getState().gridState;
       if (!cell || !grid) return;
-      const { width, height } = grid.template;
-      if (cell.x < 0 || cell.y < 0 || cell.x >= width || cell.y >= height) return;
-      const next = chunkAt(cell.x, cell.y);
+      const frame = mapFrame(grid.template);
+      if (cell.x < frame.x || cell.y < frame.y || cell.x >= frame.x + frame.width || cell.y >= frame.y + frame.height) return;
+      const next = mapChunkAt(grid.template, cell.x, cell.y);
       setPointerRegion(next.cx, next.cy);
     };
     if (preview) return undefined;
@@ -119,7 +124,7 @@ export function LoadMeter({ art }: { art: FrameArt }) {
   if (!MAP_LOAD_SHOWN || !gridState) return null;
   const { width, height } = gridState.template;
   const stats = getMapStats(gridState);
-  const region = at ?? chunkAt(Math.floor(width / 2), Math.floor(height / 2));
+  const region = at ?? mapChunkAt(gridState.template, Math.floor(width / 2), Math.floor(height / 2));
   const load: ChunkLoad | null = chunkLoad(stats, region.cx, region.cy);
   if (!load) return null;
 
@@ -131,17 +136,18 @@ export function LoadMeter({ art }: { art: FrameArt }) {
     <motion.button
       type="button"
       {...helpTargetAttr('load')}
+      {...tourTargetAttr('load')}
       {...pressable}
       data-testid="shell-load"
       // The reading is in the NAME, not only in the drawing: the disc is a proportion of a limit
       // and there is no text on it, so without this the control says nothing to anyone not
       // looking at it.
-      aria-label={`${t(art.labelKey)}: ${load.name}, ${load.value} / ${CHUNK_LOAD_MAX}`}
+      aria-label={`${t(art.labelKey)}: ${load.name}, ${formatLoad(locale, load.value, load.unknownLoads > 0)} / ${CHUNK_LOAD_MAX}`}
       onClick={() => setModal('regionLoad', true)}
       style={{
         ...btnReset, width: size, height: size, flex: 'none',
         // The disc fills its box, so a round button is the shape a focus ring should follow.
-        borderRadius: 999,
+        borderRadius: radii.pill,
         display: 'block', cursor: cursors.clickable,
       }}
     >
@@ -175,7 +181,7 @@ export function LoadDiscSvg({ fill, maskId, animated = false, style }: {
           fill="none" stroke={LOAD_FILL} strokeWidth={DISC.band} strokeLinecap="round"
           strokeDasharray={`${filled * CIRCUMFERENCE} ${CIRCUMFERENCE}`}
           transform="rotate(-90 50 50)"
-          style={animated ? { transition: 'stroke-dasharray 0.25s ease' } : undefined}
+          style={animated ? { transition: cssMotion('meter.fill', ['stroke-dasharray']) } : undefined}
         />
       ) : null}
     </svg>

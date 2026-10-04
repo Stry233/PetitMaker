@@ -2,6 +2,7 @@
  * Offers the last saved session from the generation shelf. The card restores immediately and its
  * visible countdown pauses while covered, leaving or focused through either sibling action.
  */
+import { mapEdgeAttr } from '../../primitives/map-edge';
 import { useEffect, useState } from 'react';
 import { motion, useIsPresent } from 'framer-motion';
 import { renderThumbnail } from '../../../canvas/thumbnail';
@@ -10,7 +11,7 @@ import type { GridState } from '../../../core/model/types';
 import { helpTargetAttr } from '../../chrome/modals/help/targets';
 import { TimedButton } from '../../primitives/TimedButton';
 import { ScaleProvider } from '../../design/scale';
-import { btnReset, buttonMotion, cursors, z } from '../../design/styles';
+import { btnReset, buttonMotion, cursors, z, radii } from '../../design/styles';
 import { ACTIVE, PLATE, PLATE_INK } from '../../design/tokens';
 import { PLATE_BAND, SHELF_SCALE, SHELF_TABS, TEXT } from '../units';
 import { MOTIONS } from '../motion/registry';
@@ -48,7 +49,7 @@ const LEAVE_DROP = MOTIONS['restore.offer.leave'].amplitude;
 /** Visible decision time before the saved session restores automatically, in seconds. */
 export const RESTORE_AFTER_S = 12;
 
-export interface RestoreShelfProps {
+interface RestoreShelfProps {
   /** The saved map, for its photograph. */
   state: GridState;
   /** Whether the boot splash covers the offer and pauses its countdown. */
@@ -91,6 +92,7 @@ function RestoreShelfBody({ state, splashActive = false, onRestore, onDismiss }:
   return (
     <motion.div
       {...helpTargetAttr('save')}
+      {...mapEdgeAttr('bottom')}
       initial={arriving ? { opacity: 0 } : false}
       animate={{ opacity: 1, y: 0 }}
       exit={arriving ? { opacity: 0, y: LEAVE_DROP, transition: leaving } : { opacity: 0, transition: leaving }}
@@ -194,7 +196,7 @@ function RestoreShelfBody({ state, splashActive = false, onRestore, onDismiss }:
                 data-testid="restore-resume"
                 onClick={onRestore}
                 style={{
-                  ...btnReset, cursor: cursors.clickable, borderRadius: 999,
+                  ...btnReset, cursor: cursors.clickable, borderRadius: radii.pill,
                   height: ANSWER.h, padding: `0 ${ANSWER.padX}px`, background: ACTIVE,
                 }}
               >
@@ -206,7 +208,7 @@ function RestoreShelfBody({ state, splashActive = false, onRestore, onDismiss }:
                 data-testid="restore-fresh"
                 onClick={onDismiss}
                 style={{
-                  ...btnReset, cursor: cursors.clickable, borderRadius: 999,
+                  ...btnReset, cursor: cursors.clickable, borderRadius: radii.pill,
                   height: ANSWER.h, padding: `0 ${ANSWER.padX}px`, background: PLATE,
                 }}
               >

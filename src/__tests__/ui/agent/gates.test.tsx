@@ -1,5 +1,5 @@
 /**
- * gates.test.tsx — the gate FAMILY under the dock-wears-the-ask-paper rule (the ask card, the plan gate, the
+ * The gate FAMILY under the dock-wears-the-ask-paper rule (the ask card, the plan gate, the
  * question's quick row, the option pick), and one banner for every trouble class.
  *
  * WHAT THIS FILE HOLDS TO: only the DOCK wears the ask paper, so every

@@ -1,5 +1,5 @@
 /**
- * lane.test.tsx — the helper lane: what a `delegate_task` child is doing, said inside the parent's
+ * The helper lane: what a `delegate_task` child is doing, said inside the parent's
  * own ticket, and the roll-up its own row keeps once the child is gone.
  *
  * The lane renders from a `LaneView`, which is the SHAPE rather than any one carrier: the live half

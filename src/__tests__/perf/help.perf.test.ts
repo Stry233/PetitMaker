@@ -1,5 +1,5 @@
 /*
- * help.perf.test.ts — the Help Center's CPU-side costs, no renderer.
+ * The Help Center's CPU-side costs, no renderer.
  *
  * Every Help figure is a real `DemoWorld` (a live `GridState` + `CommandExecutor` + full rule
  * registry) driven by a scene's `run(ctx, t)` timeline (`figures/scenes.ts`); a mounted page pays

@@ -8,7 +8,7 @@ import { isProcPackId } from './proc/packs/manifest';
 import type { StylizeDirection } from './versions';
 import { sealSecret, openSecret, type SealedBlob } from '../../core/runtime/vault';
 import { sanitizeEndpointUrl } from '../../core/runtime/endpoint-url';
-import { PREFS } from '../../core/runtime/prefs';
+import { readStoredPref, writePref } from '../../core/runtime/prefs';
 
 export interface StylizeSettings {
   provider: StylizeProvider['id'];
@@ -36,9 +36,9 @@ function defaultStylizeSettings(): StylizeSettings {
 }
 
 function readRecord(): StoredRecord | null {
+  const stored = readStoredPref('stylize');
   try {
-    const raw = localStorage.getItem(PREFS.stylize.key);
-    return raw ? (JSON.parse(raw) as StoredRecord) : null;
+    return stored.available && stored.raw ? (JSON.parse(stored.raw) as StoredRecord) : null;
   } catch {
     return null;
   }
@@ -70,11 +70,7 @@ export function saveStylizeSettings(s: StylizeSettings): void {
     customPrompt: s.customPrompt,
     keySealed: cur?.keySealed ?? null,
   };
-  try {
-    localStorage.setItem(PREFS.stylize.key, JSON.stringify(rec));
-  } catch {
-    /* storage disabled, or quota exceeded */
-  }
+  writePref('stylize', JSON.stringify(rec));
 }
 
 export async function loadStylizeKey(): Promise<string | null> {
@@ -88,19 +84,11 @@ export async function saveStylizeKey(plain: string): Promise<void> {
   const sealed = await sealSecret(plain);
   if (!sealed) return;
   const cur = readRecord() ?? {};
-  try {
-    localStorage.setItem(PREFS.stylize.key, JSON.stringify({ ...cur, keySealed: sealed } satisfies StoredRecord));
-  } catch {
-    /* storage disabled, or quota exceeded */
-  }
+  writePref('stylize', JSON.stringify({ ...cur, keySealed: sealed } satisfies StoredRecord));
 }
 
 export async function clearStylizeKey(): Promise<void> {
   const cur = readRecord();
   if (!cur) return;
-  try {
-    localStorage.setItem(PREFS.stylize.key, JSON.stringify({ ...cur, keySealed: null } satisfies StoredRecord));
-  } catch {
-    /* storage disabled, or quota exceeded */
-  }
+  writePref('stylize', JSON.stringify({ ...cur, keySealed: null } satisfies StoredRecord));
 }

@@ -6,6 +6,7 @@
  */
 import type { Stencil, StencilSourceNature } from '../../../core/model/types';
 import { COMPACT_IMAGE_LIMIT, COVERAGE_ON } from './stencil';
+import { NEIGHBORS4_NESW } from '../../../core/model/grid-model';
 
 export type { StencilSourceNature };
 
@@ -17,10 +18,10 @@ export interface SourcePixels {
 }
 
 /** A rectangle of a source picture, in its own pixels. */
-export interface SourceRect { x: number; y: number; width: number; height: number }
+interface SourceRect { x: number; y: number; width: number; height: number }
 
 /** The cell box a picture is fitted into. */
-export interface SampleBox { width: number; height: number }
+interface SampleBox { width: number; height: number }
 
 /** How a picture is read. Everything defaults to what a picture off the shelf gets. */
 export interface SampleOptions {
@@ -65,7 +66,7 @@ const FLAT_TOP_COLORS = 16;
  * than at the middle. Both readings produce a legal map and the mistake costs reproduction quality
  * rather than correctness, which is why one number is allowed to decide it at all.
  */
-export const FLAT_COLOR_SHARE = 0.6;
+const FLAT_COLOR_SHARE = 0.6;
 
 /**
  * What kind of picture this is, and the number the answer was made on.
@@ -217,9 +218,9 @@ function buildingRect(stencil: Stencil, src: SourcePixels, box: SampleBox): Sour
  * subject's own density by `CROP_MIN_GAIN` before it is taken.
  */
 export const CROP_MAX_SIDE = 20;
-export const CROP_WINDOW = 0.6;
-export const CROP_GRID = 24;
-export const CROP_MIN_GAIN = 1.4;
+const CROP_WINDOW = 0.6;
+const CROP_GRID = 24;
+const CROP_MIN_GAIN = 1.4;
 
 export function salientCrop(
   src: SourcePixels, box: SampleBox, keyed: Uint8Array | null = null,
@@ -413,11 +414,11 @@ function colorDistance(a: number, b: number): number {
 /** How close a pixel has to be to the backdrop's colour to be part of it. Wide enough for a JPEG's
  *  noise and a watermark's faint pattern over a white field, narrow enough that a subject drawn in a
  *  neighbouring shade is not swallowed. */
-export const BACKGROUND_TOLERANCE = 30;
+const BACKGROUND_TOLERANCE = 30;
 /** How much of the picture's own border the backdrop has to hold before there is one at all. */
-export const BACKGROUND_BORDER_SHARE = 0.6;
+const BACKGROUND_BORDER_SHARE = 0.6;
 /** And how much of the whole picture. */
-export const BACKGROUND_MIN_SHARE = 0.15;
+const BACKGROUND_MIN_SHARE = 0.15;
 /**
  * How DEEP it has to be, as a share of the picture's shorter side.
  *
@@ -513,7 +514,7 @@ export function backgroundMask(src: SourcePixels): Uint8Array | null {
     const i = stack.pop()!;
     found++;
     const x = i % w, y = (i / w) | 0;
-    for (const [dx, dy] of EDGES) {
+    for (const [dx, dy] of NEIGHBORS4_NESW) {
       const nx = x + dx, ny = y + dy;
       if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
       const n = ny * w + nx;
@@ -566,8 +567,6 @@ function hasDepth(mask: Uint8Array, w: number, h: number, depth: number): boolea
   }
   return false;
 }
-
-const EDGES: readonly (readonly [number, number])[] = [[0, -1], [1, 0], [0, 1], [-1, 0]];
 
 /**
  * How much of a cell's quantisation error is passed on to its neighbours.

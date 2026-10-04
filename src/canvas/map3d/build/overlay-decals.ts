@@ -96,7 +96,7 @@ export function cellDecals(
  *
  * A body is not a cell set — an object's footprint sits on the half grid wherever its anchor does
  * (the plaza at x.5, a ramp/bridge) — so a cell-granular decal would either overshoot the drawn
- * body or lose part of it. Splitting per cell is what keeps a large body (the plaza is 20×27)
+ * body or lose part of it. Splitting per cell is what keeps a large body (the plaza)
  * lying ON the terraces it crosses instead of floating at one height above them.
  *
  * A body stays a RECT within its cell rather than following the cell's trim pieces: it is one flat

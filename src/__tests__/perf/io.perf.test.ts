@@ -1,5 +1,5 @@
 /*
- * io.perf.test.ts — save/load and the share-code pipeline's operation costs.
+ * Save/load and the share-code pipeline's operation costs.
  *
  * Covers what a Save, a Load and a "copy share code" press pay for: the plain JSON codec (the
  * autosave/save-file path), the PetitGlyph range-coded payload (the visible glyph's byte frame,

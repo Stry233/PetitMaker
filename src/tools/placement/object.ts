@@ -1,11 +1,11 @@
-import { ItemCategory, type Command, type GridState, type MacroCoord, type PlaceObjectCommand, type PlacedObject, type ValidationResult } from '../../core/model/types';
+import { ItemCategory, type Command, type GridState, type MacroCoord, type PlaceObjectCommand, type PlacedObject, type ValidationResult, type Rotation } from '../../core/model/types';
 import type { RuleDispatcher } from '../../core/model/rule-dispatcher';
 import { NEIGHBORS4, rectsOverlap } from '../../core/model/grid-model';
 import { getCatalogItem, isDecoration } from '../../state/catalog';
 import { objectRect, getRotatedSize } from '../../state/object-geometry';
 import { entriesNear, getObjectIndex } from '../../state/object-index';
 import { surfaceElevation } from '../../core/edge-cut/terrain-silhouette';
-import { hasTrait, isCoating } from '../../core/model/traits';
+import { hasTrait, isCoating, isCrossing } from '../../core/model/traits';
 import type { PlacementAnalysis } from './analysis';
 import { objectPlacementCommand, removeObjectCommand } from '../objects/object-placer';
 import { generateObjectId } from '../../core/model/object-id';
@@ -53,14 +53,6 @@ export function makeCtx(
   return { state, execute, reg, seed, naturalness, clearance: new Set(), roads, ...(sweep ? { sweep } : {}) };
 }
 
-/** Reserve an N×N navigation-clearance square around (cx, cy). size 3 → a centred 3×3 (radius 1);
- *  size 2 → a 2×2 covering the cell, the one in front (+y) and the column to its left. */
-export function reserveClearance(set: Set<number>, cx: number, cy: number, size: 2 | 3, W: number, H: number): void {
-  const add = (x: number, y: number): void => { if (x >= 0 && y >= 0 && x < W && y < H) set.add(y * W + x); };
-  if (size === 3) { for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) add(cx + dx, cy + dy); }
-  else { for (let dy = 0; dy <= 1; dy++) for (let dx = -1; dx <= 0; dx++) add(cx + dx, cy + dy); }
-}
-
 /** True when (x, y) reads as PART OF THE STREET rather than beside it: 2 or more of its four edge
  *  neighbours are paved (`ctx.roads`). One paved side is a curb, which is where `roadsideTreeLining`
  *  and the macro grammar's road border plant — but two or more means the cell sits in a
@@ -82,7 +74,7 @@ function insideRoad(ctx: PlaceCtx, x: number, y: number): boolean {
  *  road cell (the overlap rule exempts coatings, so this is the only guard against a generated
  *  flower/tree on a road), or land INSIDE the road (`insideRoad`, a median/enclosed pocket).
  *  Infrastructure (buildings/roads/crossings) goes through tryPlace directly and is never gated. */
-export function tryDecorate(ctx: PlaceCtx, catalogId: string, x: number, y: number, rotation: 0 | 90 | 180 | 270 = 0): PlacedObject | null {
+export function tryDecorate(ctx: PlaceCtx, catalogId: string, x: number, y: number, rotation: Rotation = 0): PlacedObject | null {
   if (ctx.clearance.size || ctx.roads.size) {
     const item = getCatalogItem(catalogId);
     if (item) {
@@ -101,7 +93,7 @@ export function tryDecorate(ctx: PlaceCtx, catalogId: string, x: number, y: numb
 /** Build one PlaceObjectCommand for a catalog item at (x,y). Elevation reads the STANDABLE SURFACE
  *  via the kernel (surfaceElevation), same as the manual placer — so an object on a filleted/patched
  *  cell records the surface it actually sits on, not the raw block tier underneath. */
-function placeObjectCommand(ctx: Pick<PlaceCtx, 'state'>, catalogId: string, x: number, y: number, rotation: 0 | 90 | 180 | 270): PlaceObjectCommand | null {
+function placeObjectCommand(ctx: Pick<PlaceCtx, 'state'>, catalogId: string, x: number, y: number, rotation: Rotation): PlaceObjectCommand | null {
   const item = getCatalogItem(catalogId);
   if (!item) return null;
   const obj: PlacedObject = {
@@ -124,7 +116,7 @@ export function probePlacement(ctx: Pick<PlaceCtx, 'state' | 'reg'>, catalogId: 
  *  with the house (90 → the door faces -x, 180 → -y, 270 → +x, matching the sprite/mesh rotation).
  *  Returns the gate cell (on the footprint edge), the approach cell just outside it, and the
  *  3-wide × 2-deep clearance strip covering gate + approach. `r` is the already-ROTATED footprint. */
-export function buildingGate(r: { x: number; y: number; w: number; h: number }, rotation: 0 | 90 | 180 | 270 = 0): { gate: MacroCoord; approach: MacroCoord; clear: MacroCoord[] } {
+export function buildingGate(r: { x: number; y: number; w: number; h: number }, rotation: Rotation = 0): { gate: MacroCoord; approach: MacroCoord; clear: MacroCoord[] } {
   const x0 = Math.floor(r.x), y0 = Math.floor(r.y);
   const x1 = Math.ceil(r.x + r.w) - 1, y1 = Math.ceil(r.y + r.h) - 1;
   const midX = Math.floor(r.x + r.w / 2), midY = Math.floor(r.y + r.h / 2);
@@ -140,7 +132,8 @@ export function buildingGate(r: { x: number; y: number; w: number; h: number }, 
   return { gate, approach, clear };
 }
 
-/** A real house (not a 1×1 stall): its gate is a REGULATION anchor. */
+/** A building large enough to have a door (smaller ones are street furniture): its gate is a
+ *  REGULATION anchor. */
 export const hasGate = (item: { category: ItemCategory; width: number; height: number }): boolean =>
   item.category === ItemCategory.Building && item.width * item.height >= 4;
 
@@ -152,13 +145,13 @@ export const hasGate = (item: { category: ItemCategory; width: number; height: n
  *    later stall/facility can never wall off an earlier house's gate or a crossing approach;
  *  - a HOUSE reserves its own gate strip the moment it lands (and sweeps any decor already there),
  *    so everything placed after it keeps the doorstep open for the road spur. */
-export function tryPlace(ctx: PlaceCtx, catalogId: string, x: number, y: number, rotation: 0 | 90 | 180 | 270 = 0): PlacedObject | null {
+export function tryPlace(ctx: PlaceCtx, catalogId: string, x: number, y: number, rotation: Rotation = 0): PlacedObject | null {
   const cmd = placeObjectCommand(ctx, catalogId, x, y, rotation);
   if (!cmd) return null;
   const item = getCatalogItem(catalogId)!;
   const W = ctx.state.template.width, H = ctx.state.template.height;
   const coating = isCoating(item);
-  const crossing = item.category === ItemCategory.Bridge || item.category === ItemCategory.Ramp;
+  const crossing = isCrossing(item);
   // Bulk/generated placement AVOIDS reserved clearance (gates/crossing approaches)
   // and paved roads — it places elsewhere rather than paving over the road network
   // it just laid. (Interactive place_object instead STRIPS a covered road and warns;

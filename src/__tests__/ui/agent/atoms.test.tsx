@@ -1,5 +1,5 @@
 /**
- * atoms.test.tsx — the panel's own atoms: the construction-tape progress bar, the dock's segment
+ * The panel's own atoms: the construction-tape progress bar, the dock's segment
  * countdown, an op's outcome tick, the window pill ported into the panel's paper, and a single-line
  * stamp.
  *
@@ -8,10 +8,11 @@
  * disagree in form though not in meaning): `asColor`/`asBackground` push BOTH sides of a comparison
  * through the same DOM round-trip, so the assertion is meaning-for-meaning.
  */
+import { Pill } from '../../../ui/primitives/Pill';
 import { describe, it, expect } from 'vitest';
 import { fireEvent, render, waitFor } from '@testing-library/react';
 import { MotionConfig } from 'framer-motion';
-import { CountPill, Pill, ResultChip, Stamp, TapeBar, TickDot } from '../../../ui/agent/atoms';
+import { CountPill, ResultChip, Stamp, TapeBar, TickDot } from '../../../ui/agent/atoms';
 import { tape, tickInk } from '../../../ui/agent/tokens';
 import { INK } from '../../../ui/design/tokens';
 import { colors } from '../../../ui/design/styles';

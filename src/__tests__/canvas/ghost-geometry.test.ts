@@ -4,7 +4,7 @@
  * whose neighbour lies outside the set.
  */
 import { describe, it, expect } from 'vitest';
-import { mergeCellSpans, boundaryEdges } from '../../canvas/map2d/layers/ghost-geometry';
+import { mergeCellSpans, boundaryEdges } from '../../canvas/ghost-geometry';
 
 function rectCells(x0: number, y0: number, w: number, h: number, micro = false) {
   const out = [];
@@ -56,7 +56,7 @@ describe('boundaryEdges', () => {
 
 /* ── span-native shape pipeline ──────────────────────────────────────── */
 
-import { boundaryEdgesFromSpans, type RowSpan } from '../../canvas/map2d/layers/ghost-geometry';
+import { boundaryEdgesFromSpans, type RowSpan } from '../../canvas/ghost-geometry';
 import { rectSpans, circleSpans, circleCells, rectCells as rectCellsReal } from '../../tools/paint/shapes';
 
 function spanCoverage(spans: readonly RowSpan[]): Set<string> {

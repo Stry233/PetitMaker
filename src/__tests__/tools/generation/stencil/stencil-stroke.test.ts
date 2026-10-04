@@ -107,7 +107,7 @@ describe('stroke weight follows the room, thin to bold', () => {
   });
 
   it('starts a dense script lighter than a Latin letter, where the room is tightest', () => {
-    // A 谷 packs seven stroke rows into the square an E spends on three, so it needs its counters kept
+    // A dense Han glyph packs seven stroke rows into the square an E spends on three, so it needs its counters kept
     // open far more than it needs weight — and the small end is where that decides anything.
     expect(strokeTarget('谷地', box(24, 12))).toBeLessThanOrEqual(strokeTarget('EF', box(24, 12)));
     // At the large end the two curves are NOT ordered by script, and that is the Latin face's doing

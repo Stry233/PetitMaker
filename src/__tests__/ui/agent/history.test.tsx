@@ -186,7 +186,7 @@ describe('HistoryStrip: the expanded list', () => {
       <HistoryStrip jobs={jobs} now={NOW} onOpen={() => {}} onRollBack={() => {}} />,
     );
     fireEvent.click(getByTestId('history-toggle'));
-    const row = getAllByTestId('history-item')[0]!;
+    const row = getAllByTestId('history-item')[1]!;
     const stat = row.querySelector('[data-testid="history-item-stat"]') as HTMLElement;
     const acts = row.querySelector('[data-testid="history-item-acts"]') as HTMLElement;
     // At rest the count reads and the actions are there but unreachable by pointer, so the row
@@ -244,14 +244,15 @@ describe('HistoryStrip: the expanded list', () => {
     expect(mark.style.pointerEvents).toBe('none');
   });
 
-  it('dims a rolled-back job, stamps it as such and offers it no roll-back', () => {
+  it('keeps a rolled-back record readable and openable with no further rollback', () => {
+    const onOpen = vi.fn();
     const { getByTestId, getAllByTestId, queryAllByTestId } = renderWithI18n(
-      <HistoryStrip jobs={jobs} now={NOW} rolledBack={new Set([3])} onRollBack={() => {}} onOpen={() => {}} />,
+      <HistoryStrip jobs={jobs} now={NOW} rolledBack={new Set([3])} onRollBack={() => {}} onOpen={onOpen} />,
     );
     fireEvent.click(getByTestId('history-toggle'));
     const items = getAllByTestId('history-item');
     expect(items[0]!.getAttribute('data-rolled-back')).toBe('true');
-    expect(Number(items[0]!.style.opacity)).toBeLessThan(1);
+    expect(Number(items[0]!.style.opacity || '1')).toBe(1);
     expect(items[0]!.querySelector('[data-testid="history-item-stat"]')!.textContent).toBe('rolled back');
     expect(items[1]!.getAttribute('data-rolled-back')).toBe('false');
     expect(Number(items[1]!.style.opacity || '1')).toBe(1);
@@ -259,6 +260,8 @@ describe('HistoryStrip: the expanded list', () => {
     expect(queryAllByTestId('history-roll-back').length).toBe(2);
     expect(items[0]!.querySelector('[data-testid="history-roll-back"]')).toBeNull();
     expect(items[0]!.querySelector('[data-testid="history-open"]')).not.toBeNull();
+    fireEvent.click(items[0]!.querySelector('[data-testid="history-open"]')!);
+    expect(onOpen).toHaveBeenCalledWith(jobs[2]);
   });
 });
 

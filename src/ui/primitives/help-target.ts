@@ -1,6 +1,6 @@
 export interface HelpTarget { page: string; anchor?: string }
 export const HELP_ATTR = 'data-help';
-export const HELP_ANCHOR_ATTR = 'data-help-anchor';
+const HELP_ANCHOR_ATTR = 'data-help-anchor';
 
 export function helpAttributes(target?: HelpTarget): Record<string, string> {
   return target ? { [HELP_ATTR]: target.page, ...(target.anchor ? { [HELP_ANCHOR_ATTR]: target.anchor } : {}) } : {};

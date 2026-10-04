@@ -5,13 +5,14 @@ import { createDefaultRegistry } from '../../../rules';
 import type { EditorEvents } from '../../../core/model/types';
 import { makeState } from '../../rules/_helpers';
 import { roadLookup } from '../../../state/object-index';
-import type { AgentToolDeps } from '../../../agent/tools/tools';
+import type { AgentToolDeps } from '../../../agent/tools';
 import { createExecutor, wireSchemas, type DelegateOpts } from '../../../agent/exec/executor';
 import { createScriptedAdapter, type ScriptedTurn } from '../../../agent/eval/scripted-adapter';
 import { append, createLog, eventsOf } from '../../../agent/core/log';
 import type { SessionLog } from '../../../agent/core/log';
 import { answerGate, type Oversight } from '../../../agent/core/gates';
 import { runJob, type LoopDeps } from '../../../agent/core/loop';
+import { retainedWrite } from '../../../agent/core/governor';
 import type { SessionEvent } from '../../../agent/core/types';
 
 /** Drains the microtask queue: every scripted turn here resolves through promise chains alone
@@ -239,6 +240,22 @@ describe('exec/executor: delegate_task', () => {
     // The edits the child made before the incident are on the map, so the record keeps them.
     expect(r.detail?.childOps).toEqual([{ name: 'paint_terrain', status: 'ok' }]);
     expect(r.detail?.cells).toBeGreaterThan(0);
+  });
+
+  it('keeps a successful child edit visible when another child stroke rolls back', async () => {
+    const { state, deps } = setup();
+    const delegate = makeDelegate([
+      toolTurn([
+        { callId: 'hill', name: 'paint_terrain', args: { cells: [{ x: 2, y: 2 }], terrain: 'mountain', elevation: 1 } },
+        { callId: 'pool', name: 'paint_terrain', args: { cells: [{ x: 10, y: 10 }], terrain: 'water', elevation: 1 } },
+      ]),
+      textTurn('The hill remains. The pool could not be contained.'),
+    ]);
+    const result = await createExecutor(deps, { delegate }).execute({ callId: 'mixed', name: 'delegate_task', args: { task: 'Build a hill and elevated pool' } });
+    expect(result.detail).toMatchObject({ cells: 1, reverted: true, partialRevert: true });
+    expect(retainedWrite({ ...result, write: true })).toBe(true);
+    expect(state.cells[2]![2]!.terrain?.elevation).toBe(1);
+    expect(state.cells[10]![10]!.terrain).toBeNull();
   });
 
   it('onChildProgress reports rising op counts as the child works, and always clears on exit, even after an incident', async () => {

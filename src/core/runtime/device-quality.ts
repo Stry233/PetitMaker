@@ -16,8 +16,6 @@
 import { IS_LITE } from './edition';
 import { readPref } from './prefs';
 
-/** Logical CPU cores (a decent proxy for device tier); defaults high so unknown devices aren't
- *  degraded. */
 /** A weak, conservative low-end signal (few cores or little memory). Only ever LOWERS quality, never
  *  raises it, so a misclassified device just renders a touch softer — never broken. Read at call
  *  time: the values never change in a browser, and a test can then pin the machine it means. */
@@ -44,7 +42,6 @@ export function setGlQualityOverride(q: GlQuality | null): void {
 const SOFTWARE_GL = /swiftshader|llvmpipe|softpipe|software rasterizer|microsoft basic render/i;
 
 let probedGlQuality: GlQuality | null = null;
-let probedRenderer = '';
 
 /** Probed ONCE per session from a throwaway context (released via WEBGL_lose_context). A device
  *  with no GL at all also reads 'lite' — the scene may still fail to build, which the canvas
@@ -61,7 +58,6 @@ function probeGl(): GlQuality {
       const renderer = String(
         (dbg ? gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL) : null) ?? gl.getParameter(gl.RENDERER) ?? '',
       );
-      probedRenderer = renderer;
       quality = SOFTWARE_GL.test(renderer) ? 'lite' : 'full';
       (gl.getExtension('WEBGL_lose_context') as { loseContext(): void } | null)?.loseContext();
     }
@@ -79,14 +75,6 @@ export function glQuality(): GlQuality {
   const pinned = readPref('quality3d');
   if (pinned !== 'auto') return pinned;
   return IS_LITE ? 'lite' : probeGl();
-}
-
-/** The unmasked renderer string the probe read, for the About modal's one diagnostic line: a
- *  "the editor is slow" report then carries what the machine is actually painting with, without
- *  asking its owner to open the browser's GPU page. Empty where there is no GL to name. */
-export function glRendererName(): string {
-  probeGl();
-  return probedRenderer;
 }
 
 /**

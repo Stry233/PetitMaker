@@ -1,5 +1,5 @@
 /*
- * surfaces.tsx — the Help Center's interface figures: the REAL surfaces, mounted live.
+ * The Help Center's interface figures: the REAL surfaces, mounted live.
  *
  * Every entry is the product's own component inside a `PreviewFrame` (non-interactive, contained,
  * un-zoomed), so a figure can never drift from what ships: the settings panel is the settings

@@ -5,15 +5,14 @@
  */
 import { createDefaultRegistry } from '../../rules/index';
 import type { GridState, MapTemplate } from '../../core/model/types';
-import { getMapTemplate } from '../../config/maps';
+import { templateOf } from '../../config/maps/resolve';
 import { installMap, installLoadedMap } from '../context';
 import { forgetGenerationScope } from './generate';
 
-/** `template` names a built-in map, or IS the map — a template the built-in registry does not hold
- *  (`getMapTemplate` answers an unknown id with the default, which would silently open the wrong
- *  planet). */
+/** `template` names a built-in map, or IS the map: a template the built-in registry does not hold.
+ *  An id that names no built-in throws rather than opening the default planet. */
 export function newMap(template: string | MapTemplate): void {
-  installMap(typeof template === 'string' ? getMapTemplate(template) : template, createDefaultRegistry());
+  installMap(templateOf(template), createDefaultRegistry());
   forgetGenerationScope();
 }
 

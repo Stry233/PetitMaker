@@ -35,6 +35,8 @@ import { KeyboardModal, boardZoomFor } from '../../../ui/chrome/modals/keyboard/
 import { fittedUiScale } from '../../../ui/design/scale';
 import { I18nProvider } from '../../../i18n/context';
 import { useKeybinds, effectiveCombo } from '../../../core/runtime/keybindings';
+import { useEditorStore } from '../../../state/store';
+import { TOOLBAR_CONTEXTS } from '../../../core/runtime/toolbar-bindings';
 import { setStoreState } from '../../_store';
 
 /** A command with a default chord, so "back to default" and "the imported override" differ. */
@@ -51,7 +53,8 @@ function renderWindow() {
 
 beforeEach(() => {
   downloaded.length = 0;
-  setStoreState({ locale: 'en' });
+  setStoreState({ locale: 'en', annotationTool: 'zone', annotationDraft: null, annotationDiscardAction: null });
+  useEditorStore.getState().setEditMode({ mode: 'mountain', tool: 'brush', shape: 'free' });
   act(() => { useKeybinds.getState().resetAll(); });
 });
 
@@ -61,28 +64,31 @@ afterEach(() => {
 });
 
 describe('the keyboard window', () => {
-  it('shows terrain and annotation assignments on the same keyboard', () => {
+  it('follows the active toolbar automatically', () => {
     const { container } = renderWindow();
-    const select = screen.getByRole('combobox', { name: 'Toolbar shown' });
-    fireEvent.change(select, { target: { value: 'terrain' } });
+    expect(screen.queryByRole('combobox')).toBeNull();
     const key = (title: string) => [...container.querySelectorAll<HTMLElement>('#kbd-region [title]')].find(keycap => keycap.title === title);
     expect(key('Brush shape')?.textContent).toContain('5');
-    fireEvent.change(select, { target: { value: 'notes-zone' } });
+    act(() => useEditorStore.getState().setEditMode({ mode: 'annotate' }));
     expect(key('Brush shape')?.textContent).toContain('6');
     expect(key('Measure')?.textContent).toContain('5');
     expect(key('Font size')?.textContent).toContain('Q');
-    fireEvent.change(select, { target: { value: 'notes-route' } });
+    act(() => useEditorStore.getState().setAnnotationTool('route'));
     expect(key('Line style')?.textContent).toContain('Q');
   });
 
-  it('records a chord onto the command the search found', async () => {
+  it.each(['mountain', 'annotate'] as const)('records one Brush binding for every toolbar from %s', async mode => {
+    useEditorStore.getState().setEditMode({ mode });
     renderWindow();
     fireEvent.change(screen.getByPlaceholderText('Search commands'), { target: { value: 'brush' } });
     fireEvent.click(await screen.findByRole('button', { name: 'Brush 1' }));
     fireEvent.click(screen.getByText('Record'));
+    expect(document.querySelector('[data-shortcut-recording="true"]')).not.toBeNull();
     fireEvent.keyDown(window, { key: CHORD });
 
     await waitFor(() => expect(useKeybinds.getState().overrides[COMMAND]).toBe(CHORD));
+    expect(document.querySelector('[data-shortcut-recording="true"]')).toBeNull();
+    for (const toolbar of TOOLBAR_CONTEXTS) expect(effectiveCombo(useKeybinds.getState().overrides, COMMAND, toolbar)).toBe(CHORD);
   });
 
   it('carries that rebind out through Export and back in through Import', async () => {

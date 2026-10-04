@@ -1,7 +1,6 @@
-// src/core/provenance/policy.ts
 import {
   ProvSource, TaintFlag, setFlag, hasFlag,
-  type UnitTaint, type DisclosureClass, type MapProvenanceSummary, type SessionFlags,
+  type UnitTaint, type DisclosureClass, type MapProvenanceSummary, type SessionFlags, type AuthorClass,
 } from './types';
 
 export const PROVENANCE_POLICY = {
@@ -11,23 +10,23 @@ export const PROVENANCE_POLICY = {
 
 export type OpKind = 'create' | 'replace' | 'cosmetic' | 'delete';
 
-export function sourceClass(s: ProvSource): 'ai' | 'human' | 'procedural' {
+export function sourceClass(s: ProvSource): AuthorClass {
   if (s === ProvSource.AiWrite || s === ProvSource.AiAccepted) return 'ai';
   if (s === ProvSource.Procedural) return 'procedural';
   return 'human'; // Human, AutoRepair, AutoTrim, Imported, Unknown (derived inherit handled by caller's source)
 }
 
-function vecFor(cls: 'ai' | 'human' | 'procedural'): { ai: number; human: number; procedural: number } {
+function vecFor(cls: AuthorClass): Record<AuthorClass, number> {
   return { ai: cls === 'ai' ? 1 : 0, human: cls === 'human' ? 1 : 0, procedural: cls === 'procedural' ? 1 : 0 };
 }
 
-function normalize(c: { ai: number; human: number; procedural: number }) {
+function normalize(c: Record<AuthorClass, number>) {
   const sum = c.ai + c.human + c.procedural;
   if (sum <= 0) return { ai: 0, human: 0, procedural: 0 };
   return { ai: c.ai / sum, human: c.human / sum, procedural: c.procedural / sum };
 }
 
-function deriveFlags(c: { ai: number; human: number; procedural: number }, lastClass: 'ai' | 'human' | 'procedural', source: ProvSource): number {
+function deriveFlags(c: Record<AuthorClass, number>, lastClass: AuthorClass, source: ProvSource): number {
   const e = PROVENANCE_POLICY.AI_EPSILON;
   let f = 0;
   if (c.ai > e) f = setFlag(f, TaintFlag.CONTAINS_AI);
@@ -85,7 +84,7 @@ export function applyMoveToTaint(prev: UnitTaint, source: ProvSource, opId: stri
 }
 
 /** Largest contribution share; ties favor human authorship when deciding what generation may clear. */
-export function dominantAuthor(t: UnitTaint | null | undefined): 'ai' | 'human' | 'procedural' | null {
+export function dominantAuthor(t: UnitTaint | null | undefined): AuthorClass | null {
   if (!t) return null;
   const { ai, human, procedural } = t.contribution;
   if (human >= ai && human >= procedural) return 'human';

@@ -10,25 +10,23 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { ItemCategory } from '../../../core/model/types';
-import { PLATFORM_UNIT_H } from '../core/coords';
+import { LAYER_HEIGHT, PLATFORM_UNIT_H } from '../core/coords';
 import type { ArchetypeKey } from '../core/types';
+import { CATEGORIES } from '../../../config/catalog/categories';
 
-/** Every shape proportion, in cell units. ONE table → consistent objects. */
+/** X/Z use cells; object heights use terrain levels, except surface slabs. */
 const ARCHETYPE_TUNING = {
-  tree:     { trunkR: 0.07, trunkH: 0.22, foliageR: 0.34, foliageH: 0.7 },
-  flora:    { r: 0.18, h: 0.22 },
-  building: { w: 0.74, d: 0.74, wallH: 0.5, roofH: 0.34 },
-  facility: { r: 0.3, h: 0.5, capH: 0.12 },
-  bridge:   { deckH: 0.1, deckW: 0.7, postR: 0.06, postH: 0.3 },
+  tree:     { trunkR: 0.07, trunkH: 0.176, foliageR: 0.34, foliageH: 0.56 },
+  flora:    { r: 0.18, h: 0.176 },
+  building: { w: 0.74, d: 0.74, wallH: 0.4, roofH: 0.272 },
+  facility: { r: 0.3, h: 0.4, capH: 0.096 },
+  bridge:   { deckH: 0.08, deckW: 0.7, postR: 0.06, postH: 0.24 },
   road:     { h: 0.05, w: 1.0 },   // full cell so adjacent road tiles read continuous
   platform: { h: PLATFORM_UNIT_H, w: 1.0 }, // full footprint: the plaza (only user) must fill its exact 2D rect,
                                    // not a per-cell margin scaled up into a ~1-micro-block inset per side
 } as const;
 
-export const ARCHETYPE_KEYS: ArchetypeKey[] = [
-  ItemCategory.Building, ItemCategory.Tree, ItemCategory.Flora, ItemCategory.Facility,
-  ItemCategory.Road, ItemCategory.Bridge, ItemCategory.Ramp, 'platform',
-];
+export const ARCHETYPE_KEYS: ArchetypeKey[] = [...CATEGORIES.map((c) => c.id), 'platform'];
 
 /** Translate a primitive (built centred at origin) so its base sits at y=0. */
 function onGround(g: THREE.BufferGeometry, height: number): THREE.BufferGeometry {
@@ -131,7 +129,12 @@ const cache = new Map<ArchetypeKey, THREE.BufferGeometry>();
 /** The cached unit geometry for an archetype (built once on first use). */
 export function archetypeGeometry(key: ArchetypeKey): THREE.BufferGeometry {
   let g = cache.get(key);
-  if (!g) { g = BUILDERS[key](); cache.set(key, g); }
+  if (!g) {
+    g = BUILDERS[key]();
+    // Ramp and platform instances supply their height; roads are surface decals.
+    if (key !== ItemCategory.Ramp && key !== 'platform' && key !== ItemCategory.Road) g.scale(1, LAYER_HEIGHT, 1);
+    cache.set(key, g);
+  }
   return g;
 }
 

@@ -1,10 +1,14 @@
 import { describe, it, expect } from 'vitest';
 import {
-  searchCatalog, getCategoryMeta, getAllCategories, registerCatalogItem,
+  searchCatalog, registerCatalogItem,
   getAllItems, getCatalogByCategory,
 } from '../../state/catalog';
-import { ItemCategory } from '../../core/model/types';
+import { ItemCategory, type Locale } from '../../core/model/types';
+import { CATEGORIES } from '../../config/catalog/categories';
+import { categorySearchTerms } from '../../i18n/category-terms';
 import { PLAZA_ID } from '../../core/model/constants';
+
+const search = (query: string, locale: Locale) => searchCatalog(query, locale, categorySearchTerms(locale));
 
 describe('searchCatalog', () => {
   it('matches on the item name in the active locale', () => {
@@ -18,14 +22,12 @@ describe('searchCatalog', () => {
   });
 
   it.each([
-    ['bridge-suspension', 'Suspension', 'Simple Wooden Suspension Bridge'],
-    ['building-bamboo-cabin', 'Bamboo Cabin', "Yunguo's Bamboo Harvest House"],
-    ['flower-rose-cyan', 'Cyan Rose', 'Teal Mooncycle Rose'],
-  ])('finds %s by its previous and current English names', (id, previous, current) => {
+    ['bridge-suspension', 'Simple Wooden Suspension Bridge'],
+    ['building-bamboo-cabin', "Yunguo's Bamboo Harvest House"],
+    ['flower-rose-cyan', 'Teal Mooncycle Rose'],
+  ])('finds %s by its English name across locales', (id, name) => {
     for (const locale of ['en', 'zh'] as const) {
-      for (const query of [previous, current]) {
-        expect(searchCatalog(query, locale).some(item => item.id === id)).toBe(true);
-      }
+      expect(searchCatalog(name, locale).some(item => item.id === id)).toBe(true);
     }
   });
 
@@ -98,7 +100,7 @@ describe('searchCatalog', () => {
 
   it('ranks a real catalog item whose NAME carries the colour above one that only carries it via a colour alias', () => {
     // "Red Sunflower" matches on its own name; "Apple Tree" matches only through its authored
-    // colour alias ("red"/"红") — the reweight in bestScore must keep the name match ahead even
+    // colour alias ("red" and its Chinese form), and the reweight in bestScore must keep the name match ahead even
     // though the raw fuzzyScore tiers (both word-start substring, on "red"/"apple") don't favour
     // either on their own.
     const ids = searchCatalog('red', 'en').map((i) => i.id);
@@ -109,8 +111,8 @@ describe('searchCatalog', () => {
 
   it('finds the red set by colour in Chinese, including an item whose own name carries no colour word', () => {
     const ids = searchCatalog('红', 'zh').map((i) => i.id);
-    expect(ids).toContain('flower-sunflower-red'); // name match ("红向日葵")
-    // "竹果丰年小屋（云果）" names a building, not a colour — this is a colour ALIAS-only match.
+    expect(ids).toContain('flower-sunflower-red'); // name match
+    // The bamboo cabin's name names a building, not a colour: this is a colour ALIAS-only match.
     expect(ids).toContain('building-bamboo-cabin');
   });
 
@@ -122,43 +124,43 @@ describe('searchCatalog', () => {
 
 describe('searchCatalog multi-term', () => {
   it('"red tree" ANDs a colour term with the new category facet: every result is a Tree', () => {
-    const results = searchCatalog('red tree', 'en');
+    const results = search('red tree', 'en');
     expect(results.length).toBeGreaterThan(0);
     expect(results.every((i) => i.category === ItemCategory.Tree)).toBe(true);
     const ids = results.map((i) => i.id);
-    expect(ids).toContain('tree-plum'); // colour ALIAS match ("红"/"red")
-    expect(ids).toContain('tree-apple'); // colour ALIAS match ("红"/"red")
+    expect(ids).toContain('tree-plum'); // colour ALIAS match
+    expect(ids).toContain('tree-apple'); // colour ALIAS match
   });
 
   it('a colour + category query finds only the matching-category, matching-colour item(s)', () => {
     // The catalog carries no yellow BUILDING (forcing one would violate the colour pass's own
     // "only a real colour identity" bar), so this exercises the same AND mechanism on a colour
     // the catalog actually has on a building: orange.
-    const results = searchCatalog('orange house', 'en');
+    const results = search('orange house', 'en');
     const ids = results.map((i) => i.id);
     expect(ids).toEqual(expect.arrayContaining(['building-starbay-cabin', 'building-sunset-cabin']));
     expect(results.every((i) => i.category === ItemCategory.Building)).toBe(true);
   });
 
-  it('spaced "红 花" and unspaced "红花" both find red flora', () => {
-    const spaced = searchCatalog('红 花', 'zh');
+  it('spaced and unspaced red-flower queries both find red flora', () => {
+    const spaced = search('红 花', 'zh');
     expect(spaced.some((i) => i.category === ItemCategory.Flora)).toBe(true);
     expect(spaced.map((i) => i.id)).toContain('flower-sunflower-red');
 
-    const unspaced = searchCatalog('红花', 'zh');
+    const unspaced = search('红花', 'zh');
     expect(unspaced.length).toBeGreaterThan(0);
     expect(unspaced.every((i) => i.category === ItemCategory.Flora)).toBe(true);
   });
 
   it('the CJK unspaced-fallback split never fires when the whole query already matches (a real name)', () => {
-    // "樱花" (cherry blossom) is itself an alias of tree-peach — the whole 2-char query must match
-    // as ONE unit and never split into "does 樱 match, and separately does 花 match".
+    // The cherry-blossom query is itself an alias of tree-peach: the whole 2-char query must match
+    // as ONE unit and never split into one term per character.
     const ids = searchCatalog('樱花', 'zh').map((i) => i.id);
     expect(ids).toEqual(['tree-peach']);
   });
 
   it('an unmatched extra term excludes everything: "red asdfgh" finds nothing', () => {
-    expect(searchCatalog('red asdfgh', 'en')).toEqual([]);
+    expect(search('red asdfgh', 'en')).toEqual([]);
   });
 
   it('single-term search is unchanged: multi-term is a strict superset of behaviour, not a rewrite', () => {
@@ -175,7 +177,7 @@ describe('searchCatalog multi-term', () => {
       name: { en: 'Overpass' }, icon: 'bridge',
       width: 2, height: 1, loadValue: 0, rotatable: false, placementMode: 'point', traits: [],
     });
-    const ids = searchCatalog('bridge', 'en').map((i) => i.id);
+    const ids = search('bridge', 'en').map((i) => i.id);
     expect(ids).toContain('bridge-iron');
     expect(ids).not.toContain('test-category-only-bridge');
   });
@@ -194,8 +196,8 @@ describe('getAllItems', () => {
 
   it('agrees with the union of every category', () => {
     const fromAllItems = getAllItems().map((i) => i.id).sort();
-    const fromCategories = getAllCategories()
-      .flatMap((c) => getCatalogByCategory(c))
+    const fromCategories = CATEGORIES
+      .flatMap((c) => getCatalogByCategory(c.id))
       .map((i) => i.id)
       .sort();
     expect(fromAllItems).toEqual(fromCategories);
@@ -206,19 +208,46 @@ describe('getAllItems', () => {
   });
 });
 
-describe('getCategoryMeta', () => {
-  const placeableCategories = getAllCategories().filter((c) => c !== ItemCategory.Road);
+describe('category search terms', () => {
+  const locales: Locale[] = ['en', 'zh', 'ja', 'ru', 'th', 'id', 'fr'];
 
-  it('has an entry for every category the placement shelf can open', () => {
-    for (const cat of placeableCategories) {
-      const meta = getCategoryMeta(cat);
-      expect(meta, `missing metadata for category "${cat}"`).toBeDefined();
-      expect(meta!.icon).toBeTruthy();
-      expect(meta!.titleKey).toBeTruthy();
+  it('give every category the words of every locale, the active locale first, then English', () => {
+    for (const locale of locales) {
+      const terms = categorySearchTerms(locale);
+      for (const { id } of CATEGORIES) {
+        const all = new Set(locales.flatMap((l) => categorySearchTerms(l)(id)));
+        expect(new Set(terms(id))).toEqual(all);
+        expect(terms(id)[0]).toBe(categorySearchTerms(locale)(id)[0]);
+      }
+    }
+    expect(categorySearchTerms('fr')(ItemCategory.Tree).indexOf('tree'))
+      .toBeLessThan(categorySearchTerms('fr')(ItemCategory.Tree).indexOf('木'));
+  });
+
+  // The category words search answered to before they moved into the locale tables.
+  const earlierTerms: ReadonlyArray<readonly [ItemCategory, readonly string[]]> = [
+    [ItemCategory.Building, ['building', '建筑', 'house', 'home', 'cabin', '房', '屋', '家']],
+    [ItemCategory.Tree, ['tree', '树木', '树', '木']],
+    [ItemCategory.Flora, ['flora', '花卉', 'flower', 'plant', 'grass', '花', '草', '植物']],
+    [ItemCategory.Bridge, ['bridge', '桥梁', '桥']],
+    [ItemCategory.Ramp, ['ramp', '坡道', '坡', 'slope']],
+    [ItemCategory.Facility, ['facility', '设施']],
+  ];
+
+  it.each(locales)('keep every earlier category word in %s', (locale) => {
+    for (const [category, words] of earlierTerms) {
+      expect(categorySearchTerms(locale)(category)).toEqual(expect.arrayContaining([...words]));
     }
   });
 
-  it('returns undefined for road, which is a brush surface, not a placement tab', () => {
-    expect(getCategoryMeta(ItemCategory.Road)).toBeUndefined();
+  it('answer to the displayed tab and menu names', () => {
+    for (const [query, locale] of [['red arbres', 'fr'], ['red Деревья', 'ru'], ['red arbres', 'en']] as const) {
+      expect(search(query, locale).map((i) => i.id), query).toContain('tree-plum');
+    }
+  });
+
+  it('let a category word narrow a query in a locale other than English', () => {
+    expect(search('red arbre', 'fr').map((i) => i.id)).toContain('tree-plum');
+    expect(searchCatalog('red arbre', 'fr').map((i) => i.id)).not.toContain('tree-plum');
   });
 });

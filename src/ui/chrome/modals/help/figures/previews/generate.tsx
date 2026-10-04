@@ -1,5 +1,5 @@
 /*
- * generate.tsx — the generation pages' posed figures beyond the demo scenes: a Picture-kind run,
+ * The generation pages' posed figures beyond the demo scenes: a Picture-kind run,
  * built by the shelf's own plan pipeline (sample → rasterize → plan → candidate) on a demo world
  * and photographed by the real renderer, so the figure is a dealt card's own build.
  */
@@ -352,7 +352,7 @@ export function PictureTuningPreview() {
 /** The real Generate shelf at a posed kind. Its batch runs the real candidate pipeline against a
  *  clone of the open map, exactly as the live shelf does; nothing lands without a click, and the
  *  figure is inert. */
-export function GenerateShelfPreview({ kind }: { kind?: 'maze' | 'island' }) {
+function GenerateShelfPreview({ kind }: { kind?: 'maze' | 'island' }) {
   const hostRef = useRef<HTMLDivElement>(null);
   // The shelf deals a real five-candidate batch the moment it mounts; it waits for the reader.
   const inView = useInView(hostRef);

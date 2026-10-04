@@ -3,8 +3,8 @@
  * than any texture or canvas the device holds, so each tile is rendered on demand into the part of
  * the composition being painted.
  */
-import type { Rect } from './types';
 import type { BandWindow } from './banded';
+import type { Rect } from '../../core/model/types';
 
 /** A region in the map frame's own pixels, origin at the frame's top-left. */
 export interface RegionPx { x: number; y: number; w: number; h: number }

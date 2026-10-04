@@ -9,7 +9,7 @@ import { useEffect, useState, type CSSProperties } from 'react';
 import { motion } from 'framer-motion';
 import { Icon, type IconId } from './icons';
 import { editCount } from './job-stats';
-import { amplitude, CONFIRM_ARM, framerMotion } from './motion';
+import { amplitude, CONFIRM_ARM, framerMotion } from '../design/motion';
 import { iconForTool } from './tool-meta';
 import { rewindConfirmCopy, rollbackCost, rollbackReaches } from './rollback';
 import { FloatMenu } from '../primitives/FloatMenu';
@@ -178,7 +178,7 @@ function HistoryRow({
   const actions = (onOpen ? 1 : 0) + (rollable ? 1 : 0);
   const statKey = statKeyFor(job);
   const edits = editCount(job);
-  const dim = rolledBack || blocked !== undefined;
+  const dim = blocked !== undefined;
   const copy = rewindConfirmCopy(
     t, watermark === undefined ? null : rollbackCost(watermark, undoDepth, job.endUndoIndex),
   );

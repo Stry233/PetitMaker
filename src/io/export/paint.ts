@@ -1,13 +1,12 @@
-// src/io/export/paint.ts
 // Canvas 2D rendering for export compositions. Layout rectangles use the 800-pixel base coordinate
 // system from compose.ts and scale with the final output width.
 
-import type { Badge, ExportComposition, Rect } from './types';
+import type { Badge, ExportComposition } from './types';
 import { TiledMap } from './tiled-map';
 import type { BandWindow } from './banded';
 import { APP_FONT_FAMILY } from '../../assets/fonts/family';
-import type { GridState } from '../../core/model/types';
-import { CHUNK_SIZE } from '../../core/model/constants';
+import type { GridState, MapTemplate, Rect } from '../../core/model/types';
+import { mapCaptureFrame, mapChunkAxes } from '../../core/model/map-chunks';
 import { layersFor, paintLayer } from './layer-preview';
 import { fitAspect, COL_GAP_INNER, MAX_PER_COL, BASE_WIDTH, PAD, CARD_3D_H, CODE_LABEL_H, LEGEND_LEFT, LEGEND_BOTTOM } from './compose';
 import qrcode from 'qrcode-generator';
@@ -15,6 +14,7 @@ import { resolveFooter, DEFAULT_FOOTER, formatFooterDate } from './footer-templa
 import { rrPath, ellipsize } from './canvas-helpers';
 import type { MapProvenanceSummary } from '../../core/provenance/types';
 import { badgeScale } from './render';
+import { FRAME_INK } from '../../core/runtime/brand-palette';
 
 // 3D-card cells retain the five-column aspect at every item count; the shot picker shares it.
 const CARD_3D_TITLE_H = 30, CARD_3D_SIDE_PAD = 8, CARD_3D_BOTTOM_PAD = 8, CARD_3D_GAP = 6;
@@ -116,7 +116,7 @@ function drawBrand(ctx: CanvasRenderingContext2D, rect: Rect, assets: Compositio
     ctx.drawImage(art, x0 - artW * padShareX, cy - drawH / 2, artW, drawH);
     lockupRight = x0 + artW * (1 - 2 * padShareX);
   } else {
-    ctx.fillStyle = '#43413F';
+    ctx.fillStyle = FRAME_INK;
     ctx.font = `900 ${20 * S}px ${FF}`;
     ctx.fillText(assets.translate('app.name'), x0, cy + 7 * S);
     lockupRight = x0 + ctx.measureText(assets.translate('app.name')).width;
@@ -135,11 +135,11 @@ function drawBrand(ctx: CanvasRenderingContext2D, rect: Rect, assets: Compositio
   } else if (Math.max(labelW, powerW) <= room) {
     ctx.fillStyle = 'rgba(67,65,62,0.62)';
     ctx.fillText(assets.brand.powerText, textRight, cy - 3 * S);
-    ctx.fillStyle = '#43413F';
+    ctx.fillStyle = FRAME_INK;
     ctx.font = `800 ${14 * S}px ${FF}`;
     ctx.fillText(assets.brand.label, textRight, cy + 14 * S);
   } else if (labelW <= room) {
-    ctx.fillStyle = '#43413F';
+    ctx.fillStyle = FRAME_INK;
     ctx.font = `800 ${14 * S}px ${FF}`;
     ctx.fillText(assets.brand.label, textRight, cy + 5 * S);
   }
@@ -156,7 +156,7 @@ function drawSiteQr(ctx: CanvasRenderingContext2D, url: string, x: number, y: nu
   ctx.fillStyle = '#ffffff';
   rrPath(ctx, x, y, side, side, 6 * S);
   ctx.fill();
-  ctx.fillStyle = '#43413F';
+  ctx.fillStyle = FRAME_INK;
   const ox = x + cell, oy = y + cell;
   for (let r = 0; r < n; r++) {
     for (let c = 0; c < n; c++) {
@@ -202,7 +202,7 @@ function drawHeader(ctx: CanvasRenderingContext2D, rect: Rect, badges: Badge[], 
   const badgeZoneW = widths.length ? widths.reduce((a, b) => a + b, 0) + gapBetween * (widths.length - 1) : 0;
 
   if (title) {
-    ctx.fillStyle = '#43413F';
+    ctx.fillStyle = FRAME_INK;
     ctx.font = `900 ${25 * S}px ${FF}`;
     ctx.fillText(ellipsize(ctx, title, w - (badgeZoneW ? badgeZoneW + 12 * S : 0)), x, y + 24 * S);
   }
@@ -252,10 +252,8 @@ function drawMap(ctx: CanvasRenderingContext2D, rect: Rect, assets: CompositionA
   ctx.restore();
 
   if (assets.grid) {
-    const cols = Math.max(1, assets.state.template.width);
-    const rows = Math.max(1, assets.state.template.height);
     const fit = assets.baseMap ? fitMap(band, assets.baseMap) : band;
-    drawGridLegend(ctx, fit, cols, rows, S, FF);
+    drawGridLegend(ctx, fit, assets.state.template, S, FF);
   }
 }
 
@@ -420,25 +418,23 @@ const fitTuple = (r: Rect): [number, number, number, number] => [r.x, r.y, r.w, 
 
 /** Chunk index legend OUTSIDE the fitted map rect — row letters A,B,C… left, column numbers 1,2,3…
  *  below, one per chunk and centered on each chunk (same A1 scheme as the 2D editor). */
-function drawGridLegend(ctx: CanvasRenderingContext2D, rect: Rect, cols: number, rows: number, S: number, ff: string): void {
+function drawGridLegend(ctx: CanvasRenderingContext2D, rect: Rect, template: MapTemplate, S: number, ff: string): void {
   const { x, y, w, h } = rect;
-  const cw = w / cols, ch = h / rows;
-  const chunksX = Math.ceil(cols / CHUNK_SIZE), chunksY = Math.ceil(rows / CHUNK_SIZE);
+  const frame = mapCaptureFrame(template);
+  const cw = w / Math.max(1, frame.width), ch = h / Math.max(1, frame.height);
+  const { columns, rows } = mapChunkAxes(template);
 
   ctx.fillStyle = '#8A7B72';
   ctx.font = `800 ${12.5 * S}px ${ff}`;
   ctx.textAlign = 'right';
   ctx.textBaseline = 'middle';
-  // Each label sits at the middle of ITS chunk, the last one at the middle of whatever is left of
-  // it: clamping to the map's edge would centre that label on the edge and clip half of it.
-  const mid = (i: number, total: number) => (i * CHUNK_SIZE + Math.min((i + 1) * CHUNK_SIZE, total)) / 2;
-  for (let cr = 0; cr < chunksY; cr++) {
-    ctx.fillText(String.fromCharCode(65 + (cr % 26)), x - 7 * S, y + mid(cr, rows) * ch);
+  for (let cr = 0; cr < rows.length; cr++) {
+    ctx.fillText(String.fromCharCode(65 + (cr % 26)), x - 7 * S, y + (rows[cr]!.center - frame.y) * ch);
   }
   ctx.textAlign = 'center';
   ctx.textBaseline = 'top';
-  for (let cc = 0; cc < chunksX; cc++) {
-    ctx.fillText(String(cc + 1), x + mid(cc, cols) * cw, y + h + 6 * S);
+  for (let cc = 0; cc < columns.length; cc++) {
+    ctx.fillText(String(cc + 1), x + (columns[cc]!.center - frame.x) * cw, y + h + 6 * S);
   }
   ctx.textAlign = 'left';
   ctx.textBaseline = 'alphabetic';

@@ -13,7 +13,7 @@
  * beside, and never leaves the viewport — are properties a test can state directly.
  */
 
-export type BubbleSide = 'left' | 'right' | 'above' | 'below';
+type BubbleSide = 'left' | 'right' | 'above' | 'below';
 
 export interface Box {
   left: number;
@@ -55,7 +55,7 @@ function clampAxis(value: number, extent: number, limit: number): number {
   return Math.max(MARGIN, Math.min(value, limit - extent - MARGIN));
 }
 
-export interface BubblePlacement {
+interface BubblePlacement {
   left: number;
   top: number;
   /** The side actually used, which is the preferred one only when the bubble fits there. */

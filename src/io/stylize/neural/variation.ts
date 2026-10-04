@@ -1,5 +1,5 @@
 /*
- * variation.ts — what a take's seed changes about a neural render.
+ * What a take's seed changes about a neural render.
  *
  * The model is deterministic, so two runs on the same frame are the same picture. It is also
  * equivariant: the picture follows the input under a mirror, a shift or a small scale, while the

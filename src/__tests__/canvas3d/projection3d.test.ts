@@ -9,6 +9,7 @@ import { Projection3D, type CameraHost } from '../../canvas/map3d/interaction/pr
 import { TerrainType } from '../../core/model/types';
 import type { GridState } from '../../core/model/types';
 import { makeState, setTerrain } from '../rules/_helpers';
+import { layerToY } from '../../canvas/map3d/core/coords';
 
 function makeHost(state: GridState): { host: CameraHost; pans: Array<[number, number]> } {
   const camera = new THREE.PerspectiveCamera(55, 800 / 600, 0.5, 1500);
@@ -87,7 +88,7 @@ describe('Projection3D', () => {
     // A point on the column's camera-facing WALL, just under the top: the pick
     // ray pierces the column there (a tangent graze along the exact top plane
     // is float-fragile by nature).
-    const top = new THREE.Vector3(10 - 10, 6 * 0.55 - 0.3, 8 - 10 + 0.49).project(host.camera);
+    const top = new THREE.Vector3(10 - 10, layerToY(6) - 0.3, 8 - 10 + 0.49).project(host.camera);
     const sx = ((top.x + 1) / 2) * 800, sy = ((1 - top.y) / 2) * 600;
     expect(proj.screenToMacro(sx, sy)).toEqual({ x: 10, y: 8 });
   });

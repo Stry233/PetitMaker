@@ -3,6 +3,7 @@
  * row. Selection comes directly from edit state. Search clears the active category, and hovered
  * names render outside the clipped scroller while tracking their card's scroll-adjusted position.
  */
+import { mapEdgeAttr } from '../../primitives/map-edge';
 import { useFrameReadableWeight } from '../use-frame-zoom';
 import {
   useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState,
@@ -17,9 +18,9 @@ import { subscribeMapStats } from '../../../state/map-stats';
 import { getObjectIndex } from '../../../state/object-index';
 import { useEditorStore } from '../../../state/store';
 import type { MacroId } from '../../../tools/macros';
-import { useScrollFade } from '../../primitives/scroll-fade';
+import { useScrollRow } from '../../primitives/use-scroll-row';
 import { ScaleProvider, usePx } from '../../design/scale';
-import { btnReset, cursors, pressable, z } from '../../design/styles';
+import { btnReset, cursors, pressable, z, radii } from '../../design/styles';
 import { MUTED_INK, PLATE, PLATE_INK } from '../../design/tokens';
 import { ShapeEdge } from '../../design/shape-edge';
 import { FIELD_INPUT_CLASS, FIELD_WRAP_CLASS } from '../../design/focus-source';
@@ -30,9 +31,9 @@ import { ItemCard, SmartCard } from './ItemCard';
 import {
   BAR, ROW, SCROLL, SEARCH, SHELF_BOX, TABS, shelfItems, tabRowGap,
 } from './object-shelf';
-import { useFrameZoom, wheelGlider, wheelPush } from './row-scroll';
+import { useFrameZoom } from './row-scroll';
 import { useFrameLayout, useRailClearance } from '../frame-layout';
-import { cssMotion } from '../motion/use-motion';
+import { cssMotion } from '../../design/motion';
 import { ShelfScrollbar } from './ShelfScrollbar';
 import { ShelfTabs, TAB_ROW } from './ShelfTabs';
 
@@ -112,7 +113,7 @@ interface Reach {
   contentW: number;
 }
 
-/** The category the shelf opens on: the armed card's own, so leaving 物品 mode and coming back
+/** The category the shelf opens on: the armed card's own, so leaving Objects mode and coming back
  *  reopens where the user was. An item names its category; a planting macro stands in the tab
  *  that leads it (`patchIdFor`). */
 function initialCategory(itemId: string | null, macro: string | null): ItemCategory {
@@ -147,12 +148,14 @@ function patchIdFor(category: ItemCategory): MacroId | null {
  * in the mode row — right when the shelf IS the placement tool, wrong when it is standing in for
  * another surface to answer one question, exactly as the scope screen is not really the terrain bar.
  */
-export interface ObjectShelfProps {
+interface ObjectShelfProps {
   only?: (item: CatalogItem) => boolean;
   pick?: { current: string | null; onPick: (catalogId: string) => void };
   /** A query the pictured shelf shows as typed, standing in for the field's own state; the live
    *  shelf never passes this and keeps typing into its own. */
   posedQuery?: string;
+  /** The whole row while a planet session is open, in place of the catalog's tabs and search. */
+  source?: () => CatalogItem[];
 }
 
 /**
@@ -178,15 +181,15 @@ export function ShelfBand() {
   );
 }
 
-export function ObjectShelf({ only, pick, posedQuery }: ObjectShelfProps = {}) {
+export function ObjectShelf({ only, pick, posedQuery, source }: ObjectShelfProps = {}) {
   return (
     <ScaleProvider value={SHELF_SCALE}>
-      <ObjectShelfBody only={only} pick={pick} posedQuery={posedQuery} />
+      <ObjectShelfBody only={only} pick={pick} posedQuery={posedQuery} source={source} />
     </ScaleProvider>
   );
 }
 
-function ObjectShelfBody({ only, pick, posedQuery }: ObjectShelfProps) {
+function ObjectShelfBody({ only, pick, posedQuery, source }: ObjectShelfProps) {
   const { px, scale } = usePx();
   const swapMotion = useMotion('shelf.category.swap');
   const t = useT();
@@ -196,6 +199,7 @@ function ObjectShelfBody({ only, pick, posedQuery }: ObjectShelfProps) {
   const setEditMode = useEditorStore((s) => s.setEditMode);
   const gridState = useEditorStore((s) => s.gridState);
   const eventBus = useEditorStore((s) => s.eventBus);
+  const sourced = useEditorStore((s) => !!s.planetSession) && !!source;
 
   const [category, setCategory] = useState<ItemCategory>(() => initialCategory(selectedItemId, armedMacro));
   const [innerQuery, setInnerQuery] = useState('');
@@ -224,7 +228,6 @@ function ObjectShelfBody({ only, pick, posedQuery }: ObjectShelfProps) {
   const rowRef = useRef<HTMLDivElement>(null);
   const trackRef = useRef<HTMLDivElement>(null);
   const reduced = useReducedMotionConfig() ?? false;
-  const wheelGlide = useRef(wheelGlider()).current;
 
   /**
    * Move the row. A GLIDE is the smooth arrival a press on the scrollbar asks for — a jump to
@@ -258,16 +261,19 @@ function ObjectShelfBody({ only, pick, posedQuery }: ObjectShelfProps) {
 
   // The row re-renders per card hover and per scroll tick; the catalog ranking only owes the
   // renders where its own inputs moved.
-  const all = useMemo(() => shelfItems(query, category, locale), [query, category, locale]);
-  const items = useMemo(() => (only ? all.filter(only) : all), [all, only]);
-  /** The categories that still hold something under `only`. */
-  const shownTabs = useMemo(
-    () => (only ? TABS.filter((tab) => getCatalogByCategory(tab.category).some(only)) : TABS),
-    [only],
+  const all = useMemo(
+    () => (sourced ? source!() : shelfItems(query, category, locale)),
+    [sourced, source, query, category, locale],
   );
-  const searching = query.trim().length > 0;
+  const items = useMemo(() => (only ? all.filter(only) : all), [all, only]);
+  /** The categories that still hold something under `only`; a sourced row has none. */
+  const shownTabs = useMemo(
+    () => (sourced ? [] : only ? TABS.filter((tab) => getCatalogByCategory(tab.category).some(only)) : TABS),
+    [only, sourced],
+  );
+  const searching = !sourced && query.trim().length > 0;
   const patchId = patchIdFor(category);
-  const rowFade = useScrollFade(rowRef, 'x');
+  const rowFade = useScrollRow(rowRef, { zoom, pointerEvents: 'auto' });
 
   // A narrower result (or another category) can leave the row scrolled past its own end, which the
   // browser clamps silently while the drawn thumb keeps reporting the old offset. The name goes
@@ -315,11 +321,12 @@ function ObjectShelfBody({ only, pick, posedQuery }: ObjectShelfProps) {
     <div
       ref={rootRef}
       {...helpTargetAttr('objects')}
+      {...mapEdgeAttr('bottom')}
       style={{
         position: 'fixed', left: 0, right: 0, bottom: 0, zIndex: z.panel, pointerEvents: 'none',
         display: 'flex', flexDirection: 'column', alignItems: 'stretch',
         padding: `0 ${right}px ${SHELF_BOX.bottom}px ${SHELF_BOX.left}px`,
-        transition: cssMotion('frame.layout.adapt', 'padding-right'),
+        transition: cssMotion('frame.layout.adapt', ['padding-right']),
       }}
     >
       <ShelfBand />
@@ -362,7 +369,7 @@ function ObjectShelfBody({ only, pick, posedQuery }: ObjectShelfProps) {
           }}
         />
 
-        <ShelfSearchField
+        {sourced ? null : <ShelfSearchField
           value={query}
           onChange={setInnerQuery}
           ariaLabel={t('shelf.search')}
@@ -378,7 +385,7 @@ function ObjectShelfBody({ only, pick, posedQuery }: ObjectShelfProps) {
             pointerEvents: 'auto',
           }}
           wrapAttrs={helpTargetAttr('search')}
-        />
+        />}
 
       </div>
 
@@ -393,15 +400,6 @@ function ObjectShelfBody({ only, pick, posedQuery }: ObjectShelfProps) {
           ref={rowRef}
           className="pw-noscroll"
           onScroll={(e) => setScrollLeft(e.currentTarget.scrollLeft / scale)}
-          // A row of tiles is scrolled with a wheel that reports its travel DOWN, so that is what
-          // is turned along the row here, and it GLIDES the way the sideways axis already does on a
-          // smooth-scrolling mouse (row-scroll.ts has the whole story). The two travel the same
-          // distance per notch: the wheel reports in the page's pixels and the row is drawn in the
-          // frame's zoomed ones, which `wheelPush` takes back out.
-          onWheel={(e) => {
-            const push = wheelPush(e, e.currentTarget.clientWidth, zoom);
-            if (push) wheelGlide.wheel(e.currentTarget, push.by, reduced);
-          }}
           style={{
             // Positioned, so a card's `offsetLeft` is measured from the row's own content box and
             // the name above it needs nothing but the scroll offset to follow it.
@@ -409,7 +407,6 @@ function ObjectShelfBody({ only, pick, posedQuery }: ObjectShelfProps) {
             display: 'flex', alignItems: 'center',
             boxSizing: 'border-box', padding: px(ROW.pad),
             height: px(ROW.card + 2 * ROW.pad),
-            overflowX: 'auto', overflowY: 'hidden', pointerEvents: 'auto',
             ...rowFade,
           }}
         >
@@ -445,7 +442,7 @@ function ObjectShelfBody({ only, pick, posedQuery }: ObjectShelfProps) {
             {/* A NARROWED shelf offers no planting card either. `only` is a caller saying which
                 ITEMS it can use, and a patch is not an item at all: it is a press that designs its
                 own, which a letter cannot be tiled with. */}
-            {!searching && patchId && !only ? (
+            {!searching && patchId && !only && !sourced ? (
               <SmartCard
                 selected={armedMacro === patchId}
                 onToggle={() => setEditMode({
@@ -497,7 +494,7 @@ function ObjectShelfBody({ only, pick, posedQuery }: ObjectShelfProps) {
               style={{
                 ...btnReset, cursor: cursors.clickable, pointerEvents: 'auto',
                 display: 'flex', alignItems: 'center', padding: '7px 20px',
-                borderRadius: 999, background: PLATE,
+                borderRadius: radii.pill, background: PLATE,
               }}
             >
               <BarText size={TEXT.label} color={PLATE_INK}>{t('shelf.clear_search')}</BarText>

@@ -1,5 +1,5 @@
 /*
- * options-store.ts — the export window's remembered choices: the preset, the picture's parts, the
+ * The export window's remembered choices: the preset, the picture's parts, the
  * footer template and the size, kept between sessions so the window opens the way it was left.
  * The title and description are the map's own words and are never carried over. One localStorage
  * blob under the `exportOptions` preference; every field is checked against what the window can

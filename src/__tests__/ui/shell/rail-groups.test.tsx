@@ -15,7 +15,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { EventBus } from '../../../core/commands/event-bus';
 import type { EditorEvents } from '../../../core/model/types';
-import { setReducedMotion, __resetMotionState } from '../../../canvas/map2d/motion-state';
+import { setReducedMotion, __resetMotionState } from '../../../core/runtime/motion-state';
 import { I18nProvider } from '../../../i18n/context';
 import { useEditorStore } from '../../../state/store';
 import { HISTORY_BUTTONS, KIT_BUTTONS, planRail, railCell, railStack } from '../../../ui/shell/frame';

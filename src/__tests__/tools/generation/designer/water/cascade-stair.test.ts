@@ -194,7 +194,7 @@ describe('the cascade stair, on a staircase map', () => {
     }
   });
 
-  it('never floods a cell the ground kept for something else', () => {
+  it('a cascade stair never floods a cell the ground kept for something else', () => {
     const { t, grass, flat } = staircase(HEXIA);
     // A reserved band across half the map, the shape a trunk street leaves: a strip that would
     // cross it is refused and another flank is tried.

@@ -1,0 +1,231 @@
+{
+  "version": 1,
+  "templateId": "test",
+  "cells": "",
+  "objects": [
+    {
+      "id": "r0-0",
+      "catalogId": "ramp-green-steps",
+      "x": 10,
+      "y": 10,
+      "rotation": 0,
+      "elevation": 1
+    },
+    {
+      "id": "r0-90",
+      "catalogId": "ramp-green-steps",
+      "x": 10,
+      "y": 10,
+      "rotation": 90,
+      "elevation": 1
+    },
+    {
+      "id": "r0-180",
+      "catalogId": "ramp-green-steps",
+      "x": 10,
+      "y": 10,
+      "rotation": 180,
+      "elevation": 1
+    },
+    {
+      "id": "r0-270",
+      "catalogId": "ramp-green-steps",
+      "x": 10,
+      "y": 10,
+      "rotation": 270,
+      "elevation": 1
+    },
+    {
+      "id": "r1-0",
+      "catalogId": "ramp-light-stair",
+      "x": 10,
+      "y": 10,
+      "rotation": 0,
+      "elevation": 1
+    },
+    {
+      "id": "r1-90",
+      "catalogId": "ramp-light-stair",
+      "x": 10,
+      "y": 10,
+      "rotation": 90,
+      "elevation": 1
+    },
+    {
+      "id": "r1-180",
+      "catalogId": "ramp-light-stair",
+      "x": 10,
+      "y": 10,
+      "rotation": 180,
+      "elevation": 1
+    },
+    {
+      "id": "r1-270",
+      "catalogId": "ramp-light-stair",
+      "x": 10,
+      "y": 10,
+      "rotation": 270,
+      "elevation": 1
+    },
+    {
+      "id": "r2-0",
+      "catalogId": "ramp-moss-ramp",
+      "x": 10,
+      "y": 10,
+      "rotation": 0,
+      "elevation": 1
+    },
+    {
+      "id": "r2-90",
+      "catalogId": "ramp-moss-ramp",
+      "x": 10,
+      "y": 10,
+      "rotation": 90,
+      "elevation": 1
+    },
+    {
+      "id": "r2-180",
+      "catalogId": "ramp-moss-ramp",
+      "x": 10,
+      "y": 10,
+      "rotation": 180,
+      "elevation": 1
+    },
+    {
+      "id": "r2-270",
+      "catalogId": "ramp-moss-ramp",
+      "x": 10,
+      "y": 10,
+      "rotation": 270,
+      "elevation": 1
+    },
+    {
+      "id": "r3-0",
+      "catalogId": "ramp-park-steps",
+      "x": 10,
+      "y": 10,
+      "rotation": 0,
+      "elevation": 1
+    },
+    {
+      "id": "r3-90",
+      "catalogId": "ramp-park-steps",
+      "x": 10,
+      "y": 10,
+      "rotation": 90,
+      "elevation": 1
+    },
+    {
+      "id": "r3-180",
+      "catalogId": "ramp-park-steps",
+      "x": 10,
+      "y": 10,
+      "rotation": 180,
+      "elevation": 1
+    },
+    {
+      "id": "r3-270",
+      "catalogId": "ramp-park-steps",
+      "x": 10,
+      "y": 10,
+      "rotation": 270,
+      "elevation": 1
+    },
+    {
+      "id": "r4-0",
+      "catalogId": "ramp-plank",
+      "x": 10,
+      "y": 10,
+      "rotation": 0,
+      "elevation": 1
+    },
+    {
+      "id": "r4-90",
+      "catalogId": "ramp-plank",
+      "x": 10,
+      "y": 10,
+      "rotation": 90,
+      "elevation": 1
+    },
+    {
+      "id": "r4-180",
+      "catalogId": "ramp-plank",
+      "x": 10,
+      "y": 10,
+      "rotation": 180,
+      "elevation": 1
+    },
+    {
+      "id": "r4-270",
+      "catalogId": "ramp-plank",
+      "x": 10,
+      "y": 10,
+      "rotation": 270,
+      "elevation": 1
+    },
+    {
+      "id": "r5-0",
+      "catalogId": "ramp-retro-steps",
+      "x": 10,
+      "y": 10,
+      "rotation": 0,
+      "elevation": 1
+    },
+    {
+      "id": "r5-90",
+      "catalogId": "ramp-retro-steps",
+      "x": 10,
+      "y": 10,
+      "rotation": 90,
+      "elevation": 1
+    },
+    {
+      "id": "r5-180",
+      "catalogId": "ramp-retro-steps",
+      "x": 10,
+      "y": 10,
+      "rotation": 180,
+      "elevation": 1
+    },
+    {
+      "id": "r5-270",
+      "catalogId": "ramp-retro-steps",
+      "x": 10,
+      "y": 10,
+      "rotation": 270,
+      "elevation": 1
+    },
+    {
+      "id": "r6-0",
+      "catalogId": "ramp-teak-stair",
+      "x": 10,
+      "y": 10,
+      "rotation": 0,
+      "elevation": 1
+    },
+    {
+      "id": "r6-90",
+      "catalogId": "ramp-teak-stair",
+      "x": 10,
+      "y": 10,
+      "rotation": 90,
+      "elevation": 1
+    },
+    {
+      "id": "r6-180",
+      "catalogId": "ramp-teak-stair",
+      "x": 10,
+      "y": 10,
+      "rotation": 180,
+      "elevation": 1
+    },
+    {
+      "id": "r6-270",
+      "catalogId": "ramp-teak-stair",
+      "x": 10,
+      "y": 10,
+      "rotation": 270,
+      "elevation": 1
+    }
+  ]
+}

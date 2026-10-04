@@ -26,7 +26,7 @@ import { CommandExecutor } from '../../core/commands/command-executor';
 import { createDefaultRegistry } from '../../rules/index';
 import { ToolManager } from '../../tools/runtime/tool-manager';
 import { selectedObjectIds } from '../../state/selection';
-import { makeStubRenderer } from '../tools/_tool-manager';
+import { makeStubView } from '../tools/_tool-manager';
 import { makeState, setTerrain } from '../rules/_helpers';
 import { setStoreState } from '../_store';
 import { roadLookup } from '../../state/object-index';
@@ -88,7 +88,7 @@ function activate(tool: ToolType, ...objects: PlacedObject[]): void {
   for (const obj of objects) gs.objects.set(obj.id, obj);
   if (objects.length > 0) bumpObjectsVersion(gs, { added: objects });
   executor = new CommandExecutor(gs, useEditorStore.getState().eventBus, createDefaultRegistry(), roadLookup(gs));
-  const tm = new ToolManager(makeStubRenderer(), executor, gs);
+  const tm = new ToolManager(makeStubView(), executor, gs);
   const { view } = makeView();
   setActiveView(view);
   registerToolManager(tm);

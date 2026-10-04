@@ -5,7 +5,7 @@ import { createDefaultRegistry } from '../../../rules';
 import type { EditorEvents } from '../../../core/model/types';
 import { makeState } from '../../rules/_helpers';
 import { roadLookup } from '../../../state/object-index';
-import { TOOL_SCHEMAS, WRITE_TOOLS, type AgentToolDeps } from '../../../agent/tools/tools';
+import { TOOL_SCHEMAS, WRITE_TOOLS, type AgentToolDeps } from '../../../agent/tools';
 import { createExecutor, wireSchemas, WIDE_TOOLS } from '../../../agent/exec/executor';
 import { shouldGate } from '../../../agent/core/gates';
 

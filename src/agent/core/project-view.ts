@@ -1,6 +1,7 @@
 import type { SessionLog } from './log';
 import { eventsOf } from './log';
-import { DROPPED_STOPS, parseStages, thoughtSize } from './types';
+import { sanitizeSuggestion } from './reply-suggestion';
+import { DROPPED_STOPS, parseStages, thoughtSize, type SkillRef } from './types';
 import type {
   ErrorClass, GateAnswer, GateOption, JobOutcome, OrderRegion, Part, PlanStage, SessionEvent, TextPart,
   ToolResultDetail,
@@ -12,13 +13,17 @@ export type SessionPhase =
 
 export interface OpRow {
   callId: string; name: string;
+  /** Completed arguments support localized descriptions without parsing result prose. */
+  input?: Record<string, unknown>;
+  /** Most recent undo checkpoint before the operation completed. */
+  checkpointIndex?: number;
   /** `skipped` is a user decline; `cut` is a call left unresolved when its job ended. */
   status: 'run' | 'ok' | 'revert' | 'error' | 'blocked' | 'skipped' | 'cut' | 'words' | 'pending-gate';
   summary: string; detail?: ToolResultDetail; isRead: boolean;
   /** Plan stage active when the call was registered. */
   stageIndex?: number;
   /** A successful `load_skill`'s identity, for the op row's skill chip. */
-  skill?: { name: string; kind: 'method' | 'style'; title: string };
+  skill?: SkillRef;
   /** Rendered map shown to the model. Persisted logs omit the data URL. */
   image?: string;
 }
@@ -104,7 +109,7 @@ export interface JobView {
     live?: string;
   };
   /** Loaded skills in newest-use order, deduplicated by name. */
-  skills: { name: string; kind: 'method' | 'style'; title: string }[];
+  skills: SkillRef[];
 }
 
 export interface PanelView {
@@ -115,7 +120,7 @@ export interface PanelView {
   queuedSteers: { seq: number; text: string }[];
   retry?: { attempt: number; cls: ErrorClass; delayMs: number; since: number };
   vitals: { cells: number; objects: number; reverts: number; jobs: number };
-  /** Latest sanitized `suggest_reply` text, cleared when a new order starts. */
+  /** Suggested composer text for the latest order, cleared when a new order starts. */
   suggestion: string | null;
   /** Timestamp of the last event in log order, or zero for an empty log. */
   lastEventAt: number;
@@ -141,6 +146,8 @@ interface JobBuilder {
   plan?: JobView['plan'];
   callOrder: string[];
   names: Map<string, string>;
+  inputs: Map<string, Record<string, unknown>>;
+  checkpointByCall: Map<string, number>;
   results: Map<string, ToolResultEvent>;
   gateIdToCallId: Map<string, string>;
   /** The asks, in ask order, mutated in place as their answers land. */
@@ -174,7 +181,7 @@ function newJob(
 ): JobBuilder {
   return {
     orderSeq, orderText, orderAt, region, mapId,
-    callOrder: [], names: new Map(), results: new Map(),
+    callOrder: [], names: new Map(), inputs: new Map(), checkpointByCall: new Map(), results: new Map(),
     gateIdToCallId: new Map(), asks: [], planStagesByCall: new Map(),
     stageByCall: new Map(), stageAt: 0,
     pendingGateCallIds: new Set(), skippedCallIds: new Set(),
@@ -190,10 +197,6 @@ function stamp(job: JobBuilder, kind: JobView['stamps'][number]['kind']): void {
   job.stamps.push({ kind, beforeIndex: job.callOrder.length });
 }
 
-function firstLine(content: string): string {
-  return (content.split('\n')[0] ?? '').slice(0, 96);
-}
-
 /** Recognizes the summary banners that precede a tool's actionable refusal reason. */
 function isHeaderLine(line: string): boolean {
   return line.startsWith('REVERTED') || line.endsWith('rejected:');
@@ -206,13 +209,6 @@ function resultLine(content: string): string {
     if (line !== '' && !isHeaderLine(line)) return line.slice(0, 96);
   }
   return '';
-}
-
-/** Restricts a model-authored reply suggestion to one non-empty display line. */
-function sanitizeSuggestion(raw: unknown): string | null {
-  if (typeof raw !== 'string') return null;
-  const trimmed = raw.trim();
-  return trimmed === '' ? null : firstLine(trimmed);
 }
 
 /** Derives a call status, converting unresolved calls to `cut` when their job has settled. */
@@ -242,11 +238,13 @@ function buildOps(
 ): OpRow[] {
   const callOrder = job.callOrder.slice();
   const names = new Map(job.names);
+  const inputs = new Map(job.inputs);
   for (const p of live ?? []) {
     if (p.kind === 'tool' && !names.has(p.callId)) {
       names.set(p.callId, p.name);
       callOrder.push(p.callId);
     }
+    if (p.kind === 'tool' && p.argsDone && p.rawInput === undefined) inputs.set(p.callId, p.input);
   }
   return callOrder.map((callId) => {
     const name = names.get(callId) ?? '';
@@ -262,6 +260,10 @@ function buildOps(
       isRead: result?.write !== undefined ? !result.write : readTools?.has(name) ?? false,
     };
     const stage = job.stageByCall.get(callId);
+    const input = inputs.get(callId);
+    if (input && Object.keys(input).length > 0) row.input = input;
+    const checkpoint = job.checkpointByCall.get(callId);
+    if (checkpoint !== undefined) row.checkpointIndex = checkpoint;
     if (stage !== undefined && job.plan) row.stageIndex = stage;
     if (result?.detail) row.detail = result.detail;
     // Persisted logs omit rendered images and retain only the result summary.
@@ -392,6 +394,7 @@ export function deriveView(log: SessionLog, opts?: { live?: readonly Part[]; rea
           // Position the thought mark before this turn's tool rows are registered.
           const beforeIndex = currentJob.callOrder.length;
           for (const p of e.parts) {
+            if (p.kind === 'tool' && p.argsDone && p.rawInput === undefined) currentJob.inputs.set(p.callId, p.input);
             if (p.kind === 'tool' && !currentJob.names.has(p.callId)) {
               currentJob.names.set(p.callId, p.name);
               currentJob.callOrder.push(p.callId);
@@ -430,6 +433,7 @@ export function deriveView(log: SessionLog, opts?: { live?: readonly Part[]; rea
         if (e.detail?.reverted) vitals.reverts += 1;
         if (currentJob) {
           currentJob.results.set(e.callId, e);
+          if (currentJob.checkpoints.length > 0) currentJob.checkpointByCall.set(e.callId, currentJob.checkpoints.length - 1);
           if (!currentJob.names.has(e.callId)) {
             currentJob.names.set(e.callId, e.name);
             currentJob.callOrder.push(e.callId);
@@ -505,7 +509,7 @@ export function deriveView(log: SessionLog, opts?: { live?: readonly Part[]; rea
         if (currentJob?.plan) {
           const lastIndex = currentJob.plan.stages.length - 1;
           const clamped = lastIndex >= 0 ? Math.min(Math.max(e.index, 0), lastIndex) : 0;
-          currentJob.plan = { ...currentJob.plan, currentIndex: clamped, doneCount: clamped };
+          currentJob.plan = { ...currentJob.plan, currentIndex: clamped, doneCount: Math.min(Math.max(e.index, 0), currentJob.plan.stages.length) };
           currentJob.stageAt = Math.max(currentJob.stageAt, clamped);
         }
         break;
@@ -555,6 +559,13 @@ export function deriveView(log: SessionLog, opts?: { live?: readonly Part[]; rea
         openRetry = undefined;
         phase = 'incident';
         break;
+      case 'replySuggested': {
+        const last = jobs[jobs.length - 1];
+        if (!currentJob && last?.orderSeq === e.orderSeq && last.outcome === 'done' && last.question) {
+          suggestion = sanitizeSuggestion(e.reply);
+        }
+        break;
+      }
       case 'jobEnd':
         vitals.jobs += 1;
         if (currentJob) {

@@ -11,7 +11,7 @@
  * whatever the ledger knows — and the third case is why it cannot be an authorship question: a press
  * builds on a detached clone whose ledger is empty, so "spare the human-authored ones" spared none.
  *
- * Fixture: two locked-hub/hamlet stalls 6 cells apart on an empty flat map (seed 3), which pave a
+ * Fixture: a one-cell landmark hub and a hamlet stall 6 cells apart on an empty flat map (seed 3), which pave a
  * short vertical street; (10,13) is a cell the width-3 dilation reaches but the width-1 core path
  * does not (confirmed empirically against this fixture — see the scenarios below).
  */
@@ -31,6 +31,7 @@ import { generateObjectId } from '../../../core/model/object-id';
 import { makeState } from '../../rules/_helpers';
 import { makeToolCtx } from '../_tool-ctx';
 import { createDefaultRegistry } from '../../../rules/index';
+import { landmarkObject } from '../../../core/model/grid-model';
 
 const floraId = getCatalogByCategory(ItemCategory.Flora)[0]!.id;
 const WIDEN_ONLY_CELL = { x: 10, y: 13 };
@@ -41,10 +42,11 @@ function setup(): { state: GridState; ctx: MacroContext; place: (catalogId: stri
   const ctx: MacroContext = { state, executor: exec, registry: exec.getRegistry() };
   const place = (catalogId: string, x: number, y: number, locked = false): void => {
     const obj = { id: generateObjectId(), catalogId, position: { x, y }, rotation: 0 as const, elevation: 0, locked };
-    const r = exec.execute({ type: CommandType.PlaceObject, timestamp: 1, object: obj, loadValue: 0 });
+    const r = exec.execute({ type: CommandType.PlaceObject, timestamp: 1, object: obj });
     expect(r.success, `place ${catalogId}@${x},${y}`).toBe(true);
   };
-  place('building-stall', 10, 10, true); // locked hub
+  const hub = landmarkObject({ x: 10, y: 10, width: 1, height: 1, elevation: 0 }, true);
+  state.objects.set(hub.id, hub);
   place('building-stall', 10, 16);       // hamlet 6 cells south
   return { state, ctx, place };
 }

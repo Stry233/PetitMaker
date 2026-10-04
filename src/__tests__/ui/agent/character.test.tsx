@@ -21,8 +21,8 @@ import { Badge } from '../../../ui/agent/character/badges';
 import { DREAM } from '../../../ui/agent/sketchbook/sketch-motion';
 import { MICRO, POSE_DWELL, POSES, PRESS_SQUASH, WAKE_BEAT, poseForPhase, type PoseName } from '../../../ui/agent/character/poses';
 import type { SessionPhase } from '../../../agent/core/project-view';
-import { amplitude, framerMotion } from '../../../ui/agent/motion';
-import { pressable } from '../../../ui/design/styles';
+import { amplitude, framerMotion } from '../../../ui/design/motion';
+import { easing, pressable } from '../../../ui/design/styles';
 
 type FakeKeyframe = { transform?: string; opacity?: number; offset?: number };
 type FakeOptions = { duration?: number; delay?: number; easing?: string; iterations?: number; fill?: FillMode; composite?: string };
@@ -609,7 +609,7 @@ describe('the sleeper\'s plume', () => {
   afterEach(() => { act(() => { setDreamBadge('off'); }); });
 
   it('declares the breath as a three-stop rise', () => {
-    expect(DREAM.puff).toEqual({ dur: 900, easing: 'cubic-bezier(.2,0,0,1)' });
+    expect(DREAM.puff).toEqual({ dur: 900, easing: easing.punchy });
     expect(DREAM.puffFrames).toEqual([
       { opacity: 0, transform: 'none', offset: 0 },
       { opacity: 1, offset: 0.2 },
@@ -650,9 +650,9 @@ describe('the sleeper\'s plume', () => {
     expect(disc.style.opacity).toBe('0');
     expect(disc.style.transform).toBe('scale(0.55)');
     expect(disc.style.transition).toBe(
-      'opacity 240ms cubic-bezier(.2,0,0,1), transform 300ms cubic-bezier(.175,.885,.32,1.275)',
+      `opacity 240ms ${easing.punchy}, transform 300ms ${easing.springStiff}`,
     );
-    expect(part(container, 'dream-zzz').style.transition).toBe('opacity 220ms cubic-bezier(.2,0,0,1)');
+    expect(part(container, 'dream-zzz').style.transition).toBe(`opacity 220ms ${easing.punchy}`);
 
     act(() => { setDreamBadge('pw-road'); });
     rerender(<Character pose="sleeping" size={60} />);

@@ -1,5 +1,5 @@
 /*
- * sample-art.ts — the face a style direction wears before its real sample exists, and the one
+ * The face a style direction wears before its real sample exists, and the one
  * ratio every picture box in this window is drawn at.
  *
  * The committed samples (`sample-assets.ts`) are generated from this project's own map, so they

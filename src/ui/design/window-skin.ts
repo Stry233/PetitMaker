@@ -1,5 +1,5 @@
 /*
- * window-skin.ts — the vocabulary the five menu windows are painted in.
+ * The vocabulary the five menu windows are painted in.
  *
  * The windows are chrome rather than shell furniture: they stand over the map and place themselves,
  * so the paint lives here beside them. The colours are the design source's own (`ui/design/tokens`),
@@ -78,34 +78,17 @@ export const windowTitle: CSSProperties = {
   fontFamily: font.family,
 };
 
-/** A settings-style row: label on the left, its control on the right. `flexWrap` lets a control
- *  that is wider than the room left by a long translation drop to its own line instead of
- *  overflowing the card.
- *
- *  The push to opposite ends is the LABEL's auto margin, not `space-between`: a control that has
- *  wrapped is alone on its line, and `space-between` puts a lone item at the START of it — so the
- *  Russian and French rows that wrap would left-align their control under a column of right-aligned
- *  ones. Ending the row at `flex-end` keeps every control on the same edge whether it wrapped or
- *  not, and the label's own `marginRight: auto` restores the single-line spread. */
-export const windowRow: CSSProperties = {
-  display: 'flex',
-  justifyContent: 'flex-end',
-  alignItems: 'center',
-  flexWrap: 'wrap',
-  rowGap: 8,
-};
-
-export const windowLabel: CSSProperties = {
-  ...roleFont('head'),
-  color: skin.ink,
-  fontFamily: font.family,
-  marginRight: 'auto',
-};
-
 /** A recessed area on the plate: the keyboard page's detail strip, a confirm panel. */
 export const windowInset: CSSProperties = {
   background: skin.inset,
   borderRadius: radii.lg,
+};
+
+/** A one-line text field on the plate, rounded by itself (so it takes no field-wrap focus marker). */
+export const windowField: CSSProperties = {
+  fontFamily: font.family, ...roleFont('field'), color: skin.ink, background: skin.inset,
+  border: `1.5px solid ${skin.line}`, borderRadius: radii.md, padding: '9px 11px',
+  outline: 'none', width: '100%', boxSizing: 'border-box',
 };
 
 export type PillVariant = 'quiet' | 'active' | 'danger';
@@ -127,6 +110,36 @@ export function windowPill(variant: PillVariant = 'quiet', disabled = false, on:
   if (variant === 'danger') return { ...base, background: colors.dangerBg, color: colors.dangerText };
   return { ...base, background: on === 'inset' ? skin.plate : skin.inset, color: skin.plateInk };
 }
+
+/** A count or status tag in a window row: the pill's type at a resting size, one step off the cream
+ *  it stands on. It does not press, so it takes no cursor and no motion. */
+export function windowChip(on: WindowSurface = 'plate'): CSSProperties {
+  return {
+    fontFamily: font.family,
+    ...roleFont('chip'),
+    padding: '5px 12px',
+    borderRadius: radii.pill,
+    background: on === 'inset' ? skin.plate : skin.inset,
+    color: skin.ink,
+  };
+}
+
+/** A round icon control in a window header (Back): an inset disc with the glyph in ink. Pair with
+ *  `interactionProfiles.tile` on the element. */
+export const windowIconButton: CSSProperties = {
+  width: 34,
+  height: 34,
+  flex: 'none',
+  padding: 0,
+  border: 'none',
+  borderRadius: '50%',
+  background: skin.inset,
+  color: skin.ink,
+  display: 'grid',
+  placeItems: 'center',
+  cursor: cursors.clickable,
+  WebkitTapHighlightColor: 'transparent',
+};
 
 /** The window's confirming action (OK / done): the ink fill the design gives a pressed control. */
 export const windowPrimary: CSSProperties = {
@@ -162,6 +175,11 @@ export const windowFooterGhost: CSSProperties = {
   padding: '12px 20px',
   fontFamily: font.family,
   ...roleFont('action'),
+};
+
+export const windowFooterTertiary: CSSProperties = {
+  ...windowFooterGhost,
+  background: 'transparent',
 };
 
 /** A floating menu of choices (the language picker, the preset picker).

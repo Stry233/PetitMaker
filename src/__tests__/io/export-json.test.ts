@@ -2,6 +2,8 @@ import { describe, it, expect } from 'vitest';
 import { serializeWithSections, sectionSizes, sectionSizeFormats, buildStats, verifyIntegrity } from '../../io/export-json';
 import { serialize, deserialize } from '../../io/json-codec';
 import { makeState } from '../rules/_helpers';
+import { roundLoad } from '../../core/model/load';
+import { catalogLoadValue } from '../../state/catalog';
 import { TerrainType, type GenerateConfig } from '../../core/model/types';
 
 const BASE = { includeGeneration: false, includeProvenance: true, includeStats: false, includeCatalogInfo: false, pretty: false } as const;
@@ -154,5 +156,16 @@ describe('serializeWithSections', () => {
       expect(verifyIntegrity(null)).toBe('absent');
       expect(verifyIntegrity({ manifest: {} })).toBe('absent');
     });
+  });
+});
+
+describe('buildStats', () => {
+  it('sums decimal loads without floating-point residue', () => {
+    const s = makeState();
+    for (let i = 0; i < 3; i++) {
+      s.objects.set(`apple-${i}`, { id: `apple-${i}`, catalogId: 'tree-apple', position: { x: 2 + 2 * i, y: 2 }, rotation: 0, elevation: 0 });
+    }
+    expect(buildStats(s).load.total).toBe(roundLoad(3 * catalogLoadValue('tree-apple')));
+    expect(String(buildStats(s).load.total)).not.toMatch(/\d{6,}/);
   });
 });

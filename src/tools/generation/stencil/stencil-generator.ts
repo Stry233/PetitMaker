@@ -1,5 +1,5 @@
 /*
- * stencil-generator.ts — laying a `Stencil` onto the map, in the two ways the shelf offers.
+ * Laying a `Stencil` onto the map, in the two ways the shelf offers.
  *
  * SHAPE (the text mode) reads the stencil's coverage: the cells inside the glyph become terrain, or
  * carry an object each. COLOUR (the image mode) ignores the shape and reads each cell's colour,
@@ -13,9 +13,8 @@
  * climb any further, so the shape degrades at its edges rather than vanishing.
  */
 import { CommandType, TerrainType } from '../../../core/model/types';
-import type { Command, GridState, MacroCoord, PlacedObject, Stencil, StencilPlan, StencilWaterRole, ValidationResult } from '../../../core/model/types';
-import { getCell, isBuildableZone } from '../../../core/model/grid-model';
-import { ELEVATION_MAX } from '../../../core/model/constants';
+import type { Command, GridState, MacroCoord, PlacedObject, Stencil, StencilBudgetOutcome, StencilPlan, StencilWaterRole, ValidationResult } from '../../../core/model/types';
+import { getCell, isBuildableZone, NEIGHBORS4_NESW } from '../../../core/model/grid-model';
 import { realSurface, surfaceElevation } from '../../../core/edge-cut/terrain-silhouette';
 import { getCatalogItem } from '../../../state/catalog';
 import { generateObjectId } from '../../../core/model/object-id';
@@ -25,9 +24,14 @@ import { COMPACT_IMAGE_LIMIT, covered, fitTarget, FLAT_SAFE_ELEVATION, luma, nar
 import { DIFFUSION, matchWithDiffusion, RAMP_DIFFUSION } from './stencil-sample';
 import { bedCells, hueReach, hueToneOffsets, planBorrow, planColourFill, readSmallBox, settleWaterBodies, smallBoxWeight, sourceColour, BORROW_COVER_MIN, type BorrowPolicy } from './stencil-small';
 import { detectFeatures, featureBudget, planFeatureMarks, FEATURE_MAX_SHARE } from './stencil-feature';
-import { declaredColorPalette } from './stencil-palette';
+import { declaredColorPalette, type ColorEntry } from './stencil-palette';
+import { isChunkLoadEnforced } from '../../../core/model/load';
+import { LoadBudget } from '../../../state/load-budget';
+import { budgetStencil } from './stencil-budget';
+import { ELEVATION_MAX } from '../../../core/model/game-profile';
 
 export interface StencilResult {
+  budget?: StencilBudgetOutcome;
   placed: number;
   skipped: number;
   /** shape/terrain runs: the surface tier the figure was written on. A glyph stands exactly one
@@ -65,7 +69,7 @@ export interface StencilResult {
 }
 
 /** Where the stencil's top-left cell sits on the map, and what it may write to. */
-export interface StencilPlacement { origin: MacroCoord; stencil: Stencil; allow?: ReadonlySet<number> }
+interface StencilPlacement { origin: MacroCoord; stencil: Stencil; allow?: ReadonlySet<number> }
 
 /**
  * A cell the generator may write to at all: on the map, buildable ground, and inside the run's own
@@ -156,7 +160,7 @@ function standableBase(state: GridState, x: number, y: number): number | null {
  * Ties go to the LOWER tier, so the answer is one function of the map rather than of iteration order.
  * `null` when there is no writable GROUND under the stencil at all.
  */
-export function stencilBaseTier(state: GridState, { origin, stencil, allow }: StencilPlacement): number | null {
+function stencilBaseTier(state: GridState, { origin, stencil, allow }: StencilPlacement): number | null {
   const counts = new Map<number, number>();
   for (let y = 0; y < stencil.height; y++) {
     for (let x = 0; x < stencil.width; x++) {
@@ -194,7 +198,7 @@ function lowestAround(state: GridState, x: number, y: number): number {
  * The glyph as TERRAIN: every covered cell written as ONE layer standing on the region's own surface.
  *
  * BASE+1, AND NOTHING ELSE. Terracing the shape by inset — the outline at tier 1 and each ring inward
- * three tiers higher, up to a picked height — gives a letter a layer-1 SKIRT around a taller core (包边)
+ * three tiers higher, up to a picked height — gives a letter a layer-1 SKIRT around a taller core (an edging band)
  * and leaves every stroke too thin to hold a second ring down at the skirt's tier, reading as a hole
  * through the middle of the letter. It also reads the map as if it were always sea level: on a region
  * standing on a mountain it paints tier 1 INTO the plateau.
@@ -260,34 +264,38 @@ export function layStencilTerrain(
  * refusing at every second cell for overlapping the one before it. A step whose whole footprint is
  * not covered is skipped, which is what keeps the outline readable at the size the glyph was drawn.
  */
-export function layStencilObjects(
-  state: GridState,
-  { origin, stencil, allow }: StencilPlacement,
-  catalogId: string,
-  executeCommand: (cmd: Command) => ValidationResult,
-): StencilResult {
+function* shapeTiles(stencil: Stencil, catalogId: string): Iterable<{ x: number; y: number }> {
   const item = getCatalogItem(catalogId);
-  if (!item) return { placed: 0, skipped: 0 };
+  if (!item) return;
   const stepX = Math.max(1, item.width), stepY = Math.max(1, item.height);
-  let placed = 0, skipped = 0;
-
   for (let y = 0; y + stepY <= stencil.height; y += stepY) {
     for (let x = 0; x + stepX <= stencil.width; x += stepX) {
       let whole = true;
       for (let dy = 0; dy < stepY && whole; dy++) {
         for (let dx = 0; dx < stepX; dx++) if (!covered(stencil, x + dx, y + dy)) { whole = false; break; }
       }
-      if (!whole) continue;
-      const at = { x: origin.x + x, y: origin.y + y };
-      if (!writable(state, at.x, at.y, allow)) { skipped++; continue; }
-      const obj: PlacedObject = {
-        id: generateObjectId(), catalogId,
-        position: at, rotation: 0,
-        elevation: surfaceElevation(getCell(state.cells, at.x, at.y)?.terrain),
-      };
-      if (executeCommand(objectPlacementCommand(obj)).success) placed++;
-      else skipped++;
+      if (whole) yield { x, y };
     }
+  }
+}
+
+export function layStencilObjects(
+  state: GridState,
+  { origin, stencil, allow }: StencilPlacement,
+  catalogId: string,
+  executeCommand: (cmd: Command) => ValidationResult,
+): StencilResult {
+  let placed = 0, skipped = 0;
+  for (const { x, y } of shapeTiles(stencil, catalogId)) {
+    const at = { x: origin.x + x, y: origin.y + y };
+    if (!writable(state, at.x, at.y, allow)) { skipped++; continue; }
+    const obj: PlacedObject = {
+      id: generateObjectId(), catalogId,
+      position: at, rotation: 0,
+      elevation: surfaceElevation(getCell(state.cells, at.x, at.y)?.terrain),
+    };
+    if (executeCommand(objectPlacementCommand(obj)).success) placed++;
+    else skipped++;
   }
   return { placed, skipped };
 }
@@ -631,6 +639,30 @@ function coatable(state: GridState, x: number, y: number): boolean {
   return true;
 }
 
+function matchObjectColors(
+  state: GridState,
+  { origin, stencil, allow }: StencilPlacement,
+  palette: readonly ColorEntry[],
+  contrast: number,
+  fitTones: boolean,
+): (ColorEntry | null)[] {
+  const read = paletteReader(state, { origin, stencil, ...(allow ? { allow } : {}) }, palette, contrast, DIFFUSION, fitTones);
+  // The AREA reading a small box gets, without the hue lift or the forced distinctness that a ramp of
+  // one hue needs: this palette has real hues, so an area's own colour already lands somewhere the
+  // picture recognises, and what a small box still wants is the area rather than the dithered cell.
+  const small = readSmallBox(
+    stencil, read.matchable, (i) => read.wanted(i) ?? 0,
+    smallBoxWeight(stencil), palette, false, read.damping,
+  );
+  return matchWithDiffusion(
+    stencil,
+    small?.wanted ?? read.wanted,
+    (rgb) => nearestByColor(palette, rgb),
+    (entry) => entry.rgb,
+    small?.damping ?? read.damping,
+  );
+}
+
 /**
  * The picture as OBJECTS: per cell, the item whose own colour comes nearest to the picture's there.
  *
@@ -653,24 +685,11 @@ export function layStencilObjectColor(
   executeCommand: (cmd: Command) => ValidationResult,
   contrast = 1,
   fitTones = true,
+  matches?: (ColorEntry | null)[],
 ): StencilResult {
   if (palette.length === 0) return { placed: 0, skipped: 0 };
   const sw = stencil.width;
-  const read = paletteReader(state, { origin, stencil, ...(allow ? { allow } : {}) }, palette, contrast, DIFFUSION, fitTones);
-  // The AREA reading a small box gets, without the hue lift or the forced distinctness that a ramp of
-  // one hue needs: this palette has real hues, so an area's own colour already lands somewhere the
-  // picture recognises, and what a small box still wants is the area rather than the dithered cell.
-  const small = readSmallBox(
-    stencil, read.matchable, (i) => read.wanted(i) ?? 0,
-    smallBoxWeight(stencil), palette, false, read.damping,
-  );
-  const chosen = matchWithDiffusion(
-    stencil,
-    small?.wanted ?? read.wanted,
-    (rgb) => nearestByColor(palette, rgb),
-    (entry) => entry.rgb,
-    small?.damping ?? read.damping,
-  );
+  const chosen = matches ?? matchObjectColors(state, { origin, stencil, allow }, palette, contrast, fitTones);
   let placed = 0, skipped = 0;
   for (let y = 0; y < stencil.height; y++) {
     for (let x = 0; x < stencil.width; x++) {
@@ -807,6 +826,12 @@ export function layStencilDecor(
     }
     const at = { x: origin.x + x, y: origin.y + y };
     const standing = objectAt(getObjectIndex(state), at);
+    if (isChunkLoadEnforced(state)) {
+      const budget = new LoadBudget(state);
+      if (standing) budget.change(standing, -1);
+      budget.change({ id: '', catalogId, position: at, rotation: 0, elevation: 0 }, 1);
+      if (!budget.fits) return false;
+    }
     if (standing) {
       if (!replaceable?.has(standing.id)) return false;
       if (!mayCoat && isCoating(standing.catalogId)) return false;
@@ -817,7 +842,11 @@ export function layStencilDecor(
       position: at, rotation: 0,
       elevation: surfaceElevation(getCell(state.cells, at.x, at.y)?.terrain),
     };
-    if (!executeCommand(objectPlacementCommand(obj)).success) return false;
+    if (!executeCommand(objectPlacementCommand(obj)).success) {
+      // The base object goes back under its own id, which the load rule credits with its own load.
+      if (standing) executeCommand(objectPlacementCommand(standing));
+      return false;
+    }
     taken.add(i);
     return true;
   };
@@ -844,7 +873,8 @@ export function layStencilDecor(
         // picture at 24 cells, three of its four features are one cell each and every one of them was
         // refused where it stood — a scarce instrument that says nothing is not scarce, it is absent.
         let beside = false;
-        for (const [dx, dy] of NEIGHBOUR_ORDER) {
+        // A fixed neighbour order, so the pass is one function of the picture.
+        for (const [dx, dy] of NEIGHBORS4_NESW) {
           const x = i % sw + dx, y = ((i / sw) | 0) + dy;
           if (x < 0 || y < 0 || x >= sw || y >= sh || !inFigure(y * sw + x)) continue;
           if (mark(y * sw + x, plan.catalogId, false, true) === true) { beside = true; break; }
@@ -871,7 +901,7 @@ export function layStencilDecor(
     // the cells worth marking are the ones that refuse. The four edge neighbours in a fixed order
     // keep the mark against the feature it belongs to and keep the whole pass deterministic.
     let beside = false;
-    for (const [dx, dy] of NEIGHBOUR_ORDER) {
+    for (const [dx, dy] of NEIGHBORS4_NESW) {
       const x = i % sw + dx, y = ((i / sw) | 0) + dy;
       if (x < 0 || y < 0 || x >= sw || y >= sh) continue;
       if (mark(y * sw + x, match.catalogId, true, paved) === true) { beside = true; break; }
@@ -887,19 +917,12 @@ function isCoating(catalogId: string): boolean {
   return getCatalogItem(catalogId)?.traits?.some((trait) => trait.type === 'surfaceCoating') ?? false;
 }
 
-/** The order a mark tries its neighbours in. Fixed, so the pass is one function of the picture. */
-const NEIGHBOUR_ORDER: readonly (readonly [number, number])[] = [[0, -1], [1, 0], [0, 1], [-1, 0]];
-
-
-/**
- * Run a whole plan: the one entry point the generator dispatch calls, so `read` and `fill` are
- * decided in one place rather than at each call site.
- */
-export function runStencilPlan(
+function layStencilPlan(
   state: GridState,
   plan: StencilPlan,
   maxElevation: number,
   executeCommand: (cmd: Command) => ValidationResult,
+  matches?: (ColorEntry | null)[],
 ): StencilResult {
   const placement = { origin: plan.origin, stencil: plan.stencil, ...(plan.allow ? { allow: plan.allow } : {}) };
   const before = plan.decor?.palette.length ? new Set(state.objects.keys()) : null;
@@ -914,7 +937,7 @@ export function runStencilPlan(
       // terrain, which is the same read against a much narrower set of hues. `maxElevation` is that
       // ramp's DEPTH — how many greens the picture may be told in — and applies to this read alone.
       return plan.objectPalette?.length
-        ? layStencilObjectColor(state, placement, plan.objectPalette, executeCommand, plan.contrast ?? 1)
+        ? layStencilObjectColor(state, placement, plan.objectPalette, executeCommand, plan.contrast ?? 1, true, matches)
         : layStencilColor(state, placement, maxElevation, executeCommand, plan.contrast ?? 1, plan.water ?? 'none');
     }
     if (plan.fill?.kind === 'object') return layStencilObjects(state, placement, plan.fill.catalogId, executeCommand);
@@ -943,4 +966,35 @@ export function runStencilPlan(
     };
   }
   return result;
+}
+
+function matchPlanObjects(state: GridState, plan: StencilPlan): (ColorEntry | null)[] {
+  if (plan.read === 'color') return matchObjectColors(state, plan, plan.objectPalette ?? [], plan.contrast ?? 1, true);
+  const matches: (ColorEntry | null)[] = Array(plan.stencil.width * plan.stencil.height).fill(null);
+  const item = plan.fill?.kind === 'object' ? getCatalogItem(plan.fill.catalogId) : undefined;
+  if (!item) return matches;
+  for (const { x, y } of shapeTiles(plan.stencil, item.id)) {
+    if (writable(state, plan.origin.x + x, plan.origin.y + y, plan.allow)) {
+      matches[y * plan.stencil.width + x] = { catalogId: item.id, rgb: 0 };
+    }
+  }
+  return matches;
+}
+
+/**
+ * Run a whole plan: the one entry point the generator dispatch calls, so `read` and `fill` are
+ * decided in one place rather than at each call site.
+ */
+export function runStencilPlan(
+  state: GridState,
+  plan: StencilPlan,
+  maxElevation: number,
+  executeCommand: (cmd: Command) => ValidationResult,
+): StencilResult {
+  const objectPrimary = plan.read === 'color' ? !!plan.objectPalette?.length : plan.fill?.kind === 'object';
+  if (!objectPrimary) return layStencilPlan(state, plan, maxElevation, executeCommand);
+  const prepared = budgetStencil(state, plan, candidate => matchPlanObjects(state, candidate));
+  if (!prepared) return { placed: 0, skipped: 0, budget: 'blocked' };
+  const result = layStencilPlan(state, prepared.plan, maxElevation, executeCommand, prepared.matches);
+  return prepared.adapted ? { ...result, budget: 'adapted' } : result;
 }

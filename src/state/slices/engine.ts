@@ -6,30 +6,36 @@
  *
  * `initMap`/`loadMap` reset the edit slice's per-map layer state (a fresh or loaded map carries no
  * locks/hidden layers over — see the inline comment at the reset), so this slice takes one narrow
- * cross-slice dependency: write access to those four layer fields.
+ * cross-slice dependency: write access to those layer fields (`Deps` below).
  */
+import { readPref, writePref } from '../../core/runtime/prefs';
+import { CHUNK_LOAD_LIMIT } from '../../core/model/game-profile';
+import { getMapStats } from '../map-stats';
 import type { StateCreator } from 'zustand';
 import {
   type GridState,
   type MapTemplate,
   type EditorEvents,
-  type PlacedObject,
   type BlockRef,
 } from '../../core/model/types';
-import { createGrid, createPlazaObject } from '../../core/model/grid-model';
-import { CommandExecutor } from '../../core/commands/command-executor';
+import { createGridState } from '../../core/model/planet';
+import type { CommandExecutor } from '../../core/commands/command-executor';
 import { EventBus } from '../../core/commands/event-bus';
 import type { RuleRegistry } from '../../rules/registry';
-import { roadLookup } from '../object-index';
+import { createExecutor } from '../executor';
 import type { MapNotes } from '../../core/model/types';
 import { limitNotes } from '../../core/model/notes';
 import { attributedNotes } from '../../core/provenance/image-attribution';
-import { catalogLoadValue } from '../catalog';
 import { sameRef } from '../selection';
 import type { EditSlice } from './edit';
+import { parkedFields, type ParkedEditor } from './planet-session';
 import { ANNOTATION_SESSION_RESET, type AnnotationsSlice } from './annotations';
 
 export interface EngineSlice {
+  loadPolicyEpoch: number;
+  loadLimitNotice: boolean;
+  setLoadEnforced: (enabled: boolean) => void;
+  dismissLoadLimitNotice: () => void;
   gridState: GridState | null;
   eventBus: EventBus<EditorEvents>;
   commandExecutor: CommandExecutor | null;
@@ -44,6 +50,8 @@ export interface EngineSlice {
   setMapNotes: (notes: MapNotes) => void;
   initMap: (template: MapTemplate, registry: RuleRegistry) => void;
   loadMap: (state: GridState, registry: RuleRegistry) => void;
+  /** Reinstates a parked map with its own executor, selection, layer state and annotation lanes; constructs nothing. */
+  restoreParkedEditor: (parked: ParkedEditor) => void;
   /**
    * The selected blocks, in the order they were added. `[]` is the ONE representation of
    * "nothing selected"; there is no scalar beside this list. A consumer that can only express one
@@ -58,7 +66,25 @@ export interface EngineSlice {
 type Deps = Pick<EditSlice, 'activeLayer' | 'layerPinned' | 'displayLayer' | 'layerVisibility' | 'layerLocked'>
   & Pick<AnnotationsSlice, 'annotationsEpoch' | keyof typeof ANNOTATION_SESSION_RESET>;
 
+/** What every map swap resets: no display floor, a fresh annotation session (the bump tells the
+ *  annotation views the data under them was swapped, not edited) and a notes bump. */
+const swappedSession = (s: Deps & Pick<EngineSlice, 'notesEpoch'>) => ({
+  displayLayer: null,
+  ...ANNOTATION_SESSION_RESET,
+  annotationsEpoch: s.annotationsEpoch + 1,
+  notesEpoch: s.notesEpoch + 1,
+});
+
 export const createEngineSlice: StateCreator<EngineSlice & Deps, [], [], EngineSlice> = (set, get) => ({
+  loadPolicyEpoch: 0,
+  loadLimitNotice: false,
+  dismissLoadLimitNotice: () => set({ loadLimitNotice: false }),
+  setLoadEnforced: (enabled) => {
+    const grid = get().gridState;
+    if (grid) grid.ignoreChunkLoad = !enabled;
+    writePref('enforceChunkLoad', enabled);
+    set((s) => ({ loadPolicyEpoch: s.loadPolicyEpoch + 1, loadLimitNotice: false }));
+  },
   gridState: null,
   eventBus: new EventBus<EditorEvents>(),
   commandExecutor: null,
@@ -73,55 +99,40 @@ export const createEngineSlice: StateCreator<EngineSlice & Deps, [], [], EngineS
     set((s) => ({ notesEpoch: s.notesEpoch + 1 }));
   },
 
-  initMap: (template, registry) => {
-    const cells = createGrid(template);
-    const objects = new Map<string, PlacedObject>();
-    const plaza = createPlazaObject(template);
-    if (plaza) objects.set(plaza.id, plaza);
-    const gridState: GridState = {
-      template,
-      cells,
-      objects,
-      lockedLayers: new Set(),
-    };
+  initMap: (template, registry) => get().loadMap(createGridState(template), registry),
+
+  loadMap: (gridState, registry) => {
+    // An overloaded map opens with the limit off for itself only; the preference stays the user's.
+    const overloaded = [...getMapStats(gridState).chunks.values()].some((chunk) => chunk.load > CHUNK_LOAD_LIMIT);
+    gridState.ignoreChunkLoad = overloaded || !readPref('enforceChunkLoad');
     const { eventBus } = get();
-    const executor = new CommandExecutor(gridState, eventBus, registry, roadLookup(gridState), catalogLoadValue);
+    const executor = createExecutor(gridState, registry, eventBus);
     set((s) => ({
       gridState,
       commandExecutor: executor,
-      activeLayer: 0,      // a fresh map opens with Ground selected, not an empty Layer 1
-      layerPinned: false,  // and with nothing chosen by hand, so the water brush follows the ground
-      displayLayer: null,
-      // Per-map layer state: carrying the old map's locks/hidden layers over would
-      // show a lock the rules don't enforce (the gridState mirror only re-syncs on
-      // change) and hide fresh paint with no visible cause.
+      loadLimitNotice: overloaded,
+      loadPolicyEpoch: s.loadPolicyEpoch + 1,
+      // Per-map layer state: a new map opens with Ground selected and nothing chosen by hand, so the
+      // water brush follows the ground. Carrying the old map's floor, pin, locks or hidden layers
+      // over would describe terrain this map does not have, show a lock the rules don't enforce
+      // (the gridState mirror only re-syncs on change) and hide fresh paint with no visible cause.
+      activeLayer: 0,
+      layerPinned: false,
       layerVisibility: {},
       layerLocked: {},
-      // The annotation SESSION follows the map the same way; the bump is what tells the
-      // annotation views the data under them was swapped, not edited.
-      ...ANNOTATION_SESSION_RESET,
-      annotationsEpoch: s.annotationsEpoch + 1,
-      notesEpoch: s.notesEpoch + 1,
+      ...swappedSession(s),
     }));
   },
 
-  loadMap: (gridState, registry) => {
-    const { eventBus } = get();
-    const executor = new CommandExecutor(gridState, eventBus, registry, roadLookup(gridState), catalogLoadValue);
+  // The parked map keeps its own policy: the planet session offers no load switch.
+  restoreParkedEditor: (parked) => {
     set((s) => ({
-      gridState,
-      commandExecutor: executor,
-      // Per-map, exactly as in `initMap`: a floor chosen for the map being left, and a hand's pin
-      // on it, describe terrain the loaded map does not have — and the pin GOVERNS what the water
-      // brush does, so carrying one over would have the previous session quietly steering this one.
-      activeLayer: 0,
-      layerPinned: false,
-      displayLayer: null,
-      layerVisibility: {},
-      layerLocked: {},
-      ...ANNOTATION_SESSION_RESET,
-      annotationsEpoch: s.annotationsEpoch + 1,
-      notesEpoch: s.notesEpoch + 1,
+      gridState: parked.gridState,
+      commandExecutor: parked.executor,
+      loadPolicyEpoch: s.loadPolicyEpoch + 1,
+      selection: parked.selection,
+      ...swappedSession(s),
+      ...parkedFields(parked),
     }));
   },
 

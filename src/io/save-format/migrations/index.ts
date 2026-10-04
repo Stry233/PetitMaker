@@ -1,4 +1,5 @@
 import type { Migration } from '../types';
+import { v1ToV2 } from './001-v1-to-v2';
 
 /**
  * The migration chain, append-only and in ascending version order. Each entry
@@ -11,8 +12,5 @@ import type { Migration } from '../types';
  *    keeps working after the in-memory model changes.
  *  - One file per step (NNN-vX-to-vY.ts), each shipping with a frozen fixture of
  *    the version it consumes (src/__tests__/io/__fixtures__/).
- *
- * The format has only ever been v1, so the chain is empty. The first breaking
- * change adds one file here and bumps CURRENT_VERSION in ../types.
  */
-export const MIGRATIONS: Migration[] = [];
+export const MIGRATIONS: Migration[] = [v1ToV2];

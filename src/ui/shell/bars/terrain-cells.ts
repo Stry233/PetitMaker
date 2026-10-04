@@ -28,6 +28,7 @@ import lineBar from '../../../assets/shell/shelf-mountain/tools/line/roundrect-2
 import curveArc from '../../../assets/shell/shelf-mountain/tools/curve/rect.svg';
 import rectShape from '../../../assets/shell/shelf-mountain/tools/rect-tool/roundrect-2.svg';
 import circleShape from '../../../assets/shell/shelf-mountain/tools/circle-tool/ellipse.svg';
+import { BRUSH_SIZE } from '../../../core/model/edit-mode';
 
 /** Build modes that share the terrain tool row. */
 export type TerrainSurface = Exclude<BuildMode, null | 'object' | 'generate' | 'annotate'>;
@@ -145,8 +146,8 @@ export const CELL = { y: 1729, w: 166, h: 115 } as const;
  *
  * Near the size the design's own eleven drawings average, so the row keeps the weight the document
  * gives it and only the SPREAD goes: the mountain mass reads at 91 where the trim scissors read at
- * 51, and a row whose members differ that far draws the same tool at plainly different sizes on 山体
- * and 路面. It stays at 62 rather than tracking that average, which drawing
+ * 51, and a row whose members differ that far draws the same tool at plainly different sizes on Mountains
+ * and Roads. It stays at 62 rather than tracking that average, which drawing
  * the line and curve handles lifted to 67: following it would grow the nine cells nobody asked about.
  */
 export const GLYPH = 62;
@@ -221,7 +222,7 @@ export const BADGE = { rise: CELL.y - 1711, w: 44, h: 44 } as const;
 export const CAPTION = { y: 1858 } as const;
 
 /** The brush-size slider. `first`/`last` are the tick centres the knob's centre travels between;
- *  the range is 1 to 5 (the drawing's three dots are tick marks, not the number of steps). */
+ *  the range is `BRUSH_SIZE` (the drawing's three dots are tick marks, not the number of steps). */
 export const BRUSH = {
   track: { x: 3210, y: 1765, w: 454, h: 79 },
   tick: 22,
@@ -231,14 +232,12 @@ export const BRUSH = {
   last: 3613,
   centreY: 1804,
   readoutRight: 3197,
-  readoutSize: 44.4,
-  min: 1,
-  max: 5,
+  ...BRUSH_SIZE,
 } as const;
 
 /**
- * The road-surface swatches, in design px, from the drawing the design source puts above 路面's
- * tool row (`路面下边栏/路面`, four tiles at a 172 pitch starting at the row's own left edge).
+ * The road-surface swatches, in design px, from the drawing the design source puts above the Roads
+ * tool row (the road-surface strip in the Roads bottom bar, four tiles at a 172 pitch starting at the row's own left edge).
  *
  * DRAWN, not the extracted art. Each tile is an outer rounded square with a smaller one inset, and
  * the inner one is the SURFACE's own colour, which is a catalog fact — the document drew all four

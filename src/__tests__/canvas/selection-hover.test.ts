@@ -2,8 +2,8 @@
  * The hover-preview decision: while the pointer rests over the map in a
  * selection-capable mode (Hand, or ObjectPlacer with nothing to place), a grey
  * box previews exactly what a click would select — the hovered object's
- * footprint, or the 1×1 terrain cell. Nothing shows outside those modes, over
- * the already-selected block, during region selection, or off the map.
+ * footprint, or the 1×1 terrain cell, selected or not. Nothing shows outside those modes, during
+ * region selection, or off the map.
  */
 import { describe, it, expect } from 'vitest';
 import { isDraggableObject, objectUnderPointer, selectionHoverBox } from '../../canvas/interaction/selection-hover';
@@ -13,6 +13,7 @@ import type { GridState, PlacedObject } from '../../core/model/types';
 import { makeState } from '../rules/_helpers';
 import { registerCatalogItem } from '../../state/catalog';
 import { createPlazaObject } from '../../core/model/grid-model';
+import { landmarkAt } from '../fixtures/planet';
 
 registerCatalogItem({
   id: 'hover-house', category: ItemCategory.Building, name: { en: 'Hover House' },
@@ -33,36 +34,34 @@ function stateWithHouse(): GridState {
 describe('selectionHoverBox', () => {
   it('previews the hovered object footprint in Hand mode (macro grid)', () => {
     const s = stateWithHouse();
-    expect(selectionHoverBox(s, { x: 6, y: 7 }, ToolType.Hand, null, false, []))
+    expect(selectionHoverBox(s, { x: 6, y: 7 }, ToolType.Hand, null, false))
       .toEqual({ x: 5, y: 6, w: 3, h: 2, terrainMode: false });
   });
 
   it('previews the 1×1 terrain cell on empty ground (micro grid)', () => {
     const s = stateWithHouse();
-    expect(selectionHoverBox(s, { x: 12, y: 3 }, ToolType.Hand, null, false, []))
+    expect(selectionHoverBox(s, { x: 12, y: 3 }, ToolType.Hand, null, false))
       .toEqual({ x: 12, y: 3, w: 1, h: 1, terrainMode: true });
   });
 
   it('also active for ObjectPlacer with NO item selected, but not when an item is armed', () => {
     const s = stateWithHouse();
-    expect(selectionHoverBox(s, { x: 6, y: 7 }, ToolType.ObjectPlacer, null, false, [])).not.toBeNull();
-    expect(selectionHoverBox(s, { x: 6, y: 7 }, ToolType.ObjectPlacer, 'hover-house', false, [])).toBeNull();
+    expect(selectionHoverBox(s, { x: 6, y: 7 }, ToolType.ObjectPlacer, null, false)).not.toBeNull();
+    expect(selectionHoverBox(s, { x: 6, y: 7 }, ToolType.ObjectPlacer, 'hover-house', false)).toBeNull();
   });
 
   it('inactive for paint tools, during region selection, and off the map', () => {
     const s = stateWithHouse();
-    expect(selectionHoverBox(s, { x: 6, y: 7 }, ToolType.TerrainBrush, null, false, [])).toBeNull();
-    expect(selectionHoverBox(s, { x: 6, y: 7 }, ToolType.Hand, null, true, [])).toBeNull();
-    expect(selectionHoverBox(s, { x: -1, y: 7 }, ToolType.Hand, null, false, [])).toBeNull();
-    expect(selectionHoverBox(s, { x: 6, y: 25 }, ToolType.Hand, null, false, [])).toBeNull();
+    expect(selectionHoverBox(s, { x: 6, y: 7 }, ToolType.TerrainBrush, null, false)).toBeNull();
+    expect(selectionHoverBox(s, { x: 6, y: 7 }, ToolType.Hand, null, true)).toBeNull();
+    expect(selectionHoverBox(s, { x: -1, y: 7 }, ToolType.Hand, null, false)).toBeNull();
+    expect(selectionHoverBox(s, { x: 6, y: 25 }, ToolType.Hand, null, false)).toBeNull();
   });
 
-  it('shows nothing over the block that is already selected (the orange ring is there)', () => {
+  it('previews a selected block too, so the pointer always shows what it is over', () => {
     const s = stateWithHouse();
-    expect(selectionHoverBox(s, { x: 6, y: 7 }, ToolType.Hand, null, false, [{ kind: 'object', id: 'h1' }])).toBeNull();
-    expect(selectionHoverBox(s, { x: 12, y: 3 }, ToolType.Hand, null, false, [{ kind: 'terrain', x: 12, y: 3 }])).toBeNull();
-    // ...but still previews OTHER targets while something is selected.
-    expect(selectionHoverBox(s, { x: 12, y: 3 }, ToolType.Hand, null, false, [{ kind: 'object', id: 'h1' }]))
+    expect(selectionHoverBox(s, { x: 6, y: 7 }, ToolType.Hand, null, false)).not.toBeNull();
+    expect(selectionHoverBox(s, { x: 12, y: 3 }, ToolType.Hand, null, false))
       .toEqual({ x: 12, y: 3, w: 1, h: 1, terrainMode: true });
   });
 
@@ -70,11 +69,11 @@ describe('selectionHoverBox', () => {
     // The plaza is anchored at x.5/y.5 and the hover box is drawn from this rect verbatim
     // (`OverlayLayer.showHover`), so the fractional origin has to survive the decision.
     const s = makeState(120, 120) as GridState;
-    s.template.plaza = { x: 40.5, y: 40.5, width: 20, height: 27, elevation: 1 };
+    s.template.plaza = landmarkAt(40.5, 40.5);
     const plaza = createPlazaObject(s.template)!;
     s.objects.set(plaza.id, plaza);
-    expect(selectionHoverBox(s, { x: 45, y: 45 }, ToolType.Hand, null, false, []))
-      .toEqual({ x: 40.5, y: 40.5, w: 20, h: 27, terrainMode: false });
+    expect(selectionHoverBox(s, { x: 45, y: 45 }, ToolType.Hand, null, false))
+      .toEqual({ x: 40.5, y: 40.5, w: s.template.plaza.width, h: s.template.plaza.height, terrainMode: false });
   });
 
   it('a ramp is draggable: its drop re-validates through the snapping trait, so a bad drop refuses', () => {
@@ -93,18 +92,6 @@ describe('selectionHoverBox', () => {
     s.template.plaza = { x: 40, y: 40, width: 20, height: 20, elevation: 1 };
     const plaza = createPlazaObject(s.template)!;
     expect(isDraggableObject(plaza)).toBe(false);
-  });
-
-  it('reads the WHOLE selection: any member is where a press picks the group up', () => {
-    const s = stateWithHouse();
-    const second: PlacedObject = {
-      id: 'h2', catalogId: 'hover-house', position: { x: 12, y: 3 },
-      rotation: 0, elevation: 0,
-    };
-    s.objects.set(second.id, second);
-    const group = [{ kind: 'object', id: 'h1' }, { kind: 'object', id: 'h2' }] as const;
-    // ...and neither member gets a grey would-select box, since both already wear a ring.
-    expect(selectionHoverBox(s, { x: 13, y: 3 }, ToolType.Hand, null, false, group)).toBeNull();
   });
 });
 

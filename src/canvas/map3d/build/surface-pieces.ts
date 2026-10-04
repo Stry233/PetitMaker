@@ -12,13 +12,13 @@
  * keeps, `cornerComplement` for what it opens, `cutBackingByCorner` for what stands behind that, and
  * `patchCornerSplit` for the base/fillet pass of a Γ patch.
  */
-import { CellZone, TerrainType, type CornerTrim, type GridState, type TerrainCell } from '../../../core/model/types';
+import { TerrainType, type CornerTrim, type GridState, type TerrainCell } from '../../../core/model/types';
 import { getCell } from '../../../core/model/grid-model';
 import { solidTopOf } from '../../../core/edge-cut/terrain-silhouette';
 import { patchCornerSplit } from '../../../core/edge-cut/patch-corners';
 import { cutBackingByCorner, type CutBacking } from '../../../core/edge-cut/cut-backing';
 import { CORNER_POS } from '../../../core/edge-cut/corner-index';
-import { GROUND_SLAB_Y, SEA_Y, layerToY, waterSurfaceY } from '../core/coords';
+import { GROUND_SLAB_Y, layerToY, waterSurfaceY, groundYForZone } from '../core/coords';
 import { cornerComplement, cornerPolygon, type Pt } from './quadrant-poly';
 
 /** Quadrant top-left offsets within a cell, in the corner order [TL, TR, BL, BR] — the unit-cell
@@ -30,7 +30,8 @@ export interface SurfacePiece { poly: Pt[]; y: number }
 
 /** The height of the ground under a cell: the sea for a void cell, the land slab otherwise. */
 function groundYOf(state: GridState, x: number, y: number): number {
-  return getCell(state.cells, x, y)?.zone === CellZone.Void ? SEA_Y : GROUND_SLAB_Y;
+  const zone = getCell(state.cells, x, y)?.zone;
+  return zone === undefined ? GROUND_SLAB_Y : groundYForZone(zone);
 }
 
 /** The height a cut corner opens onto: its backing surface, or the ground where nothing backs it. */
@@ -57,8 +58,7 @@ function quadrantPieces(x0: number, z0: number, plan: (i: number) => QuadrantPla
   return out;
 }
 
-/** A Γ patch's two passes: the fillet at the cell's cosmetic tier, the real base under everything
- *  else. `tierY` is the type's own surface height (a water fillet floats its SEA_Y above its layer). */
+/** A Γ patch's two passes use the type's own height for both the fillet and its real base. */
 function patchPieces(
   state: GridState, x: number, y: number, t: TerrainCell, x0: number, z0: number,
   ground: number, tierY: (tier: number) => number,
@@ -90,8 +90,7 @@ export function cellSurfacePieces(state: GridState, x: number, y: number, x0: nu
   const trimmed = !!corners && corners.some((c) => c !== 'square');
   const neighborAt = (dx: number, dy: number) => getCell(state.cells, x + dx, y + dy)?.terrain;
 
-  // A GROUND-ISLET cut: the macro grass floor stands, and the trimmed corner opens onto the water
-  // the islet sits in.
+  // A ground-islet cut keeps grass inside the trim and reveals water in its complement.
   if (t.type === TerrainType.None) {
     if (!trimmed) return whole(ground);
     const backs = cutBackingByCorner(t, 0, neighborAt);

@@ -3,8 +3,8 @@
  * at this map cell, in the modes where a click selects (Hand, or ObjectPlacer
  * with nothing armed to place — the same predicate as the pointer machine's
  * block-selection path). The overlay draws the returned rect; null means no
- * preview (wrong mode, off the map, region selection active, or the target is
- * a member of the selection — its orange ring is feedback enough).
+ * preview (wrong mode, off the map, or region selection active). A selected target previews too,
+ * so the pointer always shows what it is over.
  *
  * Also home to `objectUnderPointer` (what is under the pointer, mesh pick preferred over the
  * footprint test) and `isDraggableObject` (whether that object can be picked up), the two
@@ -12,7 +12,6 @@
  */
 import { ToolType } from '../../core/model/types';
 import type { GridState, MacroCoord, PlacedObject } from '../../core/model/types';
-import type { BlockRef } from '../../state/store';
 import { getCatalogItem } from '../../state/catalog';
 import { getPlacedObjectSize } from '../../state/object-geometry';
 import { getObjectIndex, objectAt } from '../../state/object-index';
@@ -44,7 +43,6 @@ export function selectionHoverBox(
   activeTool: ToolType,
   selectedItemId: string | null,
   selectingRegion: boolean,
-  selection: readonly BlockRef[],
   /** A mesh-precise hit from the view (3D raycast), preferred over the
    *  footprint test so hover matches what a click would select. */
   meshHitId?: string,
@@ -54,11 +52,9 @@ export function selectionHoverBox(
 
   const hit = objectUnderPointer(gs, macro, meshHitId);
   if (hit) {
-    if (selection.some((r) => r.kind === 'object' && r.id === hit.id)) return null;
     const size = getPlacedObjectSize(hit);
     return { x: hit.position.x, y: hit.position.y, w: size.w, h: size.h, terrainMode: false };
   }
-  if (selection.some((r) => r.kind === 'terrain' && r.x === macro.x && r.y === macro.y)) return null;
   return { x: macro.x, y: macro.y, w: 1, h: 1, terrainMode: true };
 }
 

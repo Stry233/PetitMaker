@@ -1,4 +1,3 @@
-// src/io/share/raster/zlib.ts
 // Zlib/DEFLATE compression and decompression via the browser's Compression Streams API.
 import { ShareError } from '../errors';
 

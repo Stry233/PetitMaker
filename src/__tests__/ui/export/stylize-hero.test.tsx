@@ -1,10 +1,10 @@
 /**
- * stylize-hero.test.tsx — the connection page of the stylize window.
+ * The connection page of the stylize window.
  *
  * THE WINDOW OPENS ON THE STUDIO, so every scenario here first walks to the connection page the way
  * a hand does: pick a direction that needs a key, and take the pane's own verb. What is under test
  * from there is the form's own decision-making, so the model list is an injected fake and no
- * network is touched: which ingredients arm 开始创作, how the model row walks from empty to a
+ * network is touched: which ingredients arm Start creating, how the model row walks from empty to a
  * pre-picked list, what a listless endpoint leaves standing, and what a refused verify does to the
  * permanent status slot. The debounce is driven on fake timers, since the probe is what every one
  * of those states hangs off.

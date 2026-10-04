@@ -25,7 +25,7 @@
  * its own; it just never reaches past its own planting to do it.
  */
 import { ItemCategory, type GridState, type MacroCoord, type PlacedObject } from '../../core/model/types';
-import { categoryOf, getPlaceableByCategory } from '../../state/catalog';
+import { catalogLoadValue, categoryOf, getPlaceableByCategory } from '../../state/catalog';
 import { makeCtx, tryPlace } from '../placement/object';
 import type { SpeciesPicker } from '../placement/nature';
 import { objectPlacementCommand, removeObjectCommand } from '../objects/object-placer';
@@ -43,7 +43,7 @@ const TIER_SALT = 0x27d4eb2f;
  *  one specimen that stands at the oldest centre once the stand reaches climax. Keys are SPECIES
  *  prefixes, matched longest-first exactly as `habitat.ts` matches its preference rows, so a
  *  colourway inherits its species' tier. */
-export interface SuccessionPalette {
+interface SuccessionPalette {
   tiers: readonly (readonly string[])[];
   grand: string;
 }
@@ -130,7 +130,7 @@ export function ageable(state: GridState, cells: readonly MacroCoord[], holdIds:
     .filter((o) => holdIds.has(o.id) && disc.has(o.position.y * W + o.position.x) && successionPalette(categoryOf(o)));
 }
 
-export interface AgeInput {
+interface AgeInput {
   /** The disc the press works over — a plant outside it is another stand's business. */
   cells: readonly MacroCoord[];
   /** The press's own aim point, in cells. */
@@ -155,7 +155,9 @@ export interface AgeInput {
  * clone during a macro build), so both land inside the one stroke group and the whole hold still
  * folds to a single undo entry. A plant already at its tier is left alone, which is what keeps a
  * long hold from churning every species on every burst; a replacement the rules refuse is followed
- * by a re-place of the original, which is the same command that put it there a moment ago.
+ * by a re-place of the original, which is the same command that put it there a moment ago. The
+ * exception is a stray grand specimen: it never returns, so the grand stays one per stand however
+ * full the region is.
  *
  * It ages only `input.holdIds`: this hold's own stand, never a plant another press or a person left
  * standing in the same disc. The disc still bounds it.
@@ -204,13 +206,16 @@ export function ageStand(ctx: MacroContext, input: AgeInput): void {
     const category = categoryOf(obj)!;
     const palette = successionPalette(category)!;
     const tier = tierAt(input.stage, dist(obj), input.ringWidth);
+    // The stage-1 community can hand the grand species out like any other; only the ONE specimen
+    // above may keep it.
+    const shed = obj !== grandAt && obj.catalogId.startsWith(palette.grand);
     let want: string;
+    let pool: string[] = [];
     if (obj === grandAt) want = SUCCESSION[input.lead]!.grand;
-    // Already the age it should be — and not wearing the grand species, which the stage-1 community
-    // can hand out like any other and only the ONE specimen above may keep.
-    else if ((tierOf(obj.catalogId, palette) ?? 1) === tier && !obj.catalogId.startsWith(palette.grand)) continue;
+    // Already the age it should be.
+    else if ((tierOf(obj.catalogId, palette) ?? 1) === tier && !shed) continue;
     else {
-      const pool = tierPool(category, palette, tier);
+      pool = tierPool(category, palette, tier);
       if (pool.length === 0) continue;
       want = communityFor(tier)(category, pool, obj.position.x, obj.position.y, obj.position.y * W + obj.position.x);
     }
@@ -218,8 +223,15 @@ export function ageStand(ctx: MacroContext, input: AgeInput): void {
 
     const original: PlacedObject = { ...obj, position: { ...obj.position } };
     if (!executor.execute(removeObjectCommand(obj)).success) continue;
-    if (!tryPlace(place, want, obj.position.x, obj.position.y, obj.rotation)) {
+    if (tryPlace(place, want, obj.position.x, obj.position.y, obj.rotation)) continue;
+    if (!shed) {
       executor.execute(objectPlacementCommand(original));
+      continue;
     }
+    // A plant that must shed the grand species and whose drawn replacement the rules refuse (a full
+    // region refuses a heavier species) takes the lightest one of its tier that fits, or leaves.
+    const fallbacks = pool.filter((id) => id !== want)
+      .sort((a, b) => catalogLoadValue(a) - catalogLoadValue(b) || a.localeCompare(b));
+    for (const id of fallbacks) if (tryPlace(place, id, obj.position.x, obj.position.y, obj.rotation)) break;
   }
 }

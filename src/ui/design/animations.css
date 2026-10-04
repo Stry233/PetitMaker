@@ -1,5 +1,12 @@
 /* ── PetitMaker Animation System ─────────────────────────── */
 
+:root {
+  --focus-width: 3px;
+  --focus-offset: 2px;
+  --control-clearance: calc(var(--focus-width) + var(--focus-offset) + 2px);
+  --scrollbar-size: 12px;
+}
+
 /* Native form controls otherwise select a browser font instead of inheriting their surface's. */
 button, input, select, textarea {
   font-family: inherit;
@@ -33,14 +40,20 @@ img {
   user-select: none;
 }
 
+/* Older engines reserve a standing track through overflow rather than scrollbar-gutter. */
+@supports not (scrollbar-gutter: stable) {
+  .pw-scroll-stable { overflow-y: scroll !important; }
+  .pw-scroll-balanced { padding-left: var(--scrollbar-size); }
+}
+
 /* Cozy rounded scrollbars: a thin pill thumb on a transparent track, warm brown by default,
    recolourable per container through --sb-thumb / --sb-thumb-hover. Drawn from the pseudo-elements
    on every device: Chromium ignores them once `scrollbar-width` or `scrollbar-color` is set on the
    element, and Android's own overlay bar is a square, so the standard properties stand only where
    the pseudo-elements do not exist. */
 *::-webkit-scrollbar {
-  width: 12px;
-  height: 12px;
+  width: var(--scrollbar-size);
+  height: var(--scrollbar-size);
 }
 *::-webkit-scrollbar-track {
   background: transparent;
@@ -59,10 +72,7 @@ img {
 }
 /* A touch bar is always visible, so it takes less of the edge. */
 @media (pointer: coarse) {
-  *::-webkit-scrollbar {
-    width: 8px;
-    height: 8px;
-  }
+  :root { --scrollbar-size: 8px; }
   *::-webkit-scrollbar-thumb {
     border-width: 2px;
   }
@@ -258,9 +268,9 @@ img {
    its own. An element gets one outline, which is the whole reason it is drawn
    with this property. */
 *:focus-visible {
-  outline: 3px solid var(--focus-ring, #fb923c) !important;
-  outline-offset: 2px !important;
-  box-shadow: 0 0 0 7px var(--focus-halo, transparent);
+  outline: var(--focus-width) solid var(--focus-ring, #fb923c) !important;
+  outline-offset: var(--focus-offset) !important;
+  box-shadow: 0 0 0 var(--control-clearance) var(--focus-halo, transparent);
 }
 
 /* THE RING SAYS WHERE THE KEYBOARD IS, so it is drawn only where the keyboard
@@ -301,8 +311,8 @@ img {
    for. `--focus-ring-field` is what a field wears instead; unset, it keeps the
    ordinary ring. */
 .pw-field-wrap:has(.pw-field-input:focus-visible) {
-  outline: 3px solid var(--focus-ring-field, var(--focus-ring, #fb923c));
-  outline-offset: 2px;
+  outline: var(--focus-width) solid var(--focus-ring-field, var(--focus-ring, #fb923c));
+  outline-offset: var(--focus-offset);
 }
 
 /* The layer list hides its scrollbar so the selection pill — intentionally wider than the smoky

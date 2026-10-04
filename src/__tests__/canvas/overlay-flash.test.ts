@@ -6,11 +6,12 @@
  * undo/redo resolves to everything the step changed, each part on its own grid.
  */
 import { describe, it, expect } from 'vitest';
-import { errorFlashSignature, shouldFlashErrors, resolveErrorFlashCells, resolveErrorFlashRects, resolveHistoryFlash, resolveCellsFlash } from '../../canvas/map2d/layers/error-flash';
+import { errorFlashSignature, shouldFlashErrors, resolveErrorFlashCells, resolveErrorFlashRects, resolveHistoryFlash, resolveCellsFlash } from '../../canvas/error-flash';
 import { ItemCategory, type GridState, type PlacedObject, type Rect, type ValidationError } from '../../core/model/types';
 import { bodyEvidence } from '../../core/model/grid-model';
 import { makeState } from '../rules/_helpers';
 import { registerCatalogItem } from '../../state/catalog';
+import { PLAZA_RECT } from '../fixtures/planet';
 
 function err(cells: { x: number; y: number }[], grid?: 'macro' | 'micro'): ValidationError {
   return { ruleId: 'T', message: 'test', cells, severity: 'error', ...(grid ? { grid } : {}) };
@@ -54,12 +55,12 @@ describe('resolveErrorFlashCells', () => {
 
 describe('body evidence (ValidationError.rects)', () => {
   it('an error that names a body is drawn as the body, never as the cells it rounds out to', () => {
-    const e = bodyErr([{ x: 76.5, y: 58.5, w: 20, h: 27 }], 'macro');
+    const e = bodyErr([{ ...PLAZA_RECT }], 'macro');
     // The whole-cell evidence is still reported (non-drawing readers), but the flash takes the rect.
-    expect(e.cells.length).toBe(21 * 28);
+    expect(e.cells.length).toBe((PLAZA_RECT.w + 1) * (PLAZA_RECT.h + 1));
     expect(resolveErrorFlashCells([e], false)).toEqual([]);
     expect(resolveErrorFlashRects([e], false))
-      .toEqual([{ x: 76.5, y: 58.5, w: 20, h: 27, micro: false }]);
+      .toEqual([{ ...PLAZA_RECT, micro: false }]);
   });
 
   it('a body takes its error\'s grid, falling back to the command-type default', () => {

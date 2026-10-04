@@ -1,0 +1,9 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "types": ["node"],
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "target": "ES2022"
+  },
+  "include": ["scripts/*.mts", "scripts/*.d.ts", "src/vite-env.d.ts"]
+}

@@ -6,7 +6,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { useEditorStore } from '../../../state/store';
-import { setReducedMotion, __resetMotionState } from '../../../canvas/map2d/motion-state';
+import { setReducedMotion, __resetMotionState } from '../../../core/runtime/motion-state';
 import { useAnimatedUiZoom, useUiZooming, __resetUiZoomAnim } from '../../../ui/design/ui-zoom-anim';
 import { setStoreState } from '../../_store';
 

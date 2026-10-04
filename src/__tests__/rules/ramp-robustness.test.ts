@@ -19,7 +19,6 @@ describe('ramp policy robustness', () => {
     return {
       type: CommandType.PlaceObject, timestamp: 0,
       object: { id: 'r1', catalogId: 'ramp-park-steps', position: { x, y }, rotation: 0, elevation: 0 },
-      loadValue: 80,
     };
   }
 
@@ -32,7 +31,7 @@ describe('ramp policy robustness', () => {
 
   it('rejects a ramp whose low run is WATER at the matching elevation', () => {
     const state = plateau();
-    // ground-level water inside the would-be low run (deck rows y15..18, x8..10 incl. bleed)
+    // ground-level water inside the would-be low run (deck rows y15..16, x8..10 incl. bleed)
     setTerrain(state, 8, 16, TerrainType.Water, 0);
     setTerrain(state, 9, 16, TerrainType.Water, 0);
     const cmd = placeRamp(8, 14);

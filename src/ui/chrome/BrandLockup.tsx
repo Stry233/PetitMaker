@@ -18,7 +18,7 @@ import { BrandName } from './BrandName';
 /** 32px of gap per 172px of logo, measured off the 796x228 masthead artboard. */
 const GAP_RATIO = 32 / 172;
 
-export interface BrandLockupProps {
+interface BrandLockupProps {
   /** The logo's edge length in css px. The name and gap scale from it. */
   size: number;
   /** Show the localized tagline under the name. */

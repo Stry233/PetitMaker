@@ -180,7 +180,7 @@ describe('hue is spent on tone where the palette has only tone', () => {
     expect(hueReach(1, RAMP)).toBeCloseTo(((RAMP.hi - RAMP.lo) * HUE_RANGE_SHARE) / 2, 5);
   });
 
-  it('is one answer per picture, asked twice', () => {
+  it('hueToneOffsets is one answer per picture, asked twice', () => {
     const stencil = paint(16, (x, y) => hueAtTone(x + y > 16 ? RED : BLUE, 120 + (x % 3) * 8));
     expect([...hueToneOffsets(stencil, () => true, FULL_REACH)!])
       .toEqual([...hueToneOffsets(stencil, () => true, FULL_REACH)!]);
@@ -208,78 +208,7 @@ describe('the areas a small box spends its palette on', () => {
   const all = (): boolean => true;
   const colourOf = (s: Stencil) => (i: number): number => s.color[i] ?? 0;
 
-  it('finds one area per coherent colour, 4-connected', () => {
-    const side = 8;
-    const s = paint(side, (x) => (x < 4 ? 0x203040 : 0xc0d0e0));
-    const areas = coherentAreas(s, all, colourOf(s));
-    expect(areas).toHaveLength(2);
-    expect(areas[0]!.cells).toHaveLength(side * side / 2);
-    expect(areas.reduce((sum, a) => sum + a.cells.length, 0)).toBe(side * side);
-  });
-
-  it('counts two blocks touching only at a corner as two areas, the way the map does', () => {
-    // Two 2x2 blocks of one colour, corner to corner. A diagonal touch is a point and nothing passes
-    // through a point, so this is two areas of four cells rather than one of eight — and both are big
-    // enough that the speck fold has no say in it.
-    const side = 8;
-    const block = (x: number, y: number): boolean =>
-      (x >= 1 && x < 3 && y >= 1 && y < 3) || (x >= 3 && x < 5 && y >= 3 && y < 5);
-    const s = paint(side, (x, y) => (block(x, y) ? 0x102030 : 0xf0f0f0));
-    const areas = coherentAreas(s, all, colourOf(s));
-    const dark = areas.filter((a) => a.cells.length === 4);
-    expect(dark).toHaveLength(2);
-  });
-
-  it('folds a speck into the neighbour it is nearest in colour', () => {
-    // A dark field, a light half, and one mid cell between them: the mid cell is a speck and joins
-    // whichever side it is closer to rather than spending an entry of its own.
-    const side = 8;
-    const dark = 0x202020, light = 0xe0e0e0, nearlyLight = 0xd2d2d2;
-    const s = paint(side, (x, y) => {
-      if (x === 4 && y === 4) return nearlyLight;
-      return x < 4 ? dark : light;
-    });
-    const areas = coherentAreas(s, all, colourOf(s));
-    expect(areas).toHaveLength(2);
-    const holding = areas.find((a) => a.cells.includes(4 * side + 4))!;
-    expect(luma(holding.rgb)).toBeGreaterThan(128);        // it joined the light half, not the dark one
-    for (const area of areas) expect(area.cells.length).toBeGreaterThanOrEqual(AREA_MIN);
-  });
-
-  it('keeps a lone cell with no neighbour to join', () => {
-    // One covered cell in the middle of nothing: there is no area to fold it into, and dropping it
-    // would take a cell of the picture off the map.
-    const side = 5;
-    const coverage = new Uint8Array(side * side);
-    coverage[2 * side + 2] = 255;
-    const s: Stencil = { width: side, height: side, coverage, color: new Uint32Array(side * side).fill(0x334455) };
-    const areas = coherentAreas(s, all, colourOf(s));
-    expect(areas).toHaveLength(1);
-    expect(areas[0]!.cells).toEqual([2 * side + 2]);
-  });
-
-  it('reads only the cells a run may write', () => {
-    const side = 6;
-    const s = paint(side, () => 0x445566);
-    const leftHalf = (i: number): boolean => i % side < 3;
-    const areas = coherentAreas(s, leftHalf, colourOf(s));
-    expect(areas.reduce((sum, a) => sum + a.cells.length, 0)).toBe(side * 3);
-  });
-
-  it('is one answer per picture, asked twice', () => {
-    const side = 10;
-    const s = paint(side, (x, y) => ((x * 3 + y * 5) % 7 < 3 ? 0x203040 : 0xa0b0c0));
-    const once = coherentAreas(s, all, colourOf(s)).map((a) => a.cells.join(','));
-    const twice = coherentAreas(s, all, colourOf(s)).map((a) => a.cells.join(','));
-    expect(once).toEqual(twice);
-  });
-});
-
-describe('the areas a small box spends its palette on', () => {
-  const all = (): boolean => true;
-  const colourOf = (s: Stencil) => (i: number): number => s.color[i] ?? 0;
-
-  it('finds one area per coherent colour, 4-connected', () => {
+  it('coherentAreas finds one area per coherent colour, 4-connected', () => {
     const side = 8;
     const s = paint(side, (x) => (x < 4 ? 0x203040 : 0xc0d0e0));
     const areas = coherentAreas(s, all, colourOf(s));
@@ -288,7 +217,7 @@ describe('the areas a small box spends its palette on', () => {
     expect(areas.reduce((sum, a) => sum + a.cells.length, 0)).toBe(side * side);
   });
 
-  it('counts two blocks touching only at a corner as two areas, the way the map does', () => {
+  it('coherentAreas counts two blocks touching only at a corner as two areas, the way the map does', () => {
     // A diagonal touch is a point and nothing passes through a point, so this is two areas of four
     // cells rather than one of eight — and both are big enough that the speck fold has no say in it.
     const side = 8;
@@ -320,7 +249,7 @@ describe('the areas a small box spends its palette on', () => {
     expect(dark.reduce((sum, a) => sum + a.cells.length, 0)).toBe(side * side - (side - 2) ** 2);
   });
 
-  it('keeps a lone cell with no neighbour to join', () => {
+  it('coherentAreas keeps a lone cell with no neighbour to join', () => {
     const side = 5;
     const coverage = new Uint8Array(side * side);
     coverage[2 * side + 2] = 255;
@@ -333,7 +262,7 @@ describe('the areas a small box spends its palette on', () => {
     expect(areas[0]!.cells).toEqual([2 * side + 2]);
   });
 
-  it('reads only the cells a run may write', () => {
+  it('coherentAreas reads only the cells a run may write', () => {
     const side = 6;
     const s = paint(side, () => 0x445566);
     const areas = coherentAreas(s, (i) => i % side < 3, colourOf(s));
@@ -349,7 +278,7 @@ describe('the areas a small box spends its palette on', () => {
     expect(depth[side + 1]).toBe(2);
   });
 
-  it('is one answer per picture, asked twice', () => {
+  it('coherentAreas is one answer per picture, asked twice', () => {
     const side = 10;
     const s = paint(side, (x, y) => ((x * 3 + y * 5) % 7 < 3 ? 0x203040 : 0xa0b0c0));
     const once = coherentAreas(s, all, colourOf(s)).map((a) => a.cells.join(','));
@@ -533,7 +462,7 @@ describe('a small box composes the picture in regions', () => {
     expect(merged.areas[merged.protect]!.cells).toEqual(areas[1]!.cells);
   });
 
-  it('is one answer per picture, asked twice', () => {
+  it('mergeToTarget is one answer per picture, asked twice', () => {
     const side = 12;
     const s = paint(side, (x, y) => (((x * 5 + y * 3) % 11) << 16) | (((x * 7) % 13) << 8) | ((y * 5) % 17));
     const areas = coherentAreas(s, all, colourOf(s));
@@ -668,7 +597,7 @@ describe('a small box borrows a hue its own palette has none of', () => {
     })).toEqual([]);
   });
 
-  it('is one answer per picture, asked twice', () => {
+  it('planBorrow is one answer per picture, asked twice', () => {
     const regions = [region([0, 1, 2], 0xc06030), region([10, 11, 12], 0x6080c0), region([20, 21, 22], 0x909090)];
     const once = [...planBorrow(regions, -1, own, ramp, roads, 'free')];
     expect(once).toEqual([...planBorrow(regions, -1, own, ramp, roads, 'free')]);
@@ -799,7 +728,7 @@ describe('a body no other instrument can say gets a bed of borrowed colour', () 
     expect(planColourFill(regions, -1, own, ramp, roads, gate({ policy: 'accent', coated: 19 }))).toEqual([]);
   });
 
-  it('is one answer per picture, asked twice', () => {
+  it('planColourFill is one answer per picture, asked twice', () => {
     const regions = [body(60, 0xc0481b), body(50, 0x2a3f8f, 1000)];
     const once = planColourFill(regions, -1, own, ramp, roads, gate());
     expect(once).toEqual(planColourFill(regions, -1, own, ramp, roads, gate()));

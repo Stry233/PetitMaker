@@ -10,13 +10,13 @@
 import './_pixi-env'; // object-animations reaches PIXI, which needs jsdom's missing 2D context
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import * as PIXI from 'pixi.js-legacy';
-import { paintSpinRing, paintGroupRotationArc } from '../../canvas/interaction/usePointerInteraction';
+import { paintSpinRing, paintGroupRotationArc } from '../../canvas/interaction/selection-paint';
 import { animateRotation, animateGroupRotation } from '../../canvas/map2d/layers/object-animations';
 import { arcMotion, arcOffset, type GroupRotation } from '../../canvas/group-arc';
 import { animConfig, easeOutBack } from '../../core/runtime/anim-config';
-import { setReducedMotion, __resetMotionState } from '../../canvas/map2d/motion-state';
+import { setReducedMotion, __resetMotionState } from '../../core/runtime/motion-state';
 import type { ToolOverlay } from '../../canvas/view-projection';
-import { ItemCategory } from '../../core/model/types';
+import { ItemCategory, type Rotation } from '../../core/model/types';
 import type { GridState, PlacedObject } from '../../core/model/types';
 import { registerCatalogItem } from '../../state/catalog';
 import { makeState } from '../rules/_helpers';
@@ -37,7 +37,7 @@ registerCatalogItem({
   traits: [],
 });
 
-function place(gs: GridState, id: string, catalogId: string, x: number, y: number, rotation: 0 | 90 | 180 | 270 = 0): void {
+function place(gs: GridState, id: string, catalogId: string, x: number, y: number, rotation: Rotation = 0): void {
   const obj: PlacedObject = { id, catalogId, position: { x, y }, rotation, elevation: 0 };
   gs.objects.set(id, obj);
 }

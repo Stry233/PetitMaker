@@ -12,27 +12,22 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useEditorStore } from '../../../state/store';
-import { PREFS } from '../../../core/runtime/prefs';
+import { PREFS, readStoredPref, writePref } from '../../../core/runtime/prefs';
 import type { TourStep } from './steps';
 
 export const TOUR_SEEN_KEY = PREFS.tourSeen.key;
 
-/** Whether this browser has already been offered the tour. A browser without localStorage reads as
- *  seen: the alternative is showing the tour on every single visit. Bypasses `readPref`: an
- *  unreadable/absent flag means "seen" here, the opposite of readPref's generic false fallback,
- *  since a browser this offer cannot persist to must not repeat it. */
+/** Whether this browser has already been offered the tour. A browser whose storage cannot be read
+ *  reads as seen, since an offer it cannot persist would repeat on every visit; an unset flag
+ *  reads as unseen. */
 export function hasSeenTour(): boolean {
-  try {
-    return localStorage.getItem(PREFS.tourSeen.key) === '1';
-  } catch {
-    return true; // storage present but refusing (private mode, quota) — same reasoning
-  }
+  const stored = readStoredPref('tourSeen');
+  return !stored.available || stored.raw === '1';
 }
 
+/** A refused write leaves the tour to offer itself again next time. */
 export function markTourSeen(): void {
-  try {
-    localStorage.setItem(PREFS.tourSeen.key, '1');
-  } catch { /* nothing to do: the tour simply offers itself again next time */ }
+  writePref('tourSeen', '1');
 }
 
 /** Run the tour from its first step. Used by the startup check and by the Settings replay row. */
@@ -41,7 +36,7 @@ export function startTour(): void {
   useEditorStore.getState().setTourRunning(true);
 }
 
-export interface TourController {
+interface TourController {
   running: boolean;
   step: TourStep | null;
   index: number;

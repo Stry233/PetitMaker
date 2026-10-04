@@ -1,5 +1,5 @@
 /*
- * object-shelf.ts — the 物品 bar's tabs, and the sizes it lays them out at.
+ * The Objects bar's tabs, and the sizes it lays them out at.
  *
  * The shelf spans the viewport: three rows anchored to the bottom edge, each as wide as the window
  * gives it. Nothing here is a position on a canvas, so a window narrower than the design's own
@@ -12,39 +12,30 @@
  * label — is authored directly in css px, because a tab is as wide as its own word and the spacing
  * around it is a judgement about how the row reads, not a coordinate to be recovered.
  *
- * The drawing shows eleven cards. That is a sample of a row that SCROLLS: the catalog holds 83
- * items today, 40 of them in one category, and is expected to reach hundreds. How a row of this
+ * The drawing shows eleven cards. That is a sample of a row that SCROLLS: one category can hold many
+ * times that, and the catalog grows. How a row of this
  * shelf answers a wheel is `row-scroll.ts`, since the row of names above the cards scrolls too and
  * the two have to answer it the same way.
  */
 import { ItemCategory, type CatalogItem, type Locale } from '../../../core/model/types';
-import { getCatalogByCategory, searchCatalog } from '../../../state/catalog';
+import { getCatalogByCategory, landmarkItem, searchCatalog } from '../../../state/catalog';
 import { EDGE, EDGE_RIGHT, PLATE_BAND, RAIL, SHELF_SCALE, SHELF_TABS, standsInNameRow } from '../units';
 import { DARK_GROOVE, DARK_PLATE } from '../../design/tokens';
+import { CATEGORY_BY_ID, placedCategories } from '../../../config/catalog/categories';
+import { categorySearchTerms } from '../../../i18n/category-terms';
 
 /** A category tab: the drawn order, with the SHORT name a tab has room for. `menu.place_*` is the
- *  action catalogue's own name for the category ("摆放建筑"), a sentence where this is a label. */
-export interface ShelfTab {
+ *  action catalogue's own name for the category ("Place building" in Chinese), a sentence where this is a label. */
+interface ShelfTab {
   category: ItemCategory;
   labelKey: string;
 }
 
 /**
- * The six tabs, left to right as the design lays them out.
- *
- * Road is absent, and that is the catalog's own answer: `getCategoryMeta` returns undefined for it
- * because a road is a brush surface with its own build mode, never a point-placed item. Pinned
- * against the live catalog by `object-shelf.test.ts`, so a seventh category arrives as a failing
- * test rather than as a category with no way to reach it.
+ * The tabs, left to right as the design lays them out: every category placed item by item.
+ * Road has none, because a road is a brush surface with its own build mode.
  */
-export const TABS: readonly ShelfTab[] = [
-  { category: ItemCategory.Building, labelKey: 'shelf.tab_building' },
-  { category: ItemCategory.Tree, labelKey: 'shelf.tab_tree' },
-  { category: ItemCategory.Flora, labelKey: 'shelf.tab_flora' },
-  { category: ItemCategory.Bridge, labelKey: 'shelf.tab_bridge' },
-  { category: ItemCategory.Ramp, labelKey: 'shelf.tab_ramp' },
-  { category: ItemCategory.Facility, labelKey: 'shelf.tab_facility' },
-];
+export const TABS: readonly ShelfTab[] = placedCategories('shelfRank').map((c) => ({ category: c.id, labelKey: c.placement.tabKey }));
 
 /**
  * The shelf's own box, in css px: what its rows keep from the viewport's edges, and the room
@@ -83,25 +74,12 @@ export function tabRowGap(): number {
   return SHELF_TABS.floor - underRow;
 }
 
-/**
- * The search field, in css px. Its shape is the design source's (`搜索底图`, 476 x 82 design px with
- * a 44.5 px placeholder 50 px in); its SIZE is judged in the row it stands in.
- *
- * THE TEXT IS THE POINT. The placeholder is a THIRD of the plate's height in the drawing, and set at
- * `TEXT.label` — the 35 design px em a TOOL's caption is drawn at, a different thing that happens to
- * share a constant — a plate two and a half times its own text reads as an empty capsule, which is
- * what a search field is not: it holds a word. So the plate's height is the row's
- * (`SHELF_TABS.field`, grown past the drawing's own) and everything inside it keeps the drawing's
- * proportion to that height rather than to the design canvas.
- *
- * It stands IN the tab row, just past the last name, so `inset` is the gap that separates it from
- * the names without breaking the row.
- */
+/** Search geometry in CSS pixels; the 476 × 82 drawing carries a 44.5 px em and 50 px inset. */
 export const SEARCH = {
   w: Math.round((476 / 82) * SHELF_TABS.field),
   h: SHELF_TABS.field,
   /** The placeholder's own em, which the typed query takes too. */
-  text: Math.round((44.5 / 82) * SHELF_TABS.field),
+  text: SHELF_TABS.fieldText,
   padX: Math.round((50 / 82) * SHELF_TABS.field),
   inset: 26,
   /** The drawn plate's corner is half its own height, so it is a stadium at any size. The box the
@@ -138,7 +116,7 @@ const CARD_OVER_BAND = 1.227;
 
 /**
  * The card row. The tile is the ratio above; `gap` keeps the drawing's own proportion to it (a 38.6
- * gutter on a 280 tile, from `圆角矩形 26` and its ten copies at a 318.6 pitch), so the row scales as
+ * gutter on a 280 tile, from the design's card rectangle and its ten copies at a 318.6 pitch), so the row scales as
  * one assembly. `pad` is breathing room inside the scroll viewport, since a hover grows a card by 3%
  * and the viewport clips on both axes (a scroll container cannot overflow visibly on one axis alone).
  */
@@ -201,11 +179,16 @@ export const CARD = {
  *
  * `searchCatalog` reads the active locale AND English, so "apple" finds the apple tree with the
  * interface in Chinese, and it returns nothing for a blank query — which is the signal to show the
- * category rather than the whole catalog. Road items are dropped: they are laid by the road mode's
- * brush, and the shelf must not offer through search what it has no tab for.
+ * category rather than the whole catalog. Items of a category without a tab (roads, laid by the
+ * road mode's brush) are dropped: the shelf must not offer through search what it has no tab for.
  */
 export function shelfItems(query: string, category: ItemCategory, locale: Locale): CatalogItem[] {
-  const found = searchCatalog(query, locale);
-  if (query.trim()) return found.filter((item) => item.category !== ItemCategory.Road);
+  const found = searchCatalog(query, locale, categorySearchTerms(locale));
+  if (query.trim()) return found.filter((item) => !!CATEGORY_BY_ID.get(item.category)?.placement);
   return getCatalogByCategory(category);
+}
+
+/** What the planet session's shelf offers: the plaza alone. The placer lays it at its fixed size, unturned. */
+export function planetShelfItems(): CatalogItem[] {
+  return [landmarkItem()];
 }

@@ -8,12 +8,12 @@ import { bumpObjectsVersion, bumpCellsVersion, getCell } from '../../core/model/
 import { applyCommand } from '../../core/commands/command-apply';
 import { EventBus } from '../../core/commands/event-bus';
 import { CommandType, TerrainType, type EditorEvents, type GridState, type PlacedObject, type TrimCornersCommand } from '../../core/model/types';
-import { CHUNK_SIZE } from '../../core/model/constants';
 import { chunkKey } from '../../core/model/grid-model';
 import { chunksOf, getMapStats } from '../../state/map-stats';
 import { footprintCells } from '../../state/object-geometry';
 import { getActiveLayers } from '../../state/layer-utils';
 import { makeState } from '../rules/_helpers';
+import { CHUNK_SIZE } from '../../core/model/game-profile';
 
 function tree(id: string, x: number, y: number): PlacedObject {
   return { id, catalogId: 'tree-apple', position: { x, y }, rotation: 0, elevation: 0 };
@@ -100,7 +100,7 @@ describe('chunksOf', () => {
             const obj: PlacedObject = { ...tree('span', x, y), width, height };
             const expected = [...new Set(footprintCells(x, y, width, height)
               .map((c) => chunkKey(Math.floor(c.x / CHUNK_SIZE), Math.floor(c.y / CHUNK_SIZE))))];
-            expect(chunksOf(obj), JSON.stringify({ x, y, width, height })).toEqual(expected);
+            expect(chunksOf(obj, {}), JSON.stringify({ x, y, width, height })).toEqual(expected);
           }
         }
       }
@@ -115,16 +115,44 @@ describe('chunksOf', () => {
       id: 'd', catalogId: 'nope', position: { x: CHUNK_SIZE - 0.5, y: 0 }, width: 1, height: 1,
       rotation: 0, elevation: 0,
     };
-    expect(chunksOf(deck).sort()).toEqual([chunkKey(0, 0), chunkKey(1, 0)].sort());
+    expect(chunksOf(deck, {}).sort()).toEqual([chunkKey(0, 0), chunkKey(1, 0)].sort());
   });
 
-  it('a whole-anchored footprint still keys exactly its own chunk (byte-identical pin)', () => {
+  it('a whole-anchored footprint still keys exactly its own chunk', () => {
     const tree: PlacedObject = { id: 't', catalogId: 'tree-apple', position: { x: 2, y: 2 }, rotation: 0, elevation: 0 };
-    expect(chunksOf(tree)).toEqual([chunkKey(0, 0)]);
+    expect(chunksOf(tree, {})).toEqual([chunkKey(0, 0)]);
+  });
+
+  it('counts both sides of a half-cell footprint at offset chunk boundaries', () => {
+    const template = { chunkGrid: { origin: { x: -15, y: -23 }, columns: 13, rows: 12 } };
+    const deck = { ...tree('span', 16.5, 24.5), width: 1, height: 1 };
+    expect(chunksOf(deck, template)).toEqual(['1,2', '2,2', '1,3', '2,3']);
+    expect(chunksOf({ ...deck, position: { x: 16, y: 24 } }, template)).toEqual(['1,2']);
+    expect(chunksOf({ ...deck, position: { x: 17, y: 25 } }, template)).toEqual(['2,3']);
   });
 });
 
 describe('map stats: incremental patching', () => {
+  it('moves load between offset regions through deltas and rebuilds', () => {
+    const state = makeState(40, 40);
+    state.template.chunkGrid = { origin: { x: -15, y: -23 }, columns: 13, rows: 12 };
+    const before = road('moved', 16, 24);
+    add(state, before);
+    const stats = getMapStats(state);
+    expect([...stats.chunks.keys()]).toEqual(['1,2']);
+
+    const after = { ...before, position: { x: 17, y: 25 } };
+    add(state, after);
+    expect(getMapStats(state)).toBe(stats);
+    expect([...stats.chunks.keys()]).toEqual(['2,3']);
+    bumpObjectsVersion(state);
+    expect([...getMapStats(state).chunks]).toEqual([...stats.chunks]);
+
+    state.objects.delete(after.id);
+    bumpObjectsVersion(state, { removed: [after] });
+    expect(getMapStats(state).chunks.size).toBe(0);
+  });
+
   it('patches to the same answer a rebuild would give', () => {
     const patched = makeState();
     add(patched, tree('a', 2, 2), tree('b', 6, 6));

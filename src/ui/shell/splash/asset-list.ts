@@ -1,5 +1,5 @@
 /*
- * asset-list.ts — the full art enumeration, in its own module ON PURPOSE: an eager `?url` glob
+ * The full art enumeration, in its own module ON PURPOSE: an eager `?url` glob
  * becomes one import per file in dev (350+ requests revalidated on every reload), so this module
  * must never sit in the boot-critical graph. `preload.ts` imports it dynamically, only on the
  * cold boot that is about to fetch everything anyway; a warm boot never loads it.

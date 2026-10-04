@@ -1,5 +1,5 @@
 /*
- * map3d.perf.test.ts — the 3D view's geometry-builder costs.
+ * The 3D view's geometry-builder costs.
  *
  * Covers the paths a first 3D-view open and a live edit actually pay for: the full terrain build
  * (scene.ts meshes chunk by chunk, never the whole map in one call, so the bench loops chunks the
@@ -16,10 +16,10 @@ import { buildObjectInstances } from '../../canvas/map3d/build/object-meshes';
 import { buildModel } from '../../canvas/map3d/models/build-model';
 import { getSpec, modeledIds } from '../../canvas/map3d/models/registry';
 import { dirtyChunksFor } from '../../canvas/map3d/build/chunk-dirty';
-import { CHUNK_SIZE } from '../../core/model/constants';
 import { getCatalogItem } from '../../state/catalog';
 import { ItemCategory } from '../../core/model/types';
 import type { MacroCoord } from '../../core/model/types';
+import { CHUNK_SIZE } from '../../core/model/game-profile';
 
 const s = perfSuite('map3d');
 

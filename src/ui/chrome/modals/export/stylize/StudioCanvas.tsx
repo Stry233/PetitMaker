@@ -1,5 +1,5 @@
 /*
- * StudioCanvas.tsx — the picture the page is about, at the map's own ratio, with the other picture
+ * The picture the page is about, at the map's own ratio, with the other picture
  * standing in its corner.
  *
  * THE RATIO IS THE MAP'S AND THE FIT IS CONTAIN. A stylized band that had been stretched to fill
@@ -14,14 +14,15 @@
  * corner and stepping through the shelf is how two styles' handling of the same spot is compared.
  */
 import { motion, AnimatePresence } from 'framer-motion';
-import { cursors, radii, exitTransition, font } from '../../../../design/styles';
+import { cursors, radii } from '../../../../design/styles';
 import { skin } from '../../../../design/window-skin';
 import { roleFont } from '../../../../design/text-weight';
 import { useT } from '../../../../../i18n/context';
 import { usePanZoom } from '../use-pan-zoom';
+import { PanZoomResetHint } from '../pan-zoom-stage';
 import { MAP_ASPECT } from './sample-art';
 import { entering } from './atoms';
-import { amplitude, framerMotion } from './motion';
+import { amplitude, framerMotion } from '../../../../design/motion';
 
 export interface Picture {
   /** What is being shown, for a viewer and for a test alike: 'original', or a version's id. */
@@ -72,14 +73,7 @@ export function StudioCanvas({ main, corner, onSwap, enterIndex = 0 }: {
             />
           </AnimatePresence>
         </div>
-        <AnimatePresence>
-          {pz.showResetHint && (
-            <motion.div key="reset-hint" style={resetHint}
-              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0, transition: exitTransition }}>
-              {t('export.preview_reset_hint')}
-            </motion.div>
-          )}
-        </AnimatePresence>
+        <PanZoomResetHint show={pz.showResetHint} />
         <span aria-hidden style={{ position: 'absolute', inset: 0, borderRadius: 14, boxShadow: 'inset 0 0 0 1.5px rgba(87,73,53,0.22)', pointerEvents: 'none' }} />
       </div>
 
@@ -115,21 +109,6 @@ export function StudioCanvas({ main, corner, onSwap, enterIndex = 0 }: {
     </motion.div>
   );
 }
-
-const resetHint = {
-  position: 'absolute' as const,
-  bottom: 8,
-  left: '50%',
-  transform: 'translateX(-50%)',
-  ...roleFont('caption'),
-  color: skin.plateInk,
-  background: skin.plate,
-  borderRadius: 999,
-  padding: '3px 11px',
-  whiteSpace: 'nowrap' as const,
-  pointerEvents: 'none' as const,
-  fontFamily: font.family,
-};
 
 const pipTag = {
   position: 'absolute' as const,

@@ -15,6 +15,29 @@ import { COMMANDS, COMMAND_BY_ID, RUN, type CommandContext } from '../../kit/com
 import { effectiveCombo, useKeybinds, ALIASES } from '../../core/runtime/keybindings';
 import { setBreakHandleKey, setConstrainKey, setMultiSelectKey, setPanDragKey } from '../../core/runtime/modifier-state';
 import { useToolbarContext } from './use-toolbar-context';
+import { useEditorStore } from '../../state/store';
+
+/**
+ * The commands a planet session answers: history, the camera and interface zoom, the chunk bounds,
+ * the session's mode keys, the brush and its shapes, turning and deleting the selection, the menu and
+ * Help it offers, and Escape.
+ * Every other binding still takes its key, so a browser default (save, print) does not fire in its
+ * place, and does nothing. Ids are command ids from `kit/commands`; a test holds them to that table.
+ */
+export const PLANET_SESSION_SHORTCUTS: ReadonlySet<string> = new Set([
+  'history.undo', 'history.redo',
+  'camera.zoom_in', 'camera.zoom_out', 'camera.fit', 'app.ui_zoom_in', 'app.ui_zoom_out', 'overlay.chunks',
+  'surface.mountain', 'surface.river',
+  'tool.brush', 'tool.eraser', 'tool.shape_cycle', 'tool.free', 'tool.line', 'tool.curve', 'tool.rect', 'tool.circle',
+  'brush.bigger', 'brush.smaller',
+  'selection.rotate_cw', 'selection.rotate_ccw', 'selection.delete', 'selection.deselect',
+  'app.menu', 'app.help',
+]);
+
+/** Runs `id` unless a planet session is open and does not answer it. */
+function answers(id: string): boolean {
+  return !useEditorStore.getState().planetSession || PLANET_SESSION_SHORTCUTS.has(id);
+}
 
 /** The React-provided deps the command handlers need (everything else is read from the store). */
 type Deps = CommandContext;
@@ -33,11 +56,11 @@ export function useEditorShortcuts({ openBuild, handleTileAction, regionUndo, re
         // command that does nothing.
         if (!RUN[cmd.id]) continue;
         const combo = effectiveCombo(overrides, cmd.id, toolbar);
-        if (combo) sc.register(combo, () => cmd.run(ctx));
+        if (combo) sc.register(combo, () => { if (answers(cmd.id)) cmd.run(ctx); });
       }
       for (const alias of ALIASES) {
         const cmd = COMMAND_BY_ID.get(alias.commandId);
-        if (cmd && !cmd.continuous && editionSupportsCommand(cmd.id)) sc.register(alias.combo, () => cmd.run(ctx)); // continuous = held (pan), driven by use-view-shortcuts
+        if (cmd && !cmd.continuous && editionSupportsCommand(cmd.id)) sc.register(alias.combo, () => { if (answers(cmd.id)) cmd.run(ctx); }); // continuous = held (pan), driven by use-view-shortcuts
       }
       // Keep the held modifiers (read by modifier-state) in sync with their rebindable bindings —
       // '' when the user unbinds one (disabled).

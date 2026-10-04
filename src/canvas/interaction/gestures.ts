@@ -1,4 +1,4 @@
-// gestures.ts — pure input-gesture logic: wheel-intent classification (mouse wheel vs touchpad
+// Pure input-gesture logic: wheel-intent classification (mouse wheel vs touchpad
 // scroll vs pinch) and multi-touch pinch tracking. No DOM/Pixi imports, so it unit-tests headlessly;
 // usePointerInteraction owns the wiring.
 

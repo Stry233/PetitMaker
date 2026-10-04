@@ -2,7 +2,8 @@ import { anchorHandles, splineSamples, type AnchorTangent, type CurveAnchor } fr
 
 export { anchorHandles, splineSamples, type AnchorTangent, type CurveAnchor };
 import type { MacroCoord } from '../../core/model/types';
-import type { RowSpan } from '../../canvas/map2d/layers/ghost-geometry';
+import type { RowSpan } from '../../canvas/ghost-geometry';
+import { getFootprint } from '../../core/model/grid-model';
 
 export function bresenham(x0: number, y0: number, x1: number, y1: number): MacroCoord[] {
   const points: MacroCoord[] = [];
@@ -61,7 +62,7 @@ export function expandLine(points: MacroCoord[], brushSize: number): MacroCoord[
   return result;
 }
 
-export function interpolateBezier(p0: MacroCoord, p1: MacroCoord, p2: MacroCoord, steps: number): MacroCoord[] {
+function interpolateBezier(p0: MacroCoord, p1: MacroCoord, p2: MacroCoord, steps: number): MacroCoord[] {
   const set = new Set<string>();
   const result: MacroCoord[] = [];
   for (let i = 0; i <= steps; i++) {
@@ -91,11 +92,7 @@ export function rectCells(start: MacroCoord, end: MacroCoord): MacroCoord[] {
   const x1 = Math.max(start.x, end.x);
   const y0 = Math.min(start.y, end.y);
   const y1 = Math.max(start.y, end.y);
-  const cells: MacroCoord[] = [];
-  for (let y = y0; y <= y1; y++)
-    for (let x = x0; x <= x1; x++)
-      cells.push({ x, y });
-  return cells;
+  return getFootprint(x0, y0, x1 - x0 + 1, y1 - y0 + 1);
 }
 
 /** circleCells as one span per row: the ellipse row extent solves the same
@@ -213,7 +210,7 @@ export function splineCells(anchors: readonly CurveAnchor[], width: number): Mac
 }
 
 /** The drag shapes a tool can lay or take back by dragging a box out. */
-export type DragShape = 'line' | 'rect' | 'circle';
+type DragShape = 'line' | 'rect' | 'circle';
 
 /**
  * The cells a drag shape covers — ONE builder, so a ghost and the commit behind it cannot draw

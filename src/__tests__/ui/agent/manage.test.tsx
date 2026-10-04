@@ -1,5 +1,5 @@
 /**
- * manage.test.tsx — the gear's one door.
+ * The gear's one door.
  *
  * FIVE CONTROLS AND TWO CONFIRMS, and the file is mostly about the two: a destructive verb that
  * fires on the first press is the one defect a settings card cannot ship with, and a card that grows
@@ -148,12 +148,11 @@ describe('what stands behind the gear', () => {
     expect(useAgentPanelSettings.getState().providerPinned).toBe(true);
   });
 
-  it('offers the model already filed when no list arrives, rather than an empty row', () => {
+  it('keeps the selected model out of suggestions until the server lists it', () => {
     mount();
     fireEvent.click(screen.getByTestId('manage-model-dd'));
-    const rows = screen.getAllByRole('menuitemradio');
-    expect(rows).toHaveLength(1);
-    fireEvent.click(rows[0]!);
+    expect(screen.queryAllByRole('menuitemradio')).toHaveLength(0);
+    expect(screen.getByTestId('manage-model-face').textContent).toBe(prettyModel('claude-sonnet-4-5'));
     expect(useAgentPanelSettings.getState().model.claude).toBe('claude-sonnet-4-5');
   });
 
@@ -401,6 +400,58 @@ describe('the list the card asks for', () => {
     });
     fireEvent.click(screen.getByTestId('manage-model-dd'));
     expect(screen.getAllByRole('menuitemradio')).toHaveLength(2);
+  });
+
+  it('filters models by ID or display name without changing the selection', async () => {
+    await act(async () => {
+      mount({ listModels: () => Promise.resolve(['claude-opus-4-1', 'claude-haiku-4-5']) });
+    });
+    expect(screen.queryByTestId('manage-model-input')).toBeNull();
+    fireEvent.click(screen.getByTestId('manage-model-dd'));
+    const input = screen.getByTestId('manage-model-input');
+    fireEvent.change(input, { target: { value: 'Haiku 4.5' } });
+    expect(screen.getAllByRole('menuitemradio')).toHaveLength(1);
+    expect(useAgentPanelSettings.getState().model.claude).toBe('claude-sonnet-4-5');
+    fireEvent.keyDown(input, { key: 'Enter' });
+    expect(useAgentPanelSettings.getState().model.claude).toBe('claude-haiku-4-5');
+    expect(screen.queryByTestId('manage-model-input')).toBeNull();
+  });
+
+  it('keeps manual IDs in the same list as suggestions and confirms only once', async () => {
+    useAgentPanelSettings.getState().setCustomBaseUrl('https://gateway.example/v1');
+    useAgentPanelSettings.getState().connectKey('custom', 'custom-test-key');
+    await act(async () => { mount({ listModels: () => Promise.resolve(['qwen3:32b']) }); });
+    fireEvent.click(screen.getByTestId('manage-model-dd'));
+    const input = screen.getByTestId('manage-model-input');
+    fireEvent.change(input, { target: { value: '  owner/model:latest  ' } });
+    expect(screen.getByTestId('manage-model-input')).toBe(input);
+    expect(useAgentPanelSettings.getState().model.custom).toBe('');
+    fireEvent.keyDown(input, { key: 'Enter', isComposing: true });
+    expect(useAgentPanelSettings.getState().model.custom).toBe('');
+    fireEvent.click(screen.getByRole('menuitemradio', { name: 'Use owner/model:latest' }));
+    expect(useAgentPanelSettings.getState().model.custom).toBe('owner/model:latest');
+    fireEvent.click(screen.getByTestId('manage-model-dd'));
+    fireEvent.change(screen.getByTestId('manage-model-input'), { target: { value: 'qwen3:32b' } });
+    expect(screen.getAllByRole('menuitemradio')).toHaveLength(1);
+    fireEvent.keyDown(screen.getByTestId('manage-model-input'), { key: 'Enter' });
+    expect(useAgentPanelSettings.getState().model.custom).toBe('qwen3:32b');
+  });
+
+  it('lets arrow keys reach suggestions and keeps an unmatched search uncommitted', async () => {
+    await act(async () => {
+      mount({ listModels: () => Promise.resolve(['claude-opus-4-1', 'claude-haiku-4-5']) });
+    });
+    fireEvent.click(screen.getByTestId('manage-model-dd'));
+    const input = screen.getByTestId('manage-model-input');
+    input.focus();
+    fireEvent.keyDown(input, { key: 'ArrowDown' });
+    expect(document.activeElement).toBe(screen.getAllByRole('menuitemradio')[0]);
+    fireEvent.keyDown(document.activeElement!, { key: 'ArrowUp' });
+    expect(document.activeElement).toBe(input);
+    fireEvent.change(input, { target: { value: 'missing' } });
+    expect(screen.getByRole('status').textContent).toBe(translations.en['agent3.setup_model_no_matches']);
+    fireEvent.keyDown(input, { key: 'Enter' });
+    expect(useAgentPanelSettings.getState().model.claude).toBe('claude-sonnet-4-5');
   });
 
   /**
@@ -656,18 +707,7 @@ describe('a change made over a running job says which job it reaches', () => {
   });
 });
 
-/**
- * THE ENDPOINT DECIDES WHICH MODELS EXIST, so a newly filed address is asked whether it serves the
- * one on file and the answer is ACTED ON here rather than left for the next order to discover.
- *
- * FOUR OUTCOMES, AND A MODEL STANDS IN THE FIRST THREE: the list names it (kept, and the arriving
- * list is the confirmation), the list answers without it (replaced by the address's own first offer,
- * and the swap is said), the server answers without a list (proof of nothing, so the typed id stands
- * and the row says it is unverified). The fourth is the check FAILING OUTRIGHT, and it is the one
- * place readiness drops: the model empties, the dropdown offers nothing, the endpoint is the named
- * gap and Done blocks until the address answers and the user picks again.
- */
-describe('changing the address re-judges the model', () => {
+describe('model discovery preserves explicit selections', () => {
   const armCustom = (url = 'https://gw.example/v1') => {
     useAgentPanelSettings.getState().setCustomBaseUrl(url);
     useAgentPanelSettings.getState().pinProvider('custom');
@@ -699,15 +739,41 @@ describe('changing the address re-judges the model', () => {
     expect(screen.getByTestId('manage-model-face').textContent).toBe(prettyModel('kept-model'));
   });
 
-  it('keeps the typed model where the address lists nothing, and says the row is unverified', async () => {
+  it('keeps a typed model when the address lists nothing without adding it to suggestions', async () => {
     armCustom();
     await act(async () => { mount({ listModels: () => Promise.resolve([]) }); });
     await fileAddress('https://bare.example/v1');
 
     expect(useAgentPanelSettings.getState().model.custom, 'an absent list proves nothing').toBe('kept-model');
     expect(toasts).toEqual([]);
+    expect(screen.getByTestId('manage-endpoint-note').textContent).toBe('');
+    fireEvent.click(screen.getByTestId('manage-model-dd'));
+    expect(screen.queryAllByRole('menuitemradio')).toHaveLength(0);
+  });
+
+  it.each(['listed', 'failed'])('shows only loading feedback while refreshing a %s response', async (previous) => {
+    armCustom();
+    let resolveList!: (models: string[]) => void;
+    const refreshing = new Promise<string[]>((resolve) => { resolveList = resolve; });
+    const listModels = vi.fn().mockImplementationOnce(() => previous === 'listed'
+      ? Promise.resolve(['listed-model']) : Promise.reject(new Error('Failed to fetch')))
+      .mockImplementationOnce(() => refreshing);
+    await act(async () => { mount({ listModels }); });
     expect(screen.getByTestId('manage-endpoint-note').textContent)
-      .toBe(translations.en['agent3.setup_manage_endpoint_unlisted']);
+      .toBe(previous === 'listed' ? '' : translations.en['agent3.setup_list_unavailable']);
+
+    fireEvent.click(screen.getByTestId('manage-refresh-models'));
+    expect((screen.getByTestId('manage-refresh-models') as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByTestId('manage-endpoint-note').textContent).toBe('');
+    fireEvent.click(screen.getByTestId('manage-model-dd'));
+    expect(screen.queryAllByRole('menuitemradio')).toHaveLength(0);
+    expect(screen.getByTestId('manage-model-face').textContent).toBe(prettyModel('kept-model'));
+
+    await act(async () => { resolveList(['fresh-model']); });
+    expect(screen.getByTestId('manage-endpoint-note').textContent).toBe('');
+    expect(screen.getAllByRole('menuitemradio')).toHaveLength(1);
+    expect(screen.getByRole('menuitemradio').textContent).toContain(prettyModel('fresh-model'));
+    expect(useAgentPanelSettings.getState().model.custom).toBe('kept-model');
   });
 
   /** A GEAR PRESS IS NOT AN ADDRESS CHANGE. The card is opened to read the oversight caption as often
@@ -731,10 +797,13 @@ describe('changing the address re-judges the model', () => {
     expect(useAgentPanelSettings.getState().model.custom).toBe('kept-model');
     expect(done().disabled).toBe(false);
     expect(screen.queryByTestId('manage-model-blocked')).toBeNull();
+    fireEvent.click(screen.getByTestId('manage-model-dd'));
     for (const value of ['e', 'ep', 'ep-', 'ep-my-model']) {
       fireEvent.change(screen.getByTestId('manage-model-input'), { target: { value } });
       expect((screen.getByTestId('manage-model-input') as HTMLInputElement).value).toBe(value);
     }
+    expect(useAgentPanelSettings.getState().model.custom).toBe('kept-model');
+    fireEvent.keyDown(screen.getByTestId('manage-model-input'), { key: 'Enter' });
     expect(useAgentPanelSettings.getState().model.custom).toBe('ep-my-model');
     answer = () => Promise.resolve(['ep-my-model', 'other']);
     await fileAddress('https://listed.example/v1');
@@ -753,8 +822,7 @@ describe('changing the address re-judges the model', () => {
     });
     await fileAddress('https://auth.example/v1');
     expect(useAgentPanelSettings.getState().model.custom).toBe('kept-model');
-    expect(screen.getByTestId('manage-endpoint-note').textContent)
-      .toBe(translations.en['agent3.setup_manage_endpoint_unlisted']);
+    expect(screen.getByTestId('manage-endpoint-note').textContent).toBe('');
     expect((screen.getByTestId('manage-done') as HTMLButtonElement).disabled).toBe(false);
   });
 
@@ -832,7 +900,7 @@ describe('the dropdowns on this card are the house menu', () => {
     mount({ jobCount: 1 });
     fireEvent.click(screen.getByTestId(row));
 
-    const card = screen.getByRole('menu');
+    const card = screen.getByRole(row === 'manage-model-dd' ? 'group' : 'menu');
     expect(card.getAttribute('aria-label')).toBeTruthy();
     // ONE radius, four corners: `radii.lg` as the shared card declares it, with nothing partial.
     expect(declaredRadius(card)).toBe(`${radii.lg}px`);

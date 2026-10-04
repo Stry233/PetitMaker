@@ -7,7 +7,7 @@ import { viewportSize } from '../../../../core/runtime/viewport-space';
 // them. {fill} splits the footer into a left- and a right-aligned half.
 import { useRef, useLayoutEffect, useEffect, useState, type ClipboardEvent, type CSSProperties } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { colors, font, radii, springs, cursors } from '../../../design/styles';
+import { colors, font, radii, springs, cursors, z } from '../../../design/styles';
 import { skin, windowMenu } from '../../../design/window-skin';
 import { roleFont, roleWeight, TEXT_ROLES } from '../../../design/text-weight';
 import { useChromeScale } from '../../../design/scale';
@@ -275,7 +275,7 @@ const fieldStyle: CSSProperties = { flex: 1, minHeight: FIELD_BOX, background: s
 // control carries a border where the rest of the window carries none.
 const addBtn: CSSProperties = { flex: 'none', height: FIELD_BOX, display: 'inline-flex', alignItems: 'center', boxSizing: 'border-box', border: `1.5px dashed ${skin.line}`, background: 'transparent', cursor: cursors.clickable, borderRadius: radii.md, padding: '0 12px', fontFamily: font.family, ...roleFont('small'), color: skin.muted, whiteSpace: 'nowrap' };
 const hintStyle: CSSProperties = { ...roleFont('caption'), color: skin.muted };
-const menuStyle: CSSProperties = { ...windowMenu, position: 'fixed', zIndex: 301, width: MENU_W, overflowY: 'auto', borderRadius: radii.md, padding: 5 };
+const menuStyle: CSSProperties = { ...windowMenu, position: 'fixed', zIndex: z.popover, width: MENU_W, overflowY: 'auto', borderRadius: radii.md, padding: 5 };
 const menuRow: CSSProperties = { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, border: 'none', cursor: cursors.clickable, borderRadius: radii.sm, padding: '7px 9px', fontFamily: font.family, ...roleFont('label'), color: skin.plateInk, textAlign: 'left', width: '100%' };
 const menuSample: CSSProperties = { ...roleFont('caption'), color: skin.muted, fontVariantNumeric: 'tabular-nums', maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' };
 const menuSep: CSSProperties = { height: 1, background: skin.line, margin: '3px 4px' };

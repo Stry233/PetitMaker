@@ -8,7 +8,7 @@
  * routes on, plus the displacement that carries a trim-meshed road along its arc.
  */
 import { describe, it, expect } from 'vitest';
-import type * as THREE from 'three';
+import * as THREE from 'three';
 import { CommandExecutor } from '../../core/commands/command-executor';
 import { EventBus } from '../../core/commands/event-bus';
 import { createDefaultRegistry } from '../../rules/index';
@@ -22,6 +22,8 @@ import { arcMotion, arcOffset, type GroupRotation } from '../../canvas/group-arc
 import { rotateGroup } from '../../tools/objects/group-actions';
 import { makeState } from '../rules/_helpers';
 import { roadLookup } from '../../state/object-index';
+import { carriedRoadSurfaces } from '../../canvas/road-flight';
+import { roadFeatherOutline } from '../../canvas/road-feather';
 
 const BR_FAN: Corners = ['square', 'square', 'square', 'fan']; // a canonical road-cut state
 
@@ -35,7 +37,7 @@ function mapWithRoads(): { gs: GridState; exec: CommandExecutor } {
       rotation: 0, elevation: 0,
       ...(id === 'r1' ? { corners: BR_FAN } : {}),
     };
-    expect(exec.execute({ type: CommandType.PlaceObject, timestamp: 0, object, loadValue: 0 }).success).toBe(true);
+    expect(exec.execute({ type: CommandType.PlaceObject, timestamp: 0, object }).success).toBe(true);
   }
   return { gs, exec };
 }
@@ -95,8 +97,8 @@ describe('buildRoadTrimMeshes offsets', () => {
   });
 
   it('a rotation frame (offsets differing per member) still carries every tile along its own arc', () => {
-    // A surface cannot stretch between members on different arcs, so the region falls back to
-    // per-tile bodies for the tween: each tile's body moves by exactly its own offset.
+    // A surface cannot stretch between members on different arcs, so each carried tile draws as its
+    // own one-tile surface for the tween and moves by exactly its own offset.
     const { gs, exec } = mapWithRoads();
     const turn = turnOf(gs, exec, ['r1', 'r2', 'r3']);
     const frame = new Map(turn.members.map((m) => {
@@ -105,15 +107,16 @@ describe('buildRoadTrimMeshes offsets', () => {
     }));
     const moved = buildRoadTrimMesh(gs, undefined, frame);
     expect(moved.positions.length).toBeGreaterThan(0);
-    // Some cell corner of each member's tile appears at its offset position (every kept shape
-    // anchors on at least one cell corner, wherever its cut points).
+    // The outline of each member's one-tile surface appears at its offset position.
     const goff = mapCenterOffset(gs.template.width, gs.template.height);
     for (const m of turn.members) {
       const obj = gs.objects.get(m.id)!;
       const o = frame.get(m.id)!;
+      const [surface] = carriedRoadSurfaces(obj, roadLookup(gs));
+      const outline = roadFeatherOutline(surface!.rings[0]!.points)(0);
       let found = false;
-      for (const [cx, cz] of [[0, 0], [1, 0], [0, 1], [1, 1]] as const) {
-        const wx = obj.position.x + cx - goff.x + o.dx, wz = obj.position.y + cz - goff.z + o.dz;
+      for (const [px, pz] of outline) {
+        const wx = px - goff.x + o.dx, wz = pz - goff.z + o.dz;
         for (let i = 0; i < moved.positions.length && !found; i += 3) {
           found = Math.abs(moved.positions[i]! - wx) < 1e-6 && Math.abs(moved.positions[i + 2]! - wz) < 1e-6;
         }
@@ -140,20 +143,12 @@ describe('Overlay3D selection without an instanced body', () => {
   const overlayFor = (gs: GridState, box: (id: string) => null = () => null) =>
     new Overlay3D(() => gs, () => {}, box);
 
-  it('rings a trimmed road from its MODEL footprint instead of drawing nothing', () => {
+  it('resolves a trimmed road with no instanced body from the map', () => {
     const { gs } = mapWithRoads();
     const overlay = overlayFor(gs);              // no instanced body for anything
     overlay.showObjectSelection('r1');
     overlay.flush();
-    expect(overlay.group.children.length, 'fill + edges').toBe(2);
     expect(overlay.unresolvedSelections()).toEqual([]);
-    const road = gs.objects.get('r1')!;
-    const off = mapCenterOffset(gs.template.width, gs.template.height);
-    const geo = (overlay.group.children[0] as THREE.Mesh).geometry;
-    geo.computeBoundingBox();
-    const bb = geo.boundingBox!;
-    expect((bb.min.x + bb.max.x) / 2).toBeCloseTo(road.position.x - off.x + 0.5, 5);
-    expect((bb.min.z + bb.max.z) / 2).toBeCloseTo(road.position.y - off.z + 0.5, 5);
   });
 
   it('reports an id the map no longer holds rather than silently drawing nothing', () => {
@@ -161,7 +156,7 @@ describe('Overlay3D selection without an instanced body', () => {
     const overlay = overlayFor(gs);
     overlay.showObjectSelection('gone');
     overlay.flush();
-    expect(overlay.group.children.length).toBe(0);
+    expect(overlay.group.children.filter(child => child instanceof THREE.Mesh || child instanceof THREE.LineSegments)).toHaveLength(0);
     expect(overlay.unresolvedSelections()).toEqual(['gone']);
   });
 });

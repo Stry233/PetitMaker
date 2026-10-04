@@ -1,5 +1,5 @@
 /*
- * annotations3d.ts — the plan-notes layer in the 3D view: zone washes as surface-draped decals
+ * The plan-notes layer in the 3D view: zone washes as surface-draped decals
  * with a dashed outline riding each cell's own top, route arrows draped per sample, and text as
  * camera-facing captions. Measurement numbers lie in the map plane and follow its perspective.
  *
@@ -12,14 +12,15 @@ import * as THREE from 'three';
 import { APP_FONT_FAMILY } from '../../../assets/fonts/family';
 import type { GridState, MacroCoord } from '../../../core/model/types';
 import {
-  ANNOTATION_INK, annotationInkScale, INK_CELLS, loopInwardNormals, roundedZoneLoops, zoneCornerRadius, ZONE_GRID_SHIFT, routeSamples, zoneCellSet, zoneDashCells,
+  annotationInkScale, INK_ZONE_DISC, isAnnotationInk, INK_CELLS, loopInwardNormals, roundedZoneLoops, zoneCornerRadius, ZONE_GRID_SHIFT, routeSamples, zoneCellSet, zoneDashCells,
   zoneLabelAnchor,
   type AnnotationsState, type ChipNote, type MapAnnotation, type RouteNote, type TagId, type ZoneNote,
 } from '../../../core/model/annotations';
-import { cellBounds, dimensionDrawing, measureDrawing, type DimensionDrawing } from '../../../core/model/annotation-dimensions';
+import { cellEdges, dimensionDrawing, measureDrawing, type DimensionDrawing } from '../../../core/model/annotation-dimensions';
 import { mapCenterOffset } from '../core/coords';
 import { cellDecals, DECAL_LIFT } from '../build/overlay-decals';
 import { surfaceHeightAt } from '../interaction/pick';
+import { MAP_INK, MAP_TEXT, MAP_EDGE_ALPHA } from '../../../core/runtime/brand-palette';
 
 const OUTLINE_LIFT = DECAL_LIFT * 2;
 const ROUTE_LIFT = 0.07;
@@ -47,18 +48,16 @@ const INK_3D_BOOST = 1.5;
 const ORDER = { wash: 90, outlineHalo: 91, outline: 92, select: 97, routeHalo: 93, route: 94, headHalo: 95, head: 96, label: 100 } as const;
 /** The canvas raster behind a billboard, px per world unit — crisp at the fly-in's framing. */
 const TEX_PX_PER_UNIT = 96;
-const INK = '#43413F';
-const MAP_TEXT = '#FFFEE3';
 
 export interface Annotations3DOpts {
+  /** Transient editing dimensions share the annotation lettering and drape. */
+  dimensions?: DimensionDrawing;
   draft: MapAnnotation | null;
   /** The selected notes' ids — marked HERE too: 2D shows a selection the 3D view must not deny. */
   selection?: readonly string[];
   /** The drawn label for a tag, in the interface language. */
   tagLabel: (tag: TagId) => string;
 }
-
-const isInk = (color: string): boolean => color.toLowerCase() === ANNOTATION_INK.toLowerCase();
 
 /** Points every `step` cells along a path — a drape's height is read PER POINT, so a long straight
  *  edge sampled only at its ends would run its ribbon on a slope between two terraces instead of
@@ -134,10 +133,11 @@ export class Annotations3D {
       const baseInk = this.ink / INK_3D_BOOST;
       if (n.kind === 'measure') this.buildDimensions(state, measureDrawing(n.points, baseInk, n.flipped), n.color, usedTex, picked.has(n.id));
       if (n.kind === 'zone' && (picked.has(n.id) || n === opts.draft)) {
-        const bounds = cellBounds(n.cells);
+        const bounds = cellEdges(n.cells);
         if (bounds) this.buildDimensions(state, dimensionDrawing(bounds, baseInk), n.color, usedTex);
       }
     }
+    if (opts.dimensions) this.buildDimensions(state, opts.dimensions, '#ffffff', usedTex);
     for (const [key, tex] of this.textures) {
       if (usedTex.has(key)) continue;
       this.textures.delete(key);
@@ -149,7 +149,7 @@ export class Annotations3D {
 
   /** Re-drape the last ask over ground that moved — called with the terrain flush. */
   refresh(state: GridState): void {
-    if (!this.lastData && !this.lastOpts.draft) return;
+    if (!this.lastData && !this.lastOpts.draft && !this.lastOpts.dimensions) return;
     this.update(state, this.lastData, this.lastOpts);
   }
 
@@ -220,7 +220,7 @@ export class Annotations3D {
       mat = new THREE.MeshBasicMaterial({
         color: new THREE.Color(color).lerp(new THREE.Color('#FFFFFF'), WASH_WHITEN),
         transparent: true,
-        opacity: isInk(color) ? WASH_ALPHA_INK : WASH_ALPHA,
+        opacity: isAnnotationInk(color) ? WASH_ALPHA_INK : WASH_ALPHA,
         side: THREE.DoubleSide,
         depthWrite: false,
         depthTest: false,
@@ -403,7 +403,7 @@ export class Annotations3D {
   }
 
   private edgeMat(color: string, depthTest = false): THREE.Material {
-    const shown = isInk(color) ? '#FFFFFF' : color;
+    const shown = isAnnotationInk(color) ? '#FFFFFF' : color;
     const key = `edge:${shown}:${depthTest}`;
     let mat = this.mats.get(key);
     if (!mat) {
@@ -421,8 +421,8 @@ export class Annotations3D {
     let mat = this.mats.get('ink');
     if (!mat) {
       mat = new THREE.MeshBasicMaterial({
-        color: new THREE.Color(INK),
-        transparent: true, opacity: 0.62, side: THREE.DoubleSide, depthWrite: false, depthTest: false,
+        color: new THREE.Color(MAP_INK),
+        transparent: true, opacity: MAP_EDGE_ALPHA, side: THREE.DoubleSide, depthWrite: false, depthTest: false,
       });
       this.mats.set('ink', mat);
     }
@@ -430,7 +430,7 @@ export class Annotations3D {
   }
 
   private washMatSolid(color: string): THREE.Material {
-    const shown = isInk(color) ? '#FFFFFF' : color;
+    const shown = isAnnotationInk(color) ? '#FFFFFF' : color;
     const key = `solid:${shown}`;
     let mat = this.mats.get(key);
     if (!mat) {
@@ -457,7 +457,7 @@ export class Annotations3D {
       let x = 8;
       const cy = h / 2;
       if (withNum) {
-        ctx.fillStyle = isInk(zone.color) ? '#8A9BAE' : zone.color;
+        ctx.fillStyle = isAnnotationInk(zone.color) ? INK_ZONE_DISC : zone.color;
         ctx.strokeStyle = 'rgba(255,255,255,0.85)';
         ctx.lineWidth = 2;
         ctx.beginPath();
@@ -476,7 +476,7 @@ export class Annotations3D {
         ctx.textAlign = 'left';
         ctx.textBaseline = 'alphabetic';
         ctx.lineJoin = 'round';
-        ctx.strokeStyle = INK;
+        ctx.strokeStyle = MAP_INK;
         ctx.lineWidth = fs * 0.16;
         ctx.strokeText(label, x, centeredBaseline(ctx, label, cy));
         ctx.fillStyle = MAP_TEXT;
@@ -508,7 +508,7 @@ export class Annotations3D {
         ctx.font = `800 ${fs}px ${APP_FONT_FAMILY}`;
         const width = ctx.measureText(text).width;
         ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic'; ctx.lineJoin = 'round';
-        ctx.strokeStyle = INK; ctx.lineWidth = fs * 0.16;
+        ctx.strokeStyle = MAP_INK; ctx.lineWidth = fs * 0.16;
         const y = centeredBaseline(ctx, text, h / 2);
         ctx.strokeText(text, 6, y); ctx.fillStyle = MAP_TEXT; ctx.fillText(text, 6, y);
         return width + 12;
@@ -532,11 +532,11 @@ export class Annotations3D {
       roundRect(ctx, 4, cy - chipH / 2, w + padX * 2, chipH, chipH * 0.36);
       ctx.fill();
       if (selected) {
-        ctx.strokeStyle = INK; ctx.lineWidth = 8; ctx.stroke();
+        ctx.strokeStyle = MAP_INK; ctx.lineWidth = 8; ctx.stroke();
         ctx.strokeStyle = '#FFFFFF'; ctx.lineWidth = 4;
       }
       ctx.stroke();
-      ctx.fillStyle = isInk(note.color) ? INK : '#fff';
+      ctx.fillStyle = isAnnotationInk(note.color) ? MAP_INK : '#fff';
       ctx.textAlign = 'left';
       ctx.textBaseline = 'alphabetic';
       ctx.fillText(label, 4 + padX, centeredBaseline(ctx, label, cy));

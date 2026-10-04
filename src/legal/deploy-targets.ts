@@ -6,6 +6,13 @@ export interface DeployTarget {
   id: DeployTargetId;
   /** Language presented to crawlers before the app selects a locale. */
   htmlLang: string;
+  /** The deployment's primary language: its brand name, its indexable pages and its link previews. */
+  lang: 'en' | 'zh';
+  /** Whether document URLs end in a slash: ESA serves directory indexes with one, Cloudflare the
+   *  unslashed path. */
+  trailingSlash: boolean;
+  /** Other names the site answers to in its structured data. */
+  alternateNames: readonly string[];
   /** Static page title. */
   title: string;
   /** Public masthead shared by the initial loading screen and the React splash. */
@@ -40,6 +47,9 @@ export const DEPLOY_TARGETS: Record<DeployTargetId, DeployTarget> = {
   global: {
     id: 'global',
     htmlLang: 'en',
+    lang: 'en',
+    trailingSlash: false,
+    alternateNames: ['Petit Maker', 'PetitMaker Map Editor', 'petitmaker.cc'],
     title: 'PetitMaker — Petit Planet Map Editor & Planet Planner',
     bootBanner: 'banner.svg',
     description: EN_DESCRIPTION,
@@ -63,6 +73,9 @@ export const DEPLOY_TARGETS: Record<DeployTargetId, DeployTarget> = {
   cn: {
     id: 'cn',
     htmlLang: 'zh-CN',
+    lang: 'zh',
+    trailingSlash: true,
+    alternateNames: ['PetitMaker'],
     title: '谷地工坊 - 星布谷地地图编辑器｜星球规划与 2D/3D 预览',
     bootBanner: 'banner-zh.svg',
     description: ZH_DESCRIPTION,
@@ -71,8 +84,10 @@ export const DEPLOY_TARGETS: Record<DeployTargetId, DeployTarget> = {
     legacyOrigins: [],
     icpNumber: '浙ICP备2026062928号-1',
     icpUrl: 'https://beian.miit.gov.cn/',
-    // No PSB (公安联网备案) filing: Article 12 of the 计算机信息网络国际联网安全保护管理办法 places
-    // that duty on 互联单位、接入单位 and 使用计算机信息网络国际联网的法人和其他组织, not on natural
+    // No PSB (public security network) filing: Article 12 of the Measures for the Security Protection
+    // Administration of International Networking of Computer Information Networks places that duty on
+    // interconnecting units, access units and the legal persons and other organisations using such
+    // networks, not on natural
     // persons, and this site is filed under an individual's ICP record.
     // https://www.cac.gov.cn/2014-10/08/c_1112737294.htm
     psbNumber: null,
@@ -103,4 +118,9 @@ export function activeTarget(): DeployTarget {
   const fromBundle = typeof __PETIT_TARGET__ === 'string' ? __PETIT_TARGET__ : undefined;
   const fromEnv = typeof process !== 'undefined' ? process.env?.PETIT_TARGET : undefined;
   return targetById(fromBundle ?? fromEnv);
+}
+
+/** The deployment serving `origin`; an origin no deployment owns reads as the global one. */
+export function targetOfOrigin(origin: string): DeployTarget {
+  return Object.values(DEPLOY_TARGETS).find((t) => t.canonicalOrigin === origin) ?? DEPLOY_TARGETS.global;
 }

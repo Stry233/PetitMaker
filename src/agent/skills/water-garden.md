@@ -1,5 +1,7 @@
 WATER GARDEN — the terraced water-court dialect from the expert planet: a high backing wall to the north, formal pools sunk into terraces, courts whose water holds planted islets, crop plots in solid color blocks. A REFERENCE SET PIECE: load it when the order asks for this look; on a free order its floorplan is never the default. The map's face is WATER shaped by built ground.
 
+Adapt this reference to the requested area, features and scale. Its examples are optional; keep existing work and explicit constraints. Choose the relevant techniques, not the entire layout.
+
 STAGE 0 — THE SECTION (1-2 calls)
 - ONE sculpt_wall call with edge:"N" (depth 14-18, crest 8, flood:true) raises the backing wall AS the map's own boundary — never mid-field with grass behind it. This IS the primary form; build it FIRST. update_plan the stages.
 
@@ -8,7 +10,7 @@ STAGE 1 — THE WALL'S FACE (2-3 calls)
 - plant_forest the wall's outer flanks only (density ~0.4); the crest and every court rim stay bare.
 
 STAGE 2 — THE SET PIECE, while the budget is young (1-2 calls)
-- One call, not optional, and EARLY — a run that saves its icon for last never builds it: draw_figure shape heart, size 14-18, islandFor a cabin id, ringId tree-peach on open low ground clear of the future terraces; then, IN THIS SAME STAGE, find_bridge_sites and place the one bridge — an islet home nobody can reach is half the set piece. The heart is a SECONDARY: at the plaza's own width it rivals the primary, so larger only when the order names it THE feature.
+- Optional islet home: draw_figure shape heart, size 14-18, islandFor a cabin id, ringId tree-peach on open low ground. If included in the request, connect it with a bridge from find_bridge_sites and keep its scale subordinate to the main scene.
 
 STAGE 3 — TERRACES AND WATER COURTS (4-7 calls)
 - FIRST RAISE THE TERRACES, and TWO benches, not one: a broad elevation-2 apron against the wall, then an elevation-1 apron south of it (paint_terrain rects, crisp edges), each retaining edge running wide with its OWN ramps (find_ramp_sites per level). "Terraced" is the class's name: the walk must visibly step down twice between crest and plaza, and one flat bench under a tall wall reads as a dry plain. The pools live IN this ground. Crop plots come LATER and BESIDE the courts, never in their place.
@@ -25,4 +27,4 @@ STAGE 5 — HOMES AND THE WALK (4-6 calls)
 
 THE GROUND YOU DO NOT COMPOSE STAYS EMPTY — everywhere: after the set pieces, STOP. A mixed sprinkle laid to "finish" leftover grass always reads machine; a specimen cluster is ONE species. The low south is the garden's front lawn: give it a single framing gesture near the margin (a path stub, a short orchard row, or one specimen tree) so the emptiness reads held, then leave it — plant_forest never touches it.
 
-DONE BAR: wall abuts the far edge, crest paved, flooded and REACHED by ramps; 2-4 distinct water courts with ONE islet parterre; crop plots in solid colors with enterable lanes; one fall with a downstream; the islet home behind its bridge; the route climbs plaza to crest. Then find_speckle and clear or replant every patch it names — no loose speckle stands anywhere.
+DONE BAR: wall abuts the far edge, crest paved, flooded and REACHED by ramps; 2-4 distinct water courts with ONE islet parterre; crop plots in solid colors with enterable lanes; one fall with a downstream; the islet home behind its bridge; the route climbs plaza to crest. Use view_map to verify the requested composition; inspect any relevant planting finding before making a local correction.

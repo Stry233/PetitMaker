@@ -1,9 +1,8 @@
 /** Assembles additive JSON sections from explicit map, history and session inputs. Older readers ignore unknown sections. */
 
 import { attributedNotes } from '../core/provenance/image-attribution';
-import type { GridState, MapNotes } from '../core/model/types';
+import { TerrainType, type GridState, type MapNotes } from '../core/model/types';
 import type { HistoryEntry } from '../core/commands/command-apply';
-import { ELEVATION_MAX } from '../core/model/constants';
 import { buildSaveFile } from './json-codec';
 import { encodeHistory } from './history-codec';
 import { getCatalogItem } from '../state/catalog';
@@ -11,6 +10,8 @@ import { templateHash, catalogHash } from './share/canonical';
 import { crc32 } from './share/crypto/crc32';
 import { APP_VERSION } from '../version';
 import { CURRENT_VERSION, type SaveFile } from './save-format';
+import { ELEVATION_MAX } from '../core/model/game-profile';
+import { roundLoad } from '../core/model/load';
 
 export type { MapNotes };
 
@@ -77,7 +78,7 @@ export interface SectionSizes {
 /* ── Section builders ────────────────────────────────────── */
 
 /** Terrain type names shared by the statistics tally and lookup. */
-const TYPE_NAMES: Record<number, string> = { 0: 'ground', 1: 'mountain', 2: 'water' };
+const TYPE_NAMES: Record<TerrainType, string> = { [TerrainType.None]: 'ground', [TerrainType.Mountain]: 'mountain', [TerrainType.Water]: 'water' };
 
 /** Derived map statistics (never imported). Cells with no terrain count as 'ground'
  *  at elevation 0; locked structures (the plaza) are excluded like in serialize. */
@@ -107,7 +108,7 @@ export function buildStats(state: GridState): StatsSection {
     const item = getCatalogItem(obj.catalogId);
     const cat = item?.category ?? 'unknown';
     byCategory[cat] = (byCategory[cat] ?? 0) + 1;
-    load += item?.loadValue ?? 0;
+    load = roundLoad(load + (item?.loadValue ?? 0));
   }
 
   return { cells: { byType, byElevation }, objects: { total, byCategory }, load: { total: load } };
@@ -148,6 +149,24 @@ function hasNotes(n: MapNotes | undefined | null): n is MapNotes {
   return !!n && !!(n.title || n.description);
 }
 
+/** The notes an export carries before attribution: none when asked for none, the override when one
+ *  is given, otherwise the map's own. */
+function chosenNotes(opts: ExportJsonOptions, own: MapNotes | undefined): MapNotes | null {
+  if (opts.notes === null) return null;
+  if (opts.notes !== undefined) return hasNotes(opts.notes) ? opts.notes : null;
+  return own ?? null;
+}
+
+/** The history section an export carries. Taint deltas require provenance; ordinary undo entries
+ *  remain valid without them. */
+function historySection(opts: ExportJsonOptions): ReturnType<typeof encodeHistory> | undefined {
+  if (!opts.history) return undefined;
+  const entries = opts.includeProvenance
+    ? opts.history.entries
+    : opts.history.entries.map((e) => ({ ...e, taint: undefined }));
+  return encodeHistory(entries, opts.history.depth);
+}
+
 /** Builds the sectioned save object (shared by serializeWithSections + sectionSizes). */
 function assemble(state: GridState, opts: ExportJsonOptions): SaveFile {
   const out = buildSaveFile(state);
@@ -155,23 +174,11 @@ function assemble(state: GridState, opts: ExportJsonOptions): SaveFile {
   if (opts.includeAnnotations === false) delete out.annotations;
   if (!opts.includeProvenance) delete out.provenance;
 
-  // notes: undefined → keep serialize's (state.notes); null → drop; object → override.
-  if (opts.notes === null) delete out.notes;
-  else if (opts.notes !== undefined) {
-    if (hasNotes(opts.notes)) out.notes = opts.notes;
-    else delete out.notes;
-  }
-
-  out.notes = attributedNotes(state, out.notes ?? null);
+  out.notes = attributedNotes(state, chosenNotes(opts, out.notes));
 
   if (opts.includeGeneration && state.generation) out.generation = state.generation;
-  if (opts.history) {
-    // History taint deltas require provenance; ordinary undo entries remain valid without them.
-    const entries = opts.includeProvenance
-      ? opts.history.entries
-      : opts.history.entries.map((e) => ({ ...e, taint: undefined }));
-    out.history = encodeHistory(entries, opts.history.depth);
-  }
+  const history = historySection(opts);
+  if (history) out.history = history;
   if (opts.session) out.session = opts.session;
   if (opts.includeStats) out.stats = buildStats(state);
   if (opts.includeCatalogInfo) out.catalogInfo = buildCatalogInfo(state);
@@ -188,16 +195,11 @@ function crcHex(v: unknown): string {
   return (crc32(enc.encode(JSON.stringify(v))) >>> 0).toString(16).padStart(8, '0');
 }
 
-/** Hash input excludes the integrity field itself. */
-function integrityOf(objWithoutIntegrity: SaveFile): string {
-  return crcHex(objWithoutIntegrity);
-}
-
 export function serializeWithSections(state: GridState, opts: ExportJsonOptions): string {
   const obj = assemble(state, opts);
   // The checksum covers every field except itself.
   const manifest = obj.manifest as ManifestSection | undefined;
-  if (manifest) manifest.integrity = integrityOf(obj);
+  if (manifest) manifest.integrity = crcHex(obj);
   return JSON.stringify(obj, null, opts.pretty ? 2 : undefined);
 }
 
@@ -229,15 +231,14 @@ function sectionValues(state: GridState, opts: ExportJsonOptions): Record<Exclud
   delete plain.notes;
   const annotations = plain.annotations;
   delete plain.annotations;
-  const notes = attributedNotes(state, opts.notes === null ? null : opts.notes !== undefined
-    ? (hasNotes(opts.notes) ? opts.notes : null) : coreNotes ?? null);
+  const notes = attributedNotes(state, chosenNotes(opts, coreNotes));
   return {
     core: plain,
     annotations: opts.includeAnnotations === false ? undefined : annotations,
     notes,
     generation: opts.includeGeneration ? state.generation : undefined,
     provenance: opts.includeProvenance ? provenance : undefined,
-    history: opts.history ? encodeHistory(opts.history.entries, opts.history.depth) : undefined,
+    history: historySection(opts),
     session: opts.session ?? undefined,
     stats: opts.includeStats ? buildStats(state) : undefined,
     catalogInfo: opts.includeCatalogInfo ? buildCatalogInfo(state) : undefined,

@@ -5,18 +5,20 @@ import { createShellSlice, type ShellSlice, type ModalId } from './slices/shell'
 import { createEditSlice, type EditSlice } from './slices/edit';
 import { createEngineSlice, type EngineSlice } from './slices/engine';
 import { createAnnotationsSlice, type AnnotationsSlice } from './slices/annotations';
+import { createPlanetSessionSlice, type PlanetSessionSlice } from './slices/planet-session';
 
 export type { BlockRef };
 export type { HintLevel, ViewMode };
 export type { ModalId };
 
-// The store is five independently-typed slices composed at one `create()` call. Each factory
+// The store is six independently-typed slices composed at one `create()` call. Each factory
 // types its own `set`/`get` no wider than the fields it actually touches (see the cross-slice
 // `Deps` picks in `edit.ts`/`engine.ts`/`annotations.ts`), so a slice naming a field outside its
 // declared type is a compile error rather than a convention. `shell` declares no engine field at
 // all, which is the boundary a shell replaces. The check is the type system's, so a cast still
 // defeats it.
-export type EditorStore = PrefsSlice & ShellSlice & EditSlice & EngineSlice & AnnotationsSlice;
+export type EditorStore = PrefsSlice & ShellSlice & EditSlice & EngineSlice & AnnotationsSlice
+  & PlanetSessionSlice;
 
 export const useEditorStore = create<EditorStore>((set, get, api) => ({
   ...createPrefsSlice(set, get, api),
@@ -24,4 +26,5 @@ export const useEditorStore = create<EditorStore>((set, get, api) => ({
   ...createEditSlice(set, get, api),
   ...createEngineSlice(set, get, api),
   ...createAnnotationsSlice(set, get, api),
+  ...createPlanetSessionSlice(set, get, api),
 }));

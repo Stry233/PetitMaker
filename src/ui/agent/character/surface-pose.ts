@@ -1,5 +1,5 @@
 /*
- * surface-pose.ts — the pose a SURFACE owns, handed to the one live character.
+ * The pose a SURFACE owns, handed to the one live character.
  *
  * THE CHARACTER IS NOT IN THE TREE THAT KNOWS. `poseForPhase` answers from the session, and three of
  * the poses answer to something else entirely: the setup screen's own step (`keylean`, `pleased`) and
@@ -14,25 +14,22 @@
  */
 import { useSyncExternalStore } from 'react';
 import type { PoseName } from './poses';
+import { createSignal } from '../../../core/runtime/signal';
 
-let current: PoseName | null = null;
-const listeners = new Set<() => void>();
+const current = createSignal<PoseName | null>(null);
 
 /** Publish the pose the standing surface calls for, or null to hand the character back to the
  *  phase. A no-op where nothing changes, so an effect may call it on every render. */
 export function setSurfacePose(pose: PoseName | null): void {
-  if (pose === current) return;
-  current = pose;
-  for (const listener of listeners) listener();
+  if (pose !== current.get()) current.emit(pose);
 }
 
 function subscribe(listener: () => void): () => void {
-  listeners.add(listener);
-  return () => { listeners.delete(listener); };
+  return current.subscribe(listener);
 }
 
 /** What a surface is asking for, or null. Server-rendered/first-paint answer is null: the phase's
  *  own reading is always a legal pose. */
 export function useSurfacePose(): PoseName | null {
-  return useSyncExternalStore(subscribe, () => current, () => null);
+  return useSyncExternalStore(subscribe, current.get, () => null);
 }

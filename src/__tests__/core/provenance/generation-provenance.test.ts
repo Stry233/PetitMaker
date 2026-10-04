@@ -1,4 +1,3 @@
-// src/__tests__/tools/generation-provenance.test.ts
 import { describe, it, expect } from 'vitest';
 import { makeState } from '../../rules/_helpers';
 import { CommandExecutor } from '../../../core/commands/command-executor';
@@ -17,7 +16,7 @@ describe('generation provenance', () => {
     e.withSource({ source: ProvSource.Procedural, procedural: { seed: 42, algorithm: 'designed', configHash: 'abc' } }, () => {
       e.execute({ type: CommandType.PaintTerrain, timestamp: 0, cells: [{ x: 1, y: 1 }], terrainType: TerrainType.Mountain, elevation: 1 } as Command);
     });
-    e.commitStrokeGroup(start);
+    e.commitStroke(start);
     const sum = e.getProvenanceSummary();
     expect(sum.containsProcedural).toBe(true);
     expect(sum.containsAi).toBe(false);

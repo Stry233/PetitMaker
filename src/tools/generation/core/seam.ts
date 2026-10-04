@@ -24,13 +24,13 @@ export interface RegionBase {
   before: (TerrainCell | null)[];
 }
 
-export interface SeamContext {
+interface SeamContext {
   state: GridState;
   execute: (cmd: Command) => ValidationResult;
   reg: RuleDispatcher;
 }
 
-export interface SeamOptions {
+interface SeamOptions {
   /** Objects the caller preserves; their occupied cells are not edited. */
   spare?: (obj: PlacedObject) => boolean;
 }

@@ -29,7 +29,7 @@ function RepeatBadge() {
   return <span style={{ ...badgeStyle, fontWeight: weightAt(900, badgeStyle.fontSize as number) }}>×2</span>;
 }
 
-export function KeyCap({ label, x2 }: { label: string; x2?: boolean }) {
+function KeyCap({ label, x2 }: { label: string; x2?: boolean }) {
   return (
     <span style={capStyle}>
       {label}

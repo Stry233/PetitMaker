@@ -58,7 +58,7 @@ function islandKit(seed: number): Kit {
       // about relief. What stands on it is the case's own subject, planted or laid below.
       clearAllObjects(state, (c: Command) => exec.execute(c));
     });
-    exec.commitStrokeGroup(exec.getUndoStackSize());
+    exec.commitStroke(exec.getUndoStackSize());
     islands.set(seed, base);
   }
   return kitOf(cloneGridState(base));

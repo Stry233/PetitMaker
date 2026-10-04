@@ -25,13 +25,13 @@ function stubLayout() {
 }
 
 function Box({ change, axis }: { change: unknown; axis: GlideAxis }) {
-  const glide = useSizeGlide<HTMLDivElement>(change, { axis });
+  const glide = useSizeGlide<HTMLDivElement>(change, { axis, motionId: 'notice.resize' });
   return <div ref={glide.ref} data-testid="box" data-gliding={String(glide.gliding)} />;
 }
 
 /** A caller that outlives the box it watches, so one hook instance can be handed a second element. */
 function Owner({ change, axis, box }: { change: unknown; axis: GlideAxis; box: boolean }) {
-  const glide = useSizeGlide<HTMLDivElement>(change, { axis });
+  const glide = useSizeGlide<HTMLDivElement>(change, { axis, motionId: 'notice.resize' });
   return (
     <div data-testid="owner" data-gliding={String(glide.gliding)}>
       {box && <div ref={glide.ref} data-testid="box" />}

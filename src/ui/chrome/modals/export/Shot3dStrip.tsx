@@ -1,3 +1,4 @@
+import { interactionProfiles, font, radii, springs, inkTint, cursors } from '../../../design/styles';
 // Shot3dStrip — the export "3D shots" menu: a single row of rounded thumbnail blocks (1..5) that
 // FILL the row width, plus an Add tile. Clicking a block opens the full-screen Preview3D in edit
 // mode; the corner ✕ deletes it (min 1).
@@ -13,7 +14,6 @@
 // no reflow jump.
 import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { font, radii, springs, inkTint, cursors } from '../../../design/styles';
 import { skin } from '../../../design/window-skin';
 import { roleFont } from '../../../design/text-weight';
 import { useT } from '../../../../i18n/context';
@@ -136,7 +136,7 @@ export function Shot3dStrip({ open }: { open: boolean }) {
             >
               <motion.button
                 type="button" title={t('export.shot_edit_hint')} onClick={() => editShot(i)}
-                onFocus={() => setHovered(i)} whileTap={{ scale: 0.96 }} transition={springs.stiff}
+                onFocus={() => setHovered(i)} whileTap={interactionProfiles.pillTap.whileTap} transition={springs.stiff}
                 style={{ position: 'absolute', inset: 0, border: 'none', padding: 0, cursor: cursors.clickable, background: 'transparent', WebkitTapHighlightColor: 'transparent' }}
               >
                 <span style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: skin.muted }}>
@@ -163,7 +163,7 @@ export function Shot3dStrip({ open }: { open: boolean }) {
           key="add" type="button" disabled={!addVisible}
           aria-label={addVisible ? t('export.shot_add') : undefined} title={addVisible ? t('export.shot_add') : undefined} aria-hidden={!addVisible}
           initial={false} animate={{ width: addVisible ? addW : 0, opacity: addVisible ? 1 : 0 }}
-          transition={springs.gentle} whileTap={addVisible ? { scale: 0.94 } : undefined}
+          transition={springs.gentle} whileTap={addVisible ? interactionProfiles.thumbnailAdd.whileTap : undefined}
           onMouseEnter={() => addVisible && setHovered(n)}
           onClick={() => { if (addVisible && gridState) setShots(addShot(shots, gridState)); }}
           style={{ height: H, flex: 'none', borderRadius: RADIUS, border: addVisible ? `1.5px dashed ${skin.line}` : 'none', background: 'transparent', color: skin.muted, fontFamily: font.family, fontWeight: 800, fontSize: 22, lineHeight: 1, overflow: 'hidden', pointerEvents: addVisible ? 'auto' : 'none', WebkitTapHighlightColor: 'transparent' }}

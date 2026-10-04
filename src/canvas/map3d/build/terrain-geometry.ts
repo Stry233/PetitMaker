@@ -7,23 +7,33 @@
  * use exposed-face culling (a wall toward a neighbor is emitted only when this
  * column is taller than that neighbor's mountain mass).
  */
-import { CHUNK_SIZE } from '../../../core/model/constants';
-import { CellZone, ItemCategory, TerrainType, type GridState, type CornerTrim, type Corners, type PlacedObject, type TerrainCell } from '../../../core/model/types';
+import { CellZone,  TerrainType, type GridState, type CornerTrim, type Corners, type PlacedObject, type TerrainCell } from '../../../core/model/types';
 import { getCell } from '../../../core/model/grid-model';
+import { mapFrame } from '../../../core/model/map-chunks';
 import { solidTopOf } from '../../../core/edge-cut/terrain-silhouette';
 import type { CornerPos } from '../../../core/edge-cut/corner-index';
 import { patchCornerSplit } from '../../../core/edge-cut/patch-corners';
 import earcut from 'earcut';
-import { ROAD_FEATHER, roadBodyPoints } from '../../../core/edge-cut/road-shape';
-import { buildRoadRegions } from '../../../core/edge-cut/road-region';
+import { ROAD_FEATHER } from '../../../core/edge-cut/road-shape';
+import { updateRoadRegions, type RoadRegion } from '../../../core/edge-cut/road-region';
+import type { RoadLookup } from '../../../core/model/road-lookup';
 import { objectElevation } from '../../../state/object-geometry';
 import { getCatalogItem } from '../../../state/catalog';
 import { roadLookup } from '../../../state/object-index';
 import { cutBackingByCorner } from '../../../core/edge-cut/cut-backing';
 import { cornerComplement, cornerPolygon, type Pt } from './quadrant-poly';
-import { GROUND_SLAB_Y, SEA_Y, cellCornerWorld, layerToY, surfaceY, waterSurfaceY, TERRAIN_OFFSET } from '../core/coords';
+import { roadFeatherOutline } from '../../road-feather';
+import { roadBandLayout, roadMaterialReady, type RoadMaterialPatch } from '../../road-material';
+import { RoadBuildCache } from '../../road-build-cache';
+import { carriedRoadSurfaces, standingRoadSurfaces } from '../../road-flight';
+import { roadPatternKey } from '../../../core/model/road-material';
+import type { RoadMaterialPattern } from '../../../core/model/road-material';
+import { groundWaterSurfaces } from './ground-water';
+import { GROUND_SLAB_Y, SEA_Y, cellCornerWorld, layerToY, surfaceY, waterSurfaceY, TERRAIN_OFFSET, ROAD_DECAL_LIFT } from '../core/coords';
 import { terrainColor, zoneColor, waterColor, hexToRgb01, objectColor, type Rgb } from '../core/palette';
 import type { MeshData, TerrainMeshes } from '../core/types';
+import { isCoatingItem } from '../../../core/model/traits';
+import { CHUNK_SIZE } from '../../../core/model/game-profile';
 
 const SLAB = GROUND_SLAB_Y; // land-slab top height (shared: object placement stands on it)
 const GROUND_BOTTOM = -0.4; // shoreline skirt depth — gives the coast underground body
@@ -36,12 +46,14 @@ const DEEP_SEA: Rgb = hexToRgb01('#3f9ec9'); // deeper blue beneath the transluc
  *  into FALL_SEGMENTS stacked quads so the cascade animation has resolution; a
  *  short rim is a single quad. b1/b2 are the bottom-edge corners (x,z). */
 function wallFace(m: MeshData, fallMode: boolean, b1: Pt, b2: Pt, yTop: number, col: Rgb): void {
+  const bottom = waterSurfaceY(0);
+  if (yTop <= bottom) return;
   if (!fallMode) {
-    quad(m, [b1[0], 0, b1[1]], [b2[0], 0, b2[1]], [b2[0], yTop, b2[1]], [b1[0], yTop, b1[1]], col);
+    quad(m, [b1[0], bottom, b1[1]], [b2[0], bottom, b2[1]], [b2[0], yTop, b2[1]], [b1[0], yTop, b1[1]], col);
     return;
   }
   for (let r = 0; r < FALL_SEGMENTS; r++) {
-    const ylo = (yTop * r) / FALL_SEGMENTS, yhi = (yTop * (r + 1)) / FALL_SEGMENTS;
+    const ylo = bottom + ((yTop - bottom) * r) / FALL_SEGMENTS, yhi = bottom + ((yTop - bottom) * (r + 1)) / FALL_SEGMENTS;
     quad(m, [b1[0], ylo, b1[1]], [b2[0], ylo, b2[1]], [b2[0], yhi, b2[1]], [b1[0], yhi, b1[1]], col);
   }
 }
@@ -174,12 +186,37 @@ export function buildChunkTerrain(state: GridState, cx: number, cy: number): Ter
   return buildRegion(state, x0, y0, Math.min(x0 + CHUNK_SIZE, width), Math.min(y0 + CHUNK_SIZE, height));
 }
 
+/** Four sea strips complete the reference grid without adding cells to the saved map. */
+export function buildSeaFrame(state: GridState): Pick<TerrainMeshes, 'ground' | 'water'> {
+  const { width, height } = state.template;
+  const frame = mapFrame(state.template);
+  const ground = empty(), water = empty();
+  if (!state.template.chunkGrid) return { ground, water };
+  const left = frame.x, top = frame.y;
+  const right = frame.x + frame.width, bottom = frame.y + frame.height;
+  const wc = waterColor();
+  const origin = cellCornerWorld(0, 0, width, height);
+  const strip = (x0: number, y0: number, x1: number, y1: number): void => {
+    if (x1 <= x0 || y1 <= y0) return;
+    const l = x0 + origin.x, r = x1 + origin.x, t = y0 + origin.z, b = y1 + origin.z;
+    quad(water, [l, SEA_Y, t], [l, SEA_Y, b], [r, SEA_Y, b], [r, SEA_Y, t], wc);
+    quad(ground, [l, SEA_FLOOR, b], [l, SEA_FLOOR, t], [r, SEA_FLOOR, t], [r, SEA_FLOOR, b], DEEP_SEA);
+  };
+  strip(left, top, right, 0);
+  strip(left, height, right, bottom);
+  strip(left, 0, 0, height);
+  strip(width, 0, right, height);
+  return { ground, water };
+}
+
 function buildRegion(state: GridState, rx0: number, ry0: number, rx1: number, ry1: number): TerrainMeshes {
   const { width, height } = state.template;
+  const frame = mapFrame(state.template);
   const solid = empty();
   const ground = empty();
   const water = empty();
   const fall = empty();
+  const riverbed = groundWaterSurfaces(state);
 
   for (let y = ry0; y < ry1; y++) {
     for (let x = rx0; x < rx1; x++) {
@@ -191,17 +228,33 @@ function buildRegion(state: GridState, rx0: number, ry0: number, rx1: number, ry
       const gx0 = c0.x, gz0 = c0.z, gx1 = gx0 + 1, gz1 = gz0 + 1;
       const x0 = gx0 + TERRAIN_OFFSET, z0 = gz0 + TERRAIN_OFFSET, x1 = x0 + 1, z1 = z0 + 1;
 
-      // A GROUND-ISLET cut (type None + corners): a grass corner poking into water (an islet tip, or
-      // the concave inner corner of an L-shaped pool). Like 2D, the full macro zone floor stays and the
-      // cut only reveals water at the trimmed corner — drawn on the MICRO terrain grid so it aligns with
-      // the pool, not a half-cell off.
+      // Ground-islet cuts share the pool's shifted terrain grid.
       const isCutGround = cell.terrain?.type === TerrainType.None
         && !!cell.terrain.corners && cell.terrain.corners.some((c) => c !== 'square');
 
       // ── ground slab (every non-Void cell) / sea quad (Void) — MACRO grid ──
       if (cell.zone !== CellZone.Void) {
         const zc = zoneColor(cell.zone);
-        quad(ground, [gx0, SLAB, gz0], [gx0, SLAB, gz1], [gx1, SLAB, gz1], [gx1, SLAB, gz0], zc);
+        const pieces = riverbed.pieces(x, y);
+        if (!pieces) {
+          quad(ground, [gx0, SLAB, gz0], [gx0, SLAB, gz1], [gx1, SLAB, gz1], [gx1, SLAB, gz0], zc);
+        } else for (const piece of pieces) {
+          const wet = piece.y < SLAB;
+          const floor = wet ? SEA_FLOOR : SLAB;
+          pushPolyTop(ground, piece.poly, floor, wet ? DEEP_SEA : zc);
+          if (!wet) continue;
+          for (let i = 0; i < piece.poly.length; i++) {
+            const a = piece.poly[i]!, b = piece.poly[(i + 1) % piece.poly.length]!;
+            const dx = b[0] - a[0], dz = b[1] - a[1], length = Math.hypot(dx, dz);
+            if (length < 1e-8) continue;
+            const mx = (a[0] + b[0]) / 2, mz = (a[1] + b[1]) / 2;
+            const nx = dz / length * 1e-5, nz = -dx / length * 1e-5;
+            const right = riverbed.submergedAt(mx + nx, mz + nz), left = riverbed.submergedAt(mx - nx, mz - nz);
+            if (left === right) continue;
+            const [p, q] = left ? [a, b] : [b, a];
+            quad(ground, [p[0], floor, p[1]], [q[0], floor, q[1]], [q[0], SLAB, q[1]], [p[0], SLAB, p[1]], zc);
+          }
+        }
         // Underground SKIRT where land meets the sea (or the map edge): a solid
         // wall down to GROUND_BOTTOM so the shoreline has body and the transition
         // to void hides the edge at grazing camera angles. Only the exposed (void-facing) sides.
@@ -220,7 +273,7 @@ function buildRegion(state: GridState, rx0: number, ry0: number, rx1: number, ry
         quad(water, [gx0, SEA_Y, gz0], [gx0, SEA_Y, gz1], [gx1, SEA_Y, gz1], [gx1, SEA_Y, gz0], wc);
         quad(ground, [gx0, SEA_FLOOR, gz1], [gx0, SEA_FLOOR, gz0], [gx1, SEA_FLOOR, gz0], [gx1, SEA_FLOOR, gz1], DEEP_SEA);
         // solid ocean depth at the MAP EDGE (out-of-bounds): translucent walls floor→surface.
-        const oob = (nx: number, ny: number) => !getCell(state.cells, nx, ny);
+        const oob = (nx: number, ny: number) => nx < frame.x || ny < frame.y || nx >= frame.x + frame.width || ny >= frame.y + frame.height;
         if (oob(x - 1, y)) quad(water, [gx0, SEA_FLOOR, gz1], [gx0, SEA_FLOOR, gz0], [gx0, SEA_Y, gz0], [gx0, SEA_Y, gz1], wc);
         if (oob(x + 1, y)) quad(water, [gx1, SEA_FLOOR, gz0], [gx1, SEA_FLOOR, gz1], [gx1, SEA_Y, gz1], [gx1, SEA_Y, gz0], wc);
         if (oob(x, y - 1)) quad(water, [gx0, SEA_FLOOR, gz0], [gx1, SEA_FLOOR, gz0], [gx1, SEA_Y, gz0], [gx0, SEA_Y, gz0], wc);
@@ -231,12 +284,7 @@ function buildRegion(state: GridState, rx0: number, ry0: number, rx1: number, ry
       if (!t) continue;
       const neighborAt = (dx: number, dy: number) => getCell(state.cells, x + dx, y + dy)?.terrain;
 
-      // ── GROUND ISLET cut (type None + corners): the macro grass floor above already fills the cell;
-      //    the cut only OPENS its trimmed corner onto the water it sits in. The reveal is drawn in the
-      //    CUT-AWAY shape (`cornerComplement`), on the MICRO terrain grid (x0/z0) the pool uses — so the
-      //    grass/water seam is the rounded fan arc that meets the pool, exactly as 2D drawCell paints the
-      //    kept grass fan over the square backing (here the opaque grass floor plays the kept-fan role and
-      //    the reveal fills only the rounded corner). ──
+      // The slab cut follows the same complement as the recessed water reveal.
       if (isCutGround) {
         pushRevealBacking(solid, water, t, 0, neighborAt, x0, z0);
         continue;
@@ -291,7 +339,7 @@ function buildRegion(state: GridState, rx0: number, ry0: number, rx1: number, ry
         continue;
       }
 
-      // ── water terrain (lakes / rivers / waterfalls): translucent body 0..top.
+      // ── water terrain (lakes / rivers / waterfalls): translucent body from the lowest waterline to its tier.
       //    Side walls are EXPOSED-FACE CULLED against neighbouring water so the
       //    translucent interior faces don't double up into dark seams. ──
       if (t.type === TerrainType.Water) {
@@ -413,10 +461,6 @@ function buildRegion(state: GridState, rx0: number, ry0: number, rx1: number, ry
   return { solid, ground, water, fall };
 }
 
-// Above the coated VISIBLE surface (surfaceY, not layerToY — at layer 0 the surface is the
-// ground slab top) only far enough that the depth test keeps the decal over it.
-const ROAD_DECAL_LIFT = 0.02;
-
 /** A flat ring between two same-count outlines at height `y`, one colour, alpha running from 0 at
  *  the outer ring to 1 at the inner — the mesh form of the 2D painter's alpha bands, compositing
  *  over the real terrain beneath rather than over a guessed ground tint (two fades meeting at a
@@ -468,12 +512,13 @@ function pushRegionCore(m: MeshData, rings: Pt[][], y: number, col: Rgb): void {
   for (const i of tris) m.index.push(base + i);
 }
 
-/** One road material's surfaces as a mesh, plus the tile art (if any) that paves them. */
+/** Road surfaces batched by catalog material and texture finish. */
 export interface RoadTrimPart {
   /** The catalog id every surface in this mesh is paved with. */
   material: string;
-  /** The material's tile-art icon basename, absent for a colour-only surface. */
+  /** Catalog icon for legacy surfaces; authored finishes supply their own patterns. */
   icon?: string;
+  pattern?: RoadMaterialPattern;
   mesh: MeshData;
 }
 
@@ -488,94 +533,183 @@ function fillGridUvs(m: MeshData, origin: { x: number; z: number }): void {
   m.uv = uv;
 }
 
+/** One window's band polygons triangulated in cell coordinates, ready to translate into place. */
+interface WindowCore {
+  pattern?: RoadMaterialPattern;
+  color: Rgb;
+  /** Interleaved x, z. */
+  flat: number[];
+  index: number[];
+}
+
+function triangulateWindow(patches: RoadMaterialPatch[]): WindowCore[] {
+  const out: WindowCore[] = [];
+  for (const patch of patches) for (const polygon of patch.polygons) {
+    const flat: number[] = [];
+    const holes: number[] = [];
+    polygon.forEach((ring, i) => {
+      if (i > 0) holes.push(flat.length / 2);
+      for (const [x, z] of ring) flat.push(x, z);
+    });
+    out.push({ pattern: patch.pattern, color: hexToRgb01(patch.color), flat, index: earcut(flat, holes, 2) });
+  }
+  return out;
+}
+
+/** The road fields a region's outline reads. */
+const roadPrint = (o: PlacedObject): string =>
+  `${o.catalogId}|${o.position.x},${o.position.y}|${o.elevation}|${o.rotation}|${o.corners?.join('') ?? ''}|${o.patchOnly ? 1 : 0}`;
+
+/**
+ * What a scene keeps between road rebuilds. Regions are re-derived only near the road tiles that
+ * changed since the previous build, and each band window is triangulated once while a build in the
+ * latest two still draws it, so tween frames and move previews reuse every unchanged window.
+ */
+export class RoadTrimCache {
+  private regions: RoadRegion[] | null = null;
+  private prints = new Map<string, { print: string; cell: number }>();
+  private template: GridState['template'] | null = null;
+  readonly cores = new RoadBuildCache<WindowCore[]>();
+  readonly standing = new RoadBuildCache<RoadRegion[]>();
+
+  /** `onMaterialReady` runs when material bands become available after a build drew without them. */
+  constructor(readonly onMaterialReady?: () => void) {}
+
+  regionsFor(state: GridState, roadObjs: readonly PlacedObject[], roads: RoadLookup): RoadRegion[] {
+    const width = state.template.width;
+    const prints = new Map<string, { print: string; cell: number }>();
+    for (const o of roadObjs) prints.set(o.id, { print: roadPrint(o), cell: o.position.y * width + o.position.x });
+    let dirty: Set<number> | null = null;
+    if (this.regions && this.template === state.template) {
+      dirty = new Set();
+      for (const [id, now] of prints) {
+        const was = this.prints.get(id);
+        if (was?.print === now.print) continue;
+        dirty.add(now.cell);
+        if (was) dirty.add(was.cell);
+      }
+      for (const [id, was] of this.prints) if (!prints.has(id)) dirty.add(was.cell);
+    }
+    this.regions = updateRoadRegions(dirty ? this.regions : null, dirty, roadObjs, roads, width);
+    this.prints = prints;
+    this.template = state.template;
+    return this.regions;
+  }
+
+  finish(): void {
+    this.cores.finish();
+    this.standing.finish();
+  }
+}
+
 /**
  * EVERY road surface as flat custom meshes, feather and all: connected same-material tiles
  * (plus the fills they feed into foreign cut cells) trace one region outline
  * (`core/edge-cut/road-region`, the same derivation the 2D painter fills), and the surface fades
- * from nothing at that outline to full colour over ROAD_FEATHER of a cell — corners wrapping as
+ * from nothing at that outline over its authored feather (ROAD_FEATHER by default), wrapping as
  * the whole surface's distance field does, never per tile. Roads use the macro grid (no
  * TERRAIN_OFFSET); a unit cell means half-extents of 0.5.
  *
- * ONE MESH PER MATERIAL, because a path material paves with its own tile art and a texture belongs
- * to a mesh: the split is what lets the materials on one map wear different tiles. A textured
- * material's vertex colours are WHITE — the art carries the colour, and the item's hex multiplied
- * over it would darken the map twice; a colour-only road keeps its hex as the vertex colour.
+ * Icon textures carry their own colours over white vertices. Authored materials use tinted bands
+ * with neutral or coloured patterns; bands sharing a finish are batched into one mesh. Until the
+ * clipper has loaded, an authored material draws its feathered core in the catalog swatch colour.
  *
  * `offsets` displaces named roads on the ground plane (cell units = world units) for the
  * group-move/rotation tweens. A region whose members all carry one offset travels whole; a region
- * only partly in flight falls back to per-tile bodies until the tween lands, since a surface
- * cannot stretch between its moving and standing halves.
+ * only partly carried draws as `road-flight.ts` describes, as the 2D view does.
  */
 export function buildRoadTrimMeshes(
   state: GridState,
   hiddenLayers?: ReadonlySet<number>,
   offsets?: ReadonlyMap<string, { dx: number; dz: number }>,
+  cache: RoadTrimCache = new RoadTrimCache(),
 ): RoadTrimPart[] {
   const { width, height } = state.template;
   const roads = roadLookup(state);
   const roadObjs: PlacedObject[] = [];
   for (const obj of state.objects.values()) {
-    if (getCatalogItem(obj.catalogId)?.category === ItemCategory.Road) roadObjs.push(obj);
+    if (isCoatingItem(getCatalogItem(obj.catalogId))) roadObjs.push(obj);
   }
   if (roadObjs.length === 0) return [];
   const origin = cellCornerWorld(0, 0, width, height);
+  const bands = roadMaterialReady(cache.onMaterialReady);
 
   const parts = new Map<string, RoadTrimPart>();
-  const partFor = (material: string): RoadTrimPart => {
-    let part = parts.get(material);
+  const partFor = (material: string, pattern?: RoadMaterialPattern): RoadTrimPart => {
+    const key = `${material}:${roadPatternKey(pattern)}`;
+    let part = parts.get(key);
     if (!part) {
-      const icon = getCatalogItem(material)?.icon;
-      part = { material, ...(icon ? { icon } : {}), mesh: { ...empty(), alpha: [] } };
-      parts.set(material, part);
+      const item = getCatalogItem(material);
+      const icon = item?.roadMaterial ? undefined : item?.icon;
+      part = { material, ...(icon ? { icon } : {}), ...(pattern ? { pattern } : {}), mesh: { ...empty(), alpha: [] } };
+      parts.set(key, part);
     }
     return part;
   };
 
-  const perTile = (m: MeshData, obj: PlacedObject, y: number, col: Rgb): void => {
-    const off = offsets?.get(obj.id);
-    const cx = obj.position.x + origin.x + (off?.dx ?? 0), cz = obj.position.y + origin.z + (off?.dz ?? 0);
-    pushFeatherRing(m, roadBodyPoints(roads, obj, cx, cz, 1, 1, 0), roadBodyPoints(roads, obj, cx, cz, 1, 1, ROAD_FEATHER), y, col);
-    const core = roadBodyPoints(roads, obj, cx, cz, 1, 1, ROAD_FEATHER);
-    const base = m.positions.length / 3;
-    for (const [px, pz] of core) { m.positions.push(px, y, pz); m.colors.push(col[0], col[1], col[2]); m.alpha!.push(1); }
-    for (const i of earcut(core.flat(), [], 2)) m.index.push(base + i);
-  };
-
-  for (const region of buildRoadRegions(roadObjs, roads)) {
-    const first = region.members[0]!;
-    const elev = objectElevation(state, first);
-    if (hiddenLayers?.has(elev)) continue; // hides with its layer
-    // A road is a FLAT decal: one face a hair above the surface it coats, no walls and no
-    // thickness of its own.
-    const y = surfaceY(elev) + ROAD_DECAL_LIFT;
+  const drawSurface = (region: RoadRegion, y: number, off?: { dx: number; dz: number }): void => {
     const item = getCatalogItem(region.material);
-    const part = partFor(region.material);
+    const spec = item?.roadMaterial;
+    const banded = !!spec && bands;
+    const part = partFor(region.material, banded ? spec.edge.pattern : undefined);
     const m = part.mesh;
-    const col: Rgb = part.icon ? [1, 1, 1] : objectColor(first, item);
-    // A landed tween hands back offsets that are only float dust — treat those as rest.
-    const memberOffsets = region.members.map((o) => {
-      const v = offsets?.get(o.id);
-      return v && Math.abs(v.dx) + Math.abs(v.dz) > 1e-9 ? v : undefined;
-    });
-    const off = memberOffsets.find((o) => o !== undefined);
-    const together = off !== undefined && memberOffsets.every((o) =>
-      o !== undefined && o.dx === off.dx && o.dz === off.dz);
-    if (off !== undefined && !together) {
-      for (const obj of region.members) perTile(m, obj, y, col);
-      continue;
-    }
+    const col: Rgb = banded ? hexToRgb01(spec.edge.color)
+      : spec ? hexToRgb01(item.color ?? spec.edge.color)
+        : part.icon ? [1, 1, 1] : objectColor(region.members[0]!, item);
     const dx = origin.x + (off?.dx ?? 0), dz = origin.z + (off?.dz ?? 0);
     const place = (pts: readonly (readonly [number, number])[]): Pt[] =>
       pts.map(([px, pz]) => [px + dx, pz + dz] as Pt);
     const cores: Pt[][] = [];
     for (const ring of region.rings) {
-      const outer = place(ring.points(0));
-      const core = place(ring.points(ROAD_FEATHER));
+      const outlineAt = roadFeatherOutline(ring.points);
+      const outer = place(outlineAt(0));
+      const core = place(outlineAt(spec?.feather ?? ROAD_FEATHER));
       pushFeatherRing(m, outer, core, y, col);
       cores.push(core);
     }
-    pushRegionCore(m, cores, y, col);
+    if (!banded) { pushRegionCore(m, cores, y, col); return; }
+    for (const window of roadBandLayout(region, spec).windows) {
+      for (const core of cache.cores.get(window.key, () => triangulateWindow(window.patches()))) {
+        const target = partFor(region.material, core.pattern).mesh;
+        const base = target.positions.length / 3;
+        for (let i = 0; i < core.flat.length; i += 2) {
+          target.positions.push(core.flat[i]! + dx, y, core.flat[i + 1]! + dz);
+          target.colors.push(core.color[0], core.color[1], core.color[2]);
+          target.alpha!.push(1);
+        }
+        for (const i of core.index) target.index.push(base + i);
+      }
+    }
+  };
+
+  // A landed tween hands back offsets that are only float dust; a build where every offset is dust is at rest.
+  const moving = (o?: { dx: number; dz: number }): boolean => !!o && Math.abs(o.dx) + Math.abs(o.dz) > 1e-9;
+  const inFlight = !!offsets && [...offsets.values()].some(moving);
+  const carried = (id: string): boolean => inFlight && offsets!.has(id);
+
+  for (const region of cache.regionsFor(state, roadObjs, roads)) {
+    const elev = objectElevation(state, region.members[0]!);
+    if (hiddenLayers?.has(elev)) continue; // hides with its layer
+    // A road is a FLAT decal: one face a hair above the surface it coats, no walls and no
+    // thickness of its own.
+    const y = surfaceY(elev) + ROAD_DECAL_LIFT;
+    const flying = region.members.filter((o) => carried(o.id));
+    if (flying.length === 0) { drawSurface(region, y); continue; }
+    const off = offsets!.get(flying[0]!.id)!;
+    if (flying.length === region.members.length && flying.every((o) => {
+      const v = offsets!.get(o.id)!;
+      return v.dx === off.dx && v.dz === off.dz;
+    })) {
+      drawSurface(region, y, off);
+      continue;
+    }
+    const key = `${region.signature}#${flying.map((o) => o.id).sort().join(',')}`;
+    for (const standing of cache.standing.get(key, () => standingRoadSurfaces(region, carried, roads))) drawSurface(standing, y);
+    for (const member of flying) {
+      for (const surface of carriedRoadSurfaces(member, roads)) drawSurface(surface, y, offsets!.get(member.id));
+    }
   }
+  cache.finish();
   const out = [...parts.values()].filter((p) => p.mesh.positions.length > 0);
   for (const p of out) fillGridUvs(p.mesh, origin);
   return out;

@@ -1,5 +1,5 @@
 /*
- * pencilize.ts — a structure-aware coloured-pencil pass over ANY picture of the map.
+ * A structure-aware coloured-pencil pass over ANY picture of the map.
  *
  * The mechanical track's second medium. Three moves carry it, all deterministic in the seed:
  *

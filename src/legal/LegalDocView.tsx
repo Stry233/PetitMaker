@@ -17,8 +17,9 @@ import { useEffect, useRef, type CSSProperties } from 'react';
 import { motion } from 'framer-motion';
 import { useT } from '../i18n/context';
 import { useEditorStore } from '../state/store';
-import { colors, font, radii, buttonMotion, cursors } from '../ui/design/styles';
-import { skin } from '../ui/design/window-skin';
+import { colors, font, radii, interactionProfiles } from '../ui/design/styles';
+import { skin, windowIconButton } from '../ui/design/window-skin';
+import { BackIcon } from '../ui/primitives/line-glyphs';
 import { useChromeScale, useDevicePixelRatio, useReadableWeight } from '../ui/design/scale';
 import { isDenseScript, roleFont, TEXT_ROLES, weightVars } from '../ui/design/text-weight';
 import { SegmentedControl } from '../ui/primitives/SegmentedControl';
@@ -26,6 +27,7 @@ import { useScrollFade } from '../ui/primitives/scroll-fade';
 import { DOCS, docNodes, type DocId } from './registry';
 import { LEGAL } from './config';
 import { LegalMarkdown } from './LegalMarkdown';
+import { localeTag } from '../i18n/translations';
 
 const liteLicenses = IS_LITE ? import.meta.glob<string>('../../licenses/**/*', { query: '?raw', import: 'default', eager: true }) : {};
 
@@ -54,20 +56,6 @@ const headerRow: CSSProperties = {
   padding: '18px 22px',
   borderBottom: `1px solid ${skin.line}`,
   flexShrink: 0,
-};
-
-const backBtn: CSSProperties = {
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  width: 34,
-  height: 34,
-  flexShrink: 0,
-  border: 'none',
-  cursor: cursors.clickable,
-  borderRadius: radii.pill,
-  background: skin.inset,
-  color: skin.ink,
 };
 
 const titleStyle: CSSProperties = {
@@ -160,19 +148,10 @@ export default function LegalDocView({ id, lang, onLang, onBack, onInternalLink 
           type="button"
           onClick={onBack}
           aria-label={t('legal.back')}
-          style={backBtn}
-          {...buttonMotion}
+          style={windowIconButton}
+          {...interactionProfiles.tile}
         >
-          <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden>
-            <path
-              d="M10 3 L5 8 L10 13"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
+          <BackIcon size={18} />
         </motion.button>
 
         <h2 ref={titleRef} tabIndex={-1} style={{ ...titleStyle, fontWeight: weightAt(800, titleStyle.fontSize as number) }}>
@@ -199,7 +178,7 @@ export default function LegalDocView({ id, lang, onLang, onBack, onInternalLink 
         ref={bodyRef}
         data-testid="legal-doc-body"
         data-scroll
-        lang={effLang === 'zh' ? 'zh-CN' : 'en'}
+        lang={localeTag(effLang)}
         style={{ ...bodyScroll, ...bodyFade, ...weightVars(zoom, dpr, isDenseScript(effLang)) }}
       >
         {!hasZh && uiLocale !== 'en' && (

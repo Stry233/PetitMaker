@@ -12,56 +12,30 @@ const el = (pos: number, size: number, client: number) => ({
 
 describe('measureFade', () => {
   it('reports no travel for a fitted box, both ends mid-scroll, and one end at each stop', () => {
-    expect(measureFade(el(0, 100, 100), 'x')).toEqual({ start: 0, end: 0, offset: 0 });
-    expect(measureFade(el(50, 300, 100), 'y')).toEqual({ start: SCROLL_FADE, end: SCROLL_FADE, offset: 0 });
-    expect(measureFade(el(0, 300, 100), 'x')).toEqual({ start: 0, end: SCROLL_FADE, offset: 0 });
-    expect(measureFade(el(200, 300, 100), 'x')).toEqual({ start: SCROLL_FADE, end: 0, offset: 0 });
+    expect(measureFade(el(0, 100, 100), 'x')).toEqual({ start: 0, end: 0 });
+    expect(measureFade(el(50, 300, 100), 'y')).toEqual({ start: SCROLL_FADE, end: SCROLL_FADE });
+    expect(measureFade(el(0, 300, 100), 'x')).toEqual({ start: 0, end: SCROLL_FADE });
+    expect(measureFade(el(200, 300, 100), 'x')).toEqual({ start: SCROLL_FADE, end: 0 });
   });
   it('treats a spare half pixel as rounding, not room', () => {
-    expect(measureFade(el(0, 100.5, 100), 'x')).toEqual({ start: 0, end: 0, offset: 0 });
+    expect(measureFade(el(0, 100.5, 100), 'x')).toEqual({ start: 0, end: 0 });
   });
   it('clears the fade within a hair of either stop, where zoomed metrics overstate the room', () => {
     // Under a CSS zoom the browser's real maximum offset sits a couple of px short of
     // scrollWidth - clientWidth, so a fully-scrolled row reports phantom travel at its end.
-    expect(measureFade(el(198, 300, 100), 'x')).toEqual({ start: SCROLL_FADE, end: 0, offset: 0 });
-    expect(measureFade(el(2, 300, 100), 'y')).toEqual({ start: 0, end: SCROLL_FADE, offset: 0 });
+    expect(measureFade(el(198, 300, 100), 'x')).toEqual({ start: SCROLL_FADE, end: 0 });
+    expect(measureFade(el(2, 300, 100), 'y')).toEqual({ start: 0, end: SCROLL_FADE });
   });
   it('lets a custom fadeAt set per-edge widths', () => {
     const t = measureFade(el(50, 300, 100), 'x', (_el, _edge, atEnd) => (atEnd ? 40 : 10));
-    expect(t).toEqual({ start: 10, end: 40, offset: 0 });
+    expect(t).toEqual({ start: 10, end: 40 });
   });
 
-  /**
-   * A STICKY HEAD OWNS THE TOP OF THE SCROLLER, so the shade starts under it: the head is standing
-   * still, nothing passes through the band it occupies, and a shade over it dims the one line meant
-   * to stay readable. Asked for only where there IS a shade — a scroller at its own start has none,
-   * and reading a band for it would be measuring a head nothing is behind.
-   */
-  it('takes a sticky head\'s band at the start edge, and only where a shade stands', () => {
-    expect(measureFade(el(50, 300, 100), 'y', undefined, () => 30))
-      .toEqual({ start: SCROLL_FADE, end: SCROLL_FADE, offset: 30 });
-    expect(measureFade(el(0, 300, 100), 'y', undefined, () => 30))
-      .toEqual({ start: 0, end: SCROLL_FADE, offset: 0 });
-  });
-
-  it('never takes a negative band', () => {
-    expect(measureFade(el(50, 300, 100), 'y', undefined, () => -12).offset).toBe(0);
-  });
 });
 
 describe('fadeMask', () => {
   it('is absent when neither end has travel', () => {
     expect(fadeMask('x', { start: 0, end: 0 })).toBeUndefined();
-  });
-  /** The band is HARD opaque and the ramp begins at its edge, so what emerges from under the head
-   *  appears out of nothing rather than half-drawn. */
-  it('holds a sticky head\'s band opaque and starts the ramp below it', () => {
-    expect(fadeMask('y', { start: 24, end: 0, offset: 30 }))
-      .toBe('linear-gradient(to bottom, #000 0, #000 30px, transparent 30px, #000 54px, #000 100%)');
-  });
-  it('ignores a band where there is no start shade to push down', () => {
-    expect(fadeMask('y', { start: 0, end: 24, offset: 30 }))
-      .toBe('linear-gradient(to bottom, #000 0, #000 calc(100% - 24px), transparent 100%)');
   });
   it('fades only the end that has travel, on the right axis', () => {
     expect(fadeMask('x', { start: 0, end: 24 }))

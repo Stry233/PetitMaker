@@ -1,3 +1,4 @@
+import type { Translate } from '../../core/model/types';
 /*
  * Shared rollback accounting for every assistant take-back control. A rollback pops all undo entries
  * above its watermark, including later manual edits or jobs. `mine` identifies entries above the
@@ -6,7 +7,7 @@
  */
 
 /** What one take-back press would cost, in undo entries. */
-export interface RollbackCost {
+interface RollbackCost {
   /** Every entry the press pops. */
   steps: number;
   /**
@@ -42,7 +43,7 @@ export function rollbackReaches(watermark: number, depth: number | undefined): b
 /** Confirmation copy for a take-back. The visible pill and screen-reader label both state its size
  *  and separately identify later work when the record can prove there is any. */
 export function rewindConfirmCopy(
-  t: (key: string, params?: Record<string, string | number>) => string,
+  t: Translate,
   cost: RollbackCost | null,
 ): { question: string; confirmLabel: string } {
   if (cost === null) {

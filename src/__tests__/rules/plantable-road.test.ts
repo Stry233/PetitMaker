@@ -66,7 +66,7 @@ describe('flora and the dirt road, end to end', () => {
   it('both stand after the stroke commits', () => {
     const state = grassMap();
     const exec = makeExecutor(state);
-    exec.execute(placeCmd(at('r', 'path-overgrown-dirt', 4, 4), 10));
+    exec.execute(placeCmd(at('r', 'path-overgrown-dirt', 4, 4)));
     const start = exec.getUndoStackSize();
     exec.execute(placeCmd(at('f', 'flower-daisy', 4, 4)));
     expect(exec.commitStroke(start)).toEqual([]);

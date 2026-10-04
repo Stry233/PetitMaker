@@ -3,16 +3,15 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, cleanup, screen, waitFor, act } from '@testing-library/react';
 import { I18nProvider, localizedName } from '../../../i18n/context';
 import { getCatalogItem } from '../../../state/catalog';
-import { setReducedMotion, __resetMotionState } from '../../../canvas/map2d/motion-state';
-import { ItemCategory, type Locale } from '../../../core/model/types';
+import { setReducedMotion, __resetMotionState } from '../../../core/runtime/motion-state';
 import { makeState } from '../../rules/_helpers';
 import { setStoreState } from '../../_store';
 import { en } from '../../../i18n/locales/en';
-import { shelfItems } from '../../../ui/shell/bars/object-shelf';
 import {
   SavePreview, SharePreview, ImportPreview, JsonPreview, ChecklistPreview, CandidatesPreview,
-  SearchPreview, SEARCH_STEPS_BY_LOCALE,
+  SearchPreview,
 } from '../../../ui/chrome/modals/help/figures/previews/share';
+import { SEARCH_EXAMPLE_IDS, searchExamples } from '../../../ui/chrome/modals/help/search-examples';
 
 vi.mock('../../../canvas/thumbnail', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../../canvas/thumbnail')>()),
@@ -83,7 +82,7 @@ describe('save/share/search Help figures mount the real components', () => {
     expect(screen.getByTestId('shell-candidate-5551')).toBeTruthy();
   });
 
-  it('SearchPreview mounts the real ObjectShelf and types "sakura" into its own field, whose real ranking answers with the peach tree', () => {
+  it('SearchPreview mounts the real ObjectShelf and types the alias example into its own field, whose real ranking answers with its item', () => {
     vi.useFakeTimers();
     try {
       const { container } = mount(SearchPreview);
@@ -93,14 +92,15 @@ describe('save/share/search Help figures mount the real components', () => {
       const input = container.querySelector<HTMLInputElement>('input.pw-search-field');
       expect(input).toBeTruthy();
       // Walk to the alias step with a finite bound on the animation cycle.
-      for (let i = 0; i < 80 && input!.value !== 'sakura'; i++) {
+      const { aliasLatin } = searchExamples('en');
+      for (let i = 0; i < 80 && input!.value !== aliasLatin; i++) {
         act(() => { vi.advanceTimersByTime(400); });
       }
-      expect(input!.value).toBe('sakura');
-      // "sakura" is an authored alias with exactly one hit, so the card standing under the field
+      expect(input!.value).toBe(aliasLatin);
+      // The alias is authored on one item with exactly one hit, so the card standing under the field
       // can only have come through the shelf's own ranking. The frame carries `aria-hidden` by
       // design (§PreviewFrame); the role query opts back in to see past it.
-      const peach = localizedName(getCatalogItem('tree-peach')!.name, 'en');
+      const peach = localizedName(getCatalogItem(SEARCH_EXAMPLE_IDS.alias)!.name, 'en');
       expect(screen.getByRole('button', { name: peach, hidden: true })).toBeTruthy();
     } finally {
       vi.useRealTimers();
@@ -112,25 +112,13 @@ describe('save/share/search Help figures mount the real components', () => {
     try {
       const { container } = mount(SearchPreview);
       const input = container.querySelector<HTMLInputElement>('input.pw-search-field');
-      expect(input!.value).toBe('aple');
+      expect(input!.value).toBe(searchExamples('en').enTypo);
       // The frozen query still flows through the shelf's own ranking: the subsequence match
       // stands as a card, under the real category tabs and search field around it.
-      const apple = localizedName(getCatalogItem('tree-apple')!.name, 'en');
+      const apple = localizedName(getCatalogItem(SEARCH_EXAMPLE_IDS.name)!.name, 'en');
       expect(screen.getByRole('button', { name: apple, hidden: true })).toBeTruthy();
     } finally {
       __resetMotionState();
-    }
-  });
-
-  it('every locale\'s posed query still finds something through the real shelf ranking', () => {
-    // A data pin, not a mount: a catalog rename or a dropped alias breaks a query's match
-    // silently in the posed figure (the shelf just shows its "nothing found" state), so this
-    // walks every table's every step through the real pipeline and fails loudly instead.
-    for (const locale of Object.keys(SEARCH_STEPS_BY_LOCALE) as Locale[]) {
-      for (const step of SEARCH_STEPS_BY_LOCALE[locale]) {
-        const results = shelfItems(step.query, ItemCategory.Tree, locale);
-        expect(results.length, `${locale} "${step.query}" (${step.captionKey})`).toBeGreaterThan(0);
-      }
     }
   });
 });

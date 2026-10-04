@@ -1,5 +1,5 @@
 /**
- * face.test.ts — the closed-eye lid COVERS the eye it is drawn over.
+ * The closed-eye lid COVERS the eye it is drawn over.
  *
  * A GEOMETRY TEST, and it has to be: jsdom has no layout, so the only checkable statement about a lid
  * is the relationship between the two boxes. The lid is an ellipse inscribed in its box and the dot is

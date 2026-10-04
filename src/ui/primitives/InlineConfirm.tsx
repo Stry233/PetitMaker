@@ -17,14 +17,14 @@ export const HUSHED: CSSProperties = {
 };
 
 /** Caller-supplied width and color timing for the confirmation morph. */
-export interface ConfirmArm {
+interface ConfirmArm {
   /** The seat's width tween. */
   transition: Transition;
   /** CSS transition for caller-owned colors. */
   paint: string;
 }
 
-export interface InlineConfirmProps {
+interface InlineConfirmProps {
   /** Accessible name while armed; the caller supplies the visible wording. */
   question: string;
   onConfirm: () => void;

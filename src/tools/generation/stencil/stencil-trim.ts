@@ -1,5 +1,5 @@
 /*
- * stencil-trim.ts — the corner chooser that reads the source picture.
+ * The corner chooser that reads the source picture.
  *
  * The stencil is rasterized at twice the cell resolution (`Stencil.quad`), so every corner of every
  * cell carries how much of it the source covers. Each candidate shape covers a known share of its

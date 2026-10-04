@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { radii, font, exitTransition } from '../../../design/styles';
+import { radii, font } from '../../../design/styles';
 import { skin } from '../../../design/window-skin';
 import { roleFont } from '../../../design/text-weight';
 import { Spinner } from '../../../primitives/Spinner';
@@ -14,6 +14,7 @@ import { CodeWarn } from './ExportControls';
 import type { ShareCodeIssue } from './use-share-code';
 import { angleKey } from '../../../../canvas/map3d/capture';
 import { usePanZoom } from './use-pan-zoom';
+import { PanZoomResetHint, stageOutline } from './pan-zoom-stage';
 import { useStylizeVersions } from './stylize/use-stylize-versions';
 import { useMotion } from '../../../shell/motion/use-motion';
 
@@ -129,20 +130,8 @@ export function ExportPreview({ open, preparing = open, checkingMap = false, opt
             style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain', borderRadius: 8, userSelect: 'none', ...pz.viewStyle }} />
         )}
         {open && !busy && !picture && <div style={hintStyle}><div style={{ fontSize: 28 }}>🗺️</div><div>{t('export.fail_t')}</div></div>}
-        {/* Transient reset hint: hidden at rest, appears once the user has actually panned/zoomed
-            the picture, fades back out after a quiet spell (see HINT_QUIET_MS) or on reset itself. */}
-        <AnimatePresence>
-          {pz.showResetHint && (
-            <motion.div key="reset-hint" style={hintPill}
-              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0, transition: exitTransition }}>
-              {t('export.preview_reset_hint')}
-            </motion.div>
-          )}
-        </AnimatePresence>
-        {/* Painted AFTER the image (later DOM = later paint) so the hairline outline reads all the
-            way round even when the picture is panned/zoomed to fill the whole stage — an inset
-            box-shadow on `stage` itself would paint under the image and get covered by it. */}
-        <div style={outlineStyle} aria-hidden />
+        <PanZoomResetHint show={pz.showResetHint} />
+        <div style={stageOutline} aria-hidden />
       </div>
       {codeIssue && <CodeWarn text={t(codeIssue)} />}
     </div>
@@ -150,7 +139,4 @@ export function ExportPreview({ open, preparing = open, checkingMap = false, opt
 }
 
 const stage: CSSProperties = { position: 'relative', flex: 1, minHeight: 0, borderRadius: radii.lg, background: skin.inset, display: 'grid', placeItems: 'center', overflow: 'hidden' };
-// A sibling overlay rather than `stage`'s own box-shadow: see the JSX comment above its use.
-const outlineStyle: CSSProperties = { position: 'absolute', inset: 0, borderRadius: radii.lg, boxShadow: `inset 0 0 0 1.5px ${skin.line}`, pointerEvents: 'none' };
 const hintStyle: CSSProperties = { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, color: skin.muted, fontFamily: font.family, ...roleFont('label') };
-const hintPill: CSSProperties = { position: 'absolute', bottom: 8, left: '50%', transform: 'translateX(-50%)', ...roleFont('caption'), color: skin.plateInk, background: skin.plate, borderRadius: 999, padding: '3px 11px', whiteSpace: 'nowrap', pointerEvents: 'none', fontFamily: font.family };

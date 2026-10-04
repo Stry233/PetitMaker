@@ -10,7 +10,9 @@
  *   ─────────────────  ────────────────────────────────────────  ─────────────────────────────────
  *   hover box          the click target's rect (object footprint macro for an object,
  *                      or one terrain cell)                      micro for a terrain cell
- *   selection ring     the selected body's rect, per member      as above (caller passes)
+ *   selection marks    brackets around the selected body; a      as above (caller passes)
+ *                      group rings each member and brackets
+ *                      the whole; a terrain cell, its exact rect
  *   rubber band        the raw macro band rect                   macro (a band selects objects)
  *   buildable wash     one rect per painted region cell          the caller's grid (terrain)
  *   route drape        one rect per corridor cell                micro ALWAYS (walls stand there)
@@ -22,7 +24,7 @@
  *   ghost              the cells the stroke will lay             micro for terrain, macro for tiles
  *
  * The hard cases are the ones where those two grids and a fractional anchor meet: a plain cell, a
- * macro object, the PLAZA (a 20×27 body anchored at x.5/y.5) and a halfStep bridge/ramp anchor.
+ * macro object, the PLAZA (a large body anchored at x.5/y.5) and a halfStep bridge/ramp anchor.
  * A body on the half grid is why a shade is drawn from a RECT and not from the cells it touches:
  * its whole-cell footprint is a cell wider and a cell taller than the body itself.
  */
@@ -32,6 +34,7 @@ import { OverlayLayer } from '../../canvas/map2d/layers/overlay-layer';
 import { TILE_SIZE } from '../../core/model/constants';
 import { HALF_TILE, bodyEvidence } from '../../core/model/grid-model';
 import type { Rect, ValidationError } from '../../core/model/types';
+import { PLAZA_RECT } from '../fixtures/planet';
 
 interface DrawnRect { x: number; y: number; w: number; h: number }
 
@@ -42,6 +45,37 @@ function drawn(overlay: OverlayLayer, field: string): DrawnRect[] {
     .filter((d) => typeof d.shape?.width === 'number')
     .map((d) => ({ x: d.shape.x, y: d.shape.y, w: d.shape.width, h: d.shape.height }));
 }
+
+/** The box a Graphics' line work spans (bracket arms, rings), in world px. */
+function lineBounds(overlay: OverlayLayer, field: string): DrawnRect {
+  const g = (overlay as unknown as Record<string, { geometry: { graphicsData: { shape: { points?: number[]; x?: number; y?: number; radius?: number } }[] } }>)[field]!;
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (const { shape } of g.geometry.graphicsData) {
+    if (shape.points) for (let i = 0; i < shape.points.length; i += 2) {
+      x0 = Math.min(x0, shape.points[i]!); x1 = Math.max(x1, shape.points[i]!);
+      y0 = Math.min(y0, shape.points[i + 1]!); y1 = Math.max(y1, shape.points[i + 1]!);
+    }
+  }
+  return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
+}
+
+/** Ring centres a Graphics drew, in world px. */
+function ringCentres(overlay: OverlayLayer, field: string): { x: number; y: number }[] {
+  const g = (overlay as unknown as Record<string, { geometry: { graphicsData: { shape: { x?: number; y?: number; radius?: number } }[] } }>)[field]!;
+  return g.geometry.graphicsData.filter((d) => typeof d.shape.radius === 'number').map((d) => ({ x: d.shape.x!, y: d.shape.y! }));
+}
+
+/** Selection brackets stand this far outside a single body, and group brackets outside the union,
+ *  in screen px (world px at zoom 1). */
+const MARK_PAD = 4, GROUP_PAD = 10;
+const grow = (r: DrawnRect, pad: number): DrawnRect => ({ x: r.x - pad, y: r.y - pad, w: r.w + 2 * pad, h: r.h + 2 * pad });
+const world = (c: { x: number; y: number; w: number; h: number; micro?: boolean }): DrawnRect => {
+  const off = c.micro ? HALF_TILE : 0;
+  return { x: c.x * TILE_SIZE - off, y: c.y * TILE_SIZE - off, w: c.w * TILE_SIZE, h: c.h * TILE_SIZE };
+};
+const close = (a: DrawnRect, b: DrawnRect) => {
+  for (const k of ['x', 'y', 'w', 'h'] as const) expect(a[k]).toBeCloseTo(b[k], 5);
+};
 
 /** One drawn rect in MACRO units at the given alignment — what the user sees it cover. */
 function macro(r: DrawnRect, micro: boolean): Rect {
@@ -69,7 +103,7 @@ const BODIES: Array<{ name: string; x: number; y: number; w: number; h: number; 
   { name: 'plain terrain cell', x: 4, y: 5, w: 1, h: 1, micro: true },
   { name: 'terrain cell at the map corner', x: 0, y: 0, w: 1, h: 1, micro: true },
   { name: 'macro object 2x3', x: 4, y: 5, w: 2, h: 3, micro: false },
-  { name: 'the plaza (fractional anchor)', x: 76.5, y: 58.5, w: 20, h: 27, micro: false },
+  { name: 'the plaza (fractional anchor)', ...PLAZA_RECT, micro: false },
   { name: 'halfStep bridge anchor', x: 10.5, y: 12.5, w: 4, h: 1, micro: false },
   { name: 'halfStep ramp anchor, rotated', x: 3, y: 7.5, w: 1, h: 4, micro: false },
 ];
@@ -82,22 +116,38 @@ describe('overlay shades: a rect-shaped shade covers its body exactly', () => {
       expect(soleRect(drawn(overlay, 'hoverGraphics'), c.micro)).toEqual({ x: c.x, y: c.y, w: c.w, h: c.h });
     });
 
-    it(`selection ring — ${c.name}`, () => {
+    it(`selection marks — ${c.name}`, () => {
       const overlay = new OverlayLayer();
       overlay.showSelection(c.x, c.y, c.w, c.h, undefined, c.micro);
-      expect(soleRect(drawn(overlay, 'selectionGraphics'), c.micro)).toEqual({ x: c.x, y: c.y, w: c.w, h: c.h });
+      if (c.micro) {
+        // A terrain cell is regular: its exact outline, edge and ink both on the cell.
+        const rects = drawn(overlay, 'selectionGraphics');
+        expect(rects).toHaveLength(2);
+        for (const r of rects) expect(macro(r, true)).toEqual({ x: c.x, y: c.y, w: c.w, h: c.h });
+      } else close(lineBounds(overlay, 'selectionGraphics'), grow(world(c), MARK_PAD));
     });
   }
 
-  it('a group selection appends one ring per member, each on its own body', () => {
+  it('a lone road gets its exact outline, as a terrain cell does', () => {
+    const overlay = new OverlayLayer();
+    overlay.showSelection(6, 7, 1, 1, undefined, false, false, true);
+    const rects = drawn(overlay, 'selectionGraphics');
+    expect(rects).toHaveLength(2);
+    for (const r of rects) expect(macro(r, false)).toEqual({ x: 6, y: 7, w: 1, h: 1 });
+  });
+
+  it('a group selection rings each member on its own body and brackets the whole', () => {
     const overlay = new OverlayLayer();
     overlay.clearSelection();
     overlay.showSelection(4, 5, 2, 2, undefined, false, true);
-    overlay.showSelection(76.5, 58.5, 20, 27, undefined, false, true);
-    const rects = drawn(overlay, 'selectionGraphics');
-    expect(rects).toHaveLength(2);
-    expect(macro(rects[0]!, false)).toEqual({ x: 4, y: 5, w: 2, h: 2 });
-    expect(macro(rects[1]!, false)).toEqual({ x: 76.5, y: 58.5, w: 20, h: 27 });
+    overlay.showSelection(PLAZA_RECT.x, PLAZA_RECT.y, PLAZA_RECT.w, PLAZA_RECT.h, undefined, false, true);
+    overlay.showSelection(10.5, 12.5, 4, 1, undefined, false, true);
+    const a = world({ x: 4, y: 5, w: 2, h: 2 }), b = world({ ...PLAZA_RECT }), c = world({ x: 10.5, y: 12.5, w: 4, h: 1 });
+    const centres = ringCentres(overlay, 'selectionGraphics');
+    const unique = centres.filter((p, i) => centres.findIndex((q) => q.x === p.x && q.y === p.y) === i);
+    expect(unique).toEqual([a, b, c].map((r) => ({ x: r.x + r.w / 2, y: r.y + r.h / 2 })));
+    const union = { x: a.x, y: a.y, w: b.x + b.w - a.x, h: b.y + b.h - a.y };
+    close(lineBounds(overlay, 'selectionFrame'), grow(union, GROUP_PAD));
   });
 
   it('the rubber band draws the raw macro rect (a band only ever selects objects)', () => {
@@ -140,7 +190,7 @@ describe('overlay shades: the error flash', () => {
 
   it('flashes the plaza body without expanding to whole-cell bounds', async () => {
     const overlay = new OverlayLayer();
-    const plaza: Rect = { x: 76.5, y: 58.5, w: 20, h: 27 };
+    const plaza: Rect = { ...PLAZA_RECT };
     overlay.flashErrors([bodyErr([plaza], 'macro')], true);
     await frame();
     const rects = drawn(overlay, 'errorGraphics');

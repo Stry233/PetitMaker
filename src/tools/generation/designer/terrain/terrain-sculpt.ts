@@ -5,8 +5,7 @@
  * face or terminate each fall with same-tier caps over a uniform receiving row. The module is pure
  * and deterministic; the caller still applies the shared decrease-only repair before commit.
  */
-import { distanceField, flatIndex, NEIGHBORS4 } from '../../../../core/model/grid-model';
-import { ELEVATION_MAX } from '../../../../core/model/constants';
+import { distanceField, flatIndex, NEIGHBORS4, rectContains } from '../../../../core/model/grid-model';
 import { valueNoise01 } from '../../../../core/model/noise';
 import { realSurface } from '../../../../core/edge-cut/terrain-silhouette';
 import {
@@ -30,6 +29,7 @@ import { boundsOfCells, atTier, flood, poolFits, uniform } from '../water/water-
 import { cutComposedBodies, type ComposedBody } from '../water/water-forms';
 import { carveWaterStory, type WaterStory } from '../water/water-story';
 import { type DesignPlan, type Direction } from '../types';
+import { ELEVATION_MAX } from '../../../../core/model/game-profile';
 
 // --- tunables, all measured off the two reference maps ------------------------------------------
 
@@ -64,8 +64,7 @@ const ACCENT_KEEP = 3;
 /** How far a pool stays away from the walk's own last stop.
  *
  * The route ends on the planet's high ground and a pool cut where it arrives lowers the cell the
- * terminus names — measured on `tafa/12345`, where the end-pool pass took the very cell the walk
- * finishes on. The look-out is what the whole climb is for, so the water gives it room.
+ * terminus names. The look-out is what the whole climb is for, so the water gives it room.
  */
 const ARRIVAL_KEEP = 5;
 /** How much of the water still unspent after the courts, the stairs and the story goes into the large
@@ -122,7 +121,7 @@ const NOISE_SPAN = 21;
 
 /** The composition's own high ground, reported the way the landmark asks for it: where the map's
  *  mass stands, how tall it got. */
-export interface WallProfile {
+interface WallProfile {
   rect: Rect;
   peak: number;
   /** Rows of the band spent climbing from the foot to the plateau. 0 where there is no wall. */
@@ -130,7 +129,7 @@ export interface WallProfile {
 }
 
 /** One water band cut along a terrace step, pouring onto the terrace below. */
-export interface CascadeBand {
+interface CascadeBand {
   rect: Rect;
   tier: number;
 }
@@ -140,11 +139,11 @@ export interface CascadeBand {
  *  the POND it arrives in), a few large composed FIGURES, the FOUNTAIN courts, the ambient cascades
  *  off the terrace steps, the ACCENT pools beside them, and the CROSSING the walk steps over. Nothing
  *  else cuts water. */
-export type WaterKind =
+type WaterKind =
   | 'stair' | 'story' | 'pond' | 'figure' | 'fall' | 'fountain' | 'accent' | 'crossing';
 
 /** One body of water the sculpt cut, with the place it belongs to where it has one. */
-export interface WaterFeature {
+interface WaterFeature {
   kind: WaterKind;
   /** The place this body composes, or '' for the planet-wide passes. */
   regionId: string;
@@ -184,7 +183,7 @@ export interface TerrainSculpt {
   landmark: LandmarkPlan | null;
 }
 
-export interface SculptInput {
+interface SculptInput {
   template: MapTemplate;
   /** Stage A: the plates and the tier each cell stands at. */
   composition: CompositionPlan;
@@ -283,9 +282,8 @@ export function sculptTerrain(input: SculptInput): TerrainSculpt {
   }
 
   // ONE PASS MAY RAISE A CELL, and only one. The three scenery passes below each read the tier under
-  // them and add one, so where two of them claim the same lot the ground climbs twice: measured at
-  // richness 0.2, `tafa/1024` and `tafa/8675309` planned one tier and built three, and a place standing
-  // two tiers above its own ground is scenery nobody composed.
+  // them and add one, so where two of them claim the same lot the ground climbs twice, and a place
+  // standing two tiers above its own ground is scenery nobody composed.
   const terraces = terracePlaces(terrain, grass, flat, raised, plan, richness, input.seed, ceiling);
   const backings = raiseBackings(terrain, grass, flat, raised, plan, ceiling);
   const rings = raiseRings(terrain, grass, flat, raised, plan, ground, ceiling);
@@ -314,8 +312,7 @@ export function sculptTerrain(input: SculptInput): TerrainSculpt {
     // THE POOLS AT THE STREET ENDS COME NEXT, and before anything that spends ground. A walk that stops
     // in open ground has arrived at nothing — which the hard ledger reads and a visitor feels — and a
     // pool is four cells at most. Cut after the figures, the ground in front of an end is taken by one and
-    // the planting that would otherwise mark the end has nowhere to stand: at richness 0.2, `tafa/4242`
-    // leaves four of its twenty-five ends arriving at nothing instead of all twenty-five arriving.
+    // the planting that would otherwise mark the end has nowhere to stand.
     endPoolsCut.push(...cutEndPools({
       t: terrain, grass, flat, streets, seed: input.seed,
       budget: budget - countWater(terrain),
@@ -526,7 +523,7 @@ function terracePlaces(
 }
 
 /**
- * The BACKING behind a building's door (the game's own 背后有靠山): the strip at the far end of an
+ * The BACKING behind a building's door (the game's own advice to keep a hill at a building's back): the strip at the far end of an
  * anchor's lot, raised a tier, with the front left open.
  *
  * The composition decides where the map's mass is; this is the region-scale half of the same rule,
@@ -759,7 +756,7 @@ function clearGround(
 
 // --- the kits' own ground -----------------------------------------------------------------------
 
-/** The one-layer terrace ring a shop complex stands inside (商店周围一圈一层山体), raised around the
+/** The one-layer terrace ring a shop complex stands inside, raised around the
  *  place's border and left open on its entry side. */
 function raiseRings(
   t: TerrainPlan, grass: Uint8Array, flat: Uint8Array, raised: Uint8Array, plan: DesignPlan,
@@ -771,8 +768,8 @@ function raiseRings(
     const lot = region.lot[0];
     if (!lot || lot.w < 6 || lot.h < 6) continue;
     // A RING IS RAISED WHOLE OR NOT AT ALL. Skipping the cells another pass already raised would leave
-    // a border standing at two levels, and the ground the shop's own doorstep needs level would not be:
-    // measured on `hexia/39596`, the facility the ring was cut for could not be placed at all.
+    // a border standing at two levels, and the ground the shop's own doorstep needs level would not be,
+    // so the facility the ring was cut for could not be placed.
     const border: number[] = [];
     let clear = true;
     for (let y = lot.y; y < lot.y + lot.h && clear; y++) {
@@ -806,7 +803,7 @@ function onEntrySide(lot: Rect, entry: Direction, x: number, y: number): boolean
   }
 }
 
-/** The sunken court (竹林的中式下沉庭院): the middle of a place dropped one tier. */
+/** The sunken court (a Chinese-style sunken courtyard in a bamboo grove): the middle of a place dropped one tier. */
 function sinkCourts(
   t: TerrainPlan, grass: Uint8Array, flat: Uint8Array, plan: DesignPlan,
   ground: ReadonlyMap<string, KitGround>,
@@ -867,7 +864,7 @@ function openLineCrossings(
         if (!grass[i] || flat[i] || t.water[i]! >= 0) continue;
         // AN EARTH PLANET FLOODS NOTHING, its crossings included. The `earth` kind's whole meaning
         // is that the map holds no water (`waterScale` 0), and a flooded channel is water however it
-        // was planned: seed 7 came back with twelve wet cells on a map whose kind promises none.
+        // was planned.
         // What it gets instead is the gorge every terraced crossing gets, which a deck spans just
         // the same.
         if (crossing.kind === 'water' && wet) {
@@ -939,7 +936,8 @@ function cutFalls(
         // The two end cells are the caps; what is left between them is the band.
         // A step the WALK asked for is always worth cutting: the cascade beside a climb is the
         // companion the movement line named, not one of the map's ambient falls.
-        const asked = wanted.some((r) => rectHolds(r, at(a)) || rectHolds(r, at(end)));
+        const head = at(a), tail = at(end);
+        const asked = wanted.some((r) => rectContains(r, head.x, head.y) || rectContains(r, tail.x, tail.y));
         if (length >= FALL_RUN.min + 2 && (asked || hash01(seed ^ 0xfa11, a * 131 + d) < share)) {
           // NO TWO BANDS THE SAME SIZE, the congruence cap read on this pass's own output: a band taking
           // the whole of its run comes out `FALL_RUN.min` by `depth` at every minimal step on the map,
@@ -1069,7 +1067,7 @@ interface EndPoolInput {
  * street that stops six cells short of its shore. The ends are read off the street PLAN, since no road
  * tile exists yet when the ground is being shaped, and the walk's OWN last stop is left dry — the
  * look-out is what the climb was for, and a pool cut where the route arrives lowers the cell the
- * terminus names (measured on `tafa/12345`).
+ * terminus names.
  */
 function cutEndPools(input: EndPoolInput): WaterFeature[] {
   const { t, grass, flat, streets, seed, arrival } = input;
@@ -1238,9 +1236,6 @@ const countWater = (t: TerrainPlan): number => {
   for (let i = 0; i < t.water.length; i++) if (t.water[i]! >= 0) n++;
   return n;
 };
-
-const rectHolds = (r: Rect, c: MacroCoord): boolean =>
-  c.x >= r.x && c.x < r.x + r.w && c.y >= r.y && c.y < r.y + r.h;
 
 const inset = (rect: Rect, k: number): Rect =>
   ({ x: rect.x + k, y: rect.y + k, w: Math.max(0, rect.w - 2 * k), h: Math.max(0, rect.h - 2 * k) });

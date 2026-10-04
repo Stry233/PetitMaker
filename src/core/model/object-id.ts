@@ -6,6 +6,11 @@
  */
 let seq = 0;
 
+/** A session-unique id after `prefix`: the timestamp, the session counter and a random tail. */
+export function generateId(prefix: string): string {
+  return prefix + Date.now().toString(36) + (seq++).toString(36) + Math.random().toString(36).slice(2, 6);
+}
+
 export function generateObjectId(): string {
-  return Date.now().toString(36) + (seq++).toString(36) + Math.random().toString(36).slice(2, 6);
+  return generateId('');
 }

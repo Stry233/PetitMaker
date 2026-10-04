@@ -12,7 +12,7 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import { render, screen, act, cleanup } from '@testing-library/react';
 import { useRestoreFade } from '../../../ui/hooks/useRestoreFade';
-import { setReducedMotion, __resetMotionState } from '../../../canvas/map2d/motion-state';
+import { setReducedMotion, __resetMotionState } from '../../../core/runtime/motion-state';
 import { setActiveView } from '../../../canvas/active-view';
 import type { ActiveView } from '../../../canvas/view-projection';
 import type { GridState } from '../../../core/model/types';

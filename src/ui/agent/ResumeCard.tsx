@@ -8,7 +8,7 @@ import { RESUME_PRIMARY } from './atoms';
 import { Icon } from './icons';
 import { CARD_PAD, edge, statePaper } from './tokens';
 import { INK, PLATE } from '../design/tokens';
-import { colors, font, mixHex } from '../design/styles';
+import { colors, font, mixHex, radii } from '../design/styles';
 import { roleFont } from '../design/text-weight';
 import { windowPill } from '../design/window-skin';
 import { useT } from '../../i18n/context';
@@ -44,7 +44,7 @@ const PAUSEMARK_STYLE: CSSProperties = {
   alignItems: 'center',
   gap: 6,
   background: PLATE,
-  borderRadius: 999,
+  borderRadius: radii.pill,
   padding: '4px 10px',
   ...roleFont('small'),
   fontFamily: font.family,
@@ -53,7 +53,7 @@ const PAUSEMARK_STYLE: CSSProperties = {
 
 const PAIR_STYLE: CSSProperties = { display: 'flex', gap: 8, marginTop: 2 };
 
-export interface ResumeCardProps {
+interface ResumeCardProps {
   /** The order the held job was given, as it was filed. */
   order: string;
   /** Where the work stopped, in the same words the paused ticket's own mark uses. */

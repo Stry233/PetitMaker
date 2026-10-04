@@ -22,7 +22,7 @@ export interface CameraHost {
   pickObjectAt(sx: number, sy: number): string | null;
   pickAnnotationLabel?(sx: number, sy: number): string | null;
   annotationLabelBox?(id: string): { x: number; y: number; w: number; h: number } | null;
-  /** World bounding box of an object's rendered body. */
+  /** World selection bounds: occupied footprint in X/Z, rendered body extent in Y. */
   objectBoundingBox(id: string): THREE.Box3 | null;
 }
 

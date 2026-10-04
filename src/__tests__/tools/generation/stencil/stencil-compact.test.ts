@@ -49,7 +49,7 @@ describe('compact image detail', () => {
       algorithm: 'stencil', mode: 'mixed', corridorWidth: 1, maxElevation: 8, seed: 1, region: null,
       stencilPlan: { read: 'color', stencil, origin: { x: 3, y: 3 }, water },
     }, state, command => executor.execute(command), executor.getRegistry());
-    expect(executor.commitStrokeGroup(0)).toEqual([]);
+    expect(executor.commitStroke(0)).toEqual([]);
     for (const x of [2, 4]) {
       const eye = state.cells[5]![x + 3]!.terrain!;
       const between = state.cells[5]![6]!.terrain!;

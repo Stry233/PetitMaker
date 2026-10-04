@@ -209,7 +209,7 @@ describe('the figures, cut into a terrace', () => {
     }
   });
 
-  it('never floods a cell the ground kept for something else', () => {
+  it('a composed figure never floods a cell the ground kept for something else', () => {
     const { t, grass, flat } = flatIsland(HEXIA);
     for (let y = 40; y < 90; y += 3) {
       for (let x = 0; x < HEXIA.width; x++) flat[flatIndex(x, y, HEXIA.width)] = 1;

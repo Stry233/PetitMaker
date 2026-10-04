@@ -14,7 +14,7 @@
  */
 import {
   CellZone, TerrainType,
-  type Corners, type CornerTrim, type MacroCell, type TerrainCell,
+  type Corners, type CornerTrim, type GridState, type MacroCell, type MapTemplate, type PlacedObject, type TerrainCell,
 } from './types';
 
 const STRIDE = 6;
@@ -94,4 +94,40 @@ export function decodeCells(wire: WireCells): MacroCell[][] {
     cells.push(row);
   }
   return cells;
+}
+
+/** A whole grid on the wire: the cells as one buffer, objects and locks as plain lists. The template
+ *  never rides here, since the receiving side already holds it or is sent it apart; the provenance
+ *  ledger and the objects delta never cross. */
+export interface WireGridState {
+  ignoreChunkLoad?: boolean;
+  wire: WireCells;
+  objects: PlacedObject[];
+  lockedLayers: number[];
+  cellsVersion: number;
+  objectsVersion: number;
+}
+
+export function encodeGridState(state: GridState): WireGridState {
+  return {
+    ignoreChunkLoad: state.ignoreChunkLoad,
+    wire: encodeCells(state.cells, state.template.width, state.template.height),
+    objects: [...state.objects.values()],
+    lockedLayers: [...state.lockedLayers],
+    cellsVersion: state.cellsVersion ?? 0,
+    objectsVersion: state.objectsVersion ?? 0,
+  };
+}
+
+/** `grid` as a map of `template` again. */
+export function decodeGridState(grid: WireGridState, template: MapTemplate): GridState {
+  return {
+    template,
+    cells: decodeCells(grid.wire),
+    ignoreChunkLoad: grid.ignoreChunkLoad,
+    objects: new Map(grid.objects.map((o) => [o.id, o])),
+    lockedLayers: new Set(grid.lockedLayers),
+    cellsVersion: grid.cellsVersion,
+    objectsVersion: grid.objectsVersion,
+  };
 }

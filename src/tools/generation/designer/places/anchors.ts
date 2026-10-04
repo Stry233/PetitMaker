@@ -1,8 +1,8 @@
 /**
- * Stage 1's other half (朝向, the methodology's orientation step): WHERE each anchor region's buildings
- * stand on its lot, and which way their doors look.
+ * Stage 1's other half (the orientation step): WHERE each anchor region's buildings stand on its lot,
+ * and which way their doors look.
  *
- * The methodology's orientation rule is the whole of it: a building faces the way in, and the way
+ * The orientation rule is the whole of it: a building faces the way in, and the way
  * in is the side the road reaches the lot on (`RegionPlan.orientation`, which `layout.ts` derives
  * as the plaza-ward side). So a placement is a rotation before it is a position — `DOOR_ROTATION`
  * turns a facing into the rotation `placement/object.ts:buildingGate` reads the same door out of,
@@ -24,7 +24,7 @@
  * road coating, so what the rules make of it is decided there, not here. Deterministic per
  * (seed, plan, catalog).
  */
-import type { CatalogItem, MacroCoord, Rect } from '../../../../core/model/types';
+import type { CatalogItem, MacroCoord, Rect, Rotation } from '../../../../core/model/types';
 import { getRotatedSize } from '../../../../state/object-geometry';
 import { buildingGate } from '../../../placement/object';
 import { anchorCatalogItems } from './region-list';
@@ -37,12 +37,12 @@ const GAPS = [2, 1] as const;
 /** The court lane's width: the narrowest road the hard ledger allows. */
 const LANE_W = 2;
 
-export interface AnchorPlacement {
+interface AnchorPlacement {
   regionId: string;
   catalogId: string;
   /** Macro top-left of the ROTATED footprint, the coordinate a PlaceObject command carries. */
   position: MacroCoord;
-  rotation: 0 | 90 | 180 | 270;
+  rotation: Rotation;
   /** Where the door looks: the lot's entry side, which a back row reaches across its own lane. */
   facing: Direction;
   /** The door cell (on the footprint's edge) and the cell it opens onto, read out of

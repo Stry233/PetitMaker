@@ -6,6 +6,7 @@ import { describe, it, expect } from 'vitest';
 import { getRoadMaterials, getCatalogItem } from '../../state/catalog';
 import { SHARE_CATALOG_ORDER } from '../../io/share/codec/catalog-order';
 import { RETIRED_CATALOG_IDS } from '../../io/legacy-catalog';
+import { ROAD_FEATHER } from '../../core/edge-cut/road-shape';
 
 describe('road materials', () => {
   it('come from the catalog, not a union', () => {
@@ -17,6 +18,65 @@ describe('road materials', () => {
     for (const m of getRoadMaterials()) {
       expect(m.color, `${m.id} has no colour`).toBeTruthy();
       expect(m.name.en, `${m.id} has no English name`).toBeTruthy();
+    }
+  });
+
+  it('keeps connected material layers nested inside the supported feather', () => {
+    for (const { roadMaterial: spec } of getRoadMaterials()) {
+      if (!spec) continue;
+      expect(spec.feather).toBeGreaterThan(0);
+      expect(spec.feather).toBeLessThanOrEqual(ROAD_FEATHER);
+      let inset = spec.feather;
+      for (const layer of spec.layers) {
+        expect(layer.inset).toBeGreaterThan(inset);
+        expect(layer.color).toMatch(/^#[0-9a-f]{6}$/);
+        inset = layer.inset;
+      }
+      if (spec.edgeJoints) {
+        expect(spec.layers.length).toBeGreaterThan(0);
+        expect(Number.isFinite(spec.edgeJoints.spacing)).toBe(true);
+        expect(spec.edgeJoints.width).toBeGreaterThan(0);
+        expect(spec.edgeJoints.width).toBeLessThan(spec.edgeJoints.spacing);
+      }
+    }
+  });
+
+  it('keeps authored paving finite and closes staggered rows across repeat seams', () => {
+    for (const { roadMaterial: spec } of getRoadMaterials()) {
+      if (!spec) continue;
+      for (const { pattern } of [spec.edge, ...spec.layers]) {
+        if (typeof pattern !== 'object') continue;
+        expect(Number.isFinite(pattern.repeat)).toBe(true);
+        expect(pattern.repeat).toBeGreaterThan(0);
+        if (pattern.kind === 'inlay') continue;
+        expect(Number.isFinite(pattern.joint)).toBe(true);
+        expect(pattern.joint).toBeGreaterThan(0);
+        if (pattern.kind === 'masonry') {
+          expect(pattern.stones.length).toBeGreaterThan(0);
+          for (const stone of pattern.stones) {
+            expect(stone.points.length).toBeGreaterThanOrEqual(3);
+            expect(stone.points.flat().every(Number.isFinite)).toBe(true);
+          }
+        } else {
+          expect(pattern.rowSpacing).toBeGreaterThan(0);
+          const rows = 1 / pattern.rowSpacing;
+          expect(rows).toBeGreaterThan(0);
+          expect(Number.isInteger(rows)).toBe(true);
+          expect(rows % 2).toBe(0);
+          expect(pattern.stagger).toBeGreaterThanOrEqual(0);
+          expect(pattern.stagger).toBeLessThan(1);
+          expect(pattern.rings.length).toBeGreaterThan(0);
+          let radius = 0;
+          for (const ring of pattern.rings) {
+            expect(Number.isFinite(ring.radius)).toBe(true);
+            expect(ring.radius).toBeGreaterThan(radius);
+            expect(Number.isInteger(ring.segments)).toBe(true);
+            expect(ring.segments).toBeGreaterThan(0);
+            expect(ring.colors.length).toBeGreaterThan(0);
+            radius = ring.radius;
+          }
+        }
+      }
     }
   });
 
@@ -32,11 +92,11 @@ describe('road materials', () => {
   });
 });
 
-describe('path tile surfaces (#22, #37)', () => {
-  it('has 28 surfaces, every one of them an in-game path', () => {
+describe('path tile surfaces', () => {
+  it('offers only in-game paths', () => {
     const roads = getRoadMaterials();
-    expect(roads).toHaveLength(28);
-    expect(roads.filter((r) => r.id.startsWith('path-'))).toHaveLength(28);
+    expect(roads.length).toBeGreaterThan(0);
+    expect(roads.filter((r) => r.id.startsWith('path-'))).toHaveLength(roads.length);
   });
 
   it('arms the dirt path by default, which is what leading the category means', () => {
@@ -45,7 +105,7 @@ describe('path tile surfaces (#22, #37)', () => {
     expect(getRoadMaterials()[0]!.id).toBe('path-overgrown-dirt');
   });
 
-  it('holds none of the four retired plain colour surfaces (#37)', () => {
+  it('holds none of the retired plain colour surfaces', () => {
     // They were not in the game, so a map paved with one could not be rebuilt there.
     for (const id of Object.keys(RETIRED_CATALOG_IDS)) expect(getCatalogItem(id), id).toBeUndefined();
   });

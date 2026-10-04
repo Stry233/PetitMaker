@@ -51,8 +51,8 @@ describe('fuzzyScore', () => {
   });
 
   it('subsequence-matches a CJK query that drops a character, in order', () => {
-    // "苹树" (apple + tree) omits "果" (fruit) from "苹果树" (apple tree) — a real abbreviation a
-    // visitor might type — but is not itself a substring anywhere in it.
+    // The query (apple + tree) omits the fruit character from the name (apple tree), a real
+    // abbreviation a visitor might type, but is not itself a substring anywhere in it.
     expect(fuzzyScore('苹果树', '苹果树')).not.toBeNull(); // sanity: exact still matches
     expect(fuzzyScore('苹树', '苹果树')).not.toBeNull();
     expect(fuzzyScore('苹果树', '苹果树')!).toBeGreaterThan(fuzzyScore('苹树', '苹果树')!);
@@ -60,14 +60,15 @@ describe('fuzzyScore', () => {
 
   it('does not subsequence-match CJK characters out of order or absent entirely', () => {
     expect(fuzzyScore('树苹', '苹果树')).toBeNull(); // right characters, wrong order
-    expect(fuzzyScore('苹树', '桃花树')).toBeNull(); // "树" present, "苹" is not
+    expect(fuzzyScore('苹树', '桃花树')).toBeNull(); // the tree character is present, the apple character is not
   });
 
   it('a parenthesised nickname counts as its own word', () => {
-    // The catalog embeds a building's in-world character name in parentheses, e.g.
-    // "竹果丰年小屋（云果）" — the opening paren is a separator, so "云果" reads as a fresh word.
+    // The catalog embeds a building's in-world character name in parentheses, as in the bamboo
+    // cabin below. The full-width opening paren is a separator, so the nickname inside it reads as
+    // a fresh word.
     const wordStart = fuzzyScore('云果', '竹果丰年小屋（云果）')!;
-    // "果" alone is buried mid-word earlier in the string (in "竹果丰年"), never at a boundary.
+    // The fruit character is buried mid-word earlier in the string, never at a boundary.
     const midWord = fuzzyScore('果丰', '竹果丰年小屋（云果）')!;
     expect(wordStart).toBeGreaterThan(midWord);
   });

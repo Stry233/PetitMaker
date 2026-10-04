@@ -1,6 +1,7 @@
 export { useMapReview } from './review/use-map-review';
-export { useTextReview } from './review/use-text-review';
+export { useTextReview } from '../../../hooks/use-text-review';
 export { StylizeEntry } from './stylize/StylizeEntry';
+export { reviewPlanetNames } from '../planet/planet-name-review';
 import { ReviewTooLong } from '../../../../io/moderation/text/reviewer';
 
 export const automaticExportReview = true;

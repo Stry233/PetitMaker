@@ -1,5 +1,5 @@
 /*
- * caption.tsx — the help figures' own two recurring marks: a plated label over the picture, and
+ * The help figures' own two recurring marks: a plated label over the picture, and
  * the pulse that says "the pictured cursor pressed here". Both are built from the shared design
  * tokens rather than redrawn per figure, so every figure's plate and pulse are the same ink.
  */
@@ -8,7 +8,7 @@ import { withAlpha } from '../../../../design/styles';
 import { FOCUS_RING, PLATE, PLATE_INK } from '../../../../design/tokens';
 import { radii, shadows } from '../../../../design/styles';
 import { roleFont, type TextRole } from '../../../../design/text-weight';
-import { isMotionReduced } from '../../../../../canvas/map2d/motion-state';
+import { isMotionReduced } from '../../../../../core/runtime/motion-state';
 
 /** A figure's own plated label: the house plate, at whatever role and padding the figure needs.
  *  `alpha` under 1 lets a narration caption sit translucent over the picture it annotates;

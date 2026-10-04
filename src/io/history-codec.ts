@@ -6,14 +6,13 @@
  */
 
 import type { HistoryEntry } from '../core/commands/command-apply';
-import { CommandType, type CellSnapshot, type PlacedObject } from '../core/model/types';
+import { CommandType, type CellSnapshot, type PlacedObject, type CatalogItem } from '../core/model/types';
 import { getCatalogItem } from '../state/catalog';
-import { hasHalfStep } from '../state/object-geometry';
-import { onHalfGrid } from '../core/model/grid-model';
-import { isValidTerrainType, isValidRotation, isValidElevation } from './import-validate';
+import { isValidTerrainType, isValidRotation, isValidElevation, onItemGrid } from './import-validate';
 import { currentCatalogId } from './legacy-catalog';
+import { migrateV1RampHistory } from './save-format/migrations/001-v1-to-v2';
 
-export const HISTORY_SCHEMA_VERSION = 1;
+export const HISTORY_SCHEMA_VERSION = 2;
 
 export interface HistorySection { v: number; totalSteps: number; entries: HistoryEntry[] }
 
@@ -25,8 +24,8 @@ export function encodeHistory(entries: HistoryEntry[], depth: 'all' | number): H
   return { v: HISTORY_SCHEMA_VERSION, totalSteps: entries.length, entries: kept };
 }
 
-function inBounds(x: unknown, y: unknown, b: HistoryBounds | undefined, half = false): boolean {
-  const onGrid = half ? onHalfGrid : Number.isInteger;
+function inBounds(x: unknown, y: unknown, b: HistoryBounds | undefined, item?: CatalogItem): boolean {
+  const onGrid = (v: number): boolean => (item ? onItemGrid(item, v) : Number.isInteger(v));
   if (typeof x !== 'number' || typeof y !== 'number' || !onGrid(x) || !onGrid(y)) return false;
   if (!b) return x >= 0 && y >= 0;
   return x >= 0 && y >= 0 && x < b.width && y < b.height;
@@ -43,7 +42,7 @@ function validObject(o: unknown, b: HistoryBounds | undefined): boolean {
   if (typeof obj.id !== 'string' || typeof obj.catalogId !== 'string') return false;
   const item = getCatalogItem(obj.catalogId);
   if (!item) return false;
-  if (!obj.position || !inBounds(obj.position.x, obj.position.y, b, hasHalfStep(item))) return false;
+  if (!obj.position || !inBounds(obj.position.x, obj.position.y, b, item)) return false;
   if (!isValidRotation(obj.rotation)) return false;
   if (!isValidElevation(obj.elevation)) return false;
   return true;
@@ -82,7 +81,7 @@ function commandObjects(cmd: HistoryEntry['cmd']): PlacedObject[] {
 
 export function decodeHistory(raw: unknown, bounds?: HistoryBounds): HistoryEntry[] | null {
   if (!raw || typeof raw !== 'object') return null;
-  const s = raw as Partial<HistorySection>;
+  const s = migrateV1RampHistory(raw) as Partial<HistorySection>;
   if (s.v !== HISTORY_SCHEMA_VERSION || !Array.isArray(s.entries)) return null;
   for (const e of s.entries) {
     if (!e || typeof e !== 'object') return null;

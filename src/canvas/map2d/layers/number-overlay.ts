@@ -1,10 +1,11 @@
 import * as PIXI from 'pixi.js-legacy';
-import { CHUNK_SIZE, TILE_SIZE } from '../../../core/model/constants';
+import { TILE_SIZE } from '../../../core/model/constants';
 import { HALF_TILE, chunkKey, macroToChunk } from '../../../core/model/grid-model';
 import type { GridState, MacroCoord } from '../../../core/model/types';
 import { requestRender } from '../render-scheduler';
 import { chunkVisible, type CullRect } from './chunk-cull';
-import { chunkNumberCells, setNumberLabelStyle, drawNumberLabel } from './number-cells';
+import { chunkNumberCells, setNumberLabelStyle, drawNumberLabel } from '../../number-cells';
+import { CHUNK_SIZE } from '../../../core/model/game-profile';
 
 /** One chunk's raster: a reusable canvas + its texture/sprite, repainted in place. */
 interface NumberChunk {

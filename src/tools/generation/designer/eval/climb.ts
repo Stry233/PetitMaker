@@ -13,10 +13,11 @@
  * them.
  */
 import { ItemCategory, type GridState } from '../../../../core/model/types';
-import { categoryOf, getCatalogItem } from '../../../../state/catalog';
+import { getCatalogItem } from '../../../../state/catalog';
 import { FIGURE_MIN } from '../water/water-forms';
 import { readGrid, type EvalGrid } from './grid';
 import { waterBodies } from './water-bodies';
+import { isCrossing } from '../../../../core/model/traits';
 
 /** Where a visitor stands and what they can see from there, all of it read over the pavement. */
 export interface ClimbReading {
@@ -95,8 +96,7 @@ export function climbReading(state: GridState, g = readGrid(state)): ClimbReadin
   }
   let events = 0;
   for (const o of state.objects.values()) {
-    const cat = categoryOf(o);
-    if (cat === ItemCategory.Bridge || cat === ItemCategory.Ramp) events++;
+    if (isCrossing(getCatalogItem(o.catalogId))) events++;
   }
   let sees = 0;
   const byView = new Map<number, number>();

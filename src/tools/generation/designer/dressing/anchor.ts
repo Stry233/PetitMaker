@@ -20,25 +20,25 @@ import { inCanvas, type KitCanvas, type KitStyle, type PlantMark } from './types
 
 export function anchorStyle(kind: AnchorKind, rng: Rng): KitStyle {
   switch (kind) {
-    // 住宅区 — homes with gardens between them: hedges, a bed or two, shade.
+    // Homes with gardens between them: hedges, a bed or two, shade.
     case 'residential':
       return {
         tile: { w: 4, h: 4 }, appetite: 0.6,
         mix: [['border', 2], ['bed', 2], ['open', 4], ['grove', 3]],
       };
-    // 自家住宅 — the player's own, and the one private garden on the map.
+    // The player's own, and the one private garden on the map.
     case 'own-house':
       return {
         tile: { w: 4, h: 5 }, appetite: 0.7,
         mix: [['bed', 3], ['border', 1], ['open', 3], ['grove', 2]],
       };
-    // 博物馆区 — a visited building: a forecourt to arrive in, planting held to the sides.
+    // A visited building: a forecourt to arrive in, planting held to the sides.
     case 'museum':
       return {
         tile: { w: 5, h: 5 }, appetite: 0.8, aisle: true,
         mix: [['border', 2], ['bed', 3], ['open', 3], ['orchard', 2]],
       };
-    // 商店区 — the case rings it with a one-layer terrace; the ground inside stays walkable.
+    // A shop stands in a one-layer terrace ring; the ground inside stays walkable.
     case 'shop':
       return {
         tile: { w: 5, h: 5 }, appetite: 0.7, ring: rng.int(2) === 0,

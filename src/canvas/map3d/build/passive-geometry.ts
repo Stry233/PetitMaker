@@ -7,11 +7,11 @@
  * set built by the scene — its fixed world-space position stays stable across
  * all framing, so it reads as an overlay grid, not terrain geometry.)
  */
-import { CHUNK_SIZE } from '../../../core/model/constants';
 import type { GridState } from '../../../core/model/types';
 import { mapCenterOffset } from '../core/coords';
 import { surfaceHeightAt } from '../interaction/pick';
-import { chunkNumberCells } from '../../map2d/layers/number-cells';
+import { chunkNumberCells } from '../../number-cells';
+import { CHUNK_SIZE } from '../../../core/model/game-profile';
 
 const NUMBER_LIFT = 0.03;
 

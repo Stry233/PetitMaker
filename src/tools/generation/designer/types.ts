@@ -1,7 +1,7 @@
 /**
- * The methodology generator's PLAN model: what a map is going to be, before a single command exists.
+ * The designer generator's PLAN model: what a map is going to be, before a single command exists.
  *
- * The vocabulary is the expert methodology's own core model, so a reader can hold the two side by side:
+ * The vocabulary:
  *  - a REGION is the unit of thought, in two kinds: a BUILDING-ANCHOR region (a building comes
  *    first and the place is composed around it) and a PURE THEME region (no building; one theme
  *    from the library holds it up). `RegionKind` is exactly that split.
@@ -19,7 +19,7 @@
  * `RegionPlan.lot` is a LIST of rects to leave the door open for an L-shaped lot later; v1 always
  * writes exactly one.
  */
-import type { Rect } from '../../../core/model/types';
+import type { Rect, Rotation } from '../../../core/model/types';
 // The tree's one cardinal-direction type. It lives beside the waterfall reader because that is
 // where it was first needed; a second copy here would be a second source for one fact.
 import type { Direction } from '../../../core/model/waterfall-geometry';
@@ -28,32 +28,32 @@ export type { Direction };
 
 // --- region kinds ------------------------------------------------------------------------------
 
-/** The building-anchor regions (建筑锚点区): every placeable Building and
+/** The building-anchor regions: every placeable Building and
  *  Facility belongs to exactly one of these. `region-list.ts:ANCHOR_ROLES` is the mapping. */
 export type AnchorKind = 'residential' | 'own-house' | 'museum' | 'shop';
 
-/** The five theme families (主题库), in the methodology's own order. */
+/** The five theme families of the theme library. */
 export type ThemeFamily = 'food-leisure' | 'nature' | 'viewpoint' | 'culture' | 'production';
 
-/** 吃喝休闲 — cafe, teahouse, picnic area, gathering/banquet area, seaside light dining. */
+/** Food and leisure: cafe, teahouse, picnic area, gathering/banquet area, seaside light dining. */
 export type FoodLeisureTheme = 'cafe' | 'teahouse' | 'picnic' | 'banquet' | 'seaside-dining';
-/** 自然景观 — park/central garden, garden/flower plot, flower field, bamboo sunken courtyard,
+/** Natural scenery: park/central garden, garden/flower plot, flower field, bamboo sunken courtyard,
  *  lake/fountain, tree avenue/grove array, pure mountain-water-waterfall scenery, canyon/valley. */
 export type NatureTheme =
   | 'park' | 'garden' | 'flower-field' | 'bamboo-court'
   | 'lake-fountain' | 'tree-avenue' | 'mountain-water' | 'canyon';
-/** 观景 / 打卡 — lookout, panorama platform, waterside deck/lakeside walk, text/pattern landmark. */
+/** Viewing and photo spots: lookout, panorama platform, waterside deck/lakeside walk, text/pattern landmark. */
 export type ViewpointTheme = 'lookout' | 'panorama-deck' | 'waterside-deck' | 'landmark-text';
-/** 文化 / 活动 — library, stage/small theatre, chess garden, music corner. */
+/** Culture and activity: library, stage/small theatre, chess garden, music corner. */
 export type CultureTheme = 'library' | 'stage' | 'chess-garden' | 'music-corner';
-/** 生产 / 生活 — planting/crop area, orchard, small-animal run. */
+/** Production and daily life: planting/crop area, orchard, small-animal run. */
 export type ProductionTheme = 'crop-field' | 'orchard' | 'animal-run';
 
 export type ThemeId =
   | FoodLeisureTheme | NatureTheme | ViewpointTheme | CultureTheme | ProductionTheme;
 
 /** A region is one of the four anchor kinds, or a pure theme region (its `themeId` says which). */
-export type RegionKind = AnchorKind | 'theme';
+type RegionKind = AnchorKind | 'theme';
 
 // --- affinity (the taste cases) -----------------------------------------------------------------
 
@@ -103,7 +103,7 @@ export interface RegionPlan extends RegionSpec {
   entrySide: Direction;
   /** The look-out direction: a building's door faces it, a theme region opens to it. Equal to
    *  `entrySide` by derivation, kept separate because the sculptor, the kits and the anchor placement
-   *  ask different questions of the two, and the methodology derives them differently. */
+   *  ask different questions of the two, and the two are derived differently. */
   orientation: Direction;
   /** The strip at the far end of the lot, opposite `orientation`, where the sculptor raises this region's
    *  own mountain/waterfall backing. Absent only where the lot is too shallow to hold one. */
@@ -141,23 +141,12 @@ export interface DesignPlan {
   unplaced: string[];
 }
 
-// --- the ramp, as every planner has to read it --------------------------------------------------
-
-/**
- * Cells of run one ramp takes: the catalog's ramp items are all four deep.
- *
- * Two stages need this same fact and neither may read it off the other. `streets.ts` builds its
- * flights out of runs this long, and `composition.ts` sizes the summit's terraces by it — a terrace
- * whose ring is shorter than a ramp's run is high ground with no way up onto it.
- */
-export const RAMP_RUN = 4;
-
 // --- orientation helpers -----------------------------------------------------------------------
 
 /** The object rotation that makes a building's DOOR face `dir`. Mirrors the gate convention in
  *  `placement/object.ts:buildingGate`: at rotation 0 the door is the footprint's bottom
  *  edge, so it faces +y (south). The anchor placement turns buildings with this. */
-export const DOOR_ROTATION: Readonly<Record<Direction, 0 | 90 | 180 | 270>> = {
+export const DOOR_ROTATION: Readonly<Record<Direction, Rotation>> = {
   south: 0, west: 90, north: 180, east: 270,
 };
 

@@ -1,4 +1,4 @@
-// chunk-grid.ts — spatial bucket containers with viewport culling.
+// Spatial bucket containers with viewport culling.
 //
 // The renderer's display list has NO built-in culling: every rendered frame traverses and
 // batch-processes every node, on-screen or not, so pan/zoom/animation cost scales with the MAP

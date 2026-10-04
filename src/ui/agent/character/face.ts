@@ -1,5 +1,5 @@
 /*
- * face.ts — where her eyes ARE in the drawing, and the closed-eye lid derived from it.
+ * Where her eyes ARE in the drawing, and the closed-eye lid derived from it.
  *
  * THE LID IS NOT ART: it is one oval per eye, drawn over `base.png` and grown out of `scaleY(0)` when
  * she closes her eyes (`Character.tsx`). It only covers the eye if its own box
@@ -25,7 +25,7 @@
 export const ART = { w: 235, h: 230 } as const;
 
 /** A box in the art's own pixels. */
-export interface ArtBox { x: number; y: number; w: number; h: number }
+interface ArtBox { x: number; y: number; w: number; h: number }
 
 /**
  * The two eye dots' bounds in `base.png`. She is drawn three-quarters on, so the far eye sits both
@@ -45,7 +45,7 @@ export const LID_MARGIN = 1.18;
 export const LID_LASH = 0.3;
 
 /** A box as the percentages a CSS `position: absolute` child of the drawing takes. */
-export interface PctBox { left: number; top: number; width: number; height: number }
+interface PctBox { left: number; top: number; width: number; height: number }
 
 /**
  * The lid's BORDER box for one eye: the dot's own box grown by `LID_MARGIN` about its centre, in

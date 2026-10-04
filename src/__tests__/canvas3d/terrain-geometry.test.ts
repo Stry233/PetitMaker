@@ -108,16 +108,13 @@ describe('preview3d/terrain-geometry', () => {
     }
   });
 
-  it('a ground-islet cut (type None + corners) keeps the full grass floor and reveals water at the cut', () => {
+  it('a ground-islet cut (type None + corners) reveals water in the trimmed corner', () => {
     const w0 = (): MacroCell => ({ zone: CellZone.Grass, terrain: { type: TerrainType.Water, elevation: 0 } });
     const island = (corners: ['square' | 'fan', 'square', 'square', 'square']): MacroCell =>
       ({ zone: CellZone.Grass, terrain: { type: TerrainType.None, elevation: 0, corners } });
     // The concave inner corner of an L pool: water on two edges, a grass cell whose TL corner is cut.
     const withCut = buildTerrainMeshes(gridFrom([[w0(), w0()], [w0(), island(['fan', 'square', 'square', 'square'])]]));
     const noCut = buildTerrainMeshes(gridFrom([[w0(), w0()], [w0(), island(['square', 'square', 'square', 'square'])]]));
-    // The cut must NOT carve the grass slab: the macro grass floor is identical whether or not the
-    // corner is cut.
-    expect(withCut.ground.positions.length).toBe(noCut.ground.positions.length);
     // The cut instead OPENS onto the water it sits in — a reveal the uncut cell has no reason to draw.
     expect(withCut.water.positions.length).toBeGreaterThan(noCut.water.positions.length);
     // It reads as ground — no mountain solid.

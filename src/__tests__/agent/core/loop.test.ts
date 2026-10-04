@@ -1113,145 +1113,75 @@ describe('an identical retry of a just-failed call is refused without running', 
   });
 });
 
-/**
- * THE PLAN RAIL HAS TO MOVE. The rail renders `plan.currentIndex`/`doneCount`, which fold from the
- * `stage` event; with nothing emitting it the rail would show every stage pending for a whole
- * job. The loop is the emitter, at the boundary the workflow prompt already names: "call
- * evaluate_map as you finish each stage". These tests hold that reading against the two calls the
- * SAME prompt asks for that are not boundaries (the baseline before any building, a re-measurement
- * after a fix), since a rule that advanced on either would run the rail ahead of the work.
- */
-describe('the plan rail advances at a stage boundary', () => {
-  const PLAN_ARGS = { stages: [{ label: 'streets' }, { label: 'houses' }, { label: 'gardens' }] };
-  const evalCall = (n: number) => ({ callId: `ev-${n}`, name: 'evaluate_map' });
-  const writeCall = (n: number) => ({ callId: `w-${n}`, name: 'paint_terrain', args: { x: n } });
+describe('explicit plan progress', () => {
+  const stages = [{ label: 'site' }, { label: 'build' }, { label: 'verify' }];
+  const plan = () => toolTurn([{ callId: 'plan', name: 'update_plan', args: { stages } }]);
+  const progress = (completedStages: unknown, callId = 'progress') => toolTurn([{ callId, name: 'update_plan', args: { completedStages } }]);
 
-  function planExecutor() {
-    return makeExecutor({ writeNames: new Set(['paint_terrain']) });
-  }
-
-  function stageIndices(log: SessionLog): number[] {
-    return eventsOf(log).flatMap((e) => (e.kind === 'stage' ? [e.index] : []));
-  }
-
-  it('a baseline evaluate_map before any write leaves the rail on stage 0', async () => {
+  it('advances a read-only stage without an edit or scorecard and persists all completed stages', async () => {
     const log = createLog(() => 0);
-    seedOrder(log, 'build a town');
+    seedOrder(log, 'inspect and plan');
     const adapter = createScriptedAdapter([
-      toolTurn([{ callId: 'plan-1', name: 'update_plan', args: PLAN_ARGS }]),
-      toolTurn([evalCall(1)]),
-      textTurn('measured first'),
+      plan(),
+      toolTurn([{ callId: 'read', name: 'inspect_region' }]),
+      progress(1), progress(3, 'complete'), textTurn('Done.'),
     ]);
-
-    await runJob(log, makeDeps({ adapter, executor: planExecutor() }));
-
-    expect(stageIndices(log)).toEqual([]);
-    expect(deriveView(log).jobs[0]?.plan).toMatchObject({ currentIndex: 0, doneCount: 0 });
-  });
-
-  it('a write then evaluate_map advances one stage, and a re-measurement with no write between does not advance again', async () => {
-    const log = createLog(() => 0);
-    seedOrder(log, 'build a town');
-    const adapter = createScriptedAdapter([
-      toolTurn([{ callId: 'plan-1', name: 'update_plan', args: PLAN_ARGS }]),
-      toolTurn([writeCall(1), evalCall(1)]),
-      toolTurn([evalCall(2)]),
-      textTurn('still on houses'),
-    ]);
-
-    await runJob(log, makeDeps({ adapter, executor: planExecutor() }));
-
-    expect(stageIndices(log)).toEqual([1]);
-    expect(deriveView(log).jobs[0]?.plan).toMatchObject({ currentIndex: 1, doneCount: 1 });
-  });
-
-  it('each further stage advances on its own write-then-measure pair, and the last stage never advances past itself', async () => {
-    const log = createLog(() => 0);
-    seedOrder(log, 'build a town');
-    const adapter = createScriptedAdapter([
-      toolTurn([{ callId: 'plan-1', name: 'update_plan', args: PLAN_ARGS }]),
-      toolTurn([writeCall(1), evalCall(1)]),
-      toolTurn([writeCall(2), evalCall(2)]),
-      toolTurn([writeCall(3), evalCall(3)]),
-      textTurn('all three built'),
-    ]);
-
-    await runJob(log, makeDeps({ adapter, executor: planExecutor() }));
-
-    // Three boundaries, three stages: the third measurement finds the rail already on the last
-    // stage and appends nothing.
-    expect(stageIndices(log)).toEqual([1, 2]);
-    expect(deriveView(log).jobs[0]?.plan).toMatchObject({ currentIndex: 2, doneCount: 2 });
-  });
-
-  it('a FAILED evaluate_map is not a boundary', async () => {
-    const log = createLog(() => 0);
-    seedOrder(log, 'build a town');
-    const adapter = createScriptedAdapter([
-      toolTurn([{ callId: 'plan-1', name: 'update_plan', args: PLAN_ARGS }]),
-      toolTurn([writeCall(1), evalCall(1)]),
-      textTurn('measurement failed'),
-    ]);
-    const executor = makeExecutor({
-      writeNames: new Set(['paint_terrain']),
-      result: (call) => call.name === 'evaluate_map'
-        ? { content: 'could not read the map', isError: true }
-        : { content: `did ${call.name}`, isError: false },
-    });
-
+    const executor = makeExecutor();
     await runJob(log, makeDeps({ adapter, executor }));
-
-    expect(stageIndices(log)).toEqual([]);
-  });
-
-  it('a planless job never emits a stage event, however many times it measures', async () => {
-    const log = createLog(() => 0);
-    seedOrder(log, 'dig one pond');
-    const adapter = createScriptedAdapter([
-      toolTurn([writeCall(1), evalCall(1)]),
-      toolTurn([writeCall(2), evalCall(2)]),
-      textTurn('dug it'),
-    ]);
-
-    await runJob(log, makeDeps({ adapter, executor: planExecutor() }));
-
-    expect(stageIndices(log)).toEqual([]);
-  });
-
-  it('each advance banks its own stage checkpoint at the next step boundary, carrying the stage index the record rewinds to', async () => {
-    const log = createLog(() => 0);
-    seedOrder(log, 'build a town');
-    const adapter = createScriptedAdapter([
-      toolTurn([{ callId: 'plan-1', name: 'update_plan', args: PLAN_ARGS }]),
-      toolTurn([writeCall(1), evalCall(1)]),
-      toolTurn([writeCall(2), evalCall(2)]),
-      textTurn('built'),
-    ]);
-    let undo = 0;
-    const deps = makeDeps({ adapter, executor: planExecutor(), undoStackSize: () => ++undo });
-
-    await runJob(log, deps);
-
-    const staged = deriveView(log).jobs[0]?.checkpoints.filter((c) => c.label === 'stage') ?? [];
-    expect(staged.map((c) => c.stageIndex)).toEqual([1, 2]);
-  });
-
-  it('a serialized then restored log folds to the same rail position', async () => {
-    const log = createLog(() => 0);
-    seedOrder(log, 'build a town');
-    const adapter = createScriptedAdapter([
-      toolTurn([{ callId: 'plan-1', name: 'update_plan', args: PLAN_ARGS }]),
-      toolTurn([writeCall(1), evalCall(1)]),
-      toolTurn([writeCall(2), evalCall(2)]),
-      textTurn('built'),
-    ]);
-
-    await runJob(log, makeDeps({ adapter, executor: planExecutor() }));
-
+    expect(executor.calls.map((call) => call.name)).toEqual(['inspect_region']);
+    expect(eventsOf(log).filter((e) => e.kind === 'plan')).toHaveLength(1);
+    expect(eventsOf(log).filter((e) => e.kind === 'stage').map((e) => e.index)).toEqual([1, 3]);
+    expect(deriveView(log).jobs[0]?.plan).toMatchObject({ currentIndex: 2, doneCount: 3 });
     const restored = deserializeLog(serializeLog(log), () => 0);
-    expect(restored).not.toBeNull();
     expect(deriveView(restored!).jobs[0]?.plan).toEqual(deriveView(log).jobs[0]?.plan);
-    expect(deriveView(restored!).jobs[0]?.plan).toMatchObject({ currentIndex: 2, doneCount: 2 });
+    expect(deriveView(log).jobs[0]?.checkpoints.filter((c) => c.label === 'stage').map((c) => c.stageIndex)).toEqual([1]);
+  });
+
+  it('a scorecard never declares a stage complete', async () => {
+    const log = createLog(() => 0);
+    seedOrder(log, 'build a town');
+    const adapter = createScriptedAdapter([
+      plan(),
+      toolTurn([{ callId: 'write', name: 'paint_terrain' }, { callId: 'eval', name: 'evaluate_map' }]),
+      textTurn('The stage needs more work.'),
+    ]);
+    await runJob(log, makeDeps({ adapter, executor: makeExecutor({ writeNames: new Set(['paint_terrain']) }) }));
+    expect(eventsOf(log).filter((e) => e.kind === 'stage')).toEqual([]);
+  });
+
+  it.each([-1, 4, 1.5, '1', null])('rejects invalid completed count %j', async (count) => {
+    const log = createLog(() => 0);
+    seedOrder(log, 'build a town');
+    const adapter = createScriptedAdapter([plan(), progress(count), textTurn('Waiting.')]);
+    await runJob(log, makeDeps({ adapter, executor: makeExecutor() }));
+    expect(eventsOf(log).find((e) => e.kind === 'toolResult' && e.callId === 'progress')).toMatchObject({ isError: true });
+    expect(eventsOf(log).filter((e) => e.kind === 'stage')).toEqual([]);
+  });
+
+  it('rejects missing plans, backward progress and simultaneous replacement without changing the plan', async () => {
+    const log = createLog(() => 0);
+    seedOrder(log, 'build a town');
+    const adapter = createScriptedAdapter([
+      progress(1, 'missing'), plan(), progress(2), progress(1, 'backward'),
+      toolTurn([{ callId: 'both', name: 'update_plan', args: { stages, completedStages: 2 } }]),
+      progress(2, 'same'), textTurn('Waiting.'),
+    ]);
+    await runJob(log, makeDeps({ adapter, executor: makeExecutor(), maxTurns: 10 }));
+    for (const callId of ['missing', 'backward', 'both']) {
+      expect(eventsOf(log).find((e) => e.kind === 'toolResult' && e.callId === callId)).toMatchObject({ isError: true });
+    }
+    expect(eventsOf(log).filter((e) => e.kind === 'stage').map((e) => e.index)).toEqual([2]);
+    expect(eventsOf(log).filter((e) => e.kind === 'plan')).toHaveLength(1);
+  });
+
+  it('progress on an approved plan does not request another approval', async () => {
+    const log = createLog(() => 0);
+    seedOrder(log, 'inspect the site');
+    append(log, { kind: 'plan', stages, revision: 1 });
+    const adapter = createScriptedAdapter([progress(1), progress(3, 'done'), textTurn('Done.')]);
+    await runJob(log, makeDeps({ adapter, executor: makeExecutor(), oversight: 'checkpoint' }));
+    expect(eventsOf(log).filter((e) => e.kind === 'gateAsked')).toEqual([]);
+    expect(deriveView(log).jobs[0]?.plan?.doneCount).toBe(3);
   });
 });
 
@@ -1314,6 +1244,12 @@ describe('the closing words settle into the record', () => {
       adapter: createScriptedAdapter([textTurn('山脊已经立好，要再种一片松林吗？')]), executor: makeExecutor(),
     }))).toBe('done');
     expect(lastEnd(fullwidth)).toMatchObject({ question: true });
+    const emphasized = createLog(() => 0);
+    seedOrder(emphasized, 'plant something');
+    expect(await runJob(emphasized, makeDeps({
+      adapter: createScriptedAdapter([textTurn('**要再种一片松林吗？**')]), executor: makeExecutor(),
+    }))).toBe('done');
+    expect(lastEnd(emphasized)).toMatchObject({ question: true });
   });
 
   it('a closing turn whose only call is suggest_reply settles right after "Noted.", costing no second round', async () => {
@@ -1724,18 +1660,18 @@ describe('the delivery nudge', () => {
     const notes = systemNotes(log);
     expect(notes).toHaveLength(1);
     expect(notes[0]?.kind === 'systemNote' && notes[0].note).toBe('plan-close');
-    expect(notes[0]?.kind === 'systemNote' && notes[0].text).toMatch(/3 of 3 stages not finished/);
+    expect(notes[0]?.kind === 'systemNote' && notes[0].text).toMatch(/3 of 3 stages as unfinished/);
     expect(eventsOf(log)[eventsOf(log).length - 1]).toMatchObject({
       kind: 'jobEnd', outcome: 'done',
       summary: 'The remaining stages need ground the map does not have.',
     });
   });
 
-  it('a close on the plan\'s last stage settles without the plan guard', async () => {
+  it('a close after every stage is complete settles without the plan guard', async () => {
     const log = createLog(() => 0);
     seedOrder(log, 'build a garden town');
     append(log, { kind: 'plan', stages: [{ label: 'streets' }, { label: 'courts' }], revision: 0 });
-    append(log, { kind: 'stage', index: 1 });
+    append(log, { kind: 'stage', index: 2 });
     const adapter = createScriptedAdapter([
       toolTurn([{ callId: 'c1', name: 'paint_terrain', args: { shape: 'rect' } }]),
       textTurn('All stages stand.'),

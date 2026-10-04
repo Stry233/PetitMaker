@@ -9,7 +9,7 @@
  */
 import type { StateCreator } from 'zustand';
 import type { Locale } from '../../core/model/types';
-import { readPref, writePref, type HintLevel, type MotionPref, type Quality3d, type ViewMode } from '../../core/runtime/prefs';
+import { readPref, writePref, type HintLevel, type MotionPref, type Quality3d, type ViewMode, clampUiZoom } from '../../core/runtime/prefs';
 
 export type { HintLevel, Quality3d, ViewMode };
 
@@ -48,7 +48,7 @@ export interface PrefsSlice {
 export const createPrefsSlice: StateCreator<PrefsSlice, [], [], PrefsSlice> = (set) => ({
   uiZoom: readPref('uiZoom'),
   setUiZoom: (zoom) => {
-    const z = Math.max(0.6, Math.min(1.8, +zoom.toFixed(2)));
+    const z = clampUiZoom(zoom);
     set({ uiZoom: z });
     writePref('uiZoom', z);
   },

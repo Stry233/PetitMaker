@@ -14,7 +14,7 @@
   "color": "#d36455",
   "width": 1,
   "height": 1,
-  "loadValue": 10,
+  "loadValue": 0,
   "rotatable": false,
   "placementMode": "brush",
   "traits": [

@@ -1,5 +1,5 @@
 /**
- * panel-shell.test.tsx — the assembly.
+ * The assembly.
  *
  * What is under test here is COMPOSITION, not any component's own drawing (each of those has its
  * own suite): which zones stand, what goes in the job zone for a given phase, which verb a control
@@ -26,7 +26,7 @@ import {
 import { DOCK_HEIGHT } from '../../../ui/agent/DeskHeader';
 import { DREAMS } from '../../../ui/agent/DreamOffice';
 import { DOCK_CHROME_FILE_H, DOCK_CHROME_W } from '../../../ui/shell/panel-frame';
-import { easingCss, seconds } from '../../../ui/agent/motion';
+import { easingCss, seconds } from '../../../ui/design/motion';
 import { useAgentPanelSettings } from '../../../ui/agent/settings';
 import { PROVIDER_IDS, type ProviderId } from '../../../agent/providers/defaults';
 import { POSES } from '../../../ui/agent/character/poses';
@@ -718,11 +718,6 @@ describe('PanelShell: what the job zone shows', () => {
     expect(some.getByTestId('history-toggle').textContent).toContain('2');
   });
 
-  /**
-   * A JOB THAT ENDED ON A QUESTION LEAVES THE COMPOSER AS THE ONLY REPLY, and it now says so. The
-   * settle is compact and offers no quick answers (nothing produces them yet), so a field reading
-   * "Give an order" was the whole of what the one face built around a question offered back.
-   */
   it('invites the answer in the composer while a settled question stands', () => {
     const asked = makeView({ jobs: [makeJob({ outcome: 'done', question: true })] });
     const { getByTestId, rerender } = renderWithI18n(
@@ -814,8 +809,8 @@ describe('PanelShell: the terminal card is keyed by its own record', () => {
   });
 });
 
-describe('PanelShell: cancelling a question', () => {
-  it.each(['answer', 'build'] as const)('dismisses a closing question from a %s without sending an answer', (kind) => {
+describe('PanelShell: leaving a question', () => {
+  it.each(['answer', 'build'] as const)('files a closing question from a %s without sending an answer', (kind) => {
     const onSend = vi.fn();
     const onStop = vi.fn();
     const onFileAway = vi.fn();
@@ -823,14 +818,18 @@ describe('PanelShell: cancelling a question', () => {
     const view = makeView({ jobs: [job] });
     const props = { view, connected: true, now: 0, ...VERBS, onSend, onStop, onFileAway };
     const ui = renderWithI18n(<PanelShell {...props} />);
-    fireEvent.click(ui.getByRole('button', { name: 'Cancel task' }));
+    expect(ui.queryByTestId('question-cancel-task')).toBeNull();
+    const fileAway = ui.getByRole('button', { name: translations.en['agent3.action_file_away'] });
+    expect(fileAway.closest('[data-testid="answer-paper"], [data-testid="flip-face-front"]')).not.toBeNull();
+    fireEvent.click(fileAway);
     expect(onFileAway).toHaveBeenCalledWith(job.orderSeq);
     expect(onSend).not.toHaveBeenCalled();
     expect(onStop).not.toHaveBeenCalled();
     ui.rerender(<PanelShell {...props} filed={new Set([job.orderSeq])} />);
+    expect(ui.queryByRole('button', { name: translations.en['agent3.action_file_away'] })).toBeNull();
     expect(ui.queryByTestId('question-cancel-task')).toBeNull();
     expect(ui.getByTestId('dock-sentence').textContent).toBe(translations.en['agent3.dock_idle']);
-    expect((ui.getByTestId('composer-input') as HTMLTextAreaElement).placeholder).toBe('Give an order');
+    expect((ui.getByTestId('composer-input') as HTMLTextAreaElement).placeholder).toBe(translations.en['agent3.composer_order']);
   });
 
   it('offers cancellation beside a live question and uses the shared stop confirmation', () => {
@@ -988,6 +987,19 @@ describe('PanelShell: the verbs', () => {
 
     rerender(<PanelShell view={makeView({ suggestion: 'second' })} connected now={0} {...VERBS} />);
     expect(getByTestId('composer-ghost').textContent).toBe('second');
+  });
+
+  it('offers identical reply text again for a later order without replacing a typed draft', () => {
+    const view = (seq: number) => makeView({ jobs: [makeJob({ orderSeq: seq, outcome: 'done', question: true })], suggestion: 'Yes, add flowers' });
+    const ui = renderWithI18n(<PanelShell view={view(1)} connected now={0} {...VERBS} />);
+    fireEvent.keyDown(ui.getByTestId('composer-input'), { key: 'Escape' });
+    expect(ui.queryByTestId('composer-ghost')).toBeNull();
+    ui.rerender(<PanelShell view={view(20)} connected now={0} {...VERBS} />);
+    expect(ui.getByTestId('composer-ghost').textContent).toBe('Yes, add flowers');
+    fireEvent.change(ui.getByTestId('composer-input'), { target: { value: 'Use blue flowers' } });
+    ui.rerender(<PanelShell view={view(30)} connected now={0} {...VERBS} />);
+    expect((ui.getByTestId('composer-input') as HTMLTextAreaElement).value).toBe('Use blue flowers');
+    expect(ui.queryByTestId('composer-ghost')).toBeNull();
   });
 });
 
@@ -1237,7 +1249,7 @@ describe('PanelShell: the three zones', () => {
     const laidOut = children.filter((el) => el.style.display !== 'none');
 
     for (const el of laidOut) {
-      const isZone = el.dataset.testid === 'panel-job-zone';
+      const isZone = el.dataset.testid === 'panel-job-frame';
       // THE STEER STACK IS THE ONE ZONE THAT MAY GIVE WAY BESIDE THE RECORD, and it is not a second
       // scroller: the CHIPS box inside it scrolls, so a squeeze takes chip rows and never the count
       // line under them (`SteerQueue`'s own suite holds that half). The desk and the composer are
@@ -1245,7 +1257,7 @@ describe('PanelShell: the three zones', () => {
       const mayShrink = el.dataset.testid === 'panel-steer-zone';
       expect(el.style.flex, el.dataset.testid ?? el.tagName)
         .toBe(isZone ? '1 1 auto' : mayShrink ? '0 1 auto' : '0 0 auto');
-      expect(el.style.overflowY, el.dataset.testid ?? el.tagName).toBe(isZone ? 'auto' : '');
+      expect(el.style.overflowY, el.dataset.testid ?? el.tagName).toBe('');
     }
     // The cap is the panel's own, so the zone is what the cap squeezes.
     expect(panel.style.maxHeight).toBe('calc(100vh - 480px)');
@@ -1262,23 +1274,17 @@ describe('PanelShell: the three zones', () => {
    *  (the keyless rest, the connection screen, the manage card) is what draws no composer at all. */
   it('keeps all four zones where the record still stands, key or no key', () => {
     const { view, children } = zoneStyles(false);
-    const zone = children.find((el) => el.dataset.testid === 'panel-job-zone')!;
+    const zone = children.find((el) => el.dataset.testid === 'panel-job-frame')!;
     expect(zone.style.flex).toBe('1 1 auto');
     expect(view.getByTestId('composer').style.flex).toBe('0 0 auto');
     view.unmount();
   });
 
-  /**
-   * HOVER GROWTH NEEDS ROOM INSIDE THE CLIP. The house press feedback scales a control to 1.03 about
-   * its centre, so a 336px row grows 5.04px per side — past an `overflow-x: hidden` edge that had 1px
-   * of padding, and the card's own border vanished under the pointer. The gutter IS that growth and
-   * the negative margin hands the width back; the -5 is the 6 less the 1px the box already had.
-   */
-  it('carries the hover-growth gutter exactly', () => {
-    const { view, children } = zoneStyles();
-    const zone = children.find((el) => el.dataset.testid === 'panel-job-zone')!;
-    expect(zone.style.padding).toBe('1px 6px');
-    expect(zone.style.margin).toBe('0px -5px');
+  it('keeps control clearance inside the scroll viewport', () => {
+    const { view } = zoneStyles();
+    const zone = view.getByTestId('panel-job-zone');
+    const content = zone.querySelector<HTMLElement>('[data-scroll-content]')!;
+    expect(content.style.padding).toBe('var(--control-clearance)');
     expect(zone.style.overflowX).toBe('hidden');
     view.unmount();
   });
@@ -1304,7 +1310,7 @@ describe('PanelShell: the three zones', () => {
         {...VERBS}
       />,
     );
-    const floor = capped.getByTestId('panel-job-zone').style.minHeight.replace(/\s+/g, '');
+    const floor = capped.getByTestId('panel-job-frame').style.minHeight.replace(/\s+/g, '');
     expect(floor).toBe(`min(${JOB_ZONE_FLOOR}px,max(0px,calc(calc(100vh - 480px) - ${PINNED_HEIGHT}px)))`.replace(/\s+/g, ''));
     capped.unmount();
 
@@ -1312,7 +1318,7 @@ describe('PanelShell: the three zones', () => {
     const free = renderWithI18n(
       <PanelShell view={makeView({ phase: 'executing', current: makeJob() })} connected now={0} {...VERBS} />,
     );
-    expect(free.getByTestId('panel-job-zone').style.minHeight).toBe(`${JOB_ZONE_FLOOR}px`);
+    expect(free.getByTestId('panel-job-frame').style.minHeight).toBe(`${JOB_ZONE_FLOOR}px`);
     free.unmount();
   });
 
@@ -1335,7 +1341,7 @@ describe('PanelShell: the three zones', () => {
         {...VERBS}
       />,
     );
-    const floor = getByTestId('panel-job-zone').style.minHeight.replace(/\s+/g, '');
+    const floor = getByTestId('panel-job-frame').style.minHeight.replace(/\s+/g, '');
     expect(floor).toContain('max(0px,');
     expect(floor).toContain(`calc(100px-${PINNED_HEIGHT}px)`); // whitespace already stripped above
   });
@@ -1352,34 +1358,33 @@ describe('PanelShell: the three zones', () => {
         {...VERBS}
       />,
     );
-    expect(rest.getByTestId('panel-job-zone').style.minHeight).toBe('0');
+    expect(rest.getByTestId('panel-job-frame').style.minHeight).toBe('0');
     rest.unmount();
 
     // A record still standing as a card is not that shape, and keeps its floor.
     const carded = renderWithI18n(
       <PanelShell view={makeView({ jobs: [done] })} connected now={0} {...VERBS} />,
     );
-    expect(carded.getByTestId('panel-job-zone').style.minHeight).toBe(`${JOB_ZONE_FLOOR}px`);
+    expect(carded.getByTestId('panel-job-frame').style.minHeight).toBe(`${JOB_ZONE_FLOOR}px`);
     carded.unmount();
 
     // An empty desk keeps it: the zone is where the next thing lands.
     const empty = renderWithI18n(<PanelShell view={makeView()} connected now={0} {...VERBS} />);
-    expect(empty.getByTestId('panel-job-zone').style.minHeight).toBe(`${JOB_ZONE_FLOOR}px`);
+    expect(empty.getByTestId('panel-job-frame').style.minHeight).toBe(`${JOB_ZONE_FLOOR}px`);
     empty.unmount();
   });
 
   /** The shade may only cover what scrolls away, so with nothing scrolling there is no mask at all
    *  (jsdom reports every box as 0x0, which is the "it all fits" reading). */
-  it('wears no shade over a record that is all showing', () => {
-    const { view, children } = zoneStyles();
-    const zone = children.find((el) => el.dataset.testid === 'panel-job-zone')!;
+  it('keeps the scroll viewport unmasked', () => {
+    const { view } = zoneStyles();
+    const zone = view.getByTestId('panel-job-zone');
     expect(zone.style.maskImage).toBe('');
     view.unmount();
   });
 });
 
-/** The job zone follows projection changes so new operations, gates, and summaries remain visible.
- * jsdom has no layout, so these tests observe writes to `scrollTop`. */
+/** Scroll dimensions are explicit because jsdom does not lay out the panel. */
 describe('PanelShell: the record follows the work', () => {
   function watchScroll() {
     const writes: number[] = [];
@@ -1393,15 +1398,11 @@ describe('PanelShell: the record follows the work', () => {
   }
 
   it('scrolls the job zone when the projection changes', () => {
-    const watch = watchScroll();
-    try {
-      const { rerender } = renderWithI18n(
-        <PanelShell view={makeView({ phase: 'executing', current: makeJob() })} connected now={0} {...VERBS} />,
-      );
-      const before = watch.writes.length;
-      rerender(<PanelShell view={makeView({ phase: 'idle', jobs: [makeJob({ outcome: 'done' })] })} connected now={0} {...VERBS} />);
-      expect(watch.writes.length).toBeGreaterThan(before);
-    } finally { watch.restore(); }
+    const { view, zone, box } = standAtFoot(200);
+    box.scrollHeight = 600;
+    view.rerender(<PanelShell view={makeView({ phase: 'idle', jobs: [makeJob({ outcome: 'done' })] })} connected now={0} {...VERBS} />);
+    expect(zone.scrollTop).toBe(400);
+    view.unmount();
   });
 
   /** The setup screen is a form read from the top down, not a record: scrolling it to the foot
@@ -1414,13 +1415,6 @@ describe('PanelShell: the record follows the work', () => {
     } finally { watch.restore(); }
   });
 
-  /**
-   * THE PIN SURVIVES THE ROOM CHANGING, and telling a SCROLL from a RESHAPE is what it took. The
-   * browser adjusts a scroller's own `scrollTop` as its box changes and fires `scroll` for it; read
-   * as a scroll, that is the user saying "I am reading" about a move they never made, and the follow
-   * was dropped for good — measured in the live app, an open gate's Approve 20px below the fold
-   * after an 800 -> 780 -> 800 round trip and 50px after a width-only one.
-   */
   function standAtFoot(scrollTop: number) {
     const view = renderWithI18n(
       <PanelShell view={makeView({ phase: 'executing', current: makeJob() })} connected now={0} {...VERBS} />,
@@ -1430,26 +1424,32 @@ describe('PanelShell: the record follows the work', () => {
     for (const k of ['scrollHeight', 'clientHeight'] as const) {
       Object.defineProperty(zone, k, { configurable: true, get: () => box[k] });
     }
-    // jsdom's own `scrollTop` swallows every write (nothing here is scrollable), so the element gets
-    // a real one: the position IS the subject.
-    Object.defineProperty(zone, 'scrollTop', { configurable: true, writable: true, value: 0 });
+    let top = 0;
+    Object.defineProperty(zone, 'scrollTop', {
+      configurable: true,
+      get: () => (top = Math.min(top, Math.max(0, box.scrollHeight - box.clientHeight))),
+      set: (value: number) => { top = Math.max(0, Math.min(value, box.scrollHeight - box.clientHeight)); },
+    });
     zone.scrollTop = scrollTop;
     fireEvent.scroll(zone);
     return { view, zone, box };
   }
 
   it('re-takes the foot when the box changes under a record that was at it', () => {
-    const { view, zone, box } = standAtFoot(400);
+    const { view, zone, box } = standAtFoot(200);
     // The zone grows and the browser drags the position with it, exactly as a resize does.
     box.clientHeight = 260;
     zone.scrollTop = 140;
     fireEvent.scroll(zone);
-    expect(zone.scrollTop).toBe(400);
+    expect(zone.scrollTop).toBe(140);
+    box.clientHeight = 180;
+    view.rerender(<PanelShell view={makeView({ phase: 'executing', current: makeJob() })} connected now={0} {...VERBS} />);
+    expect(zone.scrollTop).toBe(220);
     view.unmount();
   });
 
   it('leaves a record the user has scrolled up in exactly where they left it', () => {
-    const { view, zone } = standAtFoot(400);
+    const { view, zone } = standAtFoot(200);
     zone.scrollTop = 100;
     fireEvent.scroll(zone);
     expect(zone.scrollTop, 'the box did not move, so this one is the hand on the wheel').toBe(100);
@@ -1460,15 +1460,8 @@ describe('PanelShell: the record follows the work', () => {
     view.unmount();
   });
 
-  /**
-   * CONTENT GROWING INSIDE AN UNCHANGED BOX FIRES NO SCROLL OF ITS OWN (a deck fanning open on its
-   * height, a thoughts box), so a cached scrollHeight is stale by the user's next scroll — read
-   * against it, the hand on the wheel was taken for a reshape and yanked to the foot (measured live:
-   * a fanned deck's reader re-pinned mid-read). Only the BOX changing makes the browser move
-   * `scrollTop` on its own, so the box is the whole reshape test.
-   */
   it('keeps the user scroll made right after content grew under an unchanged box', () => {
-    const { view, zone, box } = standAtFoot(400);
+    const { view, zone, box } = standAtFoot(200);
     box.scrollHeight = 800;
     zone.scrollTop = 100;
     fireEvent.scroll(zone);
@@ -1901,6 +1894,9 @@ describe('PanelShell: the height tween', () => {
       expect(stub.calls).toHaveLength(1);
       const call = stub.calls[0]!;
       expect(call.frames.map((f) => f.height)).toEqual(['300px', '460px']);
+      expect(call.frames.map((f) => [f.minHeight, f.maxHeight])).toEqual([
+        ['300px', '300px'], ['460px', '460px'],
+      ]);
       expect(call.options.duration).toBe(seconds('panel.height') * 1000);
       expect(call.options.easing).toBe(easingCss('panel.height'));
     } finally {
@@ -1936,6 +1932,7 @@ describe('PanelShell: the height tween', () => {
       stub.grow(159);
       rerender(<PanelShell view={makeView()} connected now={0} maxHeight="calc(100vh - 500px)" {...VERBS} />);
       expect(stub.calls.map((c) => c.frames.map((f) => f.height))).toEqual([['367px', '159px']]);
+      expect(stub.calls[0]!.frames.map((f) => f.maxHeight)).toEqual(['367px', '159px']);
     } finally {
       stub.restore();
     }

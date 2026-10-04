@@ -20,7 +20,7 @@ import type { TrimmedCell } from '../../../tools/edge-cut/trim-preview';
 import { makeState } from '../../rules/_helpers';
 import { makeToolCtx } from '../_tool-ctx';
 import { getCell } from '../../../core/model/grid-model';
-import { trimmedOutline } from '../../../canvas/map2d/layers/ghost-geometry';
+import { trimmedOutline } from '../../../canvas/ghost-geometry';
 import { roadLookup } from '../../../state/object-index';
 
 const MICRO = { x: 0, y: 0 };

@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { FIT_FLOOR_TOUCH, fittedUiScale, MIN_UI_ROOM } from '../../../ui/design/scale';
-import { KIT_BUTTONS, MODE_ROW_INK_BOTTOM, MODES, planFrame, railClearanceFor, railStack, TOP_RIGHT, TOP_RIGHT_H, TOP_RIGHT_TOP, topRightHeight, blockCentre, viewKitCell } from '../../../ui/shell/frame';
-import { EDGE_LEFT, EDGE_RIGHT, MODE_PLATE_W, MODE_SCALE, RAIL, TOP_RIGHT_GAP, ZOOM } from '../../../ui/shell/units';
+import { KIT_BUTTONS, MODE_ROW_INK_BOTTOM, MODES, cornerArt, cornerWidth, sessionModes, modeRowRight, planFrame, railClearanceFor, railStack, TOP_RIGHT, TOP_RIGHT_H, TOP_RIGHT_TOP, viewKitCell } from '../../../ui/shell/frame';
+import { EDGE_LEFT, EDGE_RIGHT, RAIL, ZOOM } from '../../../ui/shell/units';
 import { PINNED_DOCK_REF_W, frameZoomAt } from '../../../ui/shell/panel-frame';
 import { PLATE_MIN_WIDTH, plateDepth, plateMinDepth } from '../../../ui/shell/windows/LayerPanel';
+import type { PlanetSession } from '../../../state/slices/planet-session';
 
 const options = { open: false, plateDepth: plateDepth('grid'), plateMinDepth: plateMinDepth('grid'), plateMinWidth: PLATE_MIN_WIDTH };
 
@@ -25,9 +26,8 @@ describe('the shell shares the available workspace', () => {
   });
 
   it('keeps all controls on screen and leaves a usable scroll lane throughout the scale and aspect range', () => {
-    const cornerWidth = TOP_RIGHT.reduce((sum, art) => sum + topRightHeight(art) * art.w / art.h, 0)
-      + (TOP_RIGHT.length - 1) * TOP_RIGHT_GAP;
-    const modeRight = blockCentre(MODES.length - 1) + MODE_PLATE_W * MODE_SCALE / 2;
+    const corner = cornerWidth(TOP_RIGHT);
+    const modeRight = modeRowRight(MODES.length);
     for (let vw = 320; vw <= 2400; vw += 97) for (let vh = 280; vh <= 1400; vh += 83) {
       for (const requested of [0.6, 1, 1.4, 1.8]) for (const dock of [0, PINNED_DOCK_REF_W]) {
         const chrome = fittedUiScale(vw, vh, requested, dock);
@@ -37,7 +37,7 @@ describe('the shell shares the available workspace', () => {
           const p = planFrame(width, height, { ...options, open });
           const rail = p.rail;
           expect(p.cornerTop === TOP_RIGHT_TOP
-            ? width - p.edgeRight - cornerWidth >= modeRight + RAIL.groupMin
+            ? width - p.edgeRight - corner >= modeRight + RAIL.groupMin
             : p.cornerTop > MODE_ROW_INK_BOTTOM).toBe(true);
           expect(rail.kitTop + railStack(Math.ceil(KIT_BUTTONS / rail.kitFiles))).toBeLessThan(height);
           expect(rail.kitTop).toBeGreaterThanOrEqual(p.railTop + RAIL.layer.h);
@@ -47,6 +47,22 @@ describe('the shell shares the available workspace', () => {
         }
       }
     }
+  });
+
+  it('decides whether the corner stays beside the modes from the controls that show', () => {
+    const session = { ...options, modes: sessionModes({} as PlanetSession).length, corner: cornerArt(true) };
+    let onlySessionLevel = 0;
+    for (let width = 360; width <= 1400; width += 7) for (const height of [360, 600, 900]) {
+      const full = planFrame(width, height, options);
+      expect(planFrame(width, height, { ...options, modes: MODES.length, corner: TOP_RIGHT })).toEqual(full);
+      expect(full.cornerTop === TOP_RIGHT_TOP)
+        .toBe(width - full.edgeRight - cornerWidth(TOP_RIGHT) >= modeRowRight(MODES.length) + RAIL.groupMin);
+      const reduced = planFrame(width, height, session);
+      expect(reduced.cornerTop === TOP_RIGHT_TOP)
+        .toBe(width - reduced.edgeRight - cornerWidth(session.corner) >= modeRowRight(session.modes) + RAIL.groupMin);
+      if (reduced.cornerTop === TOP_RIGHT_TOP && full.cornerTop !== TOP_RIGHT_TOP) onlySessionLevel++;
+    }
+    expect(onlySessionLevel).toBeGreaterThan(0);
   });
 
   it('keeps history on the right below the layer control when the panel opens or the scale changes', () => {

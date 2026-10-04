@@ -1,5 +1,5 @@
 /*
- * sketch-motion.ts — the choreography of the two IDLE DRESSINGS: the sketchbook's rotation and the
+ * The choreography of the two IDLE DRESSINGS: the sketchbook's rotation and the
  * dreaming office's beat sheet.
  *
  * A DECLARED EXEMPTION FROM THE REGISTRY, on the same footing as `character/poses.ts` and named in
@@ -16,12 +16,15 @@
  * runs while its card is off screen: the card's presence IS the engine's gate.
  */
 
-/** Shared curves for the sketch and dream engines. */
-const PUNCHY = 'cubic-bezier(.2,0,0,1)';
-const SPRING = 'cubic-bezier(.175,.885,.32,1.275)';
+import { easing } from '../../design/styles';
+import { CURVES } from '../character/poses';
+
+/** Shared curves for the sketch and dream engines: the interface's punchy and stiff-spring easings,
+ *  a drawing curve of their own, and the character's `out` curve for waking, slumping and twitching. */
+const PUNCHY = easing.punchy;
+const SPRING = easing.springStiff;
 const DRAW = 'cubic-bezier(.3,0,.2,1)';
-/** Wake, slump and twitch curve used by the dream engine. */
-const CURVE_OUT = 'cubic-bezier(.2,.8,.3,1)';
+const CURVE_OUT = CURVES.out;
 
 /** One WAAPI one-shot: how long, on what curve, and how far into the beat it starts. */
 export interface Beat {
@@ -62,7 +65,7 @@ export const SKETCH = {
 } as const;
 
 /** A one-shot played on the character's own parts (`CharacterHandle.parts`). */
-export interface Garnish {
+interface Garnish {
   part: 'pose' | 'body';
   dur: number;
   easing: string;

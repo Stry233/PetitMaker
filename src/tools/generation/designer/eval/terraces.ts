@@ -16,7 +16,8 @@
  * can be compared against them directly.
  */
 import type { GridState } from '../../../../core/model/types';
-import { NB4, readGrid } from './grid';
+import { readGrid } from './grid';
+import { NEIGHBORS4 } from '../../../../core/model/grid-model';
 
 /** The smallest component this reading counts. The references' own terraces are read at 30 cells and
  *  up; below that a component is a fillet or a step, not a surface. */
@@ -78,7 +79,7 @@ export function terraceShape(state: GridState, g = readGrid(state)): TerraceShap
       if (x > x1) x1 = x;
       if (y < y0) y0 = y;
       if (y > y1) y1 = y;
-      for (const [dx, dy] of NB4) {
+      for (const [dx, dy] of NEIGHBORS4) {
         const nx = x + dx, ny = y + dy;
         if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
         const j = ny * W + nx;

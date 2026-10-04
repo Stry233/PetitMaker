@@ -1,7 +1,7 @@
 import { EventBus } from './event-bus';
-import { cloneCell, getCell, cellKey } from '../model/grid-model';
+import { cloneCell, clonePlacedObject, getCell, cellKey, NEIGHBORS4 } from '../model/grid-model';
 import type { RuleDispatcher } from '../model/rule-dispatcher';
-import type { LoadValueLookup, RoadLookup } from '../model/road-lookup';
+import type { RoadLookup } from '../model/road-lookup';
 import { reconcileCuts } from '../edge-cut/cut-reconcile';
 import { reconcileRoads } from './road-reconcile';
 import {
@@ -19,12 +19,34 @@ import type { ProvenanceTracker } from '../provenance/tracker';
 import type { SourceContext, MapProvenanceSummary } from '../provenance/types';
 import {
   applyCommand,
+  detachCommand,
   getAffectedCells,
   reapplyEntryState,
   revertEntryState,
+  unrecoverableObjectOps,
   type HistoryEntry,
 } from './command-apply';
 import { ProvenanceRecorder } from './provenance-recorder';
+import { reportRefusal } from './refusal';
+
+/** How a stroke transaction runs its body. */
+export interface TransactionOptions {
+  /** Authorship for every command the body issues; popped on every exit. */
+  source?: SourceContext;
+  /** Silence validation-failed across the whole body, its commit included. */
+  silent?: boolean;
+}
+
+/** The body's handle on its stroke group. */
+export interface StrokeTransaction {
+  /** The undo stack size when the transaction opened. */
+  readonly start: number;
+  /** `commitStroke` over the group. `atomic` reverts the whole group when the post-stroke rules
+   *  report a violation, where a plain commit reverts only until the map is clean. */
+  commit(opts?: { reconcile?: boolean; atomic?: boolean }): ValidationError[];
+  /** Silently revert everything the group applied. */
+  rollback(): void;
+}
 
 /**
  * Executes commands against GridState with two-phase validation.
@@ -49,7 +71,7 @@ import { ProvenanceRecorder } from './provenance-recorder';
  * Assumptions:
  * - State is owned exclusively by this executor during command execution.
  * - Rules are pure functions that never mutate state.
- * - `before`/`after` on incoming commands are ignored; executor populates them.
+ * - Commands carry no snapshots; the executor records before/after cells on its own history entries.
  *
  * Guarantees:
  * - After `execute()` returns failure, state is unchanged.
@@ -62,32 +84,27 @@ export class CommandExecutor {
   private registry: RuleDispatcher;
   private undoStack: HistoryEntry[] = [];
   private redoStack: HistoryEntry[] = [];
-  private silent = false; // when true, rejected commands don't emit validation-failed (no error toast)
+  /** Silenced runs in progress; while any is, rejected commands emit no validation-failed (no error
+   *  toast). A count, so async runs that overlap and settle in any order restore it exactly. */
+  private silentRuns = 0;
   private provenance: ProvenanceRecorder;
   /** Satisfies `CutReconcileTarget` and `RoadReconcileTarget` — the executor passes itself as the
    *  reconcile target. */
   readonly roadAt: RoadLookup;
-  readonly loadValueOf: LoadValueLookup;
 
   /** `roadAt` must answer for `state`. The reconcile pass reads terrain from one and coatings from
    *  the other and treats them as one map, so a lookup bound to a different grid reports roads that
-   *  are not on the map being repaired. Bind the pair in one expression.
-   *
-   *  `loadValueOf` prices the PlaceObject a road repair issues; every app construction passes
-   *  `state/catalog:catalogLoadValue`. Left out (the tests' shorthand), a re-placed coating is
-   *  accounted weightless, and its own removal has already freed at least as much chunk load. */
+   *  are not on the map being repaired. Bind the pair in one expression. */
   constructor(
     state: GridState,
     eventBus: EventBus<EditorEvents>,
     registry: RuleDispatcher,
     roadAt: RoadLookup,
-    loadValueOf: LoadValueLookup = () => 0,
   ) {
     this.state = state;
     this.eventBus = eventBus;
     this.registry = registry;
     this.roadAt = roadAt;
-    this.loadValueOf = loadValueOf;
     this.provenance = new ProvenanceRecorder(state);
   }
 
@@ -100,17 +117,70 @@ export class CommandExecutor {
   /** Run `fn` with validation-failed events silenced — for bulk generation, which reject-and-skips many
    *  candidate commands by design and must not spew an error toast per rejection. Restores even on throw. */
   runSilently<T>(fn: () => T): T {
-    const prev = this.silent;
-    this.silent = true;
-    try { return fn(); } finally { this.silent = prev; }
+    this.silentRuns++;
+    try { return fn(); } finally { this.silentRuns--; }
   }
 
   /** Async variant — keeps validation-failed silenced across awaits (cooperative generation yields between
    *  stages), restoring only once the whole run settles. */
   async runSilentlyAsync<T>(fn: () => Promise<T>): Promise<T> {
-    const prev = this.silent;
-    this.silent = true;
-    try { return await fn(); } finally { this.silent = prev; }
+    this.silentRuns++;
+    try { return await fn(); } finally { this.silentRuns--; }
+  }
+
+  /**
+   * Run `body` as one stroke group: the start is taken, `source` is pushed and `silent` applied
+   * around the body, and a throw reverts the group before it propagates. The body decides when to
+   * commit or roll back through the handle; a body that returns without committing leaves its
+   * entries uncollapsed on the stack.
+   */
+  transaction<T>(opts: TransactionOptions, body: (tx: StrokeTransaction) => T): T {
+    const tx = this.openTransaction();
+    if (opts.source) this.pushSource(opts.source);
+    try {
+      return opts.silent ? this.runSilently(() => body(tx)) : body(tx);
+    } catch (err) {
+      this.rollbackAfterThrow(tx.start);
+      throw err;
+    } finally {
+      if (opts.source) this.popSource();
+    }
+  }
+
+  /** `transaction` for a body that awaits; the source and silence hold until it settles. */
+  async transactionAsync<T>(opts: TransactionOptions, body: (tx: StrokeTransaction) => Promise<T>): Promise<T> {
+    const tx = this.openTransaction();
+    if (opts.source) this.pushSource(opts.source);
+    try {
+      return await (opts.silent ? this.runSilentlyAsync(() => body(tx)) : body(tx));
+    } catch (err) {
+      this.rollbackAfterThrow(tx.start);
+      throw err;
+    } finally {
+      if (opts.source) this.popSource();
+    }
+  }
+
+  /** A rollback that itself throws is logged, so the body's own error is the one that propagates. */
+  private rollbackAfterThrow(start: number): void {
+    try {
+      this.rollbackTo(start);
+    } catch (rollbackErr) {
+      console.error('[command-executor] rollback after a failed transaction failed:', rollbackErr);
+    }
+  }
+
+  private openTransaction(): StrokeTransaction {
+    const start = this.undoStack.length;
+    return {
+      start,
+      commit: ({ reconcile, atomic = false } = {}) => {
+        const violations = this.commitStroke(start, reconcile === undefined ? {} : { reconcile });
+        if (atomic && violations.length > 0) this.rollbackTo(start);
+        return violations;
+      },
+      rollback: () => { this.rollbackTo(start); },
+    };
   }
 
   /** True while a road-reconcile pass is issuing its own commands through execute(). */
@@ -124,7 +194,7 @@ export class CommandExecutor {
     const errors: ValidationError[] = this.registry.validatePreCommand(cmd, this.state);
 
     if (errors.length > 0) {
-      if (!this.silent) this.eventBus.emit('validation-failed', { cmd, errors });
+      if (this.silentRuns === 0) reportRefusal(this.eventBus, { cmd, errors });
       return { success: false, errors };
     }
 
@@ -135,11 +205,15 @@ export class CommandExecutor {
 
     const coords = getAffectedCells(cmd);
     const before = this.snapshot(coords);
+    const objectOps = unrecoverableObjectOps(cmd, this.state);
     applyCommand(cmd, this.state, this.eventBus);
+    if (cmd.type === CommandType.RemoveObject) (this.state.liftedObjects ??= new Map()).set(cmd.objectId, cmd.removedObject);
     const after = this.snapshot(coords);
     const taint = this.provenance.capture(cmd, before, after);
 
-    this.undoStack.push({ cmd, before, after, taint });
+    // History keeps its own copy: the map's objects and corner arrays are edited in place later.
+    const recorded = detachCommand(cmd);
+    this.undoStack.push(objectOps ? { cmd: recorded, before, after, objectOps, taint } : { cmd: recorded, before, after, taint });
     this.redoStack = [];
 
     // A road tile's drawn boundary depends on its neighbours (road-shape.ts: roadEdgeInsets,
@@ -150,9 +224,9 @@ export class CommandExecutor {
     const seamHost = cmd.type === CommandType.PlaceObject
       ? (this.roadAt(cmd.object.position.x, cmd.object.position.y)?.id === cmd.object.id ? cmd.object : null)
       : removesCoating && cmd.type === CommandType.RemoveObject ? cmd.removedObject
-      : cmd.type === CommandType.TrimCorners && cmd.layer === 'road' ? this.roadAt(cmd.x, cmd.y) : null;
+      : cmd.type === CommandType.TrimCorners && cmd.layer === 'road' ? (objectOps?.removed[0] ?? this.roadAt(cmd.x, cmd.y)) : null;
     if (seamHost) {
-      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
+      for (const [dx, dy] of NEIGHBORS4) {
         const n = this.roadAt(seamHost.position.x + dx, seamHost.position.y + dy);
         if (n && n.id !== seamHost.id) this.eventBus.emit('objects-changed', { added: [n] });
       }
@@ -194,7 +268,14 @@ export class CommandExecutor {
    * illegal structure (an orphan fillet). One entry means undo reverts the change and its repair together.
    */
   commitStroke(strokeStartSize: number, opts: { reconcile?: boolean } = {}): ValidationError[] {
-    const reconcile = opts.reconcile ?? true;
+    try {
+      return this.commitStrokeGroup(strokeStartSize, opts.reconcile ?? true);
+    } finally {
+      this.state.liftedObjects?.clear();
+    }
+  }
+
+  private commitStrokeGroup(strokeStartSize: number, reconcile: boolean): ValidationError[] {
     if (this.undoStack.length - strokeStartSize <= 0) return [];
 
     // Roads follow the surface they coat, whoever edited it — this pass runs BEFORE the
@@ -264,22 +345,13 @@ export class CommandExecutor {
   }
 
   /**
-   * Alias of commitStroke, kept for call-site intent: batch operations (generation, Clear,
-   * agent write tools) call this to say "one undo step" explicitly. Both collapse the stroke
-   * into a single undo entry — terrain merges via cell snapshots, object add/removes and
-   * road corner edits via the entry's objectOps.
-   */
-  commitStrokeGroup(strokeStartSize: number, opts: { reconcile?: boolean } = {}): ValidationError[] {
-    return this.commitStroke(strokeStartSize, opts);
-  }
-
-  /**
    * Silently revert every entry above `watermark`: no redo-stack entries, no per-entry
    * validation, one cells-changed/history-changed emission. For callers that must guarantee
    * "nothing happened" after a mid-operation failure (the agent tool bridge rolls a crashed
    * stroke back to its start so a crash never leaves half-applied, unvalidated edits).
    */
   rollbackTo(watermark: number): void {
+    this.state.liftedObjects?.clear();
     if (this.undoStack.length <= watermark) return;
     const coords: MacroCoord[] = [];
     while (this.undoStack.length > watermark) {
@@ -303,7 +375,19 @@ export class CommandExecutor {
     const lastAfter = new Map<string, CellSnapshot>();
     const added = new Map<string, PlacedObject>();
     const removed = new Map<string, PlacedObject>();
-    for (const entry of group) {
+    /** Ids whose `removed` snapshot already holds an explicit pre-stroke rotation. */
+    const rotationKnown = new Set<string>();
+    /** The object `id` as a removal recorded after entry `index` kept it: a road a later all-empty
+     *  trim deleted is gone from the map by now. Earlier removals do not count, since an object
+     *  removed before the entry was not on the map when the entry ran. */
+    const removedAfter = (index: number, id: string): PlacedObject | undefined => {
+      for (let j = index + 1; j < group.length; j++) {
+        const kept = group[j]!.objectOps?.removed.find((o) => o.id === id);
+        if (kept) return kept;
+      }
+      return undefined;
+    };
+    for (const [index, entry] of group.entries()) {
       for (const s of entry.before) {
         const k = cellKey(s.coord.x, s.coord.y);
         if (!firstBefore.has(k)) firstBefore.set(k, s);
@@ -311,9 +395,9 @@ export class CommandExecutor {
       for (const s of entry.after) {
         lastAfter.set(cellKey(s.coord.x, s.coord.y), s);
       }
-      // An entry that is ITSELF a collapsed group carries its net object ops in `objectOps`, and
-      // its `cmd` is only the group's last command — deriving from the cmd would drop every other
-      // op the group held. Fold the recorded net through the same add/remove netting instead.
+      // An entry with recorded `objectOps` (a collapsed group, whose `cmd` is only its last command,
+      // or a command that cannot reverse its own object effect) is folded through the same
+      // add/remove netting; deriving from the cmd would drop the ops it recorded.
       if (entry.objectOps) {
         for (const o of entry.objectOps.removed) {
           if (added.has(o.id)) added.delete(o.id);
@@ -340,30 +424,28 @@ export class CommandExecutor {
         // in-place modify. First trim wins for the `removed` snapshot (the true pre-stroke
         // state); a later trim that carries the group's only explicit beforeRotation
         // back-fills it (the earlier trim didn't rotate, so that IS the original rotation).
-        const obj = this.state.objects.get(c.objectId);
+        const obj = this.state.objects.get(c.objectId) ?? removedAfter(index, c.objectId);
         if (obj) {
           if (added.has(c.objectId)) {
-            added.set(c.objectId, { ...obj, corners: obj.corners ? [...obj.corners] : undefined });
+            added.set(c.objectId, clonePlacedObject(obj));
           } else {
-            const prior = removed.get(c.objectId) as (PlacedObject & { __rotExplicit?: boolean }) | undefined;
+            const prior = removed.get(c.objectId);
             if (!prior) {
               removed.set(c.objectId, {
-                ...obj,
+                ...clonePlacedObject(obj),
                 corners: c.beforeCorners ? [...c.beforeCorners] : undefined,
                 rotation: c.beforeRotation ?? obj.rotation,
-                ...(c.beforeRotation !== undefined ? { __rotExplicit: true } : {}),
-              } as PlacedObject);
-            } else if (!prior.__rotExplicit && c.beforeRotation !== undefined) {
+              });
+              if (c.beforeRotation !== undefined) rotationKnown.add(c.objectId);
+            } else if (!rotationKnown.has(c.objectId) && c.beforeRotation !== undefined) {
               prior.rotation = c.beforeRotation;
-              prior.__rotExplicit = true;
+              rotationKnown.add(c.objectId);
             }
-            added.set(c.objectId, { ...obj, corners: obj.corners ? [...obj.corners] : undefined });
+            added.set(c.objectId, clonePlacedObject(obj));
           }
         }
       }
     }
-    // Strip the bookkeeping marker so it never leaks into state or saves.
-    for (const o of removed.values()) delete (o as PlacedObject & { __rotExplicit?: boolean }).__rotExplicit;
     const mergedTaint = this.provenance.mergeGroup(group.map((e) => e.taint));
     this.undoStack.push({
       cmd: group[group.length - 1]!.cmd,
@@ -375,6 +457,7 @@ export class CommandExecutor {
   }
 
   undo(): boolean {
+    this.state.liftedObjects?.clear();
     if (this.undoStack.length === 0) return false;
 
     const affectedCoords: MacroCoord[] = [];
@@ -397,6 +480,7 @@ export class CommandExecutor {
   }
 
   redo(): void {
+    this.state.liftedObjects?.clear();
     const entry = this.redoStack.pop();
     if (!entry) return;
 

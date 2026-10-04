@@ -12,6 +12,8 @@ export const liteAliases = [
   { find: /^.*\/glyph\/decode-async$/, replacement: resolve('src/io/share/glyph/decode-async-lite.ts') },
   { find: /^.*\/autosave-worker$/, replacement: resolve('src/io/autosave-worker-lite.ts') },
   { find: /^.*\/candidate-pool$/, replacement: resolve('src/kit/operations/candidate-pool-lite.ts') },
+  { find: /^.*\/planet\/PlanetImportWindow$/, replacement: resolve('src/ui/lite/planet-import-window.tsx') },
+  { find: /^.*\/clipper-loader$/, replacement: resolve('src/canvas/clipper-loader-lite.ts') },
 ];
 
 /** An ordinary web build must never inherit container shims or offline adapters. */

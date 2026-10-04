@@ -1,5 +1,5 @@
 /*
- * stencil-plan.ts — a sample (or something typed, or a file dropped in) turned into a runnable plan.
+ * A sample (or something typed, or a file dropped in) turned into a runnable plan.
  *
  * This is the seam between what the shelf holds and what the generator takes: the shelf knows about
  * letters, pictures and a fill setting; the generator knows about a `Stencil` and where to put it.
@@ -76,7 +76,7 @@ function loadImage(src: string): Promise<CanvasImageSource & { width: number; he
  */
 const palettes = new Map<StencilMaterial, Promise<readonly ColorEntry[]>>();
 
-export function objectColorPalette(material: StencilMaterial = 'mixed'): Promise<readonly ColorEntry[]> {
+function objectColorPalette(material: StencilMaterial = 'mixed'): Promise<readonly ColorEntry[]> {
   const cached = palettes.get(material);
   if (cached) return cached;
   // A material whose items carry their own colour (the road surfaces) needs no sampling at all —

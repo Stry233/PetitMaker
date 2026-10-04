@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useEditorStore } from '../../../../../state/store';
 import { reviewMap, type MapReview } from '../../../../../io/moderation/map/reviewer';
 import { captureReviewViews } from './map-capture';
 import { useStylizeVersions } from '../stylize/use-stylize-versions';
 import { useUiPreview } from '../../../../primitives/ui-preview';
+import { useMapRevision } from '../../../../hooks/use-map-revision';
 
 const EMPTY: MapReview = { status: 'unavailable' };
 const CLEAR: MapReview = { status: 'clear' };
@@ -11,15 +12,9 @@ const CLEAR: MapReview = { status: 'clear' };
 export function useMapReview(open: boolean, automatic: boolean, illustration: boolean, includeAnnotations = true) {
   const pictured = useUiPreview();
   const map = useEditorStore(s => s.gridState);
-  const bus = useEditorStore(s => s.eventBus);
   const annotations = useEditorStore(s => s.annotationsEpoch);
   const { selected } = useStylizeVersions();
-  const subscribe = useCallback((notify: () => void) => {
-    bus.on('cells-changed', notify); bus.on('objects-changed', notify); bus.on('history-applied', notify);
-    return () => { bus.off('cells-changed', notify); bus.off('objects-changed', notify); bus.off('history-applied', notify); };
-  }, [bus]);
-  const read = useCallback(() => `${map?.cellsVersion ?? 0}:${map?.objectsVersion ?? 0}`, [map]);
-  const revision = useSyncExternalStore(subscribe, read, read);
+  const revision = useMapRevision();
   const key = `${revision}:${includeAnnotations ? annotations : "off"}:${illustration ? selected?.id ?? '' : ''}`;
   const [snapshot, setSnapshot] = useState<{ map: typeof map; key: string; result: MapReview } | null>(null);
   const [pending, setPending] = useState(false);

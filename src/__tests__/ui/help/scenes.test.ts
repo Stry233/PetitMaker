@@ -307,7 +307,7 @@ describe('help demo scenes are proofs: the real commands land on the real templa
 
   it('spacing: the too-close tree refuses with the spacing rule, the spaced one lands', () => {
     const run = play(HELP_SCENES.spacing!);
-    expect(run.refusalAtRelease).toBe('error.tree_too_close');
+    expect(run.refusalAtRelease).toBe('error.too_close_same_kind');
     expect(objectCount(run, 'tree-apple')).toBe(2);
     expect(run.world.objectAt('tree-apple', 68, 101)).toBeFalsy();
     expect(run.world.objectAt('tree-apple', 69, 102)).toBeTruthy();
@@ -439,7 +439,7 @@ describe('help demo scenes are proofs: the real commands land on the real templa
 
   it('undo: the base rule cuts the held column, one undo clears it, and the closing rebuild stands', () => {
     const run = play(HELP_SCENES.undo!);
-    expect(run.refusalAtRelease).toBe('error.need_3x3_base');
+    expect(run.refusalAtRelease).toBe('error.need_base_support');
     // The loop ends on the short rebuilt stack, so the settled frame is never an empty map.
     expect(terrainAt(run, 73, 101)).toEqual({ type: TerrainType.Mountain, elevation: 2 });
   });

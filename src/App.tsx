@@ -16,7 +16,7 @@ import { useDockStage } from './ui/shell/use-dock';
 import { Splash } from './ui/shell/splash/Splash';
 import { probeWarmCache, shouldShowSplash } from './ui/shell/splash/preload';
 import { warmIconDecodes } from './ui/shell/splash/idle-warm';
-import { cssMotion } from './ui/shell/motion/use-motion';
+import { cssMotion, fadeVisibilityCss } from './ui/design/motion';
 import { ToastContainer } from './ui/chrome/floating/Toast';
 import { ArrivalToast } from './ui/chrome/floating/ArrivalToast';
 import { CurveHandles } from './ui/chrome/floating/CurveHandles';
@@ -28,9 +28,11 @@ import { PortraitGuard } from './ui/chrome/guards/PortraitGuard';
 import { LegalBar } from './legal/LegalBar';
 import { ContextMenu } from './ui/chrome/floating/ContextMenu';
 import { DeletePopover } from './ui/chrome/floating/DeletePopover';
-import { SelectionHandles } from './ui/chrome/floating/SelectionHandles';
+import { SelectionMarks } from './ui/chrome/floating/SelectionMarks';
+import { SelectionCard } from './ui/chrome/floating/SelectionCard';
 import { AnnotationEditor } from './ui/chrome/floating/AnnotationEditor';
 import { useRestoreFade } from './ui/hooks/useRestoreFade';
+import { usePlanetSessionFade } from './ui/shell/planet/use-planet-session-fade';
 import { useEditorSession } from './ui/hooks/use-editor-session';
 
 import { announceArrival } from './core/runtime/arrival-bus';
@@ -42,21 +44,23 @@ import { installMacroBuildRunner, installMacroPreviewRunner } from './tools/macr
 // the SDKs, so it costs the main bundle nothing.
 import { useAgentSession } from './agent/session/store';
 import { useAgentPanelSettings } from './ui/agent/settings';
+import { isTextEntry } from './core/runtime/text-entry';
 
-// The 2D↔3D crossfade's duration, shared with the restore fade: one vocabulary for "the map view
-// changes underneath you". Editor3DCanvas's half of the crossfade matches it.
-const VIEW_FADE = '0.35s';
+// The 2D↔3D crossfade and the restore fade share one motion: "the map view changes underneath you".
+const VIEW_FADE = 'map.view.crossfade';
+const viewFade = (visible: boolean): string => fadeVisibilityCss(VIEW_FADE, visible);
 
 export default function App() {
   useCursorVars(); // publish the DOM cursors to <html>, which every non-canvas surface reads
-  useMotionEnabled(); // publish the effective motion preference to the canvas gate + <html>
+  const reducedMotion = useMotionEnabled();
 
   // Covers the restore's discontinuity (a new map, then a new camera, then the first frame that
   // shows them) with a fade of the view; see useRestoreFade for why the view fades instead of the
   // camera flying, and what the release waits for.
   const restoreFade = useRestoreFade();
+  // Entering and leaving a planet session swap the map and its camera the same way a restore does.
+  usePlanetSessionFade(restoreFade.begin);
 
-  const motionPref = useEditorStore((s) => s.motionPref);
   // The boot splash: shown until this build's assets have been fetched once (see splash/preload).
   const [splashActive, setSplashActive] = useState(() => shouldShowSplash());
   const [splashLeaving, setSplashLeaving] = useState(false);
@@ -124,8 +128,7 @@ export default function App() {
   // etc.) so only our own context menu shows. Text fields keep theirs (copy/paste).
   useEffect(() => {
     const suppress = (e: MouseEvent) => {
-      const t = e.target as HTMLElement | null;
-      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+      if (isTextEntry(e.target)) return;
       e.preventDefault();
     };
     document.addEventListener('contextmenu', suppress);
@@ -145,21 +148,19 @@ export default function App() {
     <div
       style={{
         opacity: restoreFade.hidden ? 0 : 1,
-        transition: restoreFade.hidden ? 'none' : `opacity ${VIEW_FADE} ease`,
+        transition: restoreFade.hidden ? 'none' : cssMotion(VIEW_FADE, ['opacity']),
       }}
     >
       <div
         style={{
           opacity: viewMode === '3d' ? 0 : 1,
           visibility: viewMode === '3d' ? 'hidden' : 'visible',
-          transition: viewMode === '3d'
-            ? `opacity ${VIEW_FADE} ease, visibility 0s linear ${VIEW_FADE}`
-            : `opacity ${VIEW_FADE} ease, visibility 0s linear 0s`,
+          transition: viewFade(viewMode !== '3d'),
         }}
       >
         <PixiCanvas />
       </div>
-      <Editor3DCanvas />
+      <Editor3DCanvas fade={viewFade} />
     </div>
   );
 
@@ -171,9 +172,8 @@ export default function App() {
   const { aside } = useDockStage();
 
   return (
-    // reducedMotion="user" gates EVERY Framer/DOM animation on prefers-reduced-motion
-    // (the canvas side is gated separately via renderer/motion-state). One switch.
-    <MotionConfig reducedMotion={motionPref === 'reduced' ? 'always' : motionPref === 'full' ? 'never' : 'user'}>
+    // The Framer/DOM gate takes the effective value useMotionEnabled resolves for every gate.
+    <MotionConfig reducedMotion={reducedMotion ? 'always' : 'never'}>
     <I18nProvider>
     <DockRefProvider value={aside * PINNED_DOCK_REF_W}>
       {/* The splash hand-off is two planes parting: the overlay slides up and away while this
@@ -191,7 +191,7 @@ export default function App() {
               position: 'fixed',
               inset: 0,
               transform: splashLeaving ? 'translateY(0)' : 'translateY(4vh)',
-              transition: splashLeaving ? cssMotion('splash.handoff', 'transform') : 'none',
+              transition: splashLeaving ? cssMotion('splash.handoff', ['transform']) : 'none',
             }
           : undefined}
       >
@@ -211,7 +211,8 @@ export default function App() {
       <WhatsNewGate splashActive={splashActive} />
       <LegalBar />
       <PortraitGuard />
-      <SelectionHandles />
+      <SelectionMarks />
+      <SelectionCard />
       <AnnotationEditor />
       <ContextMenu />
       <DeletePopover />

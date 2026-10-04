@@ -21,7 +21,7 @@ import { MOTIONS } from '../../../ui/shell/motion/registry';
 import { CURVES } from '../../../ui/shell/motion/curves';
 import {
   cssMotion, flipProfile, framerMotion, outMotion, outSeconds, seconds, turnSeconds,
-} from '../../../ui/agent/motion';
+} from '../../../ui/design/motion';
 
 const DIR = 'src/ui/agent';
 
@@ -43,7 +43,7 @@ function sources(dir: string): { path: string; text: string }[] {
 }
 
 const files = [...sources(DIR), { path: DOCK_DRIVER, text: readFileSync(DOCK_DRIVER, 'utf8') }];
-const allText = files.map((f) => f.text).join('\n');
+const allText = files.map((f) => f.text).join('\n') + readFileSync('src/ui/design/motion.ts', 'utf8');
 const panelIds = Object.keys(MOTIONS).filter((id) => id.startsWith('panel.'));
 
 /** Motion ids may appear here temporarily while their consumer is implemented. The set is empty
@@ -59,14 +59,14 @@ describe('every declared panel motion has a runner', () => {
    *  it reads as "this moves" to everyone downstream of the registry, and nothing moves — unless the
    *  gap is the OTHER honest one, above. */
   it('names every one of them at a call site, or admits it has none yet', () => {
-    const unwired = panelIds.filter((id) => !allText.includes(`'${id}'`) && !DECLARED_AHEAD_OF_CONSUMER.has(id));
+    const unwired = panelIds.filter((id) => !allText.includes(`'${id}'`) && !allText.includes(`"${id}"`) && !DECLARED_AHEAD_OF_CONSUMER.has(id));
     expect(unwired).toEqual([]);
   });
 
   /** The admission has to cost something, or every future orphan hides behind it: an id the sources
    *  already name has a real call site and does not belong on the list. */
   it('keeps the admitted set to ids that truly have no call site yet', () => {
-    const wrongly = [...DECLARED_AHEAD_OF_CONSUMER].filter((id) => allText.includes(`'${id}'`));
+    const wrongly = [...DECLARED_AHEAD_OF_CONSUMER].filter((id) => allText.includes(`'${id}'`) || allText.includes(`"${id}"`));
     expect(wrongly).toEqual([]);
   });
 });

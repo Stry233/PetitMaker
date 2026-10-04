@@ -5,10 +5,10 @@
  */
 import { describe, it, expect } from 'vitest';
 import { chunkNumberQuads } from '../../canvas/map3d/build/passive-geometry';
-import { CHUNK_SIZE } from '../../core/model/constants';
 import { TerrainType } from '../../core/model/types';
 import type { GridState } from '../../core/model/types';
 import { makeState, setTerrain } from '../rules/_helpers';
+import { CHUNK_SIZE } from '../../core/model/game-profile';
 
 describe('chunkNumberQuads', () => {
   it('one UV-mapped quad per labeled cell, skipping hidden layers', () => {

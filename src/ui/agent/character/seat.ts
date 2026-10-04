@@ -6,6 +6,7 @@
 import { getCharacterHandle } from './Character';
 import { CHARACTER_SEAT } from '../../shell/panel-frame';
 import { visualRect } from '../../design/visual-rect';
+import { createSignal } from '../../../core/runtime/signal';
 
 function layerOrigin(el: HTMLElement): { left: number; top: number } {
   const layer = el.parentElement;
@@ -14,25 +15,21 @@ function layerOrigin(el: HTMLElement): { left: number; top: number } {
   return { left: r.left, top: r.top };
 }
 
-let deskBox: HTMLElement | null = null;
-const watchers = new Set<() => void>();
+const deskBox = createSignal<HTMLElement | null>(null);
 
 /** Registers the desk seat element across the panel's lazy boundary. */
 export function setDeskSeat(el: HTMLElement | null): void {
-  if (deskBox === el) return;
-  deskBox = el;
-  watchers.forEach((tell) => tell());
+  if (deskBox.get() !== el) deskBox.emit(el);
 }
 
 /** Returns the currently registered desk seat. */
 export function deskSeat(): HTMLElement | null {
-  return deskBox;
+  return deskBox.get();
 }
 
 /** Subscribes to desk-seat registration changes. */
 export function watchDeskSeat(tell: () => void): () => void {
-  watchers.add(tell);
-  return () => { watchers.delete(tell); };
+  return deskBox.subscribe(tell);
 }
 
 let carriage: HTMLElement | null = null;
@@ -43,7 +40,7 @@ export function setPanelCarriage(el: HTMLElement | null): void {
 }
 
 /** Character geometry in layer coordinates; height follows the artwork's aspect ratio. */
-export interface SeatedAt { left: number; top: number; width: number }
+interface SeatedAt { left: number; top: number; width: number }
 
 /** Computes layer-relative seated geometry from a live slot measurement without moving the character. */
 export function seatBox(slot: HTMLElement | null): SeatedAt | null {
@@ -60,7 +57,7 @@ export function seatBox(slot: HTMLElement | null): SeatedAt | null {
 }
 
 /** Gesture travel in panel pixels plus the scale from panel space to the character layer. */
-export interface CarryStep { left: number; top: number; scale: number }
+interface CarryStep { left: number; top: number; scale: number }
 
 /** Shared gesture progress: 0 folded, 1 open. Module state supports interrupted retargeting. */
 let carriedAt = 0;
@@ -105,7 +102,7 @@ export function placeCarried(seat: SeatedAt, step: CarryStep, at: number): void 
 }
 
 /** Scale from panel pixels to the character layer, derived from the measured seat width. */
-export function seatScale(seat: SeatedAt): number {
+function seatScale(seat: SeatedAt): number {
   return seat.width / (CHARACTER_SEAT.w - CHARACTER_SEAT.pad * 2);
 }
 

@@ -1,8 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import { zoneRestrictionRule } from '../../rules/zone-restriction';
-import { CellZone, CommandType, ItemCategory, TerrainType } from '../../core/model/types';
+import { CellZone, CommandType, ItemCategory, TerrainType, type EraseTerrainCommand, type PaintTerrainCommand } from '../../core/model/types';
 import { registerCatalogItem } from '../../state/catalog';
-import { makeState, setZone, paintCmd, placeCmd, makeObject } from './_helpers';
+import { makeState, setZone, setTerrain, paintCmd, placeCmd, makeObject } from './_helpers';
+import { createDefaultRegistry, createPlanetRegistry } from '../../rules/index';
 
 function fixture(id: string, width: number, height: number) {
   registerCatalogItem({
@@ -84,5 +85,55 @@ describe('V-ZONE-01: Zone Restriction', () => {
     // erase does NOT bleed (no -HALF render), so it stays allowed on the same cell
     const erase = { type: CommandType.EraseTerrain, timestamp: 0, cells: [{ x: 5, y: 5 }] } as const;
     expect(zoneRestrictionRule.validate(erase as never, state)).toHaveLength(0);
+  });
+});
+
+describe('V-ZONE-01: a ground edit keeps the coast under a block grass', () => {
+  const toSea = (x: number, y: number): EraseTerrainCommand => ({ type: CommandType.EraseTerrain, timestamp: 0, cells: [{ x, y }], ground: CellZone.Void });
+  const toSand = (x: number, y: number): PaintTerrainCommand => ({ ...paintCmd([{ x, y }], TerrainType.Mountain, 0), ground: CellZone.Beach });
+  const island = () => { const state = makeState(); setTerrain(state, 5, 5, TerrainType.Mountain, 1); return state; };
+
+  it('refuses turning a cell to sea or sand while its right, down or down-right block bleeds onto it', () => {
+    const state = island();
+    for (const [x, y] of [[4, 4], [5, 4], [4, 5]] as const) {
+      expect(zoneRestrictionRule.validate(toSea(x, y), state).map((e) => e.ruleId)).toEqual(['V-ZONE-01']);
+      expect(zoneRestrictionRule.validate(toSand(x, y), state).map((e) => e.ruleId)).toEqual(['V-ZONE-01']);
+    }
+  });
+
+  it('names the block over the ground rather than an unbuildable zone', () => {
+    expect(zoneRestrictionRule.validate(toSea(4, 4), island()).map((e) => e.message)).toEqual(['error.ground_under_block']);
+  });
+
+  it('refuses the same edits through the planet registry', () => {
+    const state = island();
+    const registry = createPlanetRegistry();
+    expect(registry.validatePreCommand(toSea(4, 4), state).some((e) => e.ruleId === 'V-ZONE-01')).toBe(true);
+    expect(registry.validatePreCommand(toSand(4, 4), state).some((e) => e.ruleId === 'V-ZONE-01')).toBe(true);
+  });
+
+  it('allows cells the block does not bleed onto', () => {
+    const state = island();
+    for (const [x, y] of [[6, 6], [6, 5], [5, 6], [2, 2]] as const) {
+      expect(zoneRestrictionRule.validate(toSea(x, y), state)).toEqual([]);
+      expect(zoneRestrictionRule.validate(toSand(x, y), state)).toEqual([]);
+    }
+  });
+
+  it('allows the edit when the same command clears the block', () => {
+    const state = island();
+    const both: EraseTerrainCommand = { type: CommandType.EraseTerrain, timestamp: 0, cells: [{ x: 4, y: 4 }, { x: 5, y: 5 }], ground: CellZone.Void };
+    expect(zoneRestrictionRule.validate(both, state)).toEqual([]);
+  });
+
+  it('never refuses turning ground to grass for the bleed', () => {
+    const state = island(); setZone(state, 4, 4, CellZone.Void);
+    expect(zoneRestrictionRule.validate({ ...paintCmd([{ x: 4, y: 4 }], TerrainType.Mountain, 0), ground: CellZone.Grass }, state)).toEqual([]);
+  });
+
+  it('leaves the ordinary editor as it was: the lock refuses every ground edit first', () => {
+    const state = island();
+    expect(createDefaultRegistry().validatePreCommand(toSea(2, 2), state).map((e) => e.ruleId)).toContain('V-GROUND-LOCK');
+    expect(createDefaultRegistry().validatePreCommand(paintCmd([{ x: 6, y: 6 }], TerrainType.Mountain, 1), state)).toEqual([]);
   });
 });

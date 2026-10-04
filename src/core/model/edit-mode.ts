@@ -9,21 +9,29 @@
 import { ToolType, type DesignMode } from './types';
 
 /** What is being built. `null` is rest: the map takes no marks. `annotate` is the plan-notes
- *  layer: it has no block in the mode row — the layer panel's 标注 row and the export modal's
- *  编辑标注 door arm it — but it IS a build mode, so which bar is up and who owns the pointer
+ *  layer: it has no block in the mode row — the layer panel's Notes row and the export modal's
+ *  note-editing door arm it — but it IS a build mode, so which bar is up and who owns the pointer
  *  stay one fact. */
 export type BuildMode = 'object' | 'road' | 'mountain' | 'water' | 'generate' | 'annotate' | null;
 
 /** How it is being built. `none` means a surface is chosen but no tool is armed on it — a
  *  selection gesture left the brush without leaving the surface, so the next mark on the same
  *  content resumes where it left off. (Named apart from any tool's own button: the shell's tool row is
- *  画笔/清除/修边/形状 with no "hand" tile, so `none` doesn't advertise a button that isn't there.)
+ *  brush, erase, trim and shape with no "hand" tile, so `none` doesn't advertise a button that isn't there.)
  *  `smart` arms a macro on the surface — which one is the `macro` input. */
 export type BuildTool = 'brush' | 'erase' | 'trim' | 'shape' | 'none' | 'smart';
 
 /** Which figure the shape tool lays. */
 export type BuildShape = 'free' | 'line' | 'curve' | 'rect' | 'circle';
 export const BUILD_SHAPES: readonly BuildShape[] = ['free', 'line', 'curve', 'rect', 'circle'];
+
+/** The brush size range, in cells, for terrain and region brushes alike. */
+export const BRUSH_SIZE = { min: 1, max: 5 } as const;
+
+/** `size` clamped to the brush size range. */
+export function clampBrushSize(size: number): number {
+  return Math.max(BRUSH_SIZE.min, Math.min(BRUSH_SIZE.max, size));
+}
 
 /** The surface a build brush lays. Roads are a tile coating; the other two are terrain. */
 export type ContentType = 'mountain' | 'water' | 'tile';
@@ -66,6 +74,14 @@ export const DESIGN_MODE_TOOL: Record<DesignMode, ToolType> = {
   eraser: ToolType.Eraser,
   hand: ToolType.Hand,
 };
+
+/** The design modes the terrain brush draws: the shapes `DrawingTool` multiplexes. */
+export type DrawingMode = 'brush' | 'line' | 'curve' | 'rect' | 'circle';
+
+/** Whether `mode` is one the terrain brush draws, read off `DESIGN_MODE_TOOL`. */
+export function isDrawingMode(mode: DesignMode): mode is DrawingMode {
+  return DESIGN_MODE_TOOL[mode] === ToolType.TerrainBrush;
+}
 
 /** Map a UI design mode to the tool that implements it. */
 export function designModeToToolType(mode: DesignMode): ToolType {
@@ -134,7 +150,7 @@ interface Inputs<M extends BuildMode, A extends Arming> {
   /** WHICH FIGURE THE SHAPE CELL LAYS, remembered across a put-away: it is a property of the shape
    *  tool, not an arming, so putting the tool down must not forget it. */
   readonly shape: BuildShape;
-  /** WHAT THE SHELF LAST HELD, remembered while the user is away on a surface: coming back to 物品
+  /** WHAT THE SHELF LAST HELD, remembered while the user is away on a surface: coming back to Objects
    *  resumes this card, and with it the tab the shelf opens on, so a trip to sculpt does not cost
    *  the ramp that was being placed. A property of the shelf, exactly as `shape` is of the shape
    *  tool. */
@@ -310,7 +326,7 @@ function carriedContent(prev: EditModeInputs, surface: ContentMode): ContentArmi
     return prev.arming.kind === 'erase' ? { kind: 'erase' } : { kind: 'brush' };
   }
   const held = prev.arming;
-  // A MACRO BELONGS TO THE SURFACE IT WAS ARMED ON: a hill armed on 山体 is not a river feature, so
+  // A MACRO BELONGS TO THE SURFACE IT WAS ARMED ON: a hill armed on Mountains is not a river feature, so
   // a change of surface puts it down.
   if (held.kind === 'smart') return prev.mode === surface ? held : { kind: 'none' };
   // Only reachable through rest (shelf -> close the bar -> a surface).

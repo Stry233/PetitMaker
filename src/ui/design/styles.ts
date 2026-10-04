@@ -1,10 +1,10 @@
 import type { CSSProperties } from 'react';
 import { APP_FONT_FAMILY as FONT_FAMILY } from '../../assets/fonts/family';
 import { DOM_CURSORS } from '../../core/runtime/cursor-spec';
-import { INK, CREAM, ERROR_RED } from '../../core/runtime/brand-palette';
+import { FRAME_INK, CREAM, ERROR_RED, TEXT_PRIMARY, BROWN_TEXT, SURFACE_SECONDARY } from '../../core/runtime/brand-palette';
 import { roleFont } from './text-weight';
 
-/* The espresso ink the hairline borders + shadows tint (rgb 67,65,62). Same ink as INK above,
+/* The espresso ink the hairline borders + shadows tint (rgb 67,65,62). Same ink as FRAME_INK above,
  * expressed as RGB components for the rgba() alpha blends below. */
 const INK_RGB = '67,65,62';
 
@@ -13,9 +13,12 @@ const INK_RGB = '67,65,62';
 export const colors = {
   bgCanvas: '#8CC9A1',
   surfacePrimary: '#FDFBF7',
-  surfaceSecondary: '#F3EEE8',
+  surfaceSecondary: SURFACE_SECONDARY,
   surfaceOverlay: 'rgba(74, 59, 50, 0.4)',
-  textPrimary: '#4A3B32',
+  /** The backdrop of a window at work, unblurred: a deeper dim stands in for the blur, which a
+   *  device without graphics acceleration redraws on every change of the window. */
+  surfaceOverlayWorking: 'rgba(74, 59, 50, 0.5)',
+  textPrimary: TEXT_PRIMARY,
   textSecondary: '#8A7B72',
   textInverse: '#FFFFFF',
   accentPrimary: '#FFB347',
@@ -26,7 +29,7 @@ export const colors = {
   /* Cozy palette measured 1:1 from the design source. */
   // frameDark and inkText are the same dark ink; kept as semantic aliases (frame, text).
   // Do not let their values diverge.
-  frameDark: INK,         // dark rounded outer frame / ink
+  frameDark: FRAME_INK,         // dark rounded outer frame / ink
   panelCream: CREAM,      // cream panel fill
   tileYellow: '#FFDA7E',  // tile column 0
   sliderYellow: '#FFD774', // slider fill + knob (Settings UI-scale) — one hex digit
@@ -44,8 +47,8 @@ export const colors = {
   paperThink: '#E8E1D2',  // surfaceSecondary nudged toward tileGreen: thinking, no tool has run yet
   stopTaupe: '#C3B7A3',   // an abort is not a wait, so it sits a step below utilTaupe
   revertAmber: '#B97F24', // outcome ink: the rules took the work back
-  inkText: INK,           // body ink on a cream surface
-  brownText: '#826042',   // file-row labels
+  inkText: FRAME_INK,           // body ink on a cream surface
+  brownText: BROWN_TEXT,  // file-row labels
   inkBorder: `rgba(${INK_RGB},0.12)`,  // hairline ink tint (matches the shadow ink)
   trackOff: '#D8D2C4',    // inactive segmented-control / switch / dropdown track
   white: '#FFFFFF',
@@ -244,6 +247,10 @@ export const easing = {
   /** Comes to rest at both ends, for the last segment of a motion whose overshoot is already in its
    *  keyframes (a second deceleration over the top of one reads as a second bounce). */
   settle: 'cubic-bezier(0.3, 0, 0.55, 1)',
+  expand: 'cubic-bezier(0.65, 0, 0.35, 1)',
+  breathing: 'cubic-bezier(0.45, 0, 0.55, 1)',
+  roll: 'cubic-bezier(0.16, 1, 0.3, 1)',
+  fade: 'cubic-bezier(0.4, 0, 0.2, 1)',
 } as const;
 
 /** The same four control points as an `easing` entry, for a Framer keyframe `ease` array. Derived
@@ -296,32 +303,28 @@ export const exitTransition = { duration: 0.16, ease: [0.4, 0, 0.2, 1] as const 
  * {...pressable} />. IMPORTANT: the element must be positioned by layout
  * (flex / left+top), NOT a CSS `transform` — Framer Motion owns `transform`
  * for the scale and would clobber a centering translate (button-jump bug). */
-export const pressable = {
-  whileHover: { scale: 1.08 },
-  whileTap: { scale: 0.9 },
-  transition: springs.stiff,
+export const interactionProfiles = {
+  tile: { whileHover: { scale: 1.08 }, whileTap: { scale: 0.9 }, transition: springs.stiff },
+  action: { whileHover: { scale: 1.03 }, whileTap: { scale: 0.95 }, transition: springs.stiff },
+  choice: { whileHover: { scale: 1.05 }, whileTap: { scale: 0.95 }, transition: springs.stiff },
+  toggle: { whileHover: { scale: 1.03 }, whileTap: { scale: 0.97 }, transition: springs.stiff },
+  pill: { whileHover: { scale: 1.03 }, whileTap: { scale: 0.96 }, transition: springs.stiff },
+  row: { whileHover: { scale: 1.01 }, whileTap: { scale: 0.985 }, transition: springs.stiff },
+  tap: { whileTap: { scale: 0.9 }, transition: springs.stiff },
+  actionTap: { whileTap: { scale: 0.95 }, transition: springs.stiff },
+  pillTap: { whileTap: { scale: 0.96 }, transition: springs.stiff },
+  toggleTap: { whileTap: { scale: 0.97 }, transition: springs.stiff },
+  curveVertex: { whileHover: { scale: 1.12 }, transition: springs.stiff },
+  keyboardKey: { whileHover: { y: -2 }, whileTap: { scale: 0.93 }, transition: springs.stiff },
+  thumbnailAdd: { whileTap: { scale: 0.94 }, transition: springs.gentle },
+  quietLink: { whileHover: { opacity: 1 }, whileTap: { opacity: 0.7 }, transition: springs.stiff },
+  curveHandle: { whileHover: { scale: 1.15 }, transition: springs.stiff },
 } as const;
 
-/* The PRESS half of `pressable` on its own, for a control that answers the hover on a different
- * element than the one taking the press. The rail's round buttons are the case: the box the pointer
- * is judged against has to stand still, so the button element keeps its square and its DRAWN plate
- * carries the growth (`Rail.tsx`). The press stays here, on the button, because that is what a
- * keyboard activates. Derived from `pressable` rather than restated, so the press cannot come out
- * different on the buttons that take this one. */
-export const pressOnly = {
-  whileTap: pressable.whileTap,
-  transition: pressable.transition,
-} as const;
-
-/* Consistent hover+press feedback for MODAL ACTION BUTTONS (confirm / cancel / export / OK).
- * Gentler than `pressable` (which is for icon tiles). Spread onto a motion.button so every modal
- * reacts identically: <motion.button {...buttonMotion} />. Same layout caveat as `pressable`
- * (the button must be positioned by flex/left+top, not a CSS transform). */
-export const buttonMotion = {
-  whileHover: { scale: 1.03 },
-  whileTap: { scale: 0.95 },
-  transition: springs.stiff,
-} as const;
+export type InteractionProfile = keyof typeof interactionProfiles;
+export const pressable = interactionProfiles.tile;
+export const pressOnly = interactionProfiles.tap;
+export const buttonMotion = interactionProfiles.action;
 
 /* ── Helpers ─────────────────────────────────────────────── */
 
@@ -361,15 +364,6 @@ export const btnReset: CSSProperties = {
   padding: 0,
 };
 
-/* Shared modal title (24px/900, centered ink). Each modal spreads this and adds
- * its own marginBottom as needed. */
-export const modalTitle: CSSProperties = {
-  ...roleFont('title'),
-  color: colors.frameDark,
-  textAlign: 'center',
-  fontFamily: font.family,
-};
-
 /* Shared modal label-row layout (space-between label/value pairs). Modals spread this and
  * add their own padding/border/etc. as needed — those extras differ per modal, so they stay
  * local to each file. */
@@ -377,53 +371,4 @@ export const modalRow: CSSProperties = {
   display: 'flex',
   justifyContent: 'space-between',
   alignItems: 'center',
-};
-
-export const btnBase: CSSProperties = {
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  background: colors.surfaceSecondary,
-  border: 'none',
-  borderRadius: radii.md,
-  color: colors.textPrimary,
-  fontFamily: font.family,
-  boxShadow: shadows.s1,
-  transition: `all 250ms ${easing.springStiff}`,
-};
-
-/* The dark cream-on-ink primary action button (modal "OK" / confirm). Centered,
- * self-sized — modals spread it onto a motion.button and add pressable props. */
-export const primaryButton: CSSProperties = {
-  background: colors.frameDark,
-  color: colors.panelCream,
-  border: 'none',
-  borderRadius: 14,
-  padding: '11px 30px',
-  ...roleFont('action'),
-  fontFamily: font.family,
-  alignSelf: 'center',
-};
-
-/* The export modals' footer action pair: a full-width dark primary (Export) next
- * to a ghost (Cancel), sharing one row. Distinct from `primaryButton` (which is
- * self-centered and wider-padded) — these flex-fill their footer row. */
-export const footerPrimary: CSSProperties = {
-  flex: 1,
-  background: colors.frameDark,
-  color: colors.panelCream,
-  border: 'none',
-  borderRadius: radii.md,
-  padding: '12px 20px',
-  fontFamily: font.family,
-  ...roleFont('action'),
-};
-export const footerGhost: CSSProperties = {
-  background: colors.surfaceSecondary,
-  color: colors.frameDark,
-  border: 'none',
-  borderRadius: radii.md,
-  padding: '12px 20px',
-  fontFamily: font.family,
-  ...roleFont('action'),
 };

@@ -26,7 +26,7 @@ import {
   DOCK_PARALLAX, PINNED_COLUMN_W, PINNED_DOCK_REF_W, frameZoomAt,
 } from '../../../ui/shell/panel-frame';
 import { ZOOM } from '../../../ui/shell/units';
-import { seconds } from '../../../ui/agent/motion';
+import { seconds } from '../../../ui/design/motion';
 import { dockAside, useDockDriver, useDockStage } from '../../../ui/shell/use-dock';
 
 const backing = new Map<string, string>();

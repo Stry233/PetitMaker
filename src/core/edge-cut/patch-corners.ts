@@ -7,7 +7,8 @@
  * beside cut-backing, where a policy change reaches both at once.
  */
 import type { Corners, CornerTrim, GridState, Rect, TerrainCell } from '../model/types';
-import { cornerWrappedAt } from './terrain-silhouette';
+import { cornerWrappedAt, patchSupport } from './terrain-silhouette';
+import { EMPTY_CORNERS } from './corner-index';
 
 /** A corner the patch pass DRAWS at the cell's tier: only 'empty' is open air. 'square' draws
  *  too — that is how a patch over a hidden block raises the whole cell to the wrapping tier. */
@@ -61,8 +62,8 @@ export interface PatchCornerSplit {
 }
 
 export function patchCornerSplit(state: GridState, x: number, y: number, t: TerrainCell): PatchCornerSplit {
-  const corners: Corners = t.corners ?? ['empty', 'empty', 'empty', 'empty'];
-  const baseTier = t.patchBase ?? (t.elevation - 1);
+  const corners: Corners = t.corners ?? [...EMPTY_CORNERS];
+  const baseTier = patchSupport(t);
   const wrapped = corners.map((_, i) => cornerWrappedAt(state, x, y, i, t.type, t.elevation));
   const baseCorners = corners.map((c, i) => (wrapped[i] || c === 'empty' ? 'square' : c)) as Corners;
   const filletCorners = corners.map((c, i) => (wrapped[i] ? c : 'empty')) as Corners;

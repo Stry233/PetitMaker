@@ -1,12 +1,11 @@
 /*
- * share.tsx — the Help Center's save/share/search figures: the real save offer, export and
+ * The Help Center's save/share/search figures: the real save offer, export and
  * checklist panels, the layer stack, a row of generate candidates and a row of search results,
  * each mounted live inside `PreviewFrame` rather than drawn as a picture of itself.
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { renderThumbnail } from '../../../../../../canvas/thumbnail';
 import type { GridState, Locale, MapNotes } from '../../../../../../core/model/types';
-import { createGrid } from '../../../../../../core/model/grid-model';
 import { WATER_COLOR } from '../../../../../../core/model/constants';
 import { DEFAULT_MAP } from '../../../../../../config/maps';
 import { generateDesigned } from '../../../../../../tools/generation/designer/pipeline';
@@ -17,8 +16,9 @@ import { figureCaption } from '../caption';
 import type { ExportOptions } from '../../../../../../io/export/types';
 import { buildChecklist } from '../../../../../../state/build-checklist';
 import { useEditorStore } from '../../../../../../state/store';
-import { isMotionReduced } from '../../../../../../canvas/map2d/motion-state';
+import { isMotionReduced } from '../../../../../../core/runtime/motion-state';
 import { useT } from '../../../../../../i18n/context';
+import { searchExamples } from '../../search-examples';
 import { cozyPanel, windowCard, windowTitle } from '../../../../../design/window-skin';
 import { ScaleProvider } from '../../../../../design/scale';
 import { SHELF_SCALE } from '../../../../../shell/units';
@@ -44,17 +44,13 @@ import { useShareCode } from '../../../export/use-share-code';
 import { ExportJsonPanel } from '../../../export/ExportJsonModal';
 import { BuildChecklist } from '../../../export/BuildChecklist';
 import { PreviewFrame } from './PreviewFrame';
+import { bareGridState } from '../../../../../../core/model/planet';
 
-/** A fresh, empty map on the default template — the fallback subject for a figure that needs a
- *  real `GridState` and the visitor's own map is not yet loaded. */
-function fallbackGridState(): GridState {
-  return { template: DEFAULT_MAP, cells: createGrid(DEFAULT_MAP), objects: new Map(), lockedLayers: new Set() };
-}
-
-/** The map every figure below stands in for its subject: the visitor's own, or the fallback. */
+/** The map every figure below stands in for its subject: the visitor's own, or the default
+ *  template's bare ground while it is not yet loaded. */
 function useFigureGridState(): GridState {
   const live = useEditorStore((s) => s.gridState);
-  const fallback = useMemo(() => live ?? fallbackGridState(), [live]);
+  const fallback = useMemo(() => live ?? bareGridState(DEFAULT_MAP), [live]);
   return live ?? fallback;
 }
 
@@ -134,7 +130,9 @@ function ShareWindowFigure({ section, width, height, zoom, children }: {
 export function ShareWindowPreview() {
   return (
     <ShareWindowFigure section="friend" width={980} height={848} zoom={0.56}>
-      <ExportPanel open onDone={() => {}} />
+      {/* Entered at once: the preview frame mounts its children only when the figure is ready,
+          after the Help window itself has entered, so no card entrance is in flight to protect. */}
+      <ExportPanel open entered onDone={() => {}} />
     </ShareWindowFigure>
   );
 }
@@ -295,76 +293,28 @@ export function CandidatesPreview() {
 interface SearchStep { query: string; captionKey: string }
 
 /**
- * Every locale walks the same four capabilities the search sections document — a plain query,
- * an incomplete one, a cross-language one, and a multi-term AND — plus the alias beat, which
- * turns out to hold for every locale: `樱花`/`sakura` is Peach Tree's own authored alias
- * (`config/catalog/tree/tree-peach.json`) and alias fields are never keyed by locale
- * (`state/catalog.ts:indexForLocale`), so the same CJK spelling is a clean single-hit match
- * whichever interface language is reading it — mirroring `en`'s own `sakura` beat rather than
- * the interface's own tongue, which is the point being demonstrated.
- *
- * The English beat (`apple`) is kept in every non-English table too: `help.search.basic_b1`
- * quotes this exact word, in every locale's own translation, as ITS worked example of
- * cross-language matching, so this is the one query every locale's own copy already promises.
- *
- * Every query below is a verified hit through `state/catalog.ts:searchCatalog` at its own
- * locale (checked empirically, not read off the JSON — the tolerance rules turn on word-start
- * position and per-script boundaries, which is not obvious from a name string alone) — see
- * `previews-share.test.tsx`'s per-locale walk for the pinned assertion, not just this table.
- *
- * Exported for that same test: every table's every query, walked through the real `shelfItems`
- * at its own locale, must still find something.
+ * Every locale walks the four capabilities the search sections document: a plain query, an
+ * incomplete one, an alias and a multi-term AND. Non-English locales add the English query, since
+ * search matches English in every interface language. The queries are the ones the section prose
+ * quotes, both read from `search-examples.ts`, so the figure and the copy cannot drift apart.
  */
-export const SEARCH_STEPS_BY_LOCALE: Record<Locale, readonly SearchStep[]> = {
-  en: [
-    { query: 'apple', captionKey: 'help.search.basic_t' },
-    { query: 'aple', captionKey: 'help.search.typo_t' },
-    { query: 'sakura', captionKey: 'help.search.alias_t' },
-    { query: '红 树', captionKey: 'help.search.multiword_t' },
-  ],
-  zh: [
-    { query: '苹果', captionKey: 'help.search.basic_t' },
-    { query: '苹树', captionKey: 'help.search.typo_t' },
-    { query: 'apple', captionKey: 'help.search.basic_t' },
-    { query: '樱花', captionKey: 'help.search.alias_t' },
-    { query: '红 树', captionKey: 'help.search.multiword_t' },
-  ],
-  ja: [
-    { query: 'リンゴ', captionKey: 'help.search.basic_t' },
-    { query: 'リンの木', captionKey: 'help.search.typo_t' },
-    { query: 'apple', captionKey: 'help.search.basic_t' },
-    { query: '樱花', captionKey: 'help.search.alias_t' },
-    { query: 'イエロー ヒマワリ', captionKey: 'help.search.multiword_t' },
-  ],
-  ru: [
-    { query: 'Яблоня', captionKey: 'help.search.basic_t' },
-    { query: 'Яблня', captionKey: 'help.search.typo_t' },
-    { query: 'apple', captionKey: 'help.search.basic_t' },
-    { query: '樱花', captionKey: 'help.search.alias_t' },
-    { query: 'Жёлтый подсолнух', captionKey: 'help.search.multiword_t' },
-  ],
-  th: [
-    { query: 'ต้นแอปเปิล', captionKey: 'help.search.basic_t' },
-    { query: 'ต้นแอปเปล', captionKey: 'help.search.typo_t' },
-    { query: 'apple', captionKey: 'help.search.basic_t' },
-    { query: '樱花', captionKey: 'help.search.alias_t' },
-    { query: 'ทานตะวัน เหลือง', captionKey: 'help.search.multiword_t' },
-  ],
-  id: [
-    { query: 'Apel', captionKey: 'help.search.basic_t' },
-    { query: 'Apl', captionKey: 'help.search.typo_t' },
-    { query: 'apple', captionKey: 'help.search.basic_t' },
-    { query: '樱花', captionKey: 'help.search.alias_t' },
-    { query: 'Matahari Kuning', captionKey: 'help.search.multiword_t' },
-  ],
-  fr: [
-    { query: 'Pommier', captionKey: 'help.search.basic_t' },
-    { query: 'Pomier', captionKey: 'help.search.typo_t' },
-    { query: 'apple', captionKey: 'help.search.basic_t' },
-    { query: '樱花', captionKey: 'help.search.alias_t' },
-    { query: 'Tournesol jaune', captionKey: 'help.search.multiword_t' },
-  ],
-};
+function searchSteps(locale: Locale): readonly SearchStep[] {
+  const e = searchExamples(locale);
+  return locale === 'en'
+    ? [
+      { query: e.enQuery, captionKey: 'help.search.basic_t' },
+      { query: e.enTypo, captionKey: 'help.search.typo_t' },
+      { query: e.aliasLatin, captionKey: 'help.search.alias_t' },
+      { query: e.wordsQuery, captionKey: 'help.search.multiword_t' },
+    ]
+    : [
+      { query: e.item, captionKey: 'help.search.basic_t' },
+      { query: e.typo, captionKey: 'help.search.typo_t' },
+      { query: e.enQuery, captionKey: 'help.search.basic_t' },
+      { query: e.aliasQuery, captionKey: 'help.search.alias_t' },
+      { query: e.wordsQuery, captionKey: 'help.search.multiword_t' },
+    ];
+}
 
 /** One typed character, and the finished query's hold with its results standing. */
 const TYPE_MS = 130;
@@ -373,7 +323,7 @@ const HOLD_MS = 2400;
 export function SearchPreview() {
   const locale = useEditorStore((s) => s.locale);
   const t = useT();
-  const steps = useMemo<readonly SearchStep[]>(() => SEARCH_STEPS_BY_LOCALE[locale], [locale]);
+  const steps = useMemo(() => searchSteps(locale), [locale]);
   // Where the cycle stands frozen under reduced motion: the typo step, whichever index it falls
   // at in this locale's own table.
   const frozenStep = useMemo(() => {

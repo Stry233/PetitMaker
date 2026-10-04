@@ -8,10 +8,11 @@
  * CSS px: modal chrome is css-zoomed already, and design-px callers pass their
  * own px(...) value.
  */
+import { seconds, easingCss } from '../design/motion';
 import type { CSSProperties } from 'react';
 import { colors, inkTint } from '../design/styles';
 
-export interface SpinnerProps {
+interface SpinnerProps {
   /** Outer diameter in CSS px (pre-zoom). */
   size?: number;
   /** Arc color (the moving part). */
@@ -30,7 +31,7 @@ export function Spinner({ size = 30, color = colors.tileYellow, trackColor = ink
     borderRadius: '50%',
     border: `${border}px solid ${trackColor}`,
     borderTopColor: color,
-    animation: 'spin .85s linear infinite',
+    animation: `spin ${seconds('loading.spinner')}s ${easingCss('loading.spinner')} infinite`,
   };
   // `pw-busy` opts out of the reduced-motion catch-all in animations.css: this is progress feedback,
   // not decoration, and a frozen spinner reads as a hung UI.

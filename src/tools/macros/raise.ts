@@ -1,6 +1,5 @@
 /** Local mounds use a seeded outline and nested terraces. A held stroke supplies its original
  *  footing and owned cells so later bursts cannot rebase on their own new height. */
-import { ELEVATION_MAX } from '../../core/model/constants';
 import { flatIndex } from '../../core/model/grid-model';
 import { valueNoise01 } from '../../core/model/noise';
 import { CommandType, type AutoEdgeCut, type GridState, type MacroCoord } from '../../core/model/types';
@@ -11,6 +10,7 @@ import { cellsChanged } from './measure';
 import { terraceRings } from './terrace';
 import { canBuildAt, isClean, isWaterAt, surfaceAt } from './terrain';
 import { TerrainDraft } from './terrain-draft';
+import { ELEVATION_MAX } from '../../core/model/game-profile';
 
 /** Cells per unit of outline noise. Around three, so the lumps are the size of a terrace rather than
  *  of the whole mound or of a single cell. */
@@ -40,7 +40,7 @@ export function ladderPeak(stage: number): number {
   return Math.min(LADDER_TOP, Math.max(1, stage) + 1);
 }
 
-export interface RaiseInput {
+interface RaiseInput {
   at: MacroCoord;
   radius: number;
   /** Which rung this burst builds. 1 is a tap. */
@@ -58,7 +58,7 @@ export interface RaiseInput {
   trim?: AutoEdgeCut;
 }
 
-export interface RaiseResult {
+interface RaiseResult {
   changed: number;
   /** The tier this ground could carry, at or below the rung asked for. The ghost reports it and the
    *  hold stops climbing at it. */

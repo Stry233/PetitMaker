@@ -3,7 +3,10 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { versionStore } from '../../../io/stylize/versions';
 import { EventBus } from '../../../core/commands/event-bus';
-import type { EditorEvents } from '../../../core/model/types';
+import { CommandType, TerrainType, type EditorEvents } from '../../../core/model/types';
+import { createDefaultRegistry } from '../../../rules/index';
+import { createExecutor } from '../../../state/executor';
+import { makeState } from '../../rules/_helpers';
 
 const image = {} as HTMLImageElement;
 
@@ -33,7 +36,7 @@ describe('versionStore', () => {
     expect(versionStore.getState().versions.map((v) => v.id)).toEqual(['v1', 'v2', 'v3']);
   });
 
-  it('select/retire falls back to 原图 (null) when the selected version is retired', () => {
+  it('select/retire falls back to Original (null) when the selected version is retired', () => {
     const v1 = mint({ kind: 'model', direction: 'watercolor', image, fingerprint: 0 });
     const v2 = mint({ kind: 'model', direction: 'coastal', image, fingerprint: 0 });
 
@@ -49,7 +52,7 @@ describe('versionStore', () => {
     expect(versionStore.getState().selectedId).toBeNull();
   });
 
-  it('select(null) means 原图', () => {
+  it('select(null) means Original', () => {
     const v1 = mint({ kind: 'model', direction: 'watercolor', image, fingerprint: 0 });
     versionStore.select(null);
     expect(versionStore.getState().selectedId).toBeNull();
@@ -96,7 +99,7 @@ describe('versionStore', () => {
     unbind();
   });
 
-  it('objects-changed and history-applied also invalidate the shelf', () => {
+  it('an object edit and an undo also invalidate the shelf', () => {
     const bus = new EventBus<EditorEvents>();
     versionStore.bindMapEvents(bus);
 
@@ -104,8 +107,12 @@ describe('versionStore', () => {
     bus.emit('objects-changed', {});
     expect(versionStore.getState().versions).toEqual([]);
 
+    const executor = createExecutor(makeState(), createDefaultRegistry(), bus);
+    const start = executor.getUndoStackSize();
+    executor.execute({ type: CommandType.PaintTerrain, timestamp: 0, cells: [{ x: 2, y: 2 }], terrainType: TerrainType.Mountain, elevation: 1 });
+    executor.commitStroke(start);
     mint({ kind: 'model', direction: 'watercolor', image, fingerprint: versionStore.currentFingerprint() });
-    bus.emit('history-applied', { cells: [] });
+    executor.undo();
     expect(versionStore.getState().versions).toEqual([]);
   });
 

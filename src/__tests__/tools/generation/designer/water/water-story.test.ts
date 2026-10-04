@@ -187,7 +187,7 @@ describe('the course, on a staircase map', () => {
     }
   });
 
-  it('is deterministic per seed', () => {
+  it('the water story is deterministic per seed', () => {
     for (const seed of [12345, 42]) {
       const a = carve(seed), b = carve(seed);
       expect(a.story!.cells).toEqual(b.story!.cells);
@@ -203,7 +203,7 @@ describe('the course, on a staircase map', () => {
     }
   });
 
-  it('never floods a cell the ground kept for something else', () => {
+  it('the course never floods a cell the ground kept for something else', () => {
     const { t, grass, flat } = staircase(HEXIA);
     // A reserved band across half the map, the shape a trunk street leaves: the course has to
     // route around it rather than through it.

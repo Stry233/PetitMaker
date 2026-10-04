@@ -1,18 +1,17 @@
-// src/io/share/validate.ts
-import type { GridState } from '../../core/model/types';
-import { TerrainType } from '../../core/model/types';
-import { ELEVATION_MAX } from '../../core/model/constants';
+import type { GridState, MapTemplate } from '../../core/model/types';
 import { getCatalogItem } from '../../state/catalog';
-import { hasHalfStep } from '../../state/object-geometry';
-import { onHalfGrid } from '../../core/model/grid-model';
-import { getMapTemplate, MAP_TEMPLATES } from '../../config/maps';
+import { isCustomTemplate } from '../../core/model/planet';
+import { isTrustedPlanet } from '../../core/model/planet-validate';
+import { MAP_TEMPLATES } from '../../config/maps';
 import { templateHash, catalogHash } from './canonical';
 import { ShareError } from './errors';
+import { isValidElevation, isValidRotation, isValidTerrainType, onItemGrid } from '../import-validate';
 
 export interface ValidationOutcome { warnings: string[] }
 
-/** Template and catalog identities needed to validate an imported state. */
-export interface ImportedStateInfo { templateId: string; templateHash: number; catalogHash: number }
+/** Template and catalog identities needed to validate an imported state. `template` is the custom
+ *  planet the payload carried; built-in templates are checked against this build's copy. */
+export interface ImportedStateInfo { templateId: string; templateHash: number; catalogHash: number; template?: MapTemplate }
 
 /** Security gate over the deserialized GridState. Nothing imported is trusted. Throws a
  *  ShareError on unsafe input; returns warnings for safe drift (cosmetic template/catalog
@@ -23,15 +22,23 @@ export function validateImportedState(state: GridState, info: ImportedStateInfo)
   const W = template.width, H = template.height;
 
   // Template compatibility.
-  if (!Object.prototype.hasOwnProperty.call(MAP_TEMPLATES, info.templateId)) {
-    throw new ShareError('incompatible-template', `Unknown map template "${info.templateId}".`);
-  }
-  const known = getMapTemplate(info.templateId);
-  if (templateHash(known) !== info.templateHash) {
-    if (known.width !== W || known.height !== H) {
-      throw new ShareError('incompatible-template', 'Map template dimensions differ; cannot import safely.');
+  const custom = info.template;
+  if (custom && isCustomTemplate(custom) && custom.id === info.templateId) {
+    if (!isTrustedPlanet(custom)) {
+      throw new ShareError('incompatible-template', 'The map\'s planet is invalid.');
     }
-    warnings.push('template-drift');
+    if (template.id !== custom.id || W !== custom.width || H !== custom.height) throw new ShareError('incompatible-template', 'The map is not on the planet it carries.');
+  } else {
+    if (!Object.prototype.hasOwnProperty.call(MAP_TEMPLATES, info.templateId)) {
+      throw new ShareError('incompatible-template', `Unknown map template "${info.templateId}".`);
+    }
+    const known = MAP_TEMPLATES[info.templateId]!;
+    if (templateHash(known) !== info.templateHash) {
+      if (known.width !== W || known.height !== H) {
+        throw new ShareError('incompatible-template', 'Map template dimensions differ; cannot import safely.');
+      }
+      warnings.push('template-drift');
+    }
   }
   if (catalogHash() !== info.catalogHash) warnings.push('catalog-drift');
 
@@ -41,15 +48,11 @@ export function validateImportedState(state: GridState, info: ImportedStateInfo)
     const item = getCatalogItem(o.catalogId);
     if (!item) throw new ShareError('missing-catalog-item', `Unknown catalog item "${o.catalogId}".`);
     const { x, y } = o.position;
-    // A halfStep item (ramps, bridges) anchors on the half grid; everything else on whole cells.
-    const onGrid = (v: number) => (hasHalfStep(item) ? onHalfGrid(v) : Number.isInteger(v));
-    if (!onGrid(x) || !onGrid(y) || x < 0 || y < 0 || x >= W || y >= H) {
+    if (!onItemGrid(item, x) || !onItemGrid(item, y) || x < 0 || y < 0 || x >= W || y >= H) {
       throw new ShareError('validation-failed', 'Object coordinate out of bounds.');
     }
-    if (![0, 90, 180, 270].includes(o.rotation)) throw new ShareError('validation-failed', 'Illegal object rotation.');
-    // Number.isInteger, not a bare range test: every comparison with NaN is false, so
-    // `< 0 || > MAX` alone would wave a NaN elevation straight through.
-    if (!Number.isInteger(o.elevation) || o.elevation < 0 || o.elevation > ELEVATION_MAX) {
+    if (!isValidRotation(o.rotation)) throw new ShareError('validation-failed', 'Illegal object rotation.');
+    if (!isValidElevation(o.elevation)) {
       throw new ShareError('validation-failed', 'Object elevation out of range.');
     }
   }
@@ -59,10 +62,10 @@ export function validateImportedState(state: GridState, info: ImportedStateInfo)
     const row = state.cells[y]; if (!row) continue;
     for (let x = 0; x < W; x++) {
       const t = row[x]?.terrain; if (!t) continue;
-      if (t.type !== TerrainType.Mountain && t.type !== TerrainType.Water && t.type !== TerrainType.None) {
+      if (!isValidTerrainType(t.type)) {
         throw new ShareError('validation-failed', 'Illegal terrain type.');
       }
-      if (!Number.isInteger(t.elevation) || t.elevation < 0 || t.elevation > ELEVATION_MAX) {
+      if (!isValidElevation(t.elevation)) {
         throw new ShareError('validation-failed', 'Cell elevation out of range.');
       }
     }

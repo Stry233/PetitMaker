@@ -1,5 +1,5 @@
 /**
- * render-scheduler.ts — module-level render request, mirroring motion-state's
+ * Module-level render request, mirroring motion-state's
  * singleton pattern (one bundle, no window bridge).
  *
  * The PixiJS app does not auto-render every frame (autoStart:false). Instead
@@ -25,16 +25,16 @@
  * renders at most once per frame). When no renderer is registered (tests), it is
  * a no-op.
  */
+import { createSignal } from '../../core/runtime/signal';
 
-const requesters = new Set<() => void>();
+const requesters = createSignal();
 
 /** Register a renderer's render-window opener; returns its own detach. */
 export function addRenderRequester(fn: () => void): () => void {
-  requesters.add(fn);
-  return () => { requesters.delete(fn); };
+  return requesters.subscribe(fn);
 }
 
 /** Ask every live renderer to draw the next few frames. Cheap, coalesced, spam-safe. */
 export function requestRender(): void {
-  for (const fn of requesters) fn();
+  requesters.emit();
 }

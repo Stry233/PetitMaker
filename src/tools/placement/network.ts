@@ -1,9 +1,9 @@
 import { NodeHeap } from './node-heap';
 import { ItemCategory, type CatalogItem, type MacroCoord, type PlacedObject } from '../../core/model/types';
-import { NEIGHBORS4 } from '../../core/model/grid-model';
+import { NEIGHBORS4, rectContains } from '../../core/model/grid-model';
 import { TUNING } from './tuning';
 import { makeRng, type Rng } from '../../core/model/rng';
-import { objectRect } from '../../state/object-geometry';
+import { crossingRunsAlongX, objectRect } from '../../state/object-geometry';
 import { tryPlace, tryDecorate, sweepClearanceCells, forEachFootprintCell, buildingGate, hasGate, type PlaceCtx } from './object';
 import { getPlaceableByCategory, getCatalogItem, isDecoration } from '../../state/catalog';
 import type { PlacementAnalysis } from './analysis';
@@ -12,6 +12,7 @@ import { turnPenaltyFor } from './road-style';
 import { crossingEnds } from './themes';
 import { bySizeDesc } from '../../core/model/geometry';
 import { makeNetworkVariation, orderTail, VARY, type NetworkVariation } from './network-variation';
+import { isCrossing } from '../../core/model/traits';
 
 /** Everything a road should reach: every placed object except the vegetation. Buildings and
  *  facilities want a door spur, and a road/bridge/ramp is already part of the network it links
@@ -154,7 +155,7 @@ function setupNet(
   // in-network + passable so links from every side converge on one physical component — a virtual band of
   // bare cells would leave roads terminating near, but not joined to, each other.
   const network = new Set<number>();
-  const hubObj = objs.find((o) => { const r = objectRect(o); return hub.pos.x >= r.x && hub.pos.x < r.x + r.w && hub.pos.y >= r.y && hub.pos.y < r.y + r.h; });
+  const hubObj = objs.find((o) => { const r = objectRect(o); return rectContains(r, hub.pos.x, hub.pos.y); });
   if (hubObj) forEachFootprintCell(hubObj, (x, y) => { if (inB(x, y)) { network.add(idx(x, y)); extra.add(idx(x, y)); } });
   else if (inB(hub.pos.x, hub.pos.y)) { const i = idx(hub.pos.x, hub.pos.y); network.add(i); if (!walkable(i)) extra.add(i); }
   if (network.size === 0) { const w = nearestWalkable(center, a, occupied, W, H); if (!w) return null; network.add(idx(w.x, w.y)); }
@@ -199,8 +200,7 @@ function setupNet(
       return -1;
     };
     for (const o of objs) {
-      const cat = getCatalogItem(o.catalogId)?.category;
-      if (cat !== ItemCategory.Bridge && cat !== ItemCategory.Ramp) continue;
+      if (!isCrossing(getCatalogItem(o.catalogId))) continue;
       forEachFootprintCell(o, (x, y) => {
         if (inB(x, y)) extra.add(idx(x, y));
         for (const [dx, dy] of NEIGHBORS4) if (inB(x + dx, y + dy)) extra.add(idx(x + dx, y + dy)); // apron over the shore ring
@@ -369,7 +369,7 @@ function networkReach(net: NetCtx): Uint8Array {
  *  two exit cells per end, and a building may block one while the other stays open. */
 export function crossingExitCells(obj: PlacedObject): [MacroCoord[], MacroCoord[]] {
   const r = objectRect(obj);
-  const horizontal = r.w >= r.h;
+  const horizontal = crossingRunsAlongX(obj);
   const A: MacroCoord[] = [], B: MacroCoord[] = [];
   if (horizontal) {
     for (let y = Math.floor(r.y); y < r.y + r.h; y++) { A.push({ x: Math.floor(r.x) - 1, y }); B.push({ x: Math.ceil(r.x + r.w), y }); }

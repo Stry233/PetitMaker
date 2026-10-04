@@ -1,5 +1,5 @@
 /*
- * fuzzy.ts — a small, dependency-free fuzzy string scorer.
+ * A small, dependency-free fuzzy string scorer.
  *
  * TIERS, highest first: a literal contiguous match beats a scattered (subsequence) one. Within a
  * literal match, one that starts at a WORD boundary (the string's own start, or right after a
@@ -12,8 +12,8 @@
  * CJK carries no spaces between its own characters, so a whole CJK name reads as one "word" for
  * boundary purposes (a match only counts as word-start at the name's own beginning or after a real
  * separator like the parenthesis around a character's nickname). The scattered tier is what lets an
- * abbreviated CJK query still find its target without every character present — "苹树" inside
- * "苹果树" — since there is no space to make "prefix of a word" do that job the way it does in en.
+ * abbreviated CJK query still find its target without every character present (apple + tree inside
+ * apple tree), since there is no space to make "prefix of a word" do that job the way it does in en.
  *
  * Folding (`fold`) is case- and width-insensitive (NFKC collapses full-width Latin/punctuation to
  * their standard forms) and diacritic-insensitive (NFD strips combining marks), matching
@@ -85,7 +85,7 @@ export function fuzzyScore(query: string, candidate: string): number | null {
     prevIndex = idx;
     ci = idx + 1;
   }
-  // The scattered tier exists to abbreviate a real WORD ("aple" for "apple", "苹树" for "苹果树"),
+  // The scattered tier exists to abbreviate a real WORD ("aple" for "apple", or apple + tree for apple tree in Chinese),
   // not to let letters strung together by coincidence pass as one — a query landing mid-word is
   // never that abbreviation, only noise ("tree" starting inside "paTteRnEd", never at a word of its
   // own). Anchoring just the first hit at a word start is enough: it still lets the rest of the run

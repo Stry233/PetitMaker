@@ -1,5 +1,5 @@
 /*
- * atoms.tsx — the parts both pages of the stylize window are built from.
+ * The parts both pages of the stylize window are built from.
  *
  * They live here rather than in `ui/primitives/` because each one encodes something about THIS
  * window: the status slot that is always standing whether or not there is anything to report, the
@@ -15,7 +15,7 @@ import { Spinner } from '../../../../primitives/Spinner';
 import { useT } from '../../../../../i18n/context';
 import type { StylizeStatus } from '../../../../../io/stylize';
 import { MAP_ASPECT, paintSampleArt, type SampleArt } from './sample-art';
-import { amplitude, framerMotion, staggerDelay } from './motion';
+import { amplitude, framerMotion, staggerDelay } from '../../../../design/motion';
 
 /** What the status slot can say: a dialect's classified refusal, or the one house-made outcome
  *  (the map changed under an out-of-window edit while the job was painting, so the take was

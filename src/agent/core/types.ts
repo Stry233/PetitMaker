@@ -80,19 +80,26 @@ export type GateAnswer = 'allow' | 'allow-always' | 'skip' | 'words';
 
 export type JobOutcome = 'done' | 'capped' | 'aborted' | 'incident';
 
+/** How a skill shapes the work: a method to follow or a style to apply. */
+export type SkillKind = 'method' | 'style';
+/** The identity a loaded skill leaves on the record. */
+export interface SkillRef { name: string; kind: SkillKind; title: string }
+/** How a delegated helper's child operation ended. */
+export type ChildOpStatus = 'ok' | 'error' | 'revert';
+
 /** Structured tool-result details used by the local view, never sent to the provider. */
 export interface ToolResultDetail {
   cells?: number; objects?: number; reverted?: boolean; regionBlocked?: boolean;
   /** Post-stroke rollback left commands applied; counts describe the retained changes. */
   partialRevert?: true;
   /** Identity of a successfully loaded skill. */
-  skill?: { name: string; kind: 'method' | 'style'; title: string };
+  skill?: SkillRef;
   /** Marks a result carrying a loop-authored retry, revert or repeat-refusal nudge. */
   damper?: true;
   /** Marks an identical failed call refused by the loop without another execution. */
   repeatRefused?: true;
   /** Ordered child operations retained after a delegated helper's child log closes. */
-  childOps?: { name: string; status: 'ok' | 'error' | 'revert'; skill?: { name: string; kind: 'method' | 'style'; title: string } }[];
+  childOps?: { name: string; status: ChildOpStatus; skill?: SkillRef }[];
   /** Incident class that ended a failed child job. */
   childError?: ErrorClass;
   /** Rule identities and parameters used to localize refusal details for the panel. */
@@ -134,6 +141,8 @@ export type SessionEvent = Base & (
   | { kind: 'retry'; attempt: number; cls: ErrorClass; delayMs: number }
   | { kind: 'compaction'; summary: string; retainedFromSeq: number }
   | { kind: 'incident'; error: TurnError }
+  // Optional composer text belongs to one settled order and is never a sent message.
+  | { kind: 'replySuggested'; orderSeq: number; reply: string; usage?: Usage }
   // `summary` preserves the final turn's words. `question` marks a model-chosen question ending;
   // truncated and aborted fragments retain their text without entering the waiting state.
   // `undoIndex` pairs with the first checkpoint to bound the job's own undo entries.

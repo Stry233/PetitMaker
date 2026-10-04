@@ -30,7 +30,7 @@ import { edge } from './tokens';
 import { withAlpha } from '../design/styles';
 
 /** A macro-cell rectangle a shot is framed on, in the shape `focusFrame` reads. */
-export interface ShotBox { origin: { x: number; y: number }; width: number; height: number }
+interface ShotBox { origin: { x: number; y: number }; width: number; height: number }
 
 function num(v: unknown): number | undefined {
   return typeof v === 'number' && Number.isFinite(v) ? Math.round(v) : undefined;

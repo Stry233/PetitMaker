@@ -194,7 +194,7 @@ describe('methodology scores', () => {
 });
 
 describe('ramp discipline', () => {
-  // A 2x4 ramp. Its footprint is read by cell centres, so a whole-grid ramp covers exactly its own
+  // A 2x2 ramp. Its footprint is read by cell centres, so a whole-grid ramp covers exactly its own
   // width and height in cells.
   const RAMP = 'ramp-green-steps';
 

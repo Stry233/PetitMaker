@@ -9,7 +9,7 @@
  * the catalog item. (Schema-forward: the field may later carry a `ref` to a real
  * model file; build-model.ts would consume it, the spec staying the default.)
  */
-import type { ModelSpec } from '../../../core/model/model-spec';
+import type { DeckModelSpec, ModelSpec } from '../../../core/model/model-spec';
 import { getCatalogItem, getKnownItems } from '../../../state/catalog';
 
 export function hasModel(catalogId: string): boolean {
@@ -18,6 +18,11 @@ export function hasModel(catalogId: string): boolean {
 
 export function getSpec(catalogId: string): ModelSpec | undefined {
   return getCatalogItem(catalogId)?.model3d;
+}
+
+/** The parts an item stands on its deck when placed as a platform object. */
+export function getDeckSpec(catalogId: string): DeckModelSpec | undefined {
+  return getCatalogItem(catalogId)?.deckModel3d;
 }
 
 /** All catalogIds that have a bespoke 3D model (for tests / diagnostics). */

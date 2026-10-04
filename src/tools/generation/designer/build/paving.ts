@@ -10,18 +10,19 @@
  * Pavement is placed through `tryPlace` like everything else the pipeline puts down, so the rules
  * judge each cell and a refusal changes nothing.
  */
-import { distanceField, flatIndex } from '../../../../core/model/grid-model';
-import { ItemCategory, type GridState, type MacroCoord } from '../../../../core/model/types';
-import { categoryOf } from '../../../../state/catalog';
+import { distanceField, flatIndex, templateLandmark, NEIGHBORS4 } from '../../../../core/model/grid-model';
+import { type GridState, type MacroCoord } from '../../../../core/model/types';
+import { getCatalogItem } from '../../../../state/catalog';
 import { objectRect } from '../../../../state/object-geometry';
 import { entriesNear, getObjectIndex } from '../../../../state/object-index';
 import { tryPlace, type PlaceCtx } from '../../../placement/object';
 import type { AnchorLane } from '../places/anchors';
 import type { Scope } from './scope';
+import { isCrossing } from '../../../../core/model/traits';
 
 /** How far a course may run by default: the reach a bridge's bare bank is given to find the
  *  pavement it joins the network at. */
-export const BRIDGE_REACH = 12;
+const BRIDGE_REACH = 12;
 
 /** How far the plaza's apron course may run to find the streets. */
 const PLAZA_REACH = 40;
@@ -101,7 +102,7 @@ export function connector(
     const x = cur % W, y = (cur / W) | 0;
     if (stampPaved(x, y)) return course(place, from, cur, W);
     if (depth[cur]! >= reach) continue;
-    for (const [ddx, ddy] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
+    for (const [ddx, ddy] of NEIGHBORS4) {
       const nx = x + ddx, ny = y + ddy;
       if (!stampFree(nx, ny)) continue;
       const ni = flatIndex(nx, ny, W);
@@ -148,8 +149,8 @@ export function pavePlazaApron(
 ): number {
   const { state } = place;
   const W = state.template.width, H = state.template.height;
-  const plaza = [...state.objects.values()].find((o) => o.locked);
-  if (!plaza) return 0;
+  const plaza = templateLandmark(state);
+  if (!plaza?.locked) return 0;
   const r = objectRect(plaza);
   const x0 = Math.floor(r.x), x1 = Math.ceil(r.x + r.w) - 1;
   const y0 = Math.floor(r.y), y1 = Math.ceil(r.y + r.h) - 1;
@@ -259,7 +260,7 @@ export function paveBand(
 const BAND_TRIES = 4;
 
 /** The 4-connected pieces of a set of cells, largest first. */
-export function arcsOf(cells: readonly MacroCoord[], W: number): MacroCoord[][] {
+function arcsOf(cells: readonly MacroCoord[], W: number): MacroCoord[][] {
   const own = new Map(cells.map((c) => [flatIndex(c.x, c.y, W), c] as const));
   const seen = new Set<number>();
   const out: MacroCoord[][] = [];
@@ -271,7 +272,7 @@ export function arcsOf(cells: readonly MacroCoord[], W: number): MacroCoord[][] 
     while (stack.length) {
       const { c } = stack.pop()!;
       piece.push(c);
-      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
+      for (const [dx, dy] of NEIGHBORS4) {
         const j = flatIndex(c.x + dx, c.y + dy, W);
         const next = own.get(j);
         if (!next || seen.has(j)) continue;
@@ -292,15 +293,14 @@ export function arcsOf(cells: readonly MacroCoord[], W: number): MacroCoord[][] 
  * spans. Anything that wants to lay pavement of its own has to reach THIS set, since pavement joined to
  * a stub the plaza cannot reach is unreachable pavement however connected it looks locally.
  */
-export function pavedFromPlaza(place: PlaceCtx): Set<number> {
+function pavedFromPlaza(place: PlaceCtx): Set<number> {
   const state = place.state;
   const W = state.template.width, H = state.template.height;
   const conduct = new Set<number>(place.roads);
   const seeds: number[] = [];
   for (const o of state.objects.values()) {
-    const cat = categoryOf(o);
     const r = objectRect(o);
-    const crossing = cat === ItemCategory.Bridge || cat === ItemCategory.Ramp;
+    const crossing = isCrossing(getCatalogItem(o.catalogId));
     if (!o.locked && !crossing) continue;
     for (let y = Math.floor(r.y) - (crossing ? 1 : 0); y < Math.ceil(r.y + r.h) + (crossing ? 1 : 0); y++) {
       for (let x = Math.floor(r.x) - (crossing ? 1 : 0); x < Math.ceil(r.x + r.w) + (crossing ? 1 : 0); x++) {
@@ -317,7 +317,7 @@ export function pavedFromPlaza(place: PlaceCtx): Set<number> {
   while (stack.length) {
     const p = stack.pop()!;
     const x = p % W, y = (p / W) | 0;
-    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
+    for (const [dx, dy] of NEIGHBORS4) {
       const nx = x + dx, ny = y + dy;
       if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
       const j = flatIndex(nx, ny, W);
@@ -345,7 +345,7 @@ export function mouthPaved(paved: ReadonlySet<number>, state: GridState, lane: A
   const W = state.template.width, H = state.template.height;
   const own = new Set(lane.cells.map((c) => flatIndex(c.x, c.y, W)));
   for (const c of lane.mouth) {
-    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
+    for (const [dx, dy] of NEIGHBORS4) {
       const x = c.x + dx, y = c.y + dy;
       if (x < 0 || y < 0 || x >= W || y >= H) continue;
       const i = flatIndex(x, y, W);

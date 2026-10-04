@@ -9,7 +9,7 @@ import { viewportRect } from '../../../core/runtime/viewport-space';
  */
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { ELEVATION_COLORS, ELEVATION_MAX } from '../../../core/model/constants';
+import { ELEVATION_COLORS } from '../../../core/model/constants';
 import { isBuildableZone } from '../../../core/model/grid-model';
 import type { GridState } from '../../../core/model/types';
 import { useT } from '../../../i18n/context';
@@ -21,15 +21,17 @@ import { IconChevronLeft, IconChevronRight } from '../glyph-icons';
 import { layerName } from '../layer-name';
 import { iconUrl } from '../../primitives/icons';
 import { useScrollFade } from '../../primitives/scroll-fade';
-import { btnReset, cursors, font, pressable, pressOnly, springs, z } from '../../design/styles';
+import { btnReset, cursors, font, pressable, pressOnly, springs, z, colors, radii } from '../../design/styles';
 import { roleFont } from '../../design/text-weight';
 import { LAYER_PANEL_TOP, stepLayerMode, type LayerMode } from '../frame';
-import { cssMotion, useMotion } from '../motion/use-motion';
+import { useMotion } from '../motion/use-motion';
+import { cssMotion } from '../../design/motion';
 import { frameZoomAttr } from '../motion/zoom-corrected-radius';
 import { ACTIVE, INK, INSET, PANEL_EDGE, PANEL_EDGE_WIDTH, PLATE, PLATE_INK, TRACK } from '../../design/tokens';
 import { TEXT } from '../units';
 import { useFrameReadableWeight, useFrameZoom, useZoomedLayoutTransform } from '../use-frame-zoom';
 import { useUiPreviewPose } from '../../primitives/ui-preview';
+import { ELEVATION_MAX } from '../../../core/model/game-profile';
 
 /** How long a refusal holds the tint on the locked tiles before it fades.
  *
@@ -40,7 +42,7 @@ const LOCK_HOLD_MS = 550;
 /** How strongly a locked tile is tinted while its paints are being refused. */
 const LOCK_TINT = 0.42;
 /** The red a refusal tints with, the same one the error toasts carry. */
-const LOCK_RED = '#ff6b6b';
+const LOCK_RED = colors.statusError;
 
 /**
  * The plate's own sizes, in css px, and they live with the panel. `units.ts` holds what more than
@@ -182,7 +184,7 @@ function tileDepth(mode: LayerMode): number {
 /** The pinned plan-notes row between the head and the floors: one line (name, count, eye, lock)
  *  at either size, since the layer has no per-floor figure to stack. Counted here so both sizes,
  *  the file's floor budget and the exported `PLATE_DEPTH` all inherit it from one term. */
-const NOTES_ROW = { padY: 5, gap: 6 } as const;
+const NOTES_ROW = { padY: 5, gap: 6, helpMarginX: -2 } as const;
 function notesRowDepth(): number {
   return 2 * NOTES_ROW.padY + Math.max(TILE.column.icon, TEXT.tab) + NOTES_ROW.gap;
 }
@@ -329,7 +331,7 @@ function NotesRow({ lane }: { lane: number }) {
             // margin made the notes line's intrinsic width fractional, and wherever that line set
             // the plate's width, every Framer projection in the panel measured a half-pixel box —
             // which is what Chrome renders as blurred, faintly shaking text at some zooms.
-            ...btnReset, width: 16, height: 16, margin: '0 -2px', flex: 'none', borderRadius: '50%',
+            ...btnReset, width: 16, height: 16, margin: `0 ${NOTES_ROW.helpMarginX}px`, flex: 'none', borderRadius: '50%',
             background: selected ? INK : INSET, color: selected ? ACTIVE : PLATE_INK,
             fontFamily: font.family, ...roleFont('small'), lineHeight: '16px',
             textAlign: 'center', pointerEvents: measurer ? 'none' : 'auto', cursor: cursors.clickable,
@@ -385,7 +387,7 @@ function NotesRow({ lane }: { lane: number }) {
           ...btnReset, position: 'absolute', inset: 0, borderRadius: tileM.radius,
           background: selected ? ACTIVE : 'transparent',
           cursor: cursors.clickable, pointerEvents: 'auto',
-          transition: cssMotion('layer.select.fade', 'background'),
+          transition: cssMotion('layer.select.fade', ['background']),
         }}
       />
       {/* THE ROW READS IN THE FILE TILE'S OWN COLUMNS — the same padding, the same figure slot,
@@ -528,7 +530,7 @@ function LayerTile({ row, mode, active, visible, locked, refused }: {
         onPointerLeave={(e) => { if (!active) e.currentTarget.style.background = 'transparent'; }}
         style={{
           ...btnReset, ...behind, background: active ? ACTIVE : 'transparent', cursor: cursors.clickable,
-          transition: cssMotion('layer.select.fade', 'background'),
+          transition: cssMotion('layer.select.fade', ['background']),
         }}
       />
       {locked ? (
@@ -661,7 +663,7 @@ function SizeArrow({ dir, mode, onMode }: {
       onClick={() => onMode(next)}
       style={{
         ...btnReset, display: 'flex', alignItems: 'center',
-        padding: `${PANEL.headPadY}px ${PANEL.headPadX}px`, borderRadius: 999,
+        padding: `${PANEL.headPadY}px ${PANEL.headPadX}px`, borderRadius: radii.pill,
         background: ACTIVE, color: INK,
         opacity: spent ? 0.35 : 1,
         cursor: spent ? cursors.blocked : cursors.clickable,
@@ -677,7 +679,7 @@ function SizeArrow({ dir, mode, onMode }: {
   );
 }
 
-export interface LayerPanelProps {
+interface LayerPanelProps {
   /** Which of the three sizes the control is in. `pill` is the collapsed stepper, which `Rail.tsx`
    *  draws, so this panel is what the other two mean. */
   mode: LayerMode;
@@ -892,7 +894,7 @@ export function LayerPanel({ mode, onMode, right, maxHeight, top = LAYER_PANEL_T
               // interpolates as visible until the end, so the plate leaves hit-testing once it has
               // finished fading rather than the instant it starts.
               visibility: veiled ? 'hidden' : 'visible',
-              transition: [cssMotion(veiled ? 'frame.veil' : 'frame.unveil', 'visibility'), cssMotion('frame.layout.adapt', 'top', 'right', 'max-width')].join(', '),
+              transition: [cssMotion(veiled ? 'frame.veil' : 'frame.unveil', ['visibility']), cssMotion('frame.layout.adapt', ['top', 'right', 'max-width'])].join(', '),
               // The head stays fixed during vertical floor scrolling; a narrow panel can scroll sideways.
               display: 'flex', flexDirection: 'column', overflowX: 'auto', overflowY: 'hidden',
               // Over the rail: the panel is what the count just opened, so it cannot be the thing
@@ -928,8 +930,8 @@ export function LayerPanel({ mode, onMode, right, maxHeight, top = LAYER_PANEL_T
                 // shows, and what size this panel is — so they stand apart rather than side by side
                 // at one end with the whole plate empty beside them.
                 display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: PANEL.headSplitGap,
-                // Squared with the tiles under it, so the head's pills line up with a floor's name.
-                padding: `0 ${tileOf(mode).padX}px ${PANEL.headGap}px`,
+                // The left pill shares the notes help button's left edge at both panel sizes.
+                padding: `0 ${tileOf(mode).padX}px ${PANEL.headGap}px ${TILE.column.padX + NOTES_ROW.helpMarginX}px`,
                 height: 2 * PANEL.headPadY + TEXT.head, boxSizing: 'content-box',
               }}
             >
@@ -961,7 +963,7 @@ export function LayerPanel({ mode, onMode, right, maxHeight, top = LAYER_PANEL_T
                 style={{
                   ...btnReset, position: 'relative',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  padding: `${PANEL.headPadY}px ${PANEL.headPadX}px`, borderRadius: 999,
+                  padding: `${PANEL.headPadY}px ${PANEL.headPadX}px`, borderRadius: radii.pill,
                   minWidth: PANEL.headGlyph,
                   fontSize: TEXT.small, fontWeight: fw(900, TEXT.small), color: showLayerNumbers ? INK : PLATE_INK,
                   lineHeight: 1, height: TEXT.head, boxSizing: 'content-box',
@@ -979,7 +981,7 @@ export function LayerPanel({ mode, onMode, right, maxHeight, top = LAYER_PANEL_T
                   animate={{ width: numbers.box + (numbersReached ? numbers.name + PANEL.headPadX : 0) }}
                   transition={reachName}
                   style={{
-                    position: 'absolute', left: 0, top: 0, height: '100%', borderRadius: 999,
+                    position: 'absolute', left: 0, top: 0, height: '100%', borderRadius: radii.pill,
                     background: showLayerNumbers ? ACTIVE : INSET,
                     display: 'flex', alignItems: 'center', overflow: 'hidden',
                   }}

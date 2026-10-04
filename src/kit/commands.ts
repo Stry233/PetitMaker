@@ -12,19 +12,21 @@ import { useEditorStore } from '../state/store';
 import { singleSelection, selectedObjectIds } from '../state/selection';
 import { getActiveToolManager } from '../canvas/active-view';
 import { getCatalogItem } from '../state/catalog';
-import { ELEVATION_MAX } from '../core/model/constants';
-import { BUILD_SHAPES, MODE_FOR_CONTENT, toggleBuildTool, type ContentType, type BuildShape } from '../core/model/edit-mode';
+import { turnsInSession } from './operations/planet-session';
+import { BUILD_SHAPES, MODE_FOR_CONTENT, toggleBuildTool, type ContentType, type BuildShape, clampBrushSize } from '../core/model/edit-mode';
 import { canHoldSelection } from '../core/interaction/tool-modes';
+import { regionTools } from '../core/runtime/region-brush';
 import { pressSmartBuild } from '../core/runtime/smart-build';
 import { endCurveSession } from '../tools/paint';
 import { host } from './host';
 import { COMMAND_META, type CommandMeta } from '../core/runtime/keybindings';
-import { rotateGroupAction, rotateObjectAction, deleteSelection } from './group-edit';
+import { rotateGroupAction, rotateObjectAction, rotateSessionPlazaAction, deleteSelection } from './group-edit';
 import { translate } from '../i18n/context';
 import { showToast } from '../core/runtime/toast-bus';
 import { ACTION_BY_ID, type EditorAction } from './actions';
-import { NEXT_AUTO_EDGE_CUT, type DesignMode } from '../core/model/types';
+import { NEXT_AUTO_EDGE_CUT, type DesignMode, turnRotation } from '../core/model/types';
 import type { AnnotationTool } from '../core/model/annotations';
+import { ELEVATION_MAX } from '../core/model/game-profile';
 
 /** Deps the handlers can't get from the global store — supplied by the mounted shell. */
 export interface CommandContext {
@@ -71,6 +73,11 @@ const ANNOTATE_ARM: Partial<Record<DesignMode, Exclude<AnnotationTool, 'none'>>>
 
 function toolKey(c: CommandContext, design: DesignMode): void {
   const s = store();
+  if (s.selectingRegion) {
+    const tool = design === 'brush' ? s.regionBrushShape : design;
+    if (regionTools().some(value => value === tool)) s.setRegionTool(tool as typeof s.regionTool);
+    return;
+  }
   if (s.editMode.mode === 'annotate') {
     const arm = ANNOTATE_ARM[design];
     if (arm) s.toggleAnnotationTool(arm);
@@ -96,6 +103,11 @@ function brushKey(c: CommandContext): void {
 
 function shapeKey(c: CommandContext, shape: BuildShape): void {
   const s = store();
+  if (s.selectingRegion) {
+    const tool = shape === 'free' ? 'brush' : shape;
+    if (s.regionTool !== 'eraser' && regionTools().includes(tool)) s.setRegionTool(tool);
+    return;
+  }
   if (s.editMode.mode === 'annotate') {
     if (s.annotationTool === 'zone') s.setAnnotationZoneShape(shape);
     return;
@@ -107,13 +119,18 @@ function shapeKey(c: CommandContext, shape: BuildShape): void {
   }
 }
 
+function resizeBrush(delta: number): void {
+  const s = store();
+  if (s.selectingRegion) s.setRegionBrushSize(clampBrushSize(s.regionBrushSize + delta));
+  else s.setBrushSize(clampBrushSize(s.brushSize + delta));
+}
+
 function rotateSelected(delta: 90 | -90): void {
   const s = store();
   if (!s.gridState || !s.commandExecutor) return;
-  // A PLURAL selection is a rigid-body transform, not N spins in place: route it through the exact
-  // call path the SelectionHandles rotate button uses (`kit/group-edit.ts`), so the arc
-  // animation and any refusal (a locked member, a non-square span, an illegal destination) are
-  // identical whether the turn came from a click or this shortcut.
+  // A PLURAL selection is a rigid-body transform, not N spins in place: it goes through
+  // `kit/group-edit.ts:rotateGroupAction`, so the arc animation and any refusal are identical
+  // whether the turn came from a click or this shortcut.
   if (s.selection.length > 1) {
     rotateGroupAction(s.commandExecutor, s.gridState, s.eventBus, selectedObjectIds(s.selection), delta === 90 ? 1 : -1);
     return;
@@ -121,8 +138,12 @@ function rotateSelected(delta: 90 | -90): void {
   const sel = singleSelection(s.selection);
   if (sel?.kind !== 'object') return;
   const cur = s.gridState.objects.get(sel.id);
+  if (turnsInSession(cur, s.planetSession !== null)) {
+    rotateSessionPlazaAction(s.eventBus, delta === 90 ? 1 : 3);
+    return;
+  }
   if (!cur || !getCatalogItem(cur.catalogId)?.rotatable) return;
-  const to = ((((cur.rotation + delta) % 360) + 360) % 360) as 0 | 90 | 180 | 270;
+  const to = turnRotation(cur.rotation, delta / 90);
   rotateObjectAction(s.commandExecutor, s.gridState, s.eventBus, cur, to, { from: cur.rotation, to: cur.rotation + delta });
 }
 
@@ -133,13 +154,13 @@ function rotateSelected(delta: 90 | -90): void {
 function rotatePendingPlacement(delta: 90 | -90): void {
   const s = store();
   if (!s.selectedItemId || !getCatalogItem(s.selectedItemId)?.rotatable) return;
-  const to = ((((s.placementRotation + delta) % 360) + 360) % 360) as 0 | 90 | 180 | 270;
+  const to = turnRotation(s.placementRotation, delta / 90);
   s.setPlacementRotation(to);
 }
 
 /**
  * Rotate shortcut dispatch. A non-empty SELECTION always wins over the armed item's ghost: it is a
- * deliberate act with a visible result (the orange ring), and clicking an object while an item is
+ * deliberate act with a visible result (the selection marks), and clicking an object while an item is
  * armed exists precisely so it can be rotated or deleted without losing that armed item — the
  * shortcut has to reach the selection, or that whole affordance is a trap. The ghost only turns
  * when there is truly nothing selected to apply it to instead.
@@ -194,13 +215,15 @@ function deleteSelected(): void {
 function deselect(): void {
   const s = store();
   if (s.contextMenu || s.deletePopover) return; // those own their own dismiss
-  const cancelled = pendingGesture().cancel();
   if (s.editMode.mode === 'annotate') {
-    s.setAnnotationDraft(null);
-    s.setAnnotationTool('none');
-    s.setAnnotationSelection([]);
+    s.requestAnnotationDiscard(() => {
+      pendingGesture().cancel();
+      s.setAnnotationTool('none');
+      s.setAnnotationSelection([]);
+    });
     return;
   }
+  const cancelled = pendingGesture().cancel();
   if (terrainToolActive() && s.editMode.tool !== 'none') { s.setEditMode({ tool: 'none' }); return; }
   if (cancelled) return;
   if (s.selectedItemId) { s.setEditMode({ itemId: null }); return; }
@@ -217,8 +240,10 @@ function selectAllObjects(): void {
   if (s.editMode.mode === 'annotate') {
     const notes = s.gridState.annotations;
     if (!notes?.visible || notes.items.length === 0) return;
-    if (s.annotationTool !== 'none') s.setAnnotationTool('none');
-    s.setAnnotationSelection(notes.items.map((a) => a.id));
+    s.requestAnnotationDiscard(() => {
+      s.setAnnotationTool('none');
+      s.setAnnotationSelection(notes.items.map((a) => a.id));
+    });
     return;
   }
   // Select-all MEANS entering selection: with a brush or a macro armed the mode rule would drop
@@ -244,10 +269,16 @@ export const RUN: Record<string, (ctx: CommandContext) => void> = {
   'tool.brush':  brushKey,
   'tool.measure': () => {
     const s = store();
+    if (s.selectingRegion) return;
     if (s.editMode.mode === 'annotate') s.toggleAnnotationTool('measure');
   },
   'tool.shape_cycle': c => {
     const s = store();
+    if (s.selectingRegion) {
+      const shapes = regionTools().filter(tool => tool !== 'eraser');
+      if (s.regionTool !== 'eraser' && shapes.length) s.setRegionTool(shapes[(shapes.indexOf(s.regionTool) + 1) % shapes.length]!);
+      return;
+    }
     if (s.editMode.mode === 'annotate') {
       if (s.annotationTool === 'zone') {
         shapeKey(c, BUILD_SHAPES[(BUILD_SHAPES.indexOf(s.annotationZoneShape) + 1) % BUILD_SHAPES.length]!);
@@ -267,6 +298,7 @@ export const RUN: Record<string, (ctx: CommandContext) => void> = {
   'tool.edgecut': (c) => toolKey(c, 'edge-cut'),
   'tool.smart':  () => {
     const s = store();
+    if (s.selectingRegion) return;
     if (s.editMode.mode === 'annotate') {
       s.toggleAnnotationTool('route');
       return;
@@ -276,6 +308,7 @@ export const RUN: Record<string, (ctx: CommandContext) => void> = {
 
   'tool.auto_trim': () => {
     const s = store();
+    if (s.selectingRegion) { s.setRegionDimensions(!s.regionDimensions); return; }
     if (s.editMode.mode === 'annotate') {
       if (s.annotationTool === 'zone' || s.annotationTool === 'chip') {
         s.setAnnotationSize(s.annotationSize === 's' ? 'm' : s.annotationSize === 'm' ? 'l' : 's');
@@ -286,8 +319,8 @@ export const RUN: Record<string, (ctx: CommandContext) => void> = {
     s.setAutoEdgeCut(NEXT_AUTO_EDGE_CUT[s.autoEdgeCut]);
   },
 
-  'brush.bigger':  () => { const s = store(); s.setBrushSize(Math.min(5, s.brushSize + 1)); },
-  'brush.smaller': () => { const s = store(); s.setBrushSize(Math.max(1, s.brushSize - 1)); },
+  'brush.bigger':  () => resizeBrush(1),
+  'brush.smaller': () => resizeBrush(-1),
   'layer.up':      () => { const s = store(); s.setActiveLayer(Math.min(ELEVATION_MAX, s.activeLayer + 1)); },
   'layer.down':    () => { const s = store(); s.setActiveLayer(Math.max(0, s.activeLayer - 1)); },
 
@@ -303,16 +336,9 @@ export const RUN: Record<string, (ctx: CommandContext) => void> = {
 
   'view.toggle': () => { const s = store(); s.setViewMode(s.viewMode === '2d' ? '3d' : '2d'); },
 
-  // While painting a Generate region, undo/redo pop the region stroke instead of a map edit (see
-  // CommandContext.regionUndo): the region is a scope for a future generate, not a change to the
-  // map, so undoing twice after painting one must never reach back and revert a real edit the user
-  // never meant to touch. Scoped to the region for the FULL duration of region-select mode, even
-  // once its own stack empties (regionUndo/Redo return false then) — falling through to the map
-  // history at that point would be the same surprise one step later, so it stays a no-op instead,
-  // exactly like pressing undo on an empty map history already does.
-  // Annotate mode scopes them the way region-select does: while the plan-notes layer is being
-  // edited, undo is about notes even once the lane empties — falling through to the map history
-  // would revert an edit the user never meant to touch.
+  // Region-select and annotate mode each keep undo/redo in their own lane for the FULL duration of
+  // the mode, even once that lane empties (see CommandContext.regionUndo): falling through to the
+  // map history would revert an edit the user never meant to touch, so an empty lane is a no-op.
   'history.undo': (c) => {
     const s = store();
     if (s.selectingRegion) { c.regionUndo?.(); return; }
@@ -326,7 +352,7 @@ export const RUN: Record<string, (ctx: CommandContext) => void> = {
     s.commandExecutor?.redo();
   },
 
-  // Generate is one of the mode blocks, so its key toggles like the other four.
+  // Generate is one of the mode blocks, so its key toggles like the others.
   'app.generate':      (c) => doTile(c, store().editMode.mode === 'generate' ? 'move' : 'generate'),
   'app.new':            (c) => doTile(c, 'new'),
   'app.export_json':    (c) => doTile(c, 'export'),

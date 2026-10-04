@@ -1,7 +1,7 @@
 import * as PIXI from 'pixi.js-legacy';
 import { HALF_TILE } from '../../../core/model/grid-model';
 import type { CornerTrim } from '../../../core/model/types';
-import { CORNER_POS, type CornerPos } from '../../../core/edge-cut/corner-index';
+import { CORNER_POS, type CornerPos, SQUARE_CORNERS, isSquareCorners } from '../../../core/edge-cut/corner-index';
 import { roadShapePoints } from '../../../core/edge-cut/road-shape';
 import type { RoadConnSide } from '../../../core/edge-cut/road-cut-states';
 
@@ -103,7 +103,7 @@ export function drawRoadShape(
   w: number, h: number,
   color: number, alpha: number,
 ): void {
-  const pts = corners && !corners.every((c) => c === 'square')
+  const pts = corners && !isSquareCorners(corners)
     ? roadShapePoints(corners, connSide, x, y, w, h)
     : null;
 
@@ -127,7 +127,7 @@ export function drawTrimmedBlock(
   alpha: number,
   patchOnly = false,
 ): void {
-  const c = corners ?? ['square', 'square', 'square', 'square'];
+  const c = corners ?? SQUARE_CORNERS;
   const positions = CORNER_POS;
   for (let i = 0; i < 4; i++) {
     drawTrimmedCorner(g, c[i]!, positions[i]!, bx + QUADRANT_OFFSETS[i]![0], by + QUADRANT_OFFSETS[i]![1], halfSize, color, alpha, patchOnly);

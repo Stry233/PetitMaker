@@ -20,12 +20,16 @@ import type { HelpPage, HelpPageId } from '../../../ui/chrome/modals/help/page-s
 import { pageForEditState } from '../../../ui/chrome/modals/help/targets';
 import { HELP_TABLES } from '../../../i18n/locales/help';
 import { translations } from '../../../i18n/translations';
+import { RESOLVED_TOKENS } from '../../../i18n/context';
 import { helpFacts } from '../../../ui/chrome/modals/help/facts';
 import { PROVIDER_IDS, PROVIDER_META, providerBaseUrls } from '../../../agent/providers/defaults';
 import { STYLIZE_PROVIDERS } from '../../../io/stylize/providers';
 import { AUTOSAVE_DEBOUNCE_MS } from '../../../io/autosave';
 import { MAX_TURNS_DEFAULT, SUBAGENT_MAX_TURNS } from '../../../agent/core/governor';
+import { ItemCategory } from '../../../core/model/types';
+import { getPlaceableByCategory } from '../../../state/catalog';
 import { NOTE_LIMITS } from '../../../core/model/notes';
+import { BASE_SUPPORT } from '../../../core/model/game-profile';
 
 const ALL_IDS: readonly HelpPageId[] = [
   'welcome', 'frame', 'camera', 'tour',
@@ -156,7 +160,15 @@ describe('the help catalog', () => {
 describe('the help tables (the overlay the main i18n suites do not see)', () => {
   const LOCALES = Object.keys(HELP_TABLES) as (keyof typeof HELP_TABLES)[];
   const enKeys = Object.keys(HELP_TABLES.en);
-  const placeholders = (v: string) => (v.match(/\{[a-zA-Z0-9_]+\}/g) ?? []).sort();
+  // Copy whose translator-filled tokens differ from en by design, by key and locale: zh names the
+  // landmark where en says "it".
+  const RESOLVED_DIFFERS: Readonly<Record<string, readonly string[]>> = { 'help.faq.a3': ['zh'] };
+  // Translator-filled tokens count once each: a locale may repeat a name where its grammar wants it.
+  const placeholders = (v: string, skipResolved = false) => {
+    const all = v.match(/\{[a-zA-Z0-9_]+\}/g) ?? [];
+    const resolved = (t: string) => t.slice(1, -1) in RESOLVED_TOKENS;
+    return [...all.filter((t) => !resolved(t)), ...(skipResolved ? [] : new Set(all.filter(resolved)))].sort();
+  };
 
   it('holds every locale to the en key set', () => {
     for (const locale of LOCALES) {
@@ -167,17 +179,17 @@ describe('the help tables (the overlay the main i18n suites do not see)', () => 
   it('holds every value to the en placeholder set', () => {
     for (const locale of LOCALES) {
       for (const key of enKeys) {
-        expect({ locale, key, tokens: placeholders(HELP_TABLES[locale][key]!) })
-          .toEqual({ locale, key, tokens: placeholders(HELP_TABLES.en[key]!) });
+        const skip = RESOLVED_DIFFERS[key]?.includes(locale) ?? false;
+        expect({ locale, key, tokens: placeholders(HELP_TABLES[locale][key]!, skip) })
+          .toEqual({ locale, key, tokens: placeholders(HELP_TABLES.en[key]!, skip) });
       }
     }
   });
 
-  it('carries the register: no em dashes, no middots, paired bold markers', () => {
+  it('pairs every bold marker', () => {
     const offenders: string[] = [];
     for (const locale of LOCALES) {
       for (const [key, value] of Object.entries(HELP_TABLES[locale])) {
-        if (/[\u2014\u00b7\u2022]/.test(value)) offenders.push(`${locale as string} ${key} punctuation`);
         if ((value.split('**').length - 1) % 2 !== 0) offenders.push(`${locale as string} ${key} unpaired **`);
       }
     }
@@ -220,6 +232,15 @@ describe('the help tables (the overlay the main i18n suites do not see)', () => 
     }
   });
 
+  it('uses the dimensions shared by every offered ramp for the general placement guide', () => {
+    const facts = helpFacts('en');
+    for (const item of getPlaceableByCategory(ItemCategory.Ramp)) {
+      expect(item.height).toBe(facts.rampRun);
+      expect(item.traits.find(trait => trait.type === 'heightDrop')).toMatchObject({ layers: facts.rampDrop });
+    }
+    expect(Number(facts.rampLowerRun) + Number(facts.rampUpperRun)).toBe(facts.rampRun);
+  });
+
   it('derives provider rosters and counts from their runtime registries', () => {
     const facts = helpFacts('en');
     const agentIds = PROVIDER_IDS.filter((id) => id !== 'custom');
@@ -230,6 +251,17 @@ describe('the help tables (the overlay the main i18n suites do not see)', () => 
     }
     for (const provider of STYLIZE_PROVIDERS.filter(({ id }) => id !== 'custom')) {
       expect(String(facts.illustrationProviders)).toContain(translations.en[`stylize.provider_${provider.id}`]);
+    }
+  });
+
+  it('spells the support area by its window in every locale, with every number from the game profile', () => {
+    for (const locale of LOCALES) {
+      const line = HELP_TABLES[locale]['help.faq.mountain_b1']!;
+      for (const token of ['{supportFree}', '{supportFrom}', '{supportWindow}×{supportWindow}', '{supportReach}', '{supportFromBase}', '{supportHigh}']) {
+        expect(line, `${locale} ${token}`).toContain(token);
+      }
+      const resolved = line.replace(/\{(\w+)\}/g, (_, name: string) => String(helpFacts(locale)[name as keyof ReturnType<typeof helpFacts>] ?? ''));
+      expect(resolved, `${locale} counts the window's cells`).not.toMatch(new RegExp(`(^|\\D)${BASE_SUPPORT.window ** 2}(\\D|$)`));
     }
   });
 

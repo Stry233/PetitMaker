@@ -13,6 +13,15 @@
 export const TOAST_BAND_TOP = 64;
 export const TOAST_BAND_ROW = 51;
 
+/** The root custom property a surface standing in the band's place publishes, in chrome css px,
+ *  to move the whole band down past it (the planet session's nameplate). */
+export const TOAST_BAND_SHIFT_VAR = '--toast-band-shift';
+
+/** A band tenant's `top`: its place in the band, moved with the band. */
+export function bandTop(px: number): string {
+  return `calc(${px}px + var(${TOAST_BAND_SHIFT_VAR}, 0px))`;
+}
+
 /** The arrival greeting's own row: its card is 72 tall (48px of planet art with 12px of padding
  *  above and below it) and this keeps 12 of air under that. The dev-build notice stands below this,
  *  so the band's three tenants (refusals, the greeting, the notice) are stacked here by declaration

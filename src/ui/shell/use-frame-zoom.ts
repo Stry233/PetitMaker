@@ -1,5 +1,5 @@
 /*
- * use-frame-zoom.ts — the frame's live zoom, and what a moving element has to do about it.
+ * The frame's live zoom, and what a moving element has to do about it.
  *
  * The whole frame stands under one `zoom` (`units.ts:ZOOM` times the window's fit times the user's
  * Ctrl +/-), which is what lets the chrome be authored in fixed css px. Everything inside it is

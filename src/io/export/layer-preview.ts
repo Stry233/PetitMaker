@@ -1,10 +1,12 @@
 import { TerrainType } from '../../core/model/types';
-import { ELEVATION_COLORS, ELEVATION_MAX, WATER_COLOR, ZONE_COLORS } from '../../core/model/constants';
+import { ELEVATION_COLORS, WATER_COLOR, ZONE_COLORS } from '../../core/model/constants';
 import { getCatalogItem } from '../../state/catalog';
 import { getPlacedObjectSize } from '../../state/object-geometry';
 import { fitAspect } from './compose';
 import { rrPath } from './canvas-helpers';
 import type { GridState } from '../../core/model/types';
+import { ELEVATION_MAX } from '../../core/model/game-profile';
+import { CATEGORY_BY_ID } from '../../config/catalog/categories';
 
 /** One step of the construction sequence: the map built up TO `level`. */
 export interface LayerStep {
@@ -39,19 +41,10 @@ export function maxTerrainElevation(state: GridState): number {
   return Math.min(maxElev, ELEVATION_MAX);
 }
 
-/** Category-ish color for object marks in the thumbnail. */
-function objectColor(catalogId: string): string {
+/** The flat colour an object footprint is drawn in on a top-down picture of the map, by category. */
+export function objectMarkColor(catalogId: string): string {
   const item = getCatalogItem(catalogId);
-  if (!item) return '#e6c48a';
-  const cat = item.category;
-  if (cat === 'building') return '#e8a857';
-  if (cat === 'tree') return '#5cb837';
-  if (cat === 'flora') return '#7dba53';
-  if (cat === 'road') return '#d4c9b0';
-  if (cat === 'bridge') return '#c4a06a';
-  if (cat === 'ramp') return '#b88c50';
-  if (cat === 'facility') return '#74b0d4';
-  return '#e6c48a';
+  return (item && CATEGORY_BY_ID.get(item.category)?.markColor) ?? '#e6c48a';
 }
 
 /** Draw ONE layer's CROSS-SECTION at height `level` into `rect` (cumulative, like the 2D layer
@@ -140,7 +133,7 @@ export function paintLayer(
       const oy = Math.round(obj.position.y);
       if (ox < 0 || ox >= cols || oy < 0 || oy >= rows) continue;
       const { w: fw, h: fh } = getPlacedObjectSize(obj);
-      ctx.fillStyle = objectColor(obj.catalogId);
+      ctx.fillStyle = objectMarkColor(obj.catalogId);
       ctx.fillRect(
         // The EXACT position, not `ox` (a half-anchored deck's rounded cell): a halfStep
         // ramp/bridge anchors between cells, so rounding draws it a half cell off from where

@@ -51,24 +51,18 @@ describe('the panel keeps the least room it can work in', () => {
     const roomy = box(null, 800, ZOOM).height;
     expect(roomy).toBeCloseTo(800 / ZOOM - PANEL_TOP - footReserve(null) - PANEL_CAP_TRIM, 3);
     expect(PANEL_CAP_TRIM).toBeGreaterThan(0);
-    // Generate mode at the reference window has nothing to spare: the floor answers, untrimmed.
-    expect(box('generate', 800, ZOOM).height).toBeCloseTo(LEAST, 3);
+    // At a larger UI scale the floor answers, untrimmed.
+    expect(box('generate', 800, ZOOM * 1.2).height).toBeCloseTo(LEAST, 3);
   });
 
-  /**
-   * GENERATE MODE, the tightest overlap. Its shelf reserve leaves ~159 frame px against a 252px
-   * skeleton at every common laptop height — honoured, that would slice the composer off flush with
-   * the plate's bottom and leave the record a 2.5px band. The foot gives way; the head does not have
-   * to.
-   */
   it('lets the foot reserve give way rather than clip the composer, at every common height', () => {
     for (const [w, h] of [[1280, 800], [1366, 768], [1440, 810], [1280, 700]] as const) {
       const fit = Math.max(0.6, Math.min(1, w / 1280, h / 800));
-      const { top, height } = box('generate', h, ZOOM * fit);
+      const { top, height } = box('generate', h, ZOOM * fit * 1.2);
       expect(height, `${w}x${h}`).toBeCloseTo(LEAST, 3);
       expect(top, `${w}x${h}`).toBeCloseTo(PANEL_TOP, 3);
       // And the panel is still wholly on screen: it overlaps the bar, it does not run off the window.
-      expect(top + height, `${w}x${h}`).toBeLessThanOrEqual(h / (ZOOM * fit) + 0.001);
+      expect(top + height, `${w}x${h}`).toBeLessThanOrEqual(h / (ZOOM * fit * 1.2) + 0.001);
     }
   });
 

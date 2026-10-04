@@ -6,17 +6,20 @@ import { LITE_CSP } from '../security/lite-policy.ts';
 
 export function liteBuildPlugin(): Plugin {
   let development = false;
+  let preview = false;
   const assets = new Map<string, Buffer>();
   return {
     name: 'petit-lite',
-    config() {
+    config(_config, env) {
+      // ResolvedConfig does not carry isPreview; the config hook's environment does.
+      preview = env.isPreview === true;
       return { build: { assetsInlineLimit(filePath: string, content: Buffer) {
         // Small images share the script to conserve ZIP entries; fonts remain local files.
         return /\.(?:png|jpe?g|gif|webp|svg)$/i.test(filePath) && content.length <= 8 * 1024;
       } } };
     },
     configResolved(config) {
-      development = config.command === 'serve' && !config.isPreview;
+      development = config.command === 'serve' && !preview;
       for (const file of ['logo-256.png', 'banner.svg', 'banner-zh.svg']) assets.set(file, readFileSync(join(config.root, 'public', file)));
     },
     configureServer(server) {

@@ -8,7 +8,7 @@ import { flatIndex } from '../../../core/model/grid-model';
 import { makeRng } from '../../../core/model/rng';
 import type { RuleDispatcher } from '../../../core/model/rule-dispatcher';
 import {
-  type Command, type GridState, type MacroCoord, type Rect, type ValidationResult,
+  type Command, type GridState, type MacroCoord, type Rect, type ValidationResult, type Rotation,
 } from '../../../core/model/types';
 import { getCatalogItem } from '../../../state/catalog';
 import { getRotatedSize } from '../../../state/object-geometry';
@@ -144,8 +144,7 @@ const FIGURE_CALM = 3;
  *
  * A COURT STANDS AT A STREET'S END OR OFF ITS FLANK, NEVER ASTRIDE IT. The court's own ground is
  * reserved before a street is laid, so no street can cross it — but a border paved as a full ring is a
- * LOOP, and the network then routes through it: on `tafa/777` at full richness, the one failing map of
- * sixty, removing the band costs the network 212 further cells. So the apron is the half of the margin on
+ * LOOP, and the network then routes through it. So the apron is the half of the margin on
  * the arrival's side of the court's centre, which is a forecourt rather than a roundabout.
  */
 function courtApron(court: { frame: MacroCoord[]; centre: MacroCoord; arrival: MacroCoord }): MacroCoord[] {
@@ -155,7 +154,7 @@ function courtApron(court: { frame: MacroCoord[]; centre: MacroCoord; arrival: M
 }
 
 /** The cells an object of `catalogId` would cover if placed at (x, y) with `rotation`. */
-function footprintOf(catalogId: string, x: number, y: number, rotation: 0 | 90 | 180 | 270): Rect {
+function footprintOf(catalogId: string, x: number, y: number, rotation: Rotation): Rect {
   const item = getCatalogItem(catalogId);
   if (!item) return { x, y, w: 1, h: 1 };
   const size = getRotatedSize(item, rotation);
@@ -169,8 +168,8 @@ export function generateDesigned(ctx: DesignedContext): DesignedOutcome {
   // Each stage reads the one before it and nothing reads the map, so the whole plan exists before a
   // single command does.
   const composition = planComposition(seed, state.template, richness, ctx.maxElevation);
-  // The walk is drawn between the composition and the streets, which is the methodology's own order —
-  // direction and movement line, before anything is built: the streets lay it as their first and
+  // The walk is drawn between the composition and the streets, so direction and movement line exist
+  // before anything is built: the streets lay it as their first and
   // widest trunk, the sculptor puts the water it asks for beside it, and stage C meets its stops in
   // the order a visitor does.
   const line = planMovementLine(seed, state.template, composition, richness);
@@ -308,11 +307,10 @@ export function generateDesigned(ctx: DesignedContext): DesignedOutcome {
   const dressing = dressRegions({
     place, plan, anchors, seed, richness, material: streets.materials.dominant,
     ...(scope.bounded ? { within: (x: number, y: number) => scope.cell(x, y) } : {}),
-    // A LARGE FOUNTAIN KEEPS A WHOLE COURT and a small one sits in a garden — the supplement's own
-    // distinction, and the kits read it here: only the large court's ground is kept clear, so a
-    // garden fountain is planted around like anything else standing in a place. Keeping the small
-    // ones clear too punched a hole through the middle of the region each stood in, which is exactly
-    // where a composed place's mirror axis runs.
+    // A LARGE FOUNTAIN KEEPS A WHOLE COURT and a small one sits in a garden, and the kits read the
+    // distinction here: only the large court's ground is kept clear, so a garden fountain is planted
+    // around like anything else standing in a place. A small court kept clear would punch a hole
+    // through the middle of its region, which is exactly where a composed place's mirror axis runs.
     avoid: keepClear(sculpt, state.template.width, state.template.height),
   });
   placed += dressing.planted + dressing.paved;

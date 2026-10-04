@@ -1,13 +1,13 @@
-import { SUPPORTS_JSON_FILES } from '../core/runtime/edition';
 /** Shared JSON and PetitGlyph import path. Inspection decodes without replacing the live map; callers present the returned outcomes. */
+import { SUPPORTS_JSON_FILES } from '../core/runtime/edition';
 import { isOwnImageExport } from './image-ownership';
-import { deserializeParsed } from './json-codec';
+import { deserializeParsed, templateOfSave } from './json-codec';
 import { MAX_IMPORT_BYTES } from './import-limits';
 import { verifyIntegrity } from './export-json';
 import { applyOptionalSections, type SectionRestoreDeps } from './import-sections';
-import { getMapTemplate } from '../config/maps';
 import { importFromRaster, type ShareErrorCode } from './share';
 import { readRasterImage } from './raster-image';
+import { adoptInstalledPlanet } from './planet-library';
 import type { GridState, MapNotes } from '../core/model/types';
 
 /** Structured warnings translated by the import UI. */
@@ -17,9 +17,9 @@ export type ImportWarning =
   | { kind: 'catalog-drift' }
   | { kind: 'modified-after-export' };
 
-/** The source selects warning order in the import UI. */
 /** A decoded file, not yet installed: what the confirmation shows before the map is replaced. */
 export interface ImportPreview {
+  /** Selects the warning order in the import UI. */
   source: 'json' | 'raster';
   state: GridState;
   notes?: MapNotes;
@@ -56,6 +56,23 @@ function isImageFile(file: File | Blob, name: string): boolean {
   return /\.(png|jpe?g|webp)$/i.test(name);
 }
 
+/** A decoded map ready to install: its preview, and the commit that installs it and reports the
+ *  warnings `settle` gives once the map is in. */
+function readyImport(
+  source: ImportPreview['source'], state: GridState, warnings: ImportWarning[],
+  settle: (deps: ImportFileDeps) => ImportWarning[],
+): ImportInspection {
+  return {
+    status: 'ready',
+    preview: { source, state, warnings, ...(state.notes ? { notes: state.notes } : {}) },
+    commit: (deps) => {
+      deps.loadMap(state);
+      adoptInstalledPlanet(state);
+      return { status: 'imported', source, warnings: settle(deps), ...(state.notes ? { notes: state.notes } : {}) };
+    },
+  };
+}
+
 /** Decodes without installing. Unreadable inputs return a failure outcome. */
 export async function inspectImportFile(file: File | Blob, name: string): Promise<ImportInspection> {
   try {
@@ -65,18 +82,13 @@ export async function inspectImportFile(file: File | Blob, name: string): Promis
       const parsed = JSON.parse(text) as { templateId?: string };
       // Modified exports remain importable with a warning; files without a checksum stay silent.
       const integrity = verifyIntegrity(parsed);
-      const state = deserializeParsed(parsed, getMapTemplate(parsed.templateId));
-      const preview: ImportPreview = { source: 'json', state, warnings: [], ...(state.notes ? { notes: state.notes } : {}) };
-      return {
-        status: 'ready', preview,
-        commit: (deps) => {
-          deps.loadMap(state);
-          const sections = applyOptionalSections(parsed, deps.getSectionDeps());
-          const warnings: ImportWarning[] = sections.dropped.map((section) => ({ kind: 'dropped-section' as const, section }));
-          if (integrity === 'modified') warnings.push({ kind: 'modified-after-export' });
-          return { status: 'imported', source: 'json', warnings, ...(state.notes ? { notes: state.notes } : {}) };
-        },
-      };
+      const state = deserializeParsed(parsed, templateOfSave(parsed));
+      return readyImport('json', state, [], (deps) => {
+        const sections = applyOptionalSections(parsed, deps.getSectionDeps());
+        const warnings: ImportWarning[] = sections.dropped.map((section) => ({ kind: 'dropped-section' as const, section }));
+        if (integrity === 'modified') warnings.push({ kind: 'modified-after-export' });
+        return warnings;
+      });
     }
 
     if (!isImageFile(file, name)) return { status: 'unsupported' };
@@ -88,14 +100,7 @@ export async function inspectImportFile(file: File | Blob, name: string): Promis
     if (!result.ok) return { status: 'failed', code: result.error.code };
     if (result.state.imageAttribution && await isOwnImageExport(result.state)) delete result.state.imageAttribution;
     const warnings: ImportWarning[] = result.warnings.map((w) => (w === 'template-drift' ? { kind: 'template-drift' as const } : { kind: 'catalog-drift' as const }));
-    const preview: ImportPreview = { source: 'raster', state: result.state, warnings, ...(result.state.notes ? { notes: result.state.notes } : {}) };
-    return {
-      status: 'ready', preview,
-      commit: (deps) => {
-        deps.loadMap(result.state);
-        return { status: 'imported', source: 'raster', warnings, ...(result.state.notes ? { notes: result.state.notes } : {}) };
-      },
-    };
+    return readyImport('raster', result.state, warnings, () => warnings);
   } catch {
     return { status: 'failed' };
   }

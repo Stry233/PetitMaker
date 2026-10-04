@@ -4,8 +4,8 @@
  * decides what counts as "used" and fails on anything in en.ts that doesn't.
  *
  * A key is not always the literal argument of a `t(...)`/`translate(...)` call — plenty are held
- * as DATA and translated later at a different site (`state/catalog.ts`'s `getCategoryMeta` holds
- * `titleKey: 'menu.place_building'`; `rules/*.ts` hold `message: 'error.zone_restricted'`; several
+ * as DATA and translated later at a different site (`config/catalog/categories.ts` holds
+ * `placeKey: 'menu.place_building'`; `rules/*.ts` hold `message: 'error.zone_restricted'`; several
  * UI files hold a key behind a ternary or pass it as a bare positional argument to a helper that
  * calls `t()` internally). A matcher that only follows direct call arguments misses all of those
  * and would recommend deleting a live key, which blanks a UI string in seven languages with no
@@ -20,7 +20,6 @@ import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { translations } from '../../i18n/translations';
 import { HELP_TABLES } from '../../i18n/locales/help';
-import type { Locale } from '../../core/model/types';
 
 declare const __dirname: string;
 
@@ -132,26 +131,11 @@ describe('i18n drift: an orphaned key fails the suite', () => {
     const missing = keysReferencedFromScripts(enSet).filter((k) => !enSet.has(k));
     expect(missing).toEqual([]);
   });
-
-  it('every locale defines exactly the en key set', () => {
-    const enSet = new Set(enKeys);
-    for (const locale of Object.keys(translations) as Locale[]) {
-      if (locale === 'en') continue;
-      const localeMap = translations[locale];
-      const missing = enKeys.filter((k) => !(k in localeMap));
-      const extra = Object.keys(localeMap).filter((k) => !enSet.has(k));
-      expect({ locale, missing, extra }).toEqual({ locale, missing: [], extra: [] });
-    }
-  });
 });
 
 /**
- * THE OTHER DIRECTION, and the one that was missing.
- *
- * Everything above asks whether a declared key is used. Nothing asked whether a key asked FOR is
- * declared — so `t('gen.scope_min')`, called from the scope screen and defined in no locale at all,
- * shipped a button whose label read as its own key. A missing string is the more visible of the two
- * failures and had no detector.
+ * THE OTHER DIRECTION: a key asked FOR must be declared, or its label reads as the key itself.
+ * Locale key-set parity is `parity.test.ts`'s.
  *
  * Only the LITERAL argument of a translate call is checked. A key held as data, composed from a
  * table or chosen behind a ternary is invisible to this and is the drift test's business above; a

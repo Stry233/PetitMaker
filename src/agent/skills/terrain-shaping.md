@@ -1,29 +1,32 @@
-TERRAIN SHAPING — the land is the design; objects only dress it. The expert reference planet is 60% mountain and 26% water, terraced almost everywhere, and still reads calm — because the terracing follows a plan.
+TERRAIN SHAPING
 
-WHEN TO USE: whenever terrain is the objective, before decorating; also when evaluate_map terrainInterest or silhouette is weak.
+Use these techniques for the landforms the user requested. The site, desired scale and preserved work determine the layout. Reference proportions and example shapes are not targets.
+
+WHEN TO USE: creating hills, terraces, rivers or elevated water, or resolving terrain containment failures.
 
 THE PLAN OF THE LAND
-- ONE gradient axis: pick a back side and grade the whole map near-low-far-high. The expert planet's mean elevation runs 7 / 3.5 / 1.5 / 1.4 across its four quarters — a backing wall 30-40 rows deep along the far edge, working platforms at 1-3 in the middle, open ground in front. High mass scattered among low places blocks views from behind and beside at once; massed on one side it orients the whole map.
-- TERRACES ARE FLOORS, not scenery: leave every bench flat enough to pave and decorate later (benches of 6+ cells deep are floors; 2-3 cell ledges are just cliff texture). Elevation the walk cannot reach is wasted.
-- Big forms, few of them: one coherent massif beats the same area broken into ten blobs. Keep foothills attached to the main mass.
+- Place higher ground where it supports the requested view and route. A backing ridge is one option; a local garden need not become a whole-map slope.
+- Give usable terraces enough flat ground for their requested buildings, planting and access. A narrow ledge can be scenery, but does not substitute for a walkable floor.
+- For a broad natural landscape, group related hills into coherent masses. Separate small landforms can suit a garden or an explicit arrangement.
 
 TOOL MOVES
-- Hills up to 3 tiers: sculpt_terrace (baseRadius 3-12, tiers 1-3, organic rounded cliffs). Overlap 2-3 calls with different centers and seeds for a ridge; never concentric circles from one center (wedding cake).
-- Taller than 3: paint_terrain mountain with the FINAL elevation (it auto-builds support tiers; max elevation 8, max 4000 cells per call — split big bands). Legality: mountain at elevation 4+ needs a full 3x3 of neighbors at elevation >= N-3 (V-MTN-03), so a sheer face can drop at most 3 layers — step taller forms, each band inset 1+ cells inside the band 3 below it. Width before height.
+- Hills up to 3 tiers: sculpt_terrace (baseRadius 3-12, tiers 1-3, organic rounded cliffs). Overlapping calls can form a ridge; paint_terrain offers precise rectangles, circles or explicit cells for formal shapes.
+- Taller than sculpt_terrace reaches: paint_terrain mountain with the FINAL elevation (it auto-builds support tiers; the elevation ceiling is in its schema, max 4000 cells per call — split big bands). Legality: V-MTN-03 (its rule hint gives the thresholds) asks a tall mountain cell for a full support window within the rule's reach below it, so a sheer face can drop at most that reach — step taller forms, each band inset 1+ cells inside the band one reach below it. Width before height.
 - Edges: smooth:'round' on every organic paint; keep working edges crisp (pond rims, cliff lips a ramp will use). erase_terrain bites coves out of straight coasts; trim_corner for single stubborn corners.
 
-WATER IS A VOCABULARY, NOT A STAMP
-- Give each body a different job and shape: one meandering river (carve_river, 3-5 waypoints, ground level only, width 3-6 — vary width across segments by chaining two calls at a shared waypoint; where a bridge will cross, keep one straight uniform waist 8-10 cells long at width 3-4), one pond cut INTO a terrace, one fall, maybe a composed figure by a paved place (a heart, a ring, lettering — the figure-landscape skill has the drawing rules). Never repeat one pond shape more than twice; a lattice of identical squares reads as wallpaper.
-- Pond in a terrace (the expert habit): a rectangle (12x4, 9x3, 7x7) sunk into a bench — build the bench at elevation N, then paint_terrain water elevation N on interior cells keeping a >= 1-cell ring of the bench's own mountain at exactly N (V-WTR-02 is satisfied by the ring). The terrace edge is the frame; no flower ring needed.
+WATER TECHNIQUES
+- Ground pond: paint_terrain water elevation 0 on open grass. Surrounding flat ground contains it; no mountain rim is needed. Choose its size and outline for the requested scene.
+- River: carve_river makes a ground-level channel through 3-5 waypoints. Where a bridge is needed, reserve a straight uniform span and verify it with find_bridge_sites. Add a river only when the brief calls for one.
+- Pond in a terrace: build the bench at elevation N, then paint_terrain water elevation N on interior cells keeping a >=1-cell ring of mountain at exactly N. Size the pond to leave usable ground for its route and requested details.
 - Waterfall: ONE lip, not drawn falling water. The lip is 1-3 water cells at elevation N framed by mountain at exactly N on both perpendicular sides, with the row directly in front already ONE uniform lower elevation (V-WTR-03). The game animates the fall. Give a fall a downstream: a pool or river below it.
-- Cascade set piece: stacked water bands, one per bench, 2-4 rows deep, stepping down 6-5-4-3-2-1-0 with 1-3 rows of mountain between — a whole slope becomes a water story.
+- Cascade: when requested, repeat the contained pool and framed lip at each level, leaving enough bench depth for containment and any route.
 
 ACCESS AS YOU GO
-- Every catalog ramp climbs exactly ONE layer, so a climb of N layers is N benches with N ramps. find_ramp_sites after each tier lands; place ramps on alternating faces so the route switchbacks. A terraced map wants roughly ten ramps per bridge.
+- Read the catalog ramp heightDrop and use the matching validated anchor for each required transition. find_ramp_sites after a tier lands; choose an orientation that connects the intended route.
 
 FAILURE MODES
-- Pancake (one flat level) and wedding cake (concentric rings) — both are the absence of a plan.
-- Water uphill or unringed: complete the containing ring in the same call or the whole call REVERTS.
+- Match the form to the brief. A flat garden or concentric formal terraces can be intentional; vary levels and outlines when the requested landscape benefits from them.
+- Uncontained elevated water: inspect the banks and repair the missing support before another water call. Read retained changes after any rollback.
 - Sealing the only connector between two areas: confirm a ramp or bridge site exists before raising a wall across a seam.
 
-DONE CHECK: evaluate_map terrainInterest and silhouette >= 6, every bench reachable (find_ramp_sites has answers), one dominant form visible from the low ground, no two water bodies congruent.
+DONE CHECK: requested landforms and water are present, planned routes reach their destinations through placed crossings, and preserved areas remain. A legal ramp site is only a candidate; verify the actual ramp and connecting path. No score threshold or terrain percentage is required.

@@ -10,13 +10,17 @@
  * (see rules/registry.ts); returning an empty array means the rule passes.
  */
 
-import type { ModelSpec } from './model-spec';
+import type { DeckModelSpec, ModelSpec } from './model-spec';
 import type { ProvenanceState } from '../provenance/types';
 import type { ImageAttribution } from '../provenance/image-attribution';
 import type { AnnotationsState } from './annotations';
+import type { RoadMaterialSpec } from './road-material';
 
 // --- Localization ---
 export type Locale = 'en' | 'zh' | 'ja' | 'ru' | 'th' | 'id' | 'fr';
+
+/** A UI string lookup: a locale key and its `{param}` substitutions, answered in the active language. */
+export type Translate = (key: string, params?: Record<string, string | number>) => string;
 
 /**
  * A display name localized into one or more locales. `en` is required as the
@@ -71,6 +75,10 @@ export interface TerrainCell {
 export interface MacroCell {
   zone: CellZone;
   terrain: TerrainCell | null;
+  /** A shore rim cell's own ground when it is sand; a rim cell without it lies over sea. Only a
+   *  planet session canvas sets it, and `grid-model.ts:groundZone` is the one reader. `grid-wire.ts`
+   *  does not carry it: no worker job reads a session canvas. */
+  under?: CellZone.Beach;
 }
 
 // --- Objects ---
@@ -79,17 +87,27 @@ export interface MacroCell {
  * `getCatalogItem(catalogId).category` is the ONE way to ask. Every object resolves, the
  * central plaza included (it is registered in the catalog by id for exactly this reason).
  */
+/** Object footprint turns in degrees, clockwise from the catalog orientation. The share codec
+ *  persists a rotation as its index in this order. */
+export const ROTATIONS = [0, 90, 180, 270] as const;
+export type Rotation = typeof ROTATIONS[number];
+/** `r` turned by `quarterTurns` clockwise quarter turns; negative counts turn back. */
+export function turnRotation(r: Rotation, quarterTurns: number): Rotation {
+  return ((((r + quarterTurns * 90) % 360) + 360) % 360) as Rotation;
+}
+
 export interface PlacedObject {
   id: string;
   catalogId: string;
   position: MacroCoord;
-  rotation: 0 | 90 | 180 | 270;
+  rotation: Rotation;
   elevation: number;
   spanLength?: number;
   corners?: Corners;
   patchOnly?: boolean;
-  /** Self-description for off-catalog objects (the central plaza), which have no CatalogItem.
-   *  When set, these override the catalog so the object renders generically — no special case:
+  /** Self-description for an object whose footprint, icon and colour are per map rather than per
+   *  catalog item (the central plaza). When set, these override the catalog so the object renders
+   *  generically, with no special case:
    *  - width/height: per-map footprint (may be fractional)
    *  - icon: sprite basename (resolved by iconUrl), e.g. 'plaza'
    *  - color: backing fill (hex), e.g. the plaza's grey platform */
@@ -129,17 +147,21 @@ export type PlacementTrait =
   | { type: 'heightDrop'; layers: number }
   | { type: 'surfaceCoating' }
   // A coating flora may stand ON (the game plants flowers and crops on some road
-  // surfaces — the dirt path here): placing flora keeps this coating instead of
-  // stripping it, and the pair passes the standing-on-a-road rule.
+  // surfaces): placing flora keeps this coating instead of stripping it, and the
+  // pair passes the standing-on-a-road rule.
   | { type: 'plantable' }
   | { type: 'exclusionRadius'; radius: number }
   // Footprint that other terrain may use as a structural base (3x3 support), at
-  // the object's elevation — the central plaza today, any such building later.
+  // the object's elevation (the central plaza).
   | { type: 'terrainBase' }
   // May anchor on the half-cell grid in both axes (whole or half integer
   // position), not the macro grid only — the game's exception for ramps and
-  // bridges, which lets a deck align flush with the terrain grid.
-  | { type: 'halfStep' };
+  // bridges, which lets a deck align flush with the terrain grid, and for the
+  // plaza, which the built-in planets place on half cells.
+  | { type: 'halfStep' }
+  // Turns as a whole footprint about its centre (width and height swap) while the map it stands
+  // on is being shaped, and only unlocked; its art rests upright in every footprint while a spin plays each turn.
+  | { type: 'footprintTurn' };
 
 export interface CatalogItem {
   id: string;
@@ -162,6 +184,8 @@ export interface CatalogItem {
   width: number;
   height: number;
   loadValue: number;
+  /** Unmeasured load contributes zero until a value is available. */
+  loadUnknown?: boolean;
   /** Max times this item may be placed on the whole map (omit = unlimited). */
   maxCount?: number;
   /** This item's placement rule is not yet finalized (TBD) — the generator must NOT auto-place it
@@ -172,8 +196,12 @@ export interface CatalogItem {
   rotatable: boolean;
   placementMode: 'point' | 'brush';
   traits: PlacementTrait[];
+  /** Boundary-following surface material; omitted surfaces repeat their catalog icon. */
+  roadMaterial?: RoadMaterialSpec;
   /** Bespoke low-poly 3D model (declarative). Absent → the item falls back to its ItemCategory archetype. */
   model3d?: ModelSpec;
+  /** Parts standing on the deck when the item is placed as a platform object. */
+  deckModel3d?: DeckModelSpec;
   /** Other names the shelf's search should answer to: common alternate names, nicknames, material
    *  or colour words a person would actually type, mixed en/zh (or any locale) in one list, since
    *  search already crosses locales. Authored per item in its own JSON, not derived. */
@@ -189,6 +217,8 @@ export interface PlazaConfig {
   width: number; height: number;
   elevation: number;
   color?: string;
+  /** Footprint rotation. width/height are already the laid footprint. */
+  rotation?: Rotation;
 }
 export interface MapTemplate {
   id: string;
@@ -197,6 +227,12 @@ export interface MapTemplate {
   height: number;
   zones: CellZone[][];
   plaza: PlazaConfig;
+  /** Row-major initial mountain elevations (0 = bare), laid on every fresh state built from this template. */
+  terrain?: Uint8Array;
+  /** Row-major initial water cells (1 = water at the layer `terrain` gives, 0 when absent), laid with `terrain`. */
+  water?: Uint8Array;
+  /** Complete reference grid, including sea outside the saved cell rectangle. Origin uses macro cells. */
+  chunkGrid?: { origin: MacroCoord; columns: number; rows: number };
 }
 
 // --- Grid State ---
@@ -222,6 +258,12 @@ export interface ObjectsDelta {
  *   where needed (see rules/chunk-load.ts).
  */
 export interface GridState {
+  /** Session policy, copied to previews and workers but not stored in map files. */
+  ignoreChunkLoad?: boolean;
+  /** Objects the open stroke or a placement probe took off the map, by id. Volatile, never copied
+   *  or serialized: regional load enforcement judges a placement on the region's net change since
+   *  they were lifted. The command executor clears it when a stroke commits or rolls back. */
+  liftedObjects?: Map<string, PlacedObject>;
   template: MapTemplate;
   cells: MacroCell[][];
   objects: Map<string, PlacedObject>;
@@ -268,22 +310,28 @@ interface CommandBase {
   timestamp: number;
 }
 
+/** A layer-0 (zone) value a terrain command may write. */
+export type GroundZone = CellZone.Void | CellZone.Beach | CellZone.Grass;
+
 export interface PaintTerrainCommand extends CommandBase {
   type: CommandType.PaintTerrain;
   cells: MacroCoord[];
   terrainType: TerrainType;
   elevation: number;
+  /** Layer-0 edit: the cell's zone becomes this before the terrain effect. Only the planet session's registry admits it. */
+  ground?: GroundZone;
 }
 
 export interface EraseTerrainCommand extends CommandBase {
   type: CommandType.EraseTerrain;
   cells: MacroCoord[];
+  /** Layer-0 edit: the cell's zone becomes this before the terrain effect. Only the planet session's registry admits it. */
+  ground?: GroundZone;
 }
 
 export interface PlaceObjectCommand extends CommandBase {
   type: CommandType.PlaceObject;
   object: PlacedObject;
-  loadValue: number;
 }
 
 export interface RemoveObjectCommand extends CommandBase {
@@ -307,8 +355,8 @@ export interface TrimCornersCommand extends CommandBase {
   elevation?: number;
   patchBase?: number;
   /** Road-layer only: carries a rotation change on the command so undo/redo can restore it. */
-  beforeRotation?: 0 | 90 | 180 | 270;
-  afterRotation?: 0 | 90 | 180 | 270;
+  beforeRotation?: Rotation;
+  afterRotation?: Rotation;
 }
 
 /**
@@ -350,6 +398,8 @@ export interface ValidationError {
   severity: 'error' | 'warning';
 }
 export interface ValidationResult { success: boolean; errors: ValidationError[]; }
+/** A refused command and why: the `validation-failed` payload the toast and the map flash read. */
+export interface Refusal { cmd: Command; errors: ValidationError[]; }
 
 // --- Rule System ---
 /**
@@ -415,13 +465,15 @@ export type RegionTool = 'brush' | 'eraser' | 'rect' | 'circle' | 'line' | 'curv
 export type EditorEvents = {
   'cells-changed': { cells: MacroCoord[] };
   'objects-changed': { added?: PlacedObject[]; removed?: string[] };
-  'validation-failed': { cmd: Command; errors: ValidationError[] };
+  'validation-failed': Refusal;
   /** The tool layer now matches the store. The ToolManager and the DrawingTool MIRROR the store's
    *  tool, shape, surface, build floor and brush size, and the canvas writes that mirror in an
    *  effect — which runs after the store has already told its subscribers. Anything that asks a
    *  TOOL a question waits for this, or it asks the tool the user has just left. */
   'tool-synced': { tool: ToolType };
   'catalog-reveal': { catalogId: string };
+  /** A planet-session ground stroke reached past the canvas edge, the planet's size limit. */
+  'ground-clipped': Record<string, never>;
   'history-changed': { canUndo: boolean; canRedo: boolean };
   /** Fired by undo()/redo() with the cells they touched, so the renderer can
    *  flash the reverted/reapplied region without flashing normal edits.
@@ -435,17 +487,10 @@ export type EditorEvents = {
 
 /* ── Terrain generation config (used by the generator + the Generate panel) ── */
 
-/** `designed` is the planet generator (`tools/generation/designer/`): the methodology pipeline the
- *  shelf's planet kinds run, and the default for a recipe that names no algorithm. */
+/** `designed` is the planet generator (`tools/generation/designer/`): the pipeline the shelf's
+ *  planet kinds run, and the default for a recipe that names no algorithm. */
 export type GenerateAlgorithm = 'maze' | 'stencil' | 'designed';
 
-/**
- * A picture to build from: how much of each cell it covers, and what colour it is there.
- *
- * It is DATA rather than a source, because turning a letter or a photograph into pixels needs a
- * canvas and the candidate pipeline runs in a browser-API-free worker. The shell rasterizes once and
- * passes this down; `tools/generation/stencil/stencil.ts` is everything that reads one.
- */
 /**
  * What KIND of picture a stencil was read from, which decides how it is read and how it is matched.
  *
@@ -460,6 +505,13 @@ export type GenerateAlgorithm = 'maze' | 'stencil' | 'designed';
  */
 export type StencilSourceNature = 'flat' | 'photographic';
 
+/**
+ * A picture to build from: how much of each cell it covers, and what colour it is there.
+ *
+ * It is DATA rather than a source, because turning a letter or a photograph into pixels needs a
+ * canvas and the candidate pipeline runs in a browser-API-free worker. The shell rasterizes once and
+ * passes this down; `tools/generation/stencil/stencil.ts` is everything that reads one.
+ */
 export interface Stencil {
   width: number;
   height: number;
@@ -482,6 +534,10 @@ export interface Stencil {
    *  no source picture to have a nature; the readers then take the photographic path. */
   nature?: StencilSourceNature;
 }
+
+/** How an object stencil met its regional load budget: `adapted` placed a sparser set that keeps
+ *  the structure, `blocked` could not fit even the structural minimum and placed nothing. */
+export type StencilBudgetOutcome = 'adapted' | 'blocked';
 
 /** How a stencil is read onto the map. `shape` builds the covered cells (the text mode); `color`
  *  ignores the outline and matches each cell's colour to the terrain that draws in it (the image

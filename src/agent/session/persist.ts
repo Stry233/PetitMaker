@@ -2,13 +2,14 @@
  * Persists a versioned session envelope. Provider raw blocks and result images are omitted; reasoning
  * is stored as bounded digests. Record visibility marks live beside the log and share its lifecycle.
  */
-import { PREFS, readPref, writePref } from '../../core/runtime/prefs';
+import { readPref, removePref, writePref } from '../../core/runtime/prefs';
+import { BASE_SUPPORT } from '../../core/model/game-profile';
 import { append, deepFreeze, eventsOf, type SessionLog } from '../core/log';
 import { isJobActive } from '../core/loop';
 import { REASONING_EXCERPT_CHARS, type Part, type SessionEvent } from '../core/types';
 import { validStoredEvents } from './validate-log';
 
-export const LOG_VERSION = 3;
+const LOG_VERSION = 3;
 
 interface StoredEnvelope { v: number; events: SessionEvent[]; nextSeq?: number }
 
@@ -21,6 +22,29 @@ function digestReasoning(p: Part): Part {
     done: true,
     chars: p.chars ?? p.text.length,
   };
+}
+
+type Violation = NonNullable<NonNullable<Extract<SessionEvent, { kind: 'toolResult' }>['detail']>['violations']>[number];
+
+/** Rule message keys that 1.4 logs stored under earlier names, with the params their current copy reads. */
+const RENAMED_RULE_MESSAGES: Record<string, { message: string; params?: Record<string, number> }> = {
+  'error.need_3x3_base': { message: 'error.need_base_support', params: { window: BASE_SUPPORT.window, reach: BASE_SUPPORT.reach } },
+  'error.ground_under_plaza': { message: 'error.ground_under_object' },
+  'error.tree_too_close': { message: 'error.too_close_same_kind' },
+};
+
+function renameViolation(v: Violation): Violation {
+  const renamed = RENAMED_RULE_MESSAGES[v.message];
+  if (!renamed) return v;
+  const params = renamed.params ? { ...renamed.params, ...v.params } : v.params;
+  return { ruleId: v.ruleId, message: renamed.message, ...(params ? { params } : {}) };
+}
+
+/** A stored event with its rule messages under their current keys. */
+function upgradeStored(e: SessionEvent): SessionEvent {
+  const violations = e.kind === 'toolResult' ? e.detail?.violations : undefined;
+  if (e.kind !== 'toolResult' || !e.detail || !violations?.some((v) => v.message in RENAMED_RULE_MESSAGES)) return e;
+  return { ...e, detail: { ...e.detail, violations: violations.map(renameViolation) } };
 }
 
 function stripForStorage(e: SessionEvent): SessionEvent {
@@ -44,7 +68,7 @@ export function deserializeLog(raw: string | null, now: () => number = Date.now)
   if (!parsed || typeof parsed !== 'object') return null;
   const { v, events, nextSeq } = parsed as Partial<StoredEnvelope>;
   if (v !== LOG_VERSION || !validStoredEvents(events)) return null;
-  const frozen = events.map((e) => deepFreeze(e)) as SessionEvent[];
+  const frozen = events.map((e) => deepFreeze(upgradeStored(e))) as SessionEvent[];
   const maxSeq = frozen.reduce((m, e) => Math.max(m, e.seq), 0);
   if (nextSeq !== undefined && (!Number.isSafeInteger(nextSeq) || nextSeq <= maxSeq)) return null;
   return { events: frozen, now, nextSeq: nextSeq ?? maxSeq + 1, listeners: new Set() };
@@ -75,7 +99,7 @@ export function saveLog(log: SessionLog): StorageHealth {
 }
 
 /** Settled record IDs filed out of the job zone or removed from history. */
-export interface RecordMarks { filed: readonly number[]; cleared: readonly number[] }
+interface RecordMarks { filed: readonly number[]; cleared: readonly number[] }
 
 export const NO_MARKS: RecordMarks = { filed: [], cleared: [] };
 
@@ -103,7 +127,7 @@ export function loadMarks(): RecordMarks {
 
 /** Removes the marks envelope. */
 export function clearMarks(): void {
-  try { localStorage.removeItem(PREFS.agentMarksV3.key); } catch { /* storage is gone */ }
+  removePref('agentMarksV3');
 }
 
 /** Reads the stored session and preserves unreadable source bytes for the recovery export. */

@@ -1,5 +1,5 @@
 /*
- * fill-graphics.ts — a Graphics that replays its own fills on the Canvas2D fallback.
+ * A Graphics that replays its own fills on the Canvas2D fallback.
  *
  * The Canvas2D renderer retains no geometry: every rendered frame walks a Graphics' `graphicsData`
  * and re-issues each fill. Pixi's CanvasGraphicsRenderer converts the fill colour through

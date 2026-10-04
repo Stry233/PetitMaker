@@ -1,17 +1,19 @@
+import { createSignal } from '../../../core/runtime/signal';
+
 let leases = 0;
-const listeners = new Set<() => void>();
+const leasesChanged = createSignal();
 
 export function retainNeuralRuntime(): () => void {
   leases++;
-  for (const listener of listeners) listener();
+  leasesChanged.emit();
   let released = false;
   return () => {
     if (released) return;
     released = true;
     leases--;
-    for (const listener of listeners) listener();
+    leasesChanged.emit();
   };
 }
 
 export function hasNeuralConsumers(): boolean { return leases > 0; }
-export function observeNeuralConsumers(listener: () => void): void { listeners.add(listener); }
+export function observeNeuralConsumers(listener: () => void): void { leasesChanged.subscribe(listener); }

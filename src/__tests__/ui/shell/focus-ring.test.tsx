@@ -66,16 +66,16 @@ describe('the focus ring', () => {
     // The control's own ring, and the one a text field moves up to its wrapper. The field's reads a
     // variable of its own FIRST, so that question can be answered separately, and falls through to
     // the same two.
-    const rings = css.match(/outline: 3px solid [^;]+;/g) ?? [];
+    const rings = css.match(/outline: var\(--focus-width\) solid [^;]+;/g) ?? [];
     expect(rings.length).toBeGreaterThanOrEqual(2);
     for (const ring of rings) {
       expect(ring.replace(' !important', '')).toMatch(
-        new RegExp(`^outline: 3px solid (var\\(--focus-ring-field, )?var\\(--focus-ring, ${RING_FALLBACK}\\)\\)?;$`),
+        new RegExp(`^outline: var\\(--focus-width\\) solid (var\\(--focus-ring-field, )?var\\(--focus-ring, ${RING_FALLBACK}\\)\\)?;$`),
       );
     }
     // The halo is the one that falls back to nothing: a second ring is this frame's own idea, and
     // `transparent` is a valid colour, so the declaration still parses where none is named.
-    expect(css).toMatch(/box-shadow: 0 0 0 7px var\(--focus-halo, transparent\);/);
+    expect(css).toMatch(/box-shadow: 0 0 0 var\(--control-clearance\) var\(--focus-halo, transparent\);/);
   });
 
   it('is this frame\'s own three colours for as long as the shell is mounted', () => {

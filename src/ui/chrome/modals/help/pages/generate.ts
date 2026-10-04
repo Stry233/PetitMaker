@@ -1,5 +1,5 @@
 /*
- * pages/generate.ts — the 生成 group, one page per kind the shelf itself offers: the overview of
+ * The Generating group, one page per kind the shelf itself offers: the overview of
  * the shared machinery, then Planet, Maze, Letter and Picture, then the two deep dives every kind
  * leans on (recipes and the region).
  *
@@ -13,6 +13,7 @@ export const GENERATE_PAGES: readonly HelpPage[] = [
   {
     id: 'generate',
     group: 'generate',
+    lite: { figure: undefined },
     titleKey: 'help.generate.title',
     ledeKey: 'help.generate.lede',
     entryKey: 'help.generate.entry',
@@ -79,6 +80,7 @@ export const GENERATE_PAGES: readonly HelpPage[] = [
   },
   {
     id: 'gen-letter',
+    lite: false,
     group: 'generate',
     titleKey: 'help.genletter.title',
     navKey: 'help.genletter.nav',
@@ -100,6 +102,7 @@ export const GENERATE_PAGES: readonly HelpPage[] = [
   },
   {
     id: 'gen-picture',
+    lite: false,
     group: 'generate',
     titleKey: 'help.genpicture.title',
     navKey: 'help.genpicture.nav',

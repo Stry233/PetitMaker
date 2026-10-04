@@ -1,3 +1,4 @@
+import { NEIGHBORS4 } from '../../../../core/model/grid-model';
 /**
  * WHERE A STREET ENDS, read off a pavement mask alone.
  *
@@ -22,15 +23,13 @@ const TERMINUS_AHEAD = 4;
 const inside = (x: number, y: number, W: number, H: number): boolean =>
   x >= 0 && y >= 0 && x < W && y < H;
 
-const NB4 = [[1, 0], [-1, 0], [0, 1], [0, -1]] as const;
-
 /** Walks every street end of a pavement mask, calling back with its face (as flat indices) and the
  *  heading it faces. */
 export function eachTerminus(
   paved: Uint8Array, W: number, H: number,
   visit: (face: number[], dx: number, dy: number) => void,
 ): void {
-  for (const [dx, dy] of NB4) {
+  for (const [dx, dy] of NEIGHBORS4) {
     // The perpendicular axis a face runs along.
     const px = dy, py = dx;
     const open = new Uint8Array(W * H);

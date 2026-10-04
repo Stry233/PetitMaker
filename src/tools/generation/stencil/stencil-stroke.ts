@@ -1,8 +1,9 @@
 /** Font-weight selection and topology-preserving cleanup for text stencils. */
 import { bridgesDaylight, COVERAGE_ON, TOUCHED_INK, scriptOf, type Stencil } from './stencil';
 import { textGraphemes } from './stencil-text-segments';
+import { NEIGHBORS4_NESW } from '../../../core/model/grid-model';
 
-export interface GlyphBox { width: number; height: number }
+interface GlyphBox { width: number; height: number }
 
 function glyphCount(text: string): number {
   return Math.max(1, textGraphemes(text).length);
@@ -71,7 +72,7 @@ export function glyphWeight(text: string, box: GlyphBox): number {
 
 /** A wire tip has no neighboring body and must survive outline cleanup. */
 function hangsOffABody(at: (x: number, y: number) => number, x: number, y: number): boolean {
-  for (const [dx, dy] of [[0, -1], [1, 0], [0, 1], [-1, 0]] as const) {
+  for (const [dx, dy] of NEIGHBORS4_NESW) {
     const nx = x + dx, ny = y + dy;
     if (!at(nx, ny)) continue;
     return at(nx, ny - 1) + at(nx + 1, ny) + at(nx, ny + 1) + at(nx - 1, ny) >= 3;

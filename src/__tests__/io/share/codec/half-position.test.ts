@@ -2,7 +2,7 @@
 // while half-cell maps must round-trip exact coordinates through both the codec and image path.
 import { describe, it, expect } from 'vitest';
 import { encodeMapPayload, decodeMapPayload } from '../../../../io/share/codec/payload';
-import { createBlankGridState } from '../../../../io/share/codec/blank-grid';
+import { createGridState } from '../../../../core/model/planet';
 import { canonicalize, canonicalBytes } from '../../../../io/share/canonical';
 import { encodeMap, decodeMap, MODEL_VARIANTS } from '../../../../io/share/codec/map-coder';
 import { RangeEncoder, RangeDecoder } from '../../../../io/share/codec/bitio';
@@ -10,7 +10,7 @@ import { tokensOf, parseToken } from '../../../../io/share/codec/grid-io';
 import { getMapTemplate } from '../../../../config/maps';
 import { buildShareCode, importFromRaster } from '../../../../io/share';
 import { CURRENT_VERSION } from '../../../../io/save-format';
-import { TerrainType } from '../../../../core/model/types';
+import { TerrainType, type Rotation } from '../../../../core/model/types';
 import type { GridState } from '../../../../core/model/types';
 import type { SaveObject } from '../../../../io/save-format';
 
@@ -20,7 +20,7 @@ const unhex = (value: string) => Uint8Array.from(value.match(/../g) ?? [], (byte
 
 function place(
   s: GridState, id: string, catalogId: string, x: number, y: number,
-  rotation: 0 | 90 | 180 | 270, elevation: number, spanLength?: number,
+  rotation: Rotation, elevation: number, spanLength?: number,
 ): void {
   s.objects.set(id, {
     id, catalogId, position: { x, y }, rotation, elevation,
@@ -30,7 +30,7 @@ function place(
 
 /** Fixed whole-cell fixture independent of generator output. */
 function wholeMap(): GridState {
-  const s = createBlankGridState('hexia');
+  const s = createGridState(getMapTemplate('hexia'));
   for (let y = 20; y < 26; y++) for (let x = 20; x < 28; x++) {
     s.cells[y]![x]!.terrain = { type: TerrainType.Mountain, elevation: 2 };
   }
@@ -46,7 +46,7 @@ describe('share codec: half positions are additive', () => {
   it('decodes the pinned pre-mask frame 4 bytes', async () => {
     const bytes = unhex('5032040001056865786961fd3134f1608676390b00010868616c662d70696e74cb594a33adc19c6f761a4551f77c4e5cd6f16ab700cf52a1e5405b5d1a920f0000000000000344927b32bc639534e56b6a2c4ab69c73f633d9fbdab19376000c66d4970d587d0f00000000000000011b7de923f0005597ce127d6bb1f38e7828b110f000000000');
     const decoded = await decodeMapPayload(bytes);
-    expect(canonicalBytes(decoded.canonical)).toEqual(canonicalBytes(canonicalize(wholeMap())));
+    expect(canonicalBytes(decoded.canonical)).toEqual(canonicalBytes({ ...canonicalize(wholeMap()), version: 1 }));
   });
 
   it('returns a map with no half position exactly', async () => {
@@ -80,7 +80,7 @@ describe('share codec: half positions are additive', () => {
 
   it('refuses a position a shape cannot carry', () => {
     const template = getMapTemplate('hexia');
-    const cells = tokensOf(canonicalize(createBlankGridState('hexia')).cells).map(parseToken);
+    const cells = tokensOf(canonicalize(createGridState(getMapTemplate('hexia'))).cells).map(parseToken);
     const at = (x: number, y: number): SaveObject[] =>
       [{ id: 'o0', catalogId: 'ramp-plank', x, y, rotation: 0 }];
     const code = (objects: SaveObject[], variant: number) =>
@@ -93,7 +93,7 @@ describe('share codec: half positions are additive', () => {
   it('costs nothing measurable per object to carry the half-capable shape', () => {
     // One adaptive symbol per object keeps the half-position flag below a quarter bit each here.
     const template = getMapTemplate('hexia');
-    const cells = tokensOf(canonicalize(createBlankGridState('hexia')).cells).map(parseToken);
+    const cells = tokensOf(canonicalize(createGridState(getMapTemplate('hexia'))).cells).map(parseToken);
     const objects: SaveObject[] = [];
     for (let i = 0; i < 1000; i++) {
       objects.push({ id: `o${i}`, catalogId: 'tree-ginkgo', x: 20 + (i % 40), y: 20 + Math.floor(i / 40), rotation: 0 });
@@ -121,7 +121,7 @@ describe('share codec: half positions are additive', () => {
 
   it('carries a half anchor under both parities', () => {
     const template = getMapTemplate('hexia');
-    const cells = tokensOf(canonicalize(createBlankGridState('hexia')).cells).map(parseToken);
+    const cells = tokensOf(canonicalize(createGridState(getMapTemplate('hexia'))).cells).map(parseToken);
     const objects: SaveObject[] = [
       { id: 'o0', catalogId: 'ramp-plank', x: 10.5, y: 11, rotation: 0 },
       { id: 'o1', catalogId: 'bridge-teak', x: 20, y: 21.5, rotation: 90, spanLength: 3 },

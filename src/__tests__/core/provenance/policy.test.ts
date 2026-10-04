@@ -1,4 +1,3 @@
-// src/__tests__/core/provenance/policy.test.ts
 import { describe, it, expect } from 'vitest';
 import { applyOpToTaint, deriveSummary, PROVENANCE_POLICY } from '../../../core/provenance/policy';
 import { ProvSource, TaintFlag, hasFlag, type UnitTaint, type SessionFlags } from '../../../core/provenance/types';

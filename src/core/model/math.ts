@@ -1,4 +1,3 @@
-// src/core/model/math.ts
 // Tiny shared numeric primitives (primitives-floor: pure, state-free). Every layer that needs a
 // generic clamp/lerp imports these instead of re-rolling its own.
 

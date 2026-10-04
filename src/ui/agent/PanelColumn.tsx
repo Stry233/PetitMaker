@@ -6,6 +6,7 @@ import { providerName } from '../../i18n/providers';
  */
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties } from 'react';
 import { AnimatePresence } from 'framer-motion';
+import { onMapEdited } from '../../core/runtime/map-edits';
 import { answerGate } from '../../agent/core/gates';
 import { eventsOf } from '../../agent/core/log';
 import type { AskRecord, JobView } from '../../agent/core/project-view';
@@ -16,13 +17,14 @@ import { modelCapabilities, subscribeCatalog, catalogVersion, ensureModelCatalog
 import { PROVIDER_META } from '../../agent/providers/defaults';
 import { serializeLog } from '../../agent/session/persist';
 import { panelView, setReadTools, useAgentSession } from '../../agent/session/store';
-import { TOOL_SCHEMAS, WRITE_TOOLS } from '../../agent/tools/tools';
+import { TOOL_SCHEMAS, WRITE_TOOLS } from '../../agent/tools';
 import { resolveCells } from '../../agent/tools/tools-common';
 import { clearRegionSelection } from '../../core/runtime/region-brush';
 import { showToast } from '../../core/runtime/toast-bus';
 import { downloadJSON } from '../../io/image-export';
 import { host } from '../../kit/host';
-import { localizedName, useT } from '../../i18n/context';
+import { useT } from '../../i18n/context';
+import { usePlanetName } from '../chrome/modals/planet/use-planet-library';
 import { regionBounds, type RegionBounds } from '../../state/region-bounds';
 import { useEditorStore } from '../../state/store';
 import { ensureVisionVerdict, knownVision, visionKey } from './vision-verdict';
@@ -37,15 +39,14 @@ import { callFootprint, MapShot, MarkedShot, unionBox } from './map-shot';
 import { RegionVignette } from './region-chip';
 import { Sketchbook } from './sketchbook/Sketchbook';
 import { proposeSketches } from './sketchbook/propose';
-import { amplitude, cssMotion, seconds } from './motion';
+import { amplitude, cssMotion, seconds } from '../design/motion';
 import { OPTION_THUMB } from './OptionPick';
 import { makePanelToolDeps, newRunnerConfig, refreshRunnerConfig } from './panel-runner';
 import { GATE_BORROW, JOB_ZONE_FLOOR, PanelShell, PINNED_HEIGHT } from './PanelShell';
 import { POSTCARD } from './tokens';
 import { dayOf, type Day } from './HistoryStrip';
 import type { DockActId } from './DeskHeader';
-import { prettyModel } from './pretty-model';
-import { shortModel } from './pretty-model';
+import { prettyModel, shortModel } from './pretty-model';
 import { OVERSIGHT_COPY } from './setup-parts';
 import { connectionReady, isConnected, runnerSettings, setLiveJobStop, useAgentPanelSettings } from './settings';
 
@@ -93,21 +94,7 @@ function useUndoDepth(epoch: number): number | undefined {
 
   useEffect(() => {
     if (!executor || !eventBus) return undefined;
-    let frame = 0;
-    const read = () => {
-      if (frame) return;
-      frame = requestAnimationFrame(() => {
-        frame = 0;
-        setDepth(executor.getUndoStackSize());
-      });
-    };
-    eventBus.on('cells-changed', read);
-    eventBus.on('objects-changed', read);
-    return () => {
-      if (frame) cancelAnimationFrame(frame);
-      eventBus.off('cells-changed', read);
-      eventBus.off('objects-changed', read);
-    };
+    return onMapEdited(eventBus, () => { setDepth(executor.getUndoStackSize()); }, { frame: true });
   }, [executor, eventBus]);
 
   return depth;
@@ -116,7 +103,7 @@ function useUndoDepth(epoch: number): number | undefined {
 /** Debounce before recomputing map sketch suggestions, in ms. */
 const MAP_QUIET_MS = 400;
 
-export interface PanelColumnProps {
+interface PanelColumnProps {
   /** Whether the mounted panel is visible. */
   open: boolean;
   /** Whether CharacterHost renders the live character outside this tree. */
@@ -152,11 +139,11 @@ export default function PanelColumn({ open, hosted = false, veiled = false }: Pa
   // The panel and map scope controls share one region-brush activation flag.
   const selectingRegion = useEditorStore((s) => s.selectingRegion);
   const setSelectingRegion = useEditorStore((s) => s.setSelectingRegion);
-  const template = useEditorStore((s) => s.gridState?.template.name);
+  const template = useEditorStore((s) => s.gridState?.template);
   const liveMapId = useEditorStore((s) => s.gridState?.template.id);
   // The editor locale seeds assistant language when the order has no clear language.
   const uiLocale = useEditorStore((s) => s.locale);
-  const mapName = template ? localizedName(template, uiLocale) : '';
+  const mapName = usePlanetName(template);
   const registry = useEditorStore((s) => s.commandExecutor)?.getRegistry();
   const undoDepth = useUndoDepth(epoch);
 
@@ -165,12 +152,12 @@ export default function PanelColumn({ open, hosted = false, veiled = false }: Pa
   // A provider probe may revoke optimistic vision support inferred from the model id.
   const probeKey = visionKey(armed.providerId, armed.customBaseUrl, model);
   const [, setVerdictEpoch] = useState(0);
-  const keyed = armed.apiKey !== '';
-  useEffect(() => { if (keyed) void ensureModelCatalog(); }, [keyed, armed.providerId, model]);
+  useEffect(() => { if (connected) void ensureModelCatalog(); }, [connected, armed.providerId, model]);
   useEffect(() => {
+    if (!connected) return;
     ensureVisionVerdict({ ...armed, model }, () => setVerdictEpoch((n) => n + 1));
-    // Key presence retriggers a skipped probe; the secret itself is not a dependency.
-  }, [probeKey, keyed]); // eslint-disable-line react-hooks/exhaustive-deps
+    // Connection readiness retriggers a skipped probe without retaining the credential as a dependency.
+  }, [probeKey, connected]); // eslint-disable-line react-hooks/exhaustive-deps
   useSyncExternalStore(subscribeCatalog, catalogVersion);
   const capability = modelCapabilities(armed.providerId, model, armed.customBaseUrl);
   const vision = knownVision(probeKey) ?? (capability?.input ? capability.input.includes('image') : PROVIDER_META[armed.providerId].vision(model));

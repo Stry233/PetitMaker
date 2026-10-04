@@ -19,14 +19,14 @@ import { getObjectIndex, roadLookup } from '../../../state/object-index';
 import { CANONICAL_ROAD_STATES, cornersMatch, detectRoadConn } from '../../../core/edge-cut/road-cut-states';
 import { roadShapePoints } from '../../../core/edge-cut/road-shape';
 import { applyAutoEdgeCut } from '../../../tools/edge-cut/auto-edge-cut';
-import { roadTrimmedOutline } from '../../../canvas/map2d/layers/ghost-geometry';
+import { roadTrimmedOutline } from '../../../canvas/ghost-geometry';
 import { cellDecals } from '../../../canvas/map3d/build/overlay-decals';
 import { mapCenterOffset } from '../../../canvas/map3d/core/coords';
 import {
   CommandType, TerrainType,
   type AutoEdgeCut, type Corners, type EditorEvents, type GridState, type MacroCoord,
 } from '../../../core/model/types';
-import type { RowSpan } from '../../../canvas/map2d/layers/ghost-geometry';
+import type { RowSpan } from '../../../canvas/ghost-geometry';
 import type { TrimmedCell } from '../../../tools/edge-cut/trim-preview';
 import { makeState, setTerrain } from '../../rules/_helpers';
 import { makeToolCtx } from '../_tool-ctx';
@@ -64,7 +64,6 @@ function pave(w: ReturnType<typeof world>, cells: MacroCoord[]): void {
     w.executor.execute({
       type: CommandType.PlaceObject, timestamp: 1,
       object: { id: `built-${c.x}-${c.y}`, catalogId: 'path-overgrown-dirt', position: c, rotation: 0, elevation: 0 },
-      loadValue: 0,
     });
   }
 }
@@ -313,7 +312,7 @@ describe('the views draw the promised road shape', () => {
   // WIRING, not geometry: this compares the decal against the shared builder, so it pins that the
   // 3D ghost goes through it and places it on the right cell — it cannot notice a bug inside the
   // builder itself. The builder's own coordinates are pinned against hand-worked literals in
-  // `__tests__/core/road-shape.test.ts`.
+  // `__tests__/core/edge-cut/road-shape.test.ts`.
   it('3D decal: the polygon is the shared road shape, vertex for vertex', () => {
     const s = makeState(20, 20) as GridState;
     const fan = [...CANONICAL_ROAD_STATES[1]!] as Corners;

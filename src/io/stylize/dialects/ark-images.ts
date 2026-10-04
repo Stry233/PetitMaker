@@ -7,8 +7,9 @@
 // draws the AI notation itself.
 import type { AspectOption } from '../normalize';
 import { classify, scrub } from './errors';
-import { fetchProviderImage } from './fetch-image';
-import { StylizeError, type DialectConfig, type StylizeDialect } from './types';
+import { firstReplyImage } from './fetch-image';
+import { StylizeError, type StylizeDialect } from './types';
+import { baseOf, orderByRole } from './request';
 
 const DEFAULT_BASE = 'https://ark.cn-beijing.volces.com';
 
@@ -35,12 +36,6 @@ const ASPECTS: readonly AspectOption[] = [
   { id: '9:16', ratio: 9 / 16 },
 ];
 
-function baseOf(cfg: DialectConfig): string {
-  return cfg.baseUrl || DEFAULT_BASE;
-}
-
-interface GenerationsResponse { data?: Array<{ b64_json?: string; url?: string }> }
-
 export const arkImagesDialect: StylizeDialect = {
   aspects: ASPECTS,
   maxEdge: 2048,
@@ -51,7 +46,7 @@ export const arkImagesDialect: StylizeDialect = {
   async listModels(cfg, signal) {
     let res: Response;
     try {
-      res = await fetch(`${baseOf(cfg)}/api/v3/models`, {
+      res = await fetch(`${baseOf(cfg, DEFAULT_BASE)}/api/v3/models`, {
         headers: { Authorization: `Bearer ${cfg.key}` },
         signal,
       });
@@ -71,7 +66,7 @@ export const arkImagesDialect: StylizeDialect = {
   async generate(cfg, req, signal) {
     // Source first, the style anchor after it: Seedream reads the array in order, and the prompt's
     // role labels speak of the map before the reference.
-    const ordered = [...req.images].sort((a, b) => (a.role === 'source' ? -1 : 0) - (b.role === 'source' ? -1 : 0));
+    const ordered = orderByRole(req.images, ['source'], 'keep');
     if (ordered.length === 0) throw new StylizeError('bad_response', 'no image supplied');
     const urls = ordered.map((i) => i.dataUrl);
 
@@ -87,7 +82,7 @@ export const arkImagesDialect: StylizeDialect = {
 
     let res: Response;
     try {
-      res = await fetch(`${baseOf(cfg)}/api/v3/images/generations`, {
+      res = await fetch(`${baseOf(cfg, DEFAULT_BASE)}/api/v3/images/generations`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${cfg.key}` },
         body: JSON.stringify(body),
@@ -101,10 +96,6 @@ export const arkImagesDialect: StylizeDialect = {
     try { json = raw ? JSON.parse(raw) : undefined; } catch { json = raw; }
     if (!res.ok) throw classify(res.status, json);
 
-    const item = (json as GenerationsResponse).data?.[0];
-    if (!item) throw new StylizeError('bad_response');
-    if (item.b64_json) return `data:image/png;base64,${item.b64_json}`;
-    if (item.url) return fetchProviderImage(item.url, signal);
-    throw new StylizeError('bad_response');
+    return firstReplyImage(json, signal);
   },
 };

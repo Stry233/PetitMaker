@@ -1,5 +1,5 @@
 /*
- * models.ts — the weights, one file per style, as URLs the worker fetches on first use.
+ * The weights, one file per style, as URLs the worker fetches on first use.
  *
  * Each is a ~4 MB fp16 ONNX graph distilled in the project's own training studio; a style's file
  * is requested only when that style is first drawn, so the app bundle carries these URLs and nothing

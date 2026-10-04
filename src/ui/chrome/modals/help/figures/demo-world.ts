@@ -1,5 +1,5 @@
 /*
- * demo-world.ts — a real, self-contained editor world for a Help Center figure.
+ * A real, self-contained editor world for a Help Center figure.
  *
  * A demo is not a drawing of the editor, it IS the editor at miniature: a real planet template's
  * `GridState` under a `CommandExecutor` wired to the full rule registry, mutated by the same macros
@@ -14,14 +14,13 @@ import {
   type EditorEvents,
   type GridState,
   type MacroCoord,
-  type MapTemplate,
   type PlacedObject,
-  type ValidationError,
+  type ValidationError, type Rotation,
 } from '../../../../../core/model/types';
-import { createGrid, createPlazaObject } from '../../../../../core/model/grid-model';
+import { createGridState } from '../../../../../core/model/planet';
 import { createAnnotationsState, type MapAnnotation } from '../../../../../core/model/annotations';
 import { getMapTemplate } from '../../../../../config/maps';
-import { CommandExecutor } from '../../../../../core/commands/command-executor';
+import type { CommandExecutor } from '../../../../../core/commands/command-executor';
 import { applyAutoEdgeCut } from '../../../../../tools/edge-cut/auto-edge-cut';
 import { EdgeCutTool } from '../../../../../tools/edge-cut/edge-cut-tool';
 import type { ToolContext } from '../../../../../tools/runtime/types';
@@ -30,14 +29,14 @@ import { soleLegalWaterLayer } from '../../../../../tools/paint/water-layers';
 import { EventBus } from '../../../../../core/commands/event-bus';
 import { createDefaultRegistry } from '../../../../../rules/index';
 import { roadLookup } from '../../../../../state/object-index';
-import { catalogLoadValue } from '../../../../../state/catalog';
+import { createExecutor } from '../../../../../state/executor';
 import { objectPlacementCommand } from '../../../../../tools/objects/object-placer';
 import { paint } from '../../../../../tools/macros/terrain';
 import type { KitContext } from '../../../../../kit/context';
 
 /** A snapshot of the last refusal the rules made in this world, ready for the toast. `tone` is
  *  the live toast's own: a refused command toasts 'error', a reverted stroke 'warning'. */
-export interface DemoRefusal {
+interface DemoRefusal {
   message: string;
   params?: Record<string, string | number>;
   tone: 'error' | 'warning';
@@ -56,8 +55,6 @@ export class DemoWorld {
   readonly bus: EventBus<EditorEvents>;
   readonly executor: CommandExecutor;
   readonly kit: KitContext;
-  /** Bumped on every cells/objects/history change — the still-mode dirty check. */
-  version = 0;
   /** The most recent rule refusal, exactly as the live toast would say it. */
   refusal: DemoRefusal | null = null;
   /** The visitor's own auto-trim setting (`state/slices/edit.ts:autoEdgeCut`), handed in by the
@@ -70,25 +67,10 @@ export class DemoWorld {
   private strokeWater = false;
 
   constructor(templateId?: string) {
-    const template: MapTemplate = getMapTemplate(templateId);
-    this.state = {
-      template,
-      cells: createGrid(template),
-      objects: new Map(),
-      lockedLayers: new Set(),
-    };
-    // The plaza is a locked object, not a zone; without it the square is bare grass.
-    const plaza = createPlazaObject(template);
-    if (plaza) this.state.objects.set(plaza.id, plaza);
+    this.state = createGridState(getMapTemplate(templateId));
     this.bus = new EventBus<EditorEvents>();
-    this.executor = new CommandExecutor(
-      this.state, this.bus, createDefaultRegistry(), roadLookup(this.state), catalogLoadValue,
-    );
+    this.executor = createExecutor(this.state, createDefaultRegistry(), this.bus);
     this.kit = { state: this.state, executor: this.executor, registry: this.executor.getRegistry() };
-    const bump = () => { this.version++; };
-    this.bus.on('cells-changed', bump);
-    this.bus.on('objects-changed', bump);
-    this.bus.on('history-applied', bump);
     this.bus.on('validation-failed', ({ errors }) => {
       const first = errors[0];
       if (first) this.refusal = { message: first.message, params: first.messageParams, tone: 'error' };
@@ -108,7 +90,7 @@ export class DemoWorld {
    *  the object layer's squash animation must be requested before the wrapper is created. */
   place(
     catalogId: string, x: number, y: number,
-    opts?: { rotation?: 0 | 90 | 180 | 270; elevation?: number; plop?: (id: string) => void },
+    opts?: { rotation?: Rotation; elevation?: number; plop?: (id: string) => void },
   ): string | null {
     const id = `help-${catalogId}-${this.placeSeq++}`;
     const candidate: PlacedObject = {
@@ -119,7 +101,7 @@ export class DemoWorld {
   }
 
   /** Ask the rules whether a placement would stand, with no execution and no event. */
-  canPlace(catalogId: string, x: number, y: number, rotation: 0 | 90 | 180 | 270 = 0, elevation = 0): boolean {
+  canPlace(catalogId: string, x: number, y: number, rotation: Rotation = 0, elevation = 0): boolean {
     const candidate: PlacedObject = {
       id: 'help-probe', catalogId, position: { x, y }, rotation, elevation,
     };
@@ -194,7 +176,6 @@ export class DemoWorld {
       collapseHistory: (start) => this.executor.collapseHistory(start),
     };
     new EdgeCutTool().onPointerDown({ x, y }, { x, y }, ctx as unknown as ToolContext);
-    this.touch();
   }
 
   undo(): boolean { return this.executor.undo(); }
@@ -203,9 +184,5 @@ export class DemoWorld {
   /** Append a plan note the way the annotations slice does: the slice's own state ctor, one push. */
   addNote(note: MapAnnotation): void {
     (this.state.annotations ??= createAnnotationsState()).items.push(note);
-    this.touch();
   }
-
-  /** Announce an out-of-band state change (annotations, which ride beside the command stream). */
-  touch(): void { this.version++; }
 }

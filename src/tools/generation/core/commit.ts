@@ -1,4 +1,3 @@
-// src/tools/generation/commit.ts
 import { CommandType, TerrainType, type PaintTerrainCommand, type MacroCoord } from '../../../core/model/types';
 import type { TerrainPlan } from './types';
 

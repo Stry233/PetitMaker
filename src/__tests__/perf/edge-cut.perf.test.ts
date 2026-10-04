@@ -1,5 +1,5 @@
 /*
- * edge-cut.perf.test.ts — the edge-cut kernel and the road/terrain geometry it feeds.
+ * The edge-cut kernel and the road/terrain geometry it feeds.
  *
  * Covers the paths every trimmed cell and every road surface pay on a real map: the silhouette
  * primitive swept over every cell (what a full redraw reads), one reconcile pass over a changed
@@ -121,7 +121,7 @@ describe.runIf(PERF)('perf: edge-cut', () => {
         type: CommandType.PaintTerrain, timestamp: Date.now(),
         cells: PLATEAU, terrainType: TerrainType.Mountain, elevation: 1,
       } as Command);
-      w.executor.commitStrokeGroup(start);
+      w.executor.commitStroke(start);
     };
     await s.bench('auto-trim/large-stroke', () => {
       applyAutoEdgeCut(

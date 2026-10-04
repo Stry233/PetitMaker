@@ -14,9 +14,19 @@
   "color": "#797a7b",
   "width": 1,
   "height": 1,
-  "loadValue": 10,
+  "loadValue": 0,
   "rotatable": false,
   "placementMode": "brush",
+  "roadMaterial": {
+    "feather": 0.06,
+    "edge": { "color": "#a3a39b", "pattern": "slabs" },
+    "layers": [
+      { "inset": 0.29, "color": "#515653" },
+      { "inset": 0.35, "color": "#717775", "pattern": "aggregate" },
+      { "inset": 0.51, "color": "#e3e3d7" },
+      { "inset": 0.61, "color": "#717775", "pattern": "aggregate" }
+    ]
+  },
   "traits": [
     {
       "type": "flat"

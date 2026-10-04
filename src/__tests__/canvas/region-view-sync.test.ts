@@ -31,15 +31,26 @@ describe('region-view-sync', () => {
     uninstall = installRegionViewSync();
     setActiveView(three.view);
     showBuildableRegion(CELLS);
-    expect(three.overlay.showBuildableRegion).toHaveBeenCalledWith(CELLS, true);
+    expect(three.overlay.showBuildableRegion).toHaveBeenCalledWith(CELLS, true, undefined);
 
     setActiveView(two.view);
     expect(three.overlay.clearBuildableRegion).toHaveBeenCalled();
-    expect(two.overlay.showBuildableRegion).toHaveBeenCalledWith(CELLS, true);
+    expect(two.overlay.showBuildableRegion).toHaveBeenCalledWith(CELLS, true, undefined);
 
     setActiveView(three.view);
     expect(two.overlay.clearBuildableRegion).toHaveBeenCalled();
     expect(three.overlay.showBuildableRegion).toHaveBeenCalledTimes(2);
+  });
+
+  it('carries editing dimensions into the next view and removes them independently of the scope', () => {
+    const two = makeFakeView(), three = makeFakeView();
+    uninstall = installRegionViewSync();
+    setActiveView(two.view);
+    showBuildableRegion(CELLS, 0.8);
+    setActiveView(three.view);
+    expect(three.overlay.showBuildableRegion).toHaveBeenLastCalledWith(CELLS, true, 0.8);
+    showBuildableRegion(CELLS);
+    expect(three.overlay.showBuildableRegion).toHaveBeenLastCalledWith(CELLS, true, undefined);
   });
 
   it('keeps a cleared region cleared across the swap, and treats an empty show as a clear', () => {
@@ -62,7 +73,7 @@ describe('region-view-sync', () => {
     uninstall = installRegionViewSync();
     showBuildableRegion(CELLS);
     setActiveView(two.view);
-    expect(two.overlay.showBuildableRegion).toHaveBeenCalledWith(CELLS, true);
+    expect(two.overlay.showBuildableRegion).toHaveBeenCalledWith(CELLS, true, undefined);
   });
 
   it('does not clear an overlay it is about to repaint on a re-registration of the same view', () => {

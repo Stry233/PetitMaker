@@ -1,6 +1,7 @@
 import { surfaceElevation } from '../../core/edge-cut/terrain-silhouette';
 import { CommandType, TerrainType, type Command, type GridState, type MacroCoord, type TerrainCell } from '../../core/model/types';
 import { objectPlacementCommand, removeObjectCommand } from '../objects/object-placer';
+import { SQUARE_CORNERS } from '../../core/edge-cut/corner-index';
 
 function sameTerrain(a: TerrainCell | null, b: TerrainCell | null): boolean {
   return a === b || !!a && !!b && a.type === b.type && a.elevation === b.elevation
@@ -39,7 +40,7 @@ export function restoreMacroCommands(current: GridState, baseline: GridState): C
     }
     if (target && (target.corners || target.patchOnly || sameBody && standing?.corners)) corners.push({
       type: CommandType.TrimCorners, timestamp: Date.now(), x, y, layer: 'terrain',
-      beforeCorners: standing?.corners, afterCorners: target.corners ? [...target.corners] : ['square', 'square', 'square', 'square'],
+      beforeCorners: standing?.corners, afterCorners: target.corners ? [...target.corners] : [...SQUARE_CORNERS],
       patchOnly: target.patchOnly, terrainType: target.type, elevation: target.elevation, patchBase: target.patchBase,
     });
   }

@@ -5,7 +5,7 @@
  * on the freshly loaded map stays scoped to the PREVIOUS map's region.
  */
 import { describe, it, expect, beforeEach } from 'vitest';
-import { newMap, generateMap, clearGenerated, loadMap } from '../../kit/operations';
+import { newMap, generateMap, clearGenerated, loadMap, transferMap } from '../../kit/operations';
 import { currentKit } from '../../kit/context';
 import { createGrid } from '../../core/model/grid-model';
 import { getMapTemplate } from '../../config/maps';
@@ -45,5 +45,14 @@ describe('the import-file wiring goes through kit/operations, not the store dire
 
     const outcome = clearGenerated(currentKit()!, { region: null });
     expect(outcome.cells).not.toEqual(SCOPE);
+  });
+});
+
+describe('opening a planet by id', () => {
+  it('refuses an id no built-in holds, and leaves the map where it was', () => {
+    const before = currentKit()!.state;
+    expect(() => newMap('custom-unknown')).toThrow(/Unknown map template/);
+    expect(() => transferMap(currentKit()!, { target: 'custom-unknown' })).toThrow(/Unknown map template/);
+    expect(currentKit()!.state).toBe(before);
   });
 });

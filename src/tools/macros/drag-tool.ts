@@ -1,4 +1,4 @@
-import { cloneGridState } from '../../core/model/grid-model';
+import { cloneGridState, mapVersionKey } from '../../core/model/grid-model';
 import { hashJSON } from '../../core/model/hash';
 import type { GridState, MacroCoord } from '../../core/model/types';
 import { showToast } from '../../core/runtime/toast-bus';
@@ -8,7 +8,7 @@ import { snapShapeEnd, splinePath, type CurveAnchor } from '../paint/shapes';
 import type { ToolContext } from '../runtime/types';
 import type { MacroContext } from './context';
 import { previewMacroAsync } from './preview';
-import { buildMacroRun, EMPTY_KEY, hasMacroBuildRunner, landMacroRun, prepareMacro, type MacroBuild, type MacroId, type MacroOpts } from './run';
+import { buildMacroRun, EMPTY_KEY, hasMacroBuildRunner, landMacroRun, MACROS, prepareMacro, type MacroBuild, type MacroId, type MacroOpts } from './run';
 import { mapFingerprint } from './scratch';
 import { restoreMacroCommands } from './restore';
 
@@ -59,7 +59,7 @@ export class SmartDrag {
     if (!this.current(g, ctx)) { this.cancel(ctx); return; }
     const opts = this.options(g, c);
     g.opts = opts;
-    if ((g.id === 'stream' || g.id === 'road-link') && opts.at!.x === g.from.x && opts.at!.y === g.from.y) return;
+    if (MACROS[g.id].adjustable && opts.at!.x === g.from.x && opts.at!.y === g.from.y) return;
     this.preview(g, opts, ctx.macroContext);
   }
 
@@ -69,7 +69,7 @@ export class SmartDrag {
     this.gesture = null;
     if (!this.current(g, ctx)) { this.cancel(ctx); return; }
     const opts = this.options(g, c);
-    if ((g.id === 'stream' || g.id === 'road-link') && c.x === g.from.x && c.y === g.from.y) {
+    if (MACROS[g.id].adjustable && c.x === g.from.x && c.y === g.from.y) {
       this.clearGhost(ctx); return;
     }
     const baseline = cloneGridState(ctx.gridState);
@@ -77,11 +77,11 @@ export class SmartDrag {
       const result = landMacroRun(ctx.macroContext, g.id, opts, built);
       if (!result || result.changes === 0) { this.refusal(g, result?.code); return; }
       if (result.narrowedByPlanting) showToast(ctx.t('smart.road_necked'), 'info');
-      if (g.id !== 'stream' && g.id !== 'road-link') return;
+      if (!MACROS[g.id].adjustable) return;
       const anchors = result.ends ?? opts.anchors ?? [g.from, opts.at!];
       const adjustment: Adjustment = { ...g, opts, baseline, anchors, fingerprint: mapFingerprint(ctx.gridState) };
       this.adjustment = adjustment;
-      beginCurveSession(anchors, { width: opts.width ?? 1, terrainGrid: g.id === 'stream', tangents: g.id === 'stream', armingEpoch: g.epoch }, {
+      beginCurveSession(anchors, { width: opts.width ?? 1, terrainGrid: MACROS[g.id].grid === 'terrain', tangents: MACROS[g.id].grid === 'terrain', armingEpoch: g.epoch }, {
         preview: next => this.previewAdjustment(adjustment, next),
         repaint: next => this.repaint(adjustment, next),
         finalize: () => { this.adjustment = null; this.buildToken++; this.pending = false; this.clearGhost(ctx); },
@@ -93,7 +93,7 @@ export class SmartDrag {
     const c = isConstrainHeld() ? snapShapeEnd(g.from, end, 'line') : end;
     return {
       ...g.opts, at: c,
-      ...(g.id === 'stream' ? { anchors: [g.from, { x: (g.from.x + c.x) / 2, y: (g.from.y + c.y) / 2 }, c] } : {}),
+      ...(MACROS[g.id].adjustable && MACROS[g.id].grid === 'terrain' ? { anchors: [g.from, { x: (g.from.x + c.x) / 2, y: (g.from.y + c.y) / 2 }, c] } : {}),
     };
   }
 
@@ -130,7 +130,7 @@ export class SmartDrag {
     const last = anchors.length - 1;
     const endpoint = (i: number, original: MacroCoord | undefined): MacroCoord | undefined =>
       anchors[i]!.x === a.anchors[i]!.x && anchors[i]!.y === a.anchors[i]!.y ? original : anchors[i];
-    return { ...a.opts, from: endpoint(0, a.opts.from), at: endpoint(last, a.opts.at), ...(a.id === 'stream' ? { anchors } : {}) };
+    return { ...a.opts, from: endpoint(0, a.opts.from), at: endpoint(last, a.opts.at), ...(MACROS[a.id].grid === 'terrain' ? { anchors } : {}) };
   }
 
   private adjustmentCurrent(a: Adjustment): boolean {
@@ -161,13 +161,12 @@ export class SmartDrag {
   }
 
   private refusal(g: Gesture, code?: keyof typeof EMPTY_KEY): void {
-    const fallback = g.id === 'stream' ? 'river-blocked' : g.id === 'road-link' ? 'no-route' : 'terrain-blocked';
-    showToast(g.ctx.t(EMPTY_KEY[code ?? fallback]), 'warning');
+    showToast(g.ctx.t(EMPTY_KEY[code ?? MACROS[g.id].emptyCode]), 'warning');
   }
 
   private preview(gesture: Gesture, opts: MacroOpts, context: MacroContext): void {
     const state = context.state;
-    const key = `${gesture.id}|${hashJSON(opts)}|${state.cellsVersion ?? 0}|${state.objectsVersion ?? 0}|${[...state.lockedLayers].join(',')}`;
+    const key = `${gesture.id}|${hashJSON(opts)}|${mapVersionKey(state)}`;
     if (key === this.shown) { this.wanted = null; return; }
     this.wanted = { gesture, opts, context, key };
     this.pump();

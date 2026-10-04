@@ -6,11 +6,12 @@
  * the same entry points the pointer machine reports through — rather than simulating real
  * pointer drags, to test the stack logic on its own terms.
  */
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { useRegionBrush } from '../../../ui/shell/use-region-brush';
 import { useEditorStore } from '../../../state/store';
-import { paintRegionCell, finishRegionStroke } from '../../../core/runtime/region-brush';
+import { paintRegionCell, previewRegionCell, cancelRegionStroke, finishRegionStroke, setRegionMinSide, setRegionSingle } from '../../../core/runtime/region-brush';
+import { setActiveView } from '../../../canvas/active-view';
 import type { MacroCoord } from '../../../core/model/types';
 
 function useHarness(selectingRegion: boolean) {
@@ -135,5 +136,51 @@ describe('region brush — its own undo/redo (separate from map history)', () =>
     act(() => { ok = result.current.regionUndo(); });
     rerender({ sel: true });
     expect(ok).toBe(false); // nothing to undo — the earlier stroke's history is gone
+  });
+});
+
+
+describe('region previews', () => {
+  const showGhost = vi.fn();
+  const clearGhost = vi.fn();
+  beforeEach(() => {
+    showGhost.mockClear(); clearGhost.mockClear();
+    useEditorStore.setState({ gridState: null, selectingRegion: true, regionTool: 'brush', regionBrushSize: 3, region: [] });
+    setActiveView({ overlay: { showGhost, clearGhost, showBuildableRegion: vi.fn(), clearBuildableRegion: vi.fn() } } as never);
+  });
+  afterEach(() => { setActiveView(null); setRegionMinSide(null); setRegionSingle(false); });
+
+  it.each(['brush', 'line', 'rect', 'circle', 'curve'] as const)('%s hover matches the first painted footprint without adding history', tool => {
+    useEditorStore.setState({ regionTool: tool });
+    const { result } = renderHook(() => useHarness(true));
+    act(() => previewRegionCell({ x: 10, y: 10 }));
+    const cells = showGhost.mock.calls[showGhost.mock.calls.length - 1]![0];
+    expect(cells.length).toBeGreaterThan(0);
+    expect(result.current.region).toEqual([]);
+    expect(result.current.regionUndo()).toBe(false);
+    move({ x: 10, y: 10 }); done();
+    if (tool === 'curve') { move({ x: 10, y: 10 }); done(); move({ x: 10, y: 10 }); done(); }
+    expect(result.current.region).toEqual(cells);
+  });
+
+  it('previews the clamped minimum rectangle before pressing', () => {
+    setRegionMinSide(20); setRegionSingle(true);
+    useEditorStore.setState({ regionTool: 'rect' });
+    const { result } = renderHook(() => useHarness(true));
+    act(() => previewRegionCell({ x: 10, y: 10 }));
+    const cells = showGhost.mock.calls[showGhost.mock.calls.length - 1]![0];
+    expect(cells).toHaveLength(400);
+    move({ x: 10, y: 10 }); done();
+    expect(result.current.region).toEqual(cells);
+  });
+
+  it('cancels a stroke without committing its preview or leaving an undo entry', () => {
+    const { result } = renderHook(() => useHarness(true));
+    move({ x: 10, y: 10 });
+    act(() => cancelRegionStroke());
+    done();
+    expect(result.current.region).toEqual([]);
+    expect(result.current.regionUndo()).toBe(false);
+    expect(clearGhost).toHaveBeenCalled();
   });
 });

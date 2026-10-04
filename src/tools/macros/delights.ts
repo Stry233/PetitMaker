@@ -9,8 +9,8 @@
  * THEY ARE HAND-AUTHORED. Every other composition in this feature is generated (an ecology, a
  * habitat sort, a succession ladder); these five are drawn shapes with named species, because the
  * pleasure of finding one comes from it being unmistakably PLACED. Each is category-appropriate —
- * the tree card gets the lone grand tree and the orchard, the flora card the fairy ring and the
- * heart — and each is laid through the live rules like everything else (`tryDecorate`), so a piece
+ * the tree card gets the lone grand tree and the orchard, the flora card the fairy ring, the
+ * heart and the knot garden, and each is laid through the live rules like everything else (`tryDecorate`), so a piece
  * that will not fit simply comes out smaller.
  *
  * A SET PIECE NEEDS ROOM AND LEVEL GROUND. A heart drawn across a terrace is a broken heart, so the
@@ -43,7 +43,7 @@ const DELIGHT_MIN_RADIUS = 4;
 /** How much of the disc must be one tier of plantable ground before a shape is offered. */
 const UNIFORM_SHARE = 0.9;
 
-export interface DelightInput {
+interface DelightInput {
   cells: readonly MacroCoord[];
   centre: { x: number; y: number };
   radius: number;

@@ -6,11 +6,9 @@ import type { Command, GridState, ValidationError } from './types';
  * actually depends on. It is the SUBSET of `RuleRegistry` used by callers: the
  * two-phase validators plus the introspection accessor — never `register()`.
  *
- * Defining it here, on the PRIMITIVES FLOOR (core/model), lets the command
- * executor depend on this interface instead of the concrete `rules/registry`
- * implementation, removing the last core->rules dependency edge. The concrete
- * `RuleRegistry` (in rules/) structurally satisfies — and explicitly
- * `implements` — this interface; that is a rules->core import, which is allowed.
+ * It lives on the PRIMITIVES FLOOR (core/model) so the command executor never
+ * imports the concrete `rules/registry`; `RuleRegistry` in rules/ `implements`
+ * it, which is a downward rules->core import.
  */
 export interface RuleDispatcher {
   /** Run all pre-command rules whose `appliesTo` includes `cmd.type` against `state`. */

@@ -18,9 +18,11 @@
  * reads its whole extent under both, but a 1-cell staircase running diagonally reads 2 under the run
  * measure (two cells across in each axis) and 1 under the opening, which is what it draws as.
  */
-import { ItemCategory, CellZone, TerrainType, type GridState } from '../../../../core/model/types';
-import { categoryOf } from '../../../../state/catalog';
+import { ItemCategory, TerrainType, type GridState } from '../../../../core/model/types';
+import { getCatalogItem } from '../../../../state/catalog';
 import { objectRect } from '../../../../state/object-geometry';
+import { isCoatingItem, isCrossing } from '../../../../core/model/traits';
+import { isBuildableZone, isLandmarkItem, NEIGHBORS4 } from '../../../../core/model/grid-model';
 
 /** The reference's symmetry-and-unity reading: regions of >= 20 cells holding >= 8 decor objects,
  *  mirror match >= 0.6 counts as symmetric, dominant colour family >= 60% counts as unified. */
@@ -31,8 +33,6 @@ export const REGION_MIN_DECOR = 8;
 export const SYMMETRY_MATCH_MIN = 0.6;
 
 export const UNITY_SHARE_MIN = 0.6;
-
-export const NB4 = [[1, 0], [-1, 0], [0, 1], [0, -1]] as const;
 
 export interface EvalGrid {
   W: number; H: number;
@@ -67,7 +67,7 @@ export function readGrid(state: GridState): EvalGrid {
     for (let x = 0; x < W; x++) {
       const cell = state.cells[y]![x]!;
       const i = y * W + x;
-      if (cell.zone === CellZone.Grass) { g.land[i] = 1; g.landCells++; }
+      if (isBuildableZone(cell.zone)) { g.land[i] = 1; g.landCells++; }
       const t = cell.terrain;
       if (!t) continue;
       g.elev[i] = t.elevation;
@@ -76,17 +76,20 @@ export function readGrid(state: GridState): EvalGrid {
     }
   }
   for (const o of state.objects.values()) {
-    const cat = categoryOf(o);
+    const item = getCatalogItem(o.catalogId);
+    const cat = item?.category;
+    const coating = isCoatingItem(item), crossing = isCrossing(item);
     const r = objectRect(o);
     const plant = cat === ItemCategory.Tree || cat === ItemCategory.Flora;
+    const landmark = o.locked && isLandmarkItem(o.catalogId);
     for (let y = Math.floor(r.y); y < Math.ceil(r.y + r.h); y++) {
       for (let x = Math.floor(r.x); x < Math.ceil(r.x + r.w); x++) {
         if (x < 0 || y < 0 || x >= W || y >= H) continue;
         const i = y * W + x;
         g.covered[i] = 1;
-        if (o.locked) g.plaza[i] = 1;
-        if (cat === ItemCategory.Road) g.paved[i] = 1;
-        else if (cat === ItemCategory.Bridge || cat === ItemCategory.Ramp) g.crossing[i] = 1;
+        if (landmark) g.plaza[i] = 1;
+        if (coating) g.paved[i] = 1;
+        else if (crossing) g.crossing[i] = 1;
         else if (plant && g.plantAt[i] === undefined) g.plantAt[i] = o.catalogId;
         else if (cat === ItemCategory.Building || cat === ItemCategory.Facility) g.structure[i] = 1;
       }
@@ -191,7 +194,7 @@ function segmentRegionsUncached(g: EvalGrid, minCells: number): Region[] {
       const p = stack.pop()!;
       cells.push(p);
       const x = p % W, y = (p / W) | 0;
-      for (const [dx, dy] of NB4) {
+      for (const [dx, dy] of NEIGHBORS4) {
         const nx = x + dx, ny = y + dy;
         if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
         const j = ny * W + nx;

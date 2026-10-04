@@ -1,16 +1,12 @@
-/*
- * Displays provider-supplied reasoning on demand. The transcript is collapsed by default, rendered
- * with the panel's constrained Markdown renderer and capped in its own scroll area. An open box
- * disables the job record's automatic scroll-follow so incoming updates do not move the text being
- * read. Persisted excerpts are labelled as incomplete.
- */
+/** Provider reasoning uses constrained Markdown; persisted excerpts may be incomplete. */
 import { Fragment, useRef, type CSSProperties } from 'react';
-import { AnimatePresence, motion, useReducedMotionConfig } from 'framer-motion';
+import { AnimatePresence } from 'framer-motion';
 import { fmtClock } from './dock-face';
 import { Icon } from './icons';
 import { ModelProse } from './model-prose';
-import { framerMotion } from './motion';
-import { inkTint, metaInk } from './tokens';
+import { Disclosure } from '../primitives/Disclosure';
+import { ScrollArea } from '../primitives/ScrollArea';
+import { panelTint, metaInk } from './tokens';
 import { colors, cursors, font } from '../design/styles';
 import { roleFont } from '../design/text-weight';
 import { useT } from '../../i18n/context';
@@ -22,12 +18,10 @@ export const THOUGHTS_MAX_HEIGHT = 200;
 
 const BOX_STYLE: CSSProperties = {
   maxHeight: THOUGHTS_MAX_HEIGHT,
-  overflowY: 'auto',
   overscrollBehavior: 'contain',
-  background: inkTint.chip,
+  background: panelTint.chip,
   borderRadius: 10,
-  padding: '8px 10px',
-  ...roleFont('note'),
+  ...roleFont('body'),
   fontFamily: font.family,
   color: colors.brownText,
   lineHeight: 1.5,
@@ -45,26 +39,18 @@ const NOTE_STYLE: CSSProperties = {
 };
 
 /** Reasoning retained for one turn. `excerpt` marks text truncated at the persistence boundary. */
-export function ThoughtsBox({ text, excerpt }: { text: string; excerpt?: boolean }) {
+export function ThoughtsBox({ text, excerpt, spaceBefore = 0, streaming = false }: { text: string; excerpt?: boolean; spaceBefore?: number; streaming?: boolean }) {
   const t = useT();
-  const reduced = useReducedMotionConfig() === true;
   const scrollRef = useRef<HTMLDivElement>(null);
-  useFollowNewest(scrollRef, text, '', true);
+  useFollowNewest(scrollRef, text, '', true, 'start');
   return (
-    <motion.div
-      data-testid="thoughts-box-frame"
-      // Animate to the measured content height, with overflow hidden during the reveal.
-      initial={reduced ? false : { height: 0, opacity: 0 }}
-      animate={{ height: 'auto', opacity: 1 }}
-      exit={{ height: 0, opacity: 0 }}
-      transition={framerMotion('panel.thoughts.open')}
-      style={{ overflow: 'hidden', flex: '0 0 auto' }}
-    >
-      <div ref={scrollRef} data-testid="thoughts-box" style={BOX_STYLE}>
-        <ModelProse text={text} style={PROSE_STYLE} />
+    <Disclosure testId="thoughts-box-frame" motionId="panel.thoughts.open" spaceBefore={spaceBefore}>
+      <ScrollArea ref={scrollRef} data-testid="thoughts-box" gutter="stable" fade="none" style={BOX_STYLE}
+        viewportStyle={{ overscrollBehavior: 'contain' }} contentStyle={{ padding: '8px 10px' }}>
+        <ModelProse text={text} style={PROSE_STYLE} streaming={streaming} />
         {excerpt === true && <span data-testid="thoughts-excerpt-note" style={NOTE_STYLE}>{t('agent3.thoughts_excerpt')}</span>}
-      </div>
-    </motion.div>
+      </ScrollArea>
+    </Disclosure>
   );
 }
 

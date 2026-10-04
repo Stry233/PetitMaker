@@ -11,10 +11,11 @@ import { surfaceElevation } from '../../core/edge-cut/terrain-silhouette';
 import { getCell, isBuildableZone } from '../../core/model/grid-model';
 import { CommandType, TerrainType, type GridState, type MacroCoord } from '../../core/model/types';
 import type { MacroContext } from './context';
+import { BASE_SUPPORT } from '../../core/model/game-profile';
 
 /** Water above this cannot be capped: a cap sits at exactly the water's elevation, and a mountain at
- *  4 or more owes V-MTN-03 a 3x3 base. A taller drop has to chain units. */
-export const WATER_CEILING = 3;
+ *  `BASE_SUPPORT.fromLayer` or more owes V-MTN-03 a base. A taller drop has to chain units. */
+export const WATER_CEILING = BASE_SUPPORT.fromLayer - 1;
 
 /** The standable surface, -1 off the grid. Raw `terrain.elevation` reads a cosmetic Γ fillet as a
  *  full block, which is a phantom rung to every question below. */
@@ -48,16 +49,6 @@ export function paint(ctx: MacroContext, cells: MacroCoord[], type: TerrainType,
   return ctx.executor.execute({
     type: CommandType.PaintTerrain, timestamp: Date.now(), cells, terrainType: type, elevation,
   }).success;
-}
-
-/** The same paint, retried cell by cell when the batch is refused, so one forbidden cell costs only
- *  itself. Returns how many cells took it. */
-export function paintSkipping(ctx: MacroContext, cells: MacroCoord[], type: TerrainType, elevation: number): number {
-  if (cells.length === 0) return 0;
-  if (paint(ctx, cells, type, elevation)) return cells.length;
-  let laid = 0;
-  for (const c of cells) if (paint(ctx, [c], type, elevation)) laid++;
-  return laid;
 }
 
 /** Make `c` dry mountain at exactly `e`, walking up a rung at a time: V-MTN-02 forbids skipping a

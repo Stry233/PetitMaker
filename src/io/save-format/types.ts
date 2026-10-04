@@ -1,13 +1,14 @@
 /** Versioned save contracts. Pure migrations run before decoding. */
 import type { SerializedProvenance } from '../../core/provenance/serialize';
 import type { ImageAttribution } from '../../core/provenance/image-attribution';
+import type { SerializedTemplate } from '../planet-codec';
 import type { MapNotes } from '../../core/model/types';
 
 export type { MapNotes };
 
 /** The on-disk save-format version this build writes. Bump on every breaking
  *  change and add a matching migration in ./migrations. */
-export const CURRENT_VERSION = 1;
+export const CURRENT_VERSION = 2;
 
 /** A persisted object record (current wire shape). Mirrors the encoder in json-codec. */
 export interface SaveObject {
@@ -32,6 +33,8 @@ export interface PersistedCamera {
 export interface SaveFile {
   version: number; // always CURRENT_VERSION when freshly written
   templateId: string;
+  /** The embedded planet, present only for custom templates. */
+  template?: SerializedTemplate;
   cells: string;
   objects: SaveObject[];
   metadata: { savedAt: string };

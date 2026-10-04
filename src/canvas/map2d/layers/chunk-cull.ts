@@ -1,13 +1,14 @@
-// chunk-cull.ts — the PURE math half of chunk culling (no Pixi import, so it unit-tests
+// The PURE math half of chunk culling (no Pixi import, so it unit-tests
 // headlessly): the camera's world-space view rect and the chunk-AABB intersection test.
 // The container plumbing lives in chunk-grid.ts.
-import { TILE_SIZE, CHUNK_SIZE } from '../../../core/model/constants';
+import { TILE_SIZE } from '../../../core/model/constants';
+import { CHUNK_SIZE } from '../../../core/model/game-profile';
 
 export const CHUNK_PX = CHUNK_SIZE * TILE_SIZE;
 /** Overscan beyond the viewport, in world px. A chunk is bucketed by its anchor cell, but content
  *  can spill past it (bridge spans up to ~7 cells, sprites overflow their footprint by 10%), so
  *  the view rect is padded far enough that nothing pops at the screen edge. Content that can
- *  spill FURTHER than this (the central plaza's 20×27 footprint) must not be chunk-bucketed at
+ *  spill FURTHER than this (the central plaza's footprint) must not be chunk-bucketed at
  *  all — its anchor chunk can be fully outside the padded rect while its body is on screen. */
 export const CULL_MARGIN_PX = 8 * TILE_SIZE;
 

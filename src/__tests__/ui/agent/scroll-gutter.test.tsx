@@ -1,19 +1,3 @@
-/**
- * scroll-gutter.test.tsx — the panel's insets read symmetric on every screen.
- *
- * A scroller that declares `scrollbar-gutter: stable` reserves a scrollbar's width of RIGHT inset
- * under classic scrollbars whether or not anything scrolls, and the panel nests scrollers (the job
- * zone around each screen's own), so the reservations stack into a one-sided margin: measured docked
- * at 1440x900, the disconnected screen stood 15px off the plate's left edge and 38px off its right.
- * So no scroller in the panel reserves a standing gutter: the room for a scrollbar is the
- * scrollbar's own, taken only while one shows, which is also the one state where an unequal inset
- * reads as a scrollbar rather than as padding.
- *
- * The sweep walks every rendered element, so a screen this file does not name is still covered by
- * whichever render mounts it. A gutter CONDITIONED on real overflow would pass here (nothing
- * overflows in a layout-free DOM), which is the correct boundary: the rule is against reserving
- * where nothing scrolls, not against giving a real scrollbar room.
- */
 import { describe, it, expect, beforeEach } from 'vitest';
 import { render } from '@testing-library/react';
 import { MotionConfig } from 'framer-motion';
@@ -65,14 +49,7 @@ function makeView(over: Partial<PanelView> = {}): PanelView {
 
 const VERBS = { onSend: () => {}, onStop: () => {}, onPause: () => {}, onGateAnswer: () => {} };
 
-/** Every element whose inline style reserves a standing scrollbar gutter, named for the failure. */
-function standingGutters(root: HTMLElement): string[] {
-  return [...root.querySelectorAll<HTMLElement>('*')]
-    .filter((el) => el.style.scrollbarGutter === 'stable')
-    .map((el) => el.dataset.testid ?? el.tagName.toLowerCase());
-}
-
-describe('panel scrollers reserve no standing gutter', () => {
+describe('panel scroll ownership', () => {
   const steers = [
     { seq: 1, text: 'more trees' },
     { seq: 2, text: 'wider road' },
@@ -109,7 +86,10 @@ describe('panel scrollers reserve no standing gutter', () => {
         />,
         { wrapper: Wrapper },
       );
-      expect(standingGutters(container)).toEqual([]);
+      const zone = container.querySelector('[data-testid="panel-job-zone"]')!;
+      expect(zone.querySelectorAll('[data-scroll-content]')).toHaveLength(1);
+      expect(zone.querySelector('[data-scroll-content]')?.parentElement).toBe(zone);
+      expect((zone as HTMLElement).style.maskImage).toBe('');
       unmount();
     });
   }

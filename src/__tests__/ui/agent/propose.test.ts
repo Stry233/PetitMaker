@@ -1,7 +1,7 @@
 /**
- * propose.test.ts — the sketch proposals, over REAL maps.
+ * The sketch proposals, over REAL maps.
  *
- * EVERY FIXTURE HERE IS THE SHIPPED ISLAND. `createBlankGridState('hexia')` is the same state the
+ * EVERY FIXTURE HERE IS THE SHIPPED ISLAND. `createGridState(getMapTemplate('hexia'))` is the same state the
  * editor cold-starts on (the real template's zones, the real locked plaza), and everything laid on
  * top of it goes through the real `CommandExecutor` with the real rule registry — so a fixture
  * cannot describe a map the app would refuse to build. A hand-typed grid would let an analyser pass
@@ -23,7 +23,8 @@ import {
 import { createDefaultRegistry } from '../../../rules';
 import { getPlaceableByCategory } from '../../../state/catalog';
 import { roadLookup } from '../../../state/object-index';
-import { createBlankGridState } from '../../../io/share/codec/blank-grid';
+import { createGridState } from '../../../core/model/planet';
+import { getMapTemplate } from '../../../config/maps';
 import { proposeSketches, type SketchIdea } from '../../../ui/agent/sketchbook/propose';
 
 function executorFor(state: GridState): CommandExecutor {
@@ -49,7 +50,6 @@ function place(state: GridState, catalogId: string, x: number, y: number, id: st
   const ok = executorFor(state).execute({
     type: CommandType.PlaceObject,
     object: { id, catalogId, position: { x, y }, rotation: 0, elevation: 0 },
-    loadValue: 0,
     timestamp: 0,
   });
   if (!ok.success) throw new Error(`the fixture's placement was refused: ${ok.errors?.[0]?.message ?? ''}`);
@@ -116,7 +116,7 @@ function inside(state: GridState, idea: SketchIdea): boolean {
  * water the zone rule refuses, and a fixture may not build what the app would not.
  */
 function unroadedBay(): GridState {
-  const state = createBlankGridState('hexia');
+  const state = createGridState(getMapTemplate('hexia'));
   const { width, height } = state.template;
   const terrace: MacroCoord[] = [];
   for (let y = Math.round(height * 0.72); y < height; y++) {
@@ -139,7 +139,7 @@ function unroadedBay(): GridState {
 
 /** THE ISLAND AS IT OPENS: nothing built, nothing painted. One flat empty expanse. */
 function flatEmpty(): GridState {
-  return createBlankGridState('hexia');
+  return createGridState(getMapTemplate('hexia'));
 }
 
 /**
@@ -148,7 +148,7 @@ function flatEmpty(): GridState {
  * side, and the trees stand within a few cells of each other.
  */
 function riverAndGrove(): GridState {
-  const state = createBlankGridState('hexia');
+  const state = createGridState(getMapTemplate('hexia'));
   const { width, height } = state.template;
   const at = grassNear(state, { x: Math.round(width * 0.3), y: Math.round(height * 0.4) }, 12);
   paint(state, rect(at.x + 4, at.y, at.x + 7, at.y + 11), TerrainType.Water, 0);
@@ -205,7 +205,6 @@ describe('the lane: a place with no road down to it', () => {
           const ok = executorFor(state).execute({
             type: CommandType.PlaceObject,
             object: { id: `patch-${x}-${y}`, catalogId: road.id, position: { x, y }, rotation: 0, elevation: 0 },
-            loadValue: 0,
             timestamp: 0,
           });
           if (ok.success) laid++;

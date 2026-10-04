@@ -1,5 +1,5 @@
 /*
- * watercolorize.ts — a structure-blind watercolour pass over ANY picture of the map.
+ * A structure-blind watercolour pass over ANY picture of the map.
  *
  * The naive half of the aquarelle style: it reads only pixels, so whatever the source shows — the
  * real renderer's sprites included — survives into the painting. The moves are the classical

@@ -9,7 +9,8 @@
  */
 import { ItemCategory, type GridState, type PlacedObject } from '../../../../core/model/types';
 import { categoryOf } from '../../../../state/catalog';
-import { NB4, readGrid, type EvalGrid } from './grid';
+import { readGrid, type EvalGrid } from './grid';
+import { NEIGHBORS4 } from '../../../../core/model/grid-model';
 
 /**
  * A CLUSTER IS SAME-CATEGORY PLANTING WITH A GAP OF ONE TOLERATED, so a bed laid as blocks with a cell
@@ -144,7 +145,7 @@ function waterRuns(g: EvalGrid): number[][] {
       const p = stack.pop()!;
       cells.push(p);
       const x = p % W, y = (p / W) | 0;
-      for (const [dx, dy] of NB4) {
+      for (const [dx, dy] of NEIGHBORS4) {
         const nx = x + dx, ny = y + dy;
         if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
         const j = ny * W + nx;

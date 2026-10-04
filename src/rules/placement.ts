@@ -11,14 +11,15 @@ import {
   type Command,
   type GridState,
   type MacroCoord,
+  type CatalogItem,
   type PlacementTrait,
   type PreCommandRule,
-  type ValidationError,
+  type ValidationError, type Rotation,
 } from '../core/model/types';
 import { getCell, getFootprint, onHalfGrid, straddledCells } from '../core/model/grid-model';
 import { realSurface, surfaceElevation } from '../core/edge-cut/terrain-silhouette';
 import { getCatalogItem } from '../state/catalog';
-import { coveredCells, footprintCells, getPlacedObjectSize, hasHalfStep } from '../state/object-geometry';
+import { coveredCells, footprintCells, getPlacedObjectSize, hasHalfStep, terrainSpan, rampOrientation } from '../state/object-geometry';
 import { entriesNear, getObjectIndex } from '../state/object-index';
 import { detectBridgeSpan } from '../core/model/bridge-span';
 
@@ -59,15 +60,9 @@ function spanElevation(
   return elev;
 }
 
-/** The terrain cells a footprint's span [pos, pos + size) rests on, as an inclusive
- *  range. Terrain renders at −HALF_TILE, so a whole-coordinate span bleeds half a cell
- *  past each end (size + 1 cells) while a half-coordinate one lands exactly on `size`. */
-function terrainSpan(pos: number, size: number): { lo: number; hi: number } {
-  return { lo: Math.floor(pos + 0.5), hi: Math.ceil(pos + size - 0.5) };
-}
-
 function validateTrait(
   trait: PlacementTrait,
+  item: CatalogItem,
   cmd: Extract<Command, { type: CommandType.PlaceObject }>,
   state: GridState,
   footprint: MacroCoord[],
@@ -135,8 +130,7 @@ function validateTrait(
       // within [min, max]. The gap below the deck may be water, off-map void, OR
       // lower terrain — water is not required. Auto-detects orientation
       // and snaps position/rotation/spanLength/elevation. (See core/model/bridge-span.)
-      const item = getCatalogItem(cmd.object.catalogId);
-      const bridgeWidth = item?.width ?? 1;
+      const bridgeWidth = item.width;
       const span = detectBridgeSpan(state, pos, bridgeWidth, trait.min, trait.max);
       if (!span) {
         return [{ ruleId: 'V-PLACE-TRAIT', message: 'error.bridge_invalid', cells: [pos], severity: 'error' }];
@@ -149,9 +143,8 @@ function validateTrait(
     }
 
     case 'heightDrop': {
-      const item = getCatalogItem(cmd.object.catalogId);
-      const spanLen = item?.height ?? 4;
-      const perpWidth = item?.width ?? 2;
+      const spanLen = item.height;
+      const perpWidth = item.width;
       const acrossX = terrainSpan(pos.x, perpWidth);
       const acrossY = terrainSpan(pos.y, perpWidth);
 
@@ -190,15 +183,15 @@ function validateTrait(
         // rot 180/270 (downhill is −), where the sweep then finds high ground in the run and
         // refuses — every half hover approached from inside a north or west cliff died there.
         const halfDown = (v: number) => Math.ceil(v - 0.5);
-        let rot: 0 | 90 | 180 | 270;
+        let rot: Rotation;
         let px: number, py: number;
-        let highAtStart: boolean;
-        if (slopeDy > 0) { rot = 0; px = highX; py = Math.round(highY); highAtStart = true; }
-        else if (slopeDx > 0) { rot = 90; px = Math.round(highX); py = highY; highAtStart = true; }
-        else if (slopeDy < 0) { rot = 180; px = highX; py = halfDown(highY) - spanLen; highAtStart = false; }
-        else { rot = 270; px = halfDown(highX) - spanLen; py = highY; highAtStart = false; }
+        if (slopeDy > 0) { rot = 0; px = highX; py = Math.round(highY); }
+        else if (slopeDx > 0) { rot = 90; px = Math.round(highX); py = highY; }
+        else if (slopeDy < 0) { rot = 180; px = highX; py = halfDown(highY) - spanLen; }
+        else { rot = 270; px = halfDown(highX) - spanLen; py = highY; }
+        const { spanAxis, highAtStart } = rampOrientation(rot);
 
-        const isVert = rot === 0 || rot === 180;
+        const isVert = spanAxis === 'y';
 
         // Validate the terrain UNDER the ramp. Terrain renders at -HALF_TILE (up-left), so a
         // whole-anchored footprint is visually overlapped by one extra cell on each axis, while a
@@ -244,8 +237,6 @@ function validateTrait(
     }
 
     case 'exclusionRadius': {
-      const catalogItem = getCatalogItem(cmd.object.catalogId);
-      if (!catalogItem) return [];
       // Evidence = the footprints of every conflicting same-category object — the
       // things that are too close — not the attempted spot. Candidates come from
       // the spatial index over the radius square (anchor distance is Chebyshev,
@@ -254,7 +245,7 @@ function validateTrait(
       const r = trait.radius;
       const near = entriesNear(getObjectIndex(state), { x: pos.x - r, y: pos.y - r, w: 2 * r + 1, h: 2 * r + 1 });
       for (const e of near) {
-        if (!e.item || e.item.category !== catalogItem.category) continue;
+        if (!e.item || e.item.category !== item.category) continue;
         const dx = Math.abs(pos.x - e.obj.position.x);
         const dy = Math.abs(pos.y - e.obj.position.y);
         if (dx <= r && dy <= r) {
@@ -263,7 +254,7 @@ function validateTrait(
         }
       }
       if (offenders.length > 0) {
-        return [{ ruleId: 'V-PLACE-TRAIT', message: 'error.tree_too_close', cells: offenders, grid: 'macro', severity: 'error' }];
+        return [{ ruleId: 'V-PLACE-TRAIT', message: 'error.too_close_same_kind', cells: offenders, grid: 'macro', severity: 'error' }];
       }
       return [];
     }
@@ -275,6 +266,10 @@ function validateTrait(
 
     case 'plantable':
       // Passive marker (flora may stand on this coating — see standsOnCoating's readers).
+      return [];
+
+    case 'footprintTurn':
+      // Passive marker: how the item turns in the planet session (kit/operations/planet-session).
       return [];
 
     case 'halfStep':
@@ -310,10 +305,11 @@ export const traitPlacementRule: PreCommandRule = {
     if (!onGrid) {
       return [{ ruleId: 'V-PLACE-TRAIT', message: 'error.placement_off_grid', cells: [pos], severity: 'error' }];
     }
-    const footprint = footprintCells(pos.x, pos.y, item.width, item.height);
+    const { w, h } = getPlacedObjectSize(cmd.object, item);
+    const footprint = footprintCells(pos.x, pos.y, w, h);
     const errors: ValidationError[] = [];
     for (const trait of item.traits) {
-      errors.push(...validateTrait(trait, cmd, state, footprint));
+      errors.push(...validateTrait(trait, item, cmd, state, footprint));
     }
     return errors;
   },

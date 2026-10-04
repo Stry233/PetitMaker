@@ -9,8 +9,11 @@ import { stackedCoatingIds } from '../../../../io/json-codec';
 import type { GridState } from '../../../../core/model/types';
 import type { MapProvenanceSummary } from '../../../../core/provenance/types';
 import type { ExportOptions } from '../../../../io/export/types';
+import { shownPlanetName, withShownPlanetName } from '../../../../io/planet-library';
+import { useEditorStore } from '../../../../state/store';
+import { usePlanetName } from '../planet/use-planet-library';
 
-export interface ShareCodeAsset {
+interface ShareCodeAsset {
   canvas: HTMLCanvasElement;
   /** Width and metadata fingerprint within the current map's cache entry. */
   builtKey: string;
@@ -18,8 +21,8 @@ export interface ShareCodeAsset {
 }
 
 /** Fingerprint of everything that changes the encoded band for a given map. */
-export function shareCodeKey(bandWidth: number, createdAt: string): string {
-  return `${bandWidth}|${createdAt}`;
+export function shareCodeKey(bandWidth: number, createdAt: string, planetName: string): string {
+  return `${bandWidth}|${createdAt}|${planetName}`;
 }
 
 /** Render a built ShareCode to a canvas (shared by the preview asset and the export path). */
@@ -29,13 +32,16 @@ export async function renderShareCodeAsset(
   meta: { createdAt: string },
   width: number,
 ): Promise<ShareCodeAsset | null> {
-  const code = await buildShareCode(state, summary, { appVersion: APP_VERSION, saveVersion: CURRENT_VERSION, createdAt: meta.createdAt }, width);
+  // The band carries the planet under its shown name: approved, or the default name.
+  const locale = useEditorStore.getState().locale;
+  const planetName = shownPlanetName(state.template, locale);
+  const code = await buildShareCode(withShownPlanetName(state, locale), summary, { appVersion: APP_VERSION, saveVersion: CURRENT_VERSION, createdAt: meta.createdAt }, width);
   if (!code) return null;
   const gc = document.createElement('canvas');
   gc.width = code.width;
   gc.height = code.height;
   gc.getContext('2d')!.putImageData(new ImageData(new Uint8ClampedArray(code.rgba), code.width, code.height), 0, 0);
-  return { canvas: gc, builtKey: shareCodeKey(gc.width, meta.createdAt), notice: code.notesOmitted ? 'export.notes_omitted' : code.shareOriginalRecommended ? 'export.code_dense' : null };
+  return { canvas: gc, builtKey: shareCodeKey(gc.width, meta.createdAt, planetName), notice: code.notesOmitted ? 'export.notes_omitted' : code.shareOriginalRecommended ? 'export.code_dense' : null };
 }
 
 /** Native exports use a High-size preview; the final capture rebuilds at the reserved native width. */
@@ -46,7 +52,7 @@ function shareCodeBuildWidth(resolution: ExportOptions['resolution']): number {
 /** Coalesce map and size changes before building the glyph. */
 const BUILD_DEBOUNCE_MS = 250;
 
-export interface ShareCodeState {
+interface ShareCodeState {
   /** The rendered band, once built. Null while pending/unavailable. */
   asset: ShareCodeAsset | null;
   /** While rebuilding, retain the previous preview or show its initial loading state. */
@@ -74,6 +80,7 @@ export function useShareCode(
   notesKey = '',
 ): ShareCodeState {
   const [code, setCode] = useState<ShareCodeState>({ asset: null, pending: false, issue: null });
+  const planetName = usePlanetName(state?.template);
   // The provenance summary is a fresh object every store read; it only changes while editing,
   // which the modal blocks — read it through a ref so it never re-triggers the effect.
   const summaryRef = useRef(summary);
@@ -102,7 +109,7 @@ export function useShareCode(
         });
     }, BUILD_DEBOUNCE_MS);
     return () => { alive = false; clearTimeout(id); };
-  }, [open, state, importable, resolution, createdAt, notesKey]);
+  }, [open, state, importable, resolution, createdAt, notesKey, planetName]);
 
   return code;
 }

@@ -13,7 +13,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import { serialize, deserialize, stackedCoatingIds } from '../../io/json-codec';
-import { createBlankGridState } from '../../io/share/codec/blank-grid';
+import { createGridState } from '../../core/model/planet';
 import { encodeMapPayload } from '../../io/share/codec/payload';
 import { getMapTemplate } from '../../config/maps';
 import { PLAZA_ID } from '../../core/model/constants';
@@ -27,7 +27,7 @@ const road = (x: number, y: number, i: number): SaveObject =>
 
 /** A real map's worst neighbourhood as a save file: three cells carrying 10, 9 and 8 dirt roads. */
 function stackedSave(extra: SaveObject[] = []): string {
-  const save = JSON.parse(serialize(createBlankGridState('hexia'))) as SaveFile;
+  const save = JSON.parse(serialize(createGridState(getMapTemplate('hexia')))) as SaveFile;
   save.objects = [
     ...Array.from({ length: 8 }, (_, i) => road(27, 108, i)),
     ...Array.from({ length: 9 }, (_, i) => road(28, 108, i)),
@@ -72,7 +72,7 @@ describe('loading a map repairs stacked coatings', () => {
 
 describe('a stacked map is what the share code refused', () => {
   it('refuses to code a cell carrying ten tiles, and codes the loaded map fine', async () => {
-    const state = createBlankGridState('hexia');
+    const state = createGridState(getMapTemplate('hexia'));
     for (let i = 0; i < 10; i++) {
       state.objects.set(`r${i}`, { id: `r${i}`, catalogId: 'path-overgrown-dirt', position: { x: 29, y: 108 }, rotation: 0, elevation: 0 });
     }

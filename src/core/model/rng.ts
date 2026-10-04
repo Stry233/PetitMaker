@@ -1,4 +1,3 @@
-// src/core/model/rng.ts
 export interface Rng {
   float(): number;            // [0,1)
   int(maxExcl: number): number;

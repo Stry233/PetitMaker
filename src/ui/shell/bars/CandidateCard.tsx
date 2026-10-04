@@ -1,5 +1,5 @@
 /*
- * CandidateCard.tsx — one candidate: a picture of what a recipe builds, and the recipe's number.
+ * One candidate: a picture of what a recipe builds, and the recipe's number.
  *
  * The picture is a real generation of that recipe, run on a detached copy of the map and painted
  * cell by cell, which is why it is exactly what clicking the card produces and why making it never
@@ -26,7 +26,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { useT } from '../../../i18n/context';
 import { LoadingDots } from '../../primitives/LoadingDots';
-import { btnReset, buttonMotion, cursors } from '../../design/styles';
+import { btnReset, buttonMotion, cursors, radii } from '../../design/styles';
 import { ACTIVE, MUTED_INK, PLATE, PLATE_INK, TRACK } from '../../design/tokens';
 import { TEXT } from '../units';
 import { BarText, Plate } from './bar-atoms';
@@ -130,7 +130,7 @@ const PILL_RESERVE = `${PILL_BOTTOM + PILL_HEIGHT}%`;
 const CONFIRM_PILL: CSSProperties = {
   position: 'absolute',
   left: '8%', right: '8%', bottom: `${PILL_BOTTOM}%`, height: `${PILL_HEIGHT}%`,
-  borderRadius: 999,
+  borderRadius: radii.pill,
   display: 'flex', alignItems: 'center', justifyContent: 'center',
   background: ACTIVE, cursor: cursors.clickable,
 };
@@ -393,7 +393,7 @@ export function ImportCard({ name, shot, selected, failed, landing, onPick, onSe
           // min-width defaults to its content, so without it a long filename widens the chain right
           // out of the card and the ellipsis never fires.
           style={{
-            ...btnReset, height: '100%', maxWidth: '86%', minWidth: 0, padding: `0 ${FIELD_PAD}px`, borderRadius: 999,
+            ...btnReset, height: '100%', maxWidth: '86%', minWidth: 0, padding: `0 ${FIELD_PAD}px`, borderRadius: radii.pill,
             background: PLATE, cursor: cursors.clickable, display: 'flex', alignItems: 'center', overflow: 'hidden',
           }}
         >
@@ -621,7 +621,7 @@ export function CustomCard({
             aria-label={t('gen.custom_edit')}
             onClick={onEdit}
             style={{
-              ...btnReset, height: '100%', padding: `0 ${FIELD_PAD}px`, borderRadius: 999,
+              ...btnReset, height: '100%', padding: `0 ${FIELD_PAD}px`, borderRadius: radii.pill,
               background: PLATE, cursor: cursors.clickable,
               display: 'flex', alignItems: 'center',
             }}

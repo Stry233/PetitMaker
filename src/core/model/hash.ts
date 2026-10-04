@@ -1,4 +1,3 @@
-// src/core/model/hash.ts
 /** Deterministic, non-cryptographic FNV-1a 32-bit hash → 8 hex chars.
  *  Used for content/manifest/ledger fingerprints. NOT a security primitive. */
 export function fnv1a(input: string): string {

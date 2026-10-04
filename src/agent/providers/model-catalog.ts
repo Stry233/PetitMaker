@@ -1,6 +1,7 @@
 /** Live capability data supplements the models a connected account can actually use. */
 import { baseUrlFor, PROVIDER_IDS, type ProviderId } from './defaults';
 import snapshot from './model-catalog.snapshot.json';
+import { createSignal } from '../../core/runtime/signal';
 
 export const MODEL_CATALOG_URL = 'https://models.dev/api.json';
 /** A failed download is retried after this long, up to the attempt cap; one success serves the session. */
@@ -37,16 +38,16 @@ let attempts = 0;
 let lastAttempt = 0;
 let pending: Promise<void> | undefined;
 let version = 0;
-const listeners = new Set<() => void>();
+const catalogChanged = createSignal();
 export const catalogVersion = (): number => version;
-export const subscribeCatalog = (listener: () => void): (() => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; };
-const changed = () => { version++; for (const listener of listeners) listener(); };
+export const subscribeCatalog = (listener: () => void): (() => void) => catalogChanged.subscribe(listener);
+const changed = () => { version++; catalogChanged.emit(); };
 const record = (v: unknown): Record<string, unknown> => v && typeof v === 'object' && !Array.isArray(v) ? v as Record<string, unknown> : {};
 const strings = (v: unknown): string[] | undefined => Array.isArray(v) ? v.filter((s): s is string => typeof s === 'string' && s.length < 200) : undefined;
 const positive = (v: unknown): number | undefined => typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : undefined;
 
 /** Accepts data fields only; remote URLs, headers and request-body overrides are never used. */
-export function parseCapabilities(value: unknown): ModelCapabilities {
+function parseCapabilities(value: unknown): ModelCapabilities {
   const m = record(value), modalities = record(m.modalities ?? m.architecture), limit = record(m.limit);
   const options = Array.isArray(m.reasoning_options) ? m.reasoning_options.map(record) : [];
   const effort = options.find((o) => o.type === 'effort');
@@ -103,7 +104,7 @@ export function ensureModelCatalog(force = false): Promise<void> {
   return pending;
 }
 
-export function catalogProvider(provider: ProviderId, endpoint?: string): ProviderId {
+function catalogProvider(provider: ProviderId, endpoint?: string): ProviderId {
   if (provider !== 'custom' || !endpoint) return provider;
   const url = endpoint.replace(/\/$/, '');
   return PROVIDER_IDS.find((id) => id !== 'custom' && [0, 1].some((region) =>

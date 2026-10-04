@@ -1,4 +1,4 @@
-// placement/themes.ts — themed room decorators + composed crossing scenes.
+// Themed room decorators + composed crossing scenes.
 //
 // A ROOM is a patch of ground with a theme: the decorator for that theme fills it IN CHARACTER
 // (species-pure orchard grids, crop rows, garden beds, a peak lookout, a waterfront promenade)
@@ -6,8 +6,8 @@
 // moment. All picks come from the live catalog pools; every placement goes through tryPlace
 // (reject-and-skip). The agent's `decorate_zone` tool is the caller: it hands in the rect the user
 // named as one room.
-import { ItemCategory, type CatalogItem, type MacroCoord, type PlacedObject } from '../../core/model/types';
-import { getRotatedSize, objectRect } from '../../state/object-geometry';
+import { ItemCategory, type CatalogItem, type MacroCoord, type PlacedObject, type Rotation, ROTATIONS } from '../../core/model/types';
+import { crossingRunsAlongX, getRotatedSize, objectRect } from '../../state/object-geometry';
 import type { Rng } from '../../core/model/rng';
 import { TUNING } from './tuning';
 import { tryPlace, tryDecorate, openAt, markCells as mark, buildingGate, hasGate, type PlaceCtx } from './object';
@@ -16,7 +16,7 @@ import type { PlacementAnalysis } from './analysis';
 import { bySizeDesc } from '../../core/model/geometry';
 
 /** The six characters a room can be decorated in. */
-export type ZoneTheme = 'orchard' | 'farm' | 'garden' | 'hamlet' | 'waterfront' | 'peak';
+type ZoneTheme = 'orchard' | 'farm' | 'garden' | 'hamlet' | 'waterfront' | 'peak';
 
 /** One room, as a decorator reads it: which cells it holds, where its middle is, and its theme. */
 export interface Zone {
@@ -26,18 +26,18 @@ export interface Zone {
   theme: ZoneTheme;
 }
 
-const place = (ctx: PlaceCtx, a: PlacementAnalysis, settled: Set<string>, id: string, x: number, y: number, rot: 0 | 90 | 180 | 270 = 0): PlacedObject | null => {
+const place = (ctx: PlaceCtx, a: PlacementAnalysis, settled: Set<string>, id: string, x: number, y: number, rot: Rotation = 0): PlacedObject | null => {
   if (!openAt(a, x, y) || settled.has(`${x},${y}`)) return null;
   const obj = tryDecorate(ctx, id, x, y, rot); // decorations respect navigation clearance (blocking items only)
   if (obj) mark(obj, settled);
   return obj;
 };
 
-/** The two end cells just outside a crossing's footprint, along its long axis — where roads attach
+/** The two end cells just outside a crossing's footprint, along its travel axis — where roads attach
  *  and the navigation clearance is reserved. */
 export function crossingEnds(obj: PlacedObject): [MacroCoord, MacroCoord] {
   const r = objectRect(obj);
-  const horizontal = r.w >= r.h;
+  const horizontal = crossingRunsAlongX(obj);
   const midX = Math.floor(r.x + r.w / 2), midY = Math.floor(r.y + r.h / 2);
   return horizontal
     ? [{ x: Math.floor(r.x) - 1, y: midY }, { x: Math.ceil(r.x + r.w), y: midY }]
@@ -49,13 +49,13 @@ export function crossingEnds(obj: PlacedObject): [MacroCoord, MacroCoord] {
  *  faces open ground (approach open, and ideally the cell beyond it too) so the door can take a
  *  road spur — a random pick regularly faced cliffs/water and left the doorstep unpavable. The
  *  seeded rng start keeps variety among equally-good facings; non-gated items stay fully random. */
-function gateAwareRot(a: PlacementAnalysis, item: CatalogItem, cx: number, cy: number, rng: Rng, settled: Set<string>): 0 | 90 | 180 | 270 {
+function gateAwareRot(a: PlacementAnalysis, item: CatalogItem, cx: number, cy: number, rng: Rng, settled: Set<string>): Rotation {
   if (!item.rotatable) return 0;
-  const rots = [0, 90, 180, 270] as const;
+  const rots = ROTATIONS;
   const start = rng.int(4);
   if (!hasGate(item)) return rots[start]!;
   const free = (x: number, y: number): boolean => openAt(a, x, y) && !settled.has(`${x},${y}`);
-  let best: 0 | 90 | 180 | 270 = rots[start]!, bestScore = -1;
+  let best: Rotation = rots[start]!, bestScore = -1;
   for (let k = 0; k < 4; k++) {
     const rot = rots[(start + k) % 4]!;
     const sz = getRotatedSize(item, rot);
@@ -233,7 +233,7 @@ export function decorateCrossing(ctx: PlaceCtx, a: PlacementAnalysis, obj: Place
   if (!flora.length) return;
   const sp = flora[rng.int(flora.length)]!;
   const r = objectRect(obj);
-  const horizontal = r.w >= r.h;
+  const horizontal = crossingRunsAlongX(obj);
   const ends: MacroCoord[] = horizontal
     ? [{ x: Math.floor(r.x) - 1, y: Math.floor(r.y) }, { x: Math.ceil(r.x + r.w), y: Math.floor(r.y) }]
     : [{ x: Math.floor(r.x), y: Math.floor(r.y) - 1 }, { x: Math.floor(r.x), y: Math.ceil(r.y + r.h) }];

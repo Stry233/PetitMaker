@@ -15,11 +15,13 @@ const SHAPES = {
   circle: { label: 'eraser.circle', command: 'tool.circle' },
 } as const;
 
-export function ShapeOptions({ value, onChange }: { value: BuildShape; onChange: (shape: BuildShape) => void }) {
+export function ShapeOptions({ value, onChange, shapes = BUILD_SHAPES }: {
+  value: BuildShape; onChange: (shape: BuildShape) => void; shapes?: readonly BuildShape[];
+}) {
   const t = useT();
   const overrides = useKeybinds(s => s.overrides);
   const context = useToolbarContext();
-  const options = BUILD_SHAPES.map(shape => {
+  const options = shapes.map(shape => {
     const label = t(SHAPES[shape].label);
     const combo = effectiveCombo(overrides, SHAPES[shape].command, context);
     const cell = TOOL_CELLS.find(cell => cell.id === shape);
@@ -30,5 +32,8 @@ export function ShapeOptions({ value, onChange }: { value: BuildShape; onChange:
       </svg>,
     };
   });
-  return <OptionPill helpTarget={context === 'terrain' ? { page: 'terrain', anchor: value === 'free' ? 'terrain-brush' : `terrain-${value}` } : { page: 'notes', anchor: 'notes-zone' }} value={value} options={options} label={t('terrain.shapes')} commandId="tool.shape_cycle" onChange={onChange}/>;
+  const helpTarget = context === 'region' ? { page: 'region' as const }
+    : context === 'terrain' ? { page: 'terrain' as const, anchor: value === 'free' ? 'terrain-brush' : `terrain-${value}` }
+    : { page: 'notes' as const, anchor: 'notes-zone' };
+  return <OptionPill helpTarget={helpTarget} value={value} options={options} label={t('terrain.shapes')} commandId="tool.shape_cycle" onChange={onChange}/>;
 }

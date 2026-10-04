@@ -23,7 +23,8 @@ function mesa(): GridState {
   return state;
 }
 
-/** The messages a stroke asked for, and the toasts it posted. */
+/** The rule messages a stroke asked for, and the toasts it posted. A toast leads with its rule's
+ *  category, which the stub says as `category|reason`. */
 function recording(state: GridState, ex: CommandExecutor, elevation: number, over: Partial<ToolContext> = {}) {
   const asked: { key: string; params?: Record<string, string | number> }[] = [];
   const toasts: { text: string; type: ToastType }[] = [];
@@ -31,6 +32,8 @@ function recording(state: GridState, ex: CommandExecutor, elevation: number, ove
   const ctx: ToolContext = {
     ...makeToolCtx(state, ex, 1, elevation, { layerPinned: true, ...over }),
     t: (key: string, params?: Record<string, string | number>) => {
+      if (key === 'rule.toast') return `${params!.category}|${params!.reason}`;
+      if (key.startsWith('rule.category.')) return key;
       asked.push({ key, params });
       return params ? `${key}:${JSON.stringify(params)}` : key;
     },
@@ -57,7 +60,7 @@ describe('a refused water stroke names the one layer that would hold it', () => 
     expect(terrainAt(state, 8, 8), 'the stroke is still refused, and nothing is quietly moved')
       .toEqual({ type: TerrainType.Mountain, elevation: 3 });
     expect(asked).toEqual([{ key: 'error.water_only_layer', params: { layer: 3 } }]);
-    expect(toasts).toEqual([{ text: 'error.water_only_layer:{"layer":3}', type: 'warning' }]);
+    expect(toasts).toEqual([{ text: 'rule.category.water|error.water_only_layer:{"layer":3}', type: 'warning' }]);
   });
 
   it('layer 3 is what actually works there, which is what the message promises', () => {
@@ -130,7 +133,7 @@ describe('a refused water stroke names the one layer that would hold it', () => 
     tool.onPointerUp(m(8, 8), m(8, 8), ctx);
     restore();
     expect(soleLegalWaterLayer([m(8, 8)], state, createDefaultRegistry()), 'the water question there does have one answer').toBe(3);
-    expect(asked.map((a) => a.key)).toEqual(['error.need_3x3_base']);
+    expect(asked.map((a) => a.key)).toEqual(['error.need_base_support']);
   });
 
   it('an off-map footprint names nothing', () => {

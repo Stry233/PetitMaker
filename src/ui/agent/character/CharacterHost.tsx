@@ -12,13 +12,13 @@ import { panelView, useAgentSession } from '../../../agent/session/store';
 import { useT } from '../../../i18n/context';
 import { useChromeScale } from '../../design/scale';
 import { useDockStage } from '../../shell/use-dock';
-import { cursors, font, z } from '../../design/styles';
+import { cursors, font, z, radii } from '../../design/styles';
 import { INK } from '../../design/tokens';
 import { roleFont } from '../../design/text-weight';
 import { heroChipFace, useSecondClock } from '../dock-face';
 import {
   amplitude, easingCss, framerMotion, landEasingCss, outEasingCss, outSeconds, overshootAt, seconds,
-} from '../motion';
+} from '../../design/motion';
 import { edge, statePaper } from '../tokens';
 import { Character, getCharacterHandle } from './Character';
 import { poseForPhase } from './poses';
@@ -54,7 +54,7 @@ const CHIP_DOWN = 4;
 /** How far the chip starts short of its own size, per its declaration. */
 const CHIP_FROM = 1 - 0.3;
 
-export interface CharacterHostProps {
+interface CharacterHostProps {
   /** Folded character seat. */
   entranceRef: RefObject<HTMLElement | null>;
   /** Whether the panel is intended to be open. */
@@ -236,7 +236,7 @@ export function CharacterHost({
               background: statePaper.work,
               color: INK,
               border: edge,
-              borderRadius: 999,
+              borderRadius: radii.pill,
               padding: '4px 10px',
               ...roleFont('caption'),
               fontFamily: font.family,

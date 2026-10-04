@@ -5,8 +5,8 @@
  * ONE-LINE slot with a declared ellipsis (the dock's word and its session mark) or in a native input's
  * placeholder, which clips SILENTLY — no ellipsis, no `scrollWidth` growth, so neither the suite nor a
  * screenshot pair can see the cut. What was lost in four locales was the very fact the slot exists to
- * carry: "Ключ отклон…" for a refused key, "Достигнут предел ша…" for the turn cap, "…настройк" where
- * the composer says why it is off.
+ * carry: the Russian notes for a refused key and for the turn cap, and the composer's reason it is
+ * off, each cut before the word that carries the meaning.
  *
  * SO THE VALUES ARE PINNED, and the numbers behind them are recorded here rather than recomputed: the
  * widths below are advance sums in the app's own faces ('Alibaba PuHuiTi 3' first, Quicksand behind

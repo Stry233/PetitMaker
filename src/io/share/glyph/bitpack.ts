@@ -1,4 +1,4 @@
-// src/io/share/glyph/bitpack.ts — repack a byte stream into n-bit symbols (and back),
+// Repack a byte stream into n-bit symbols (and back),
 // MSB-first. Glyph modules carry n-bit symbols (n = tier.bits ∈ {3,4} for the data region, 2 for
 // the header — see glyph/geometry.ts TIERS) while Reed–Solomon works over 8-bit bytes, so the
 // codec bridges the two here. Also maps symbol-level erasures back to the bytes they touch.

@@ -26,7 +26,7 @@ import {
   setDeskSeat, setPanelCarriage, showCharacter,
 } from '../../../ui/agent/character/seat';
 import { useEditorStore } from '../../../state/store';
-import { amplitude, outSeconds, overshootAt, seconds } from '../../../ui/agent/motion';
+import { amplitude, outSeconds, overshootAt, seconds } from '../../../ui/design/motion';
 import {
   CHARACTER_SEAT, PANEL_LEFT, PANEL_PLATE_PAD, PANEL_TOP, panelTop, SEAT_TRAVEL_MAX,
 } from '../../../ui/shell/panel-frame';

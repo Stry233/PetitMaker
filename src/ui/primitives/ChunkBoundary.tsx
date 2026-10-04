@@ -41,7 +41,7 @@ const action: CSSProperties = {
   fontFamily: font.family,
   ...roleFont('small'),
   padding: '6px 12px',
-  borderRadius: 999,
+  borderRadius: radii.pill,
   cursor: cursors.clickable,
 };
 

@@ -1,5 +1,5 @@
 /*
- * _stencil-metrics.ts — how a built letter is judged, and the pipeline that builds one.
+ * How a built letter is judged, and the pipeline that builds one.
  *
  * WHAT A STENCILLED LETTER HAS TO BE is not a matter of taste, and none of it is visible in a cell
  * count: the ink has to be ONE PIECE per piece of the glyph (a stroke that touches its neighbour only
@@ -652,7 +652,7 @@ export function buildGlyph(fixture: RasterFixture): BuiltGlyph {
     stencilPlan: { read: 'shape', fill: { kind: 'terrain', terrain: TerrainType.Mountain }, stencil, origin },
   };
   exec.runSilently(() => { generateTerrain(config, state, (c) => exec.execute(c), exec.getRegistry()); });
-  const violations = exec.commitStrokeGroup(0).length;
+  const violations = exec.commitStroke(0).length;
 
   const { width: fw, height: fh } = fixture;
   const corners: (Corners | null)[] = [];

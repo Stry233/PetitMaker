@@ -1,5 +1,5 @@
 /*
- * types.ts — what a procedural pack is.
+ * What a procedural pack is.
  *
  * A pack is its manifest row plus one drawing function. Everything else it needs — the field bake,
  * the outlines, the colour moves, the substrate — is shared, so adding a pack is authoring a look

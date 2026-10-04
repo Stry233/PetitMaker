@@ -12,10 +12,12 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { CellZone } from '../../core/model/types';
 import type { GenerateConfig, GridState, MapTemplate } from '../../core/model/types';
+import { encodeCells } from '../../core/model/grid-wire';
+import type { WireTransferPreview } from '../../kit/operations/candidate-pool';
 
 type Pool = typeof import('../../kit/operations/candidate-pool');
 
-interface Posted { worker: FakeWorker; id: number; hasTemplate: boolean }
+interface Posted { worker: FakeWorker; id: number; kind: string; hasTemplate: boolean; templates: string[] }
 
 /** Which job ids the next `postMessage` refuses. Armed per test. */
 let failPost: (id: number) => boolean = () => false;
@@ -36,10 +38,10 @@ class FakeWorker {
   }
 
   postMessage(msg: unknown, _transfer?: unknown[]): void {
-    const { id, grid } = msg as { id: number; grid: { template?: unknown } };
+    const { id, kind, grid, templates } = msg as { id: number; kind: string; grid: { template?: unknown }; templates?: MapTemplate[] };
     if (failPost(id)) throw new Error('DataCloneError: could not be cloned');
     totalPosts++;
-    posted.push({ worker: this, id, hasTemplate: grid.template !== undefined });
+    posted.push({ worker: this, id, kind, hasTemplate: grid.template !== undefined, templates: (templates ?? []).map((t) => t.id) });
   }
 
   terminate(): void { this.terminated = true; }
@@ -47,11 +49,11 @@ class FakeWorker {
 
 /** Hand one queued question its answer, the way a worker does. Returns whatever escaped the
  *  message handler, which for a healthy pool is nothing. */
-function deliverOne(): unknown {
+function deliverOne(answer: Record<string, unknown> = {}): unknown {
   const next = posted.shift();
   if (!next) throw new Error('nothing was posted');
   try {
-    next.worker.onmessage?.({ data: { id: next.id, ok: true } } as MessageEvent);
+    next.worker.onmessage?.({ data: { id: next.id, ok: true, ...answer } } as MessageEvent);
     return null;
   } catch (err) {
     return err;
@@ -189,6 +191,68 @@ describe('a pool that works', () => {
     expect(await held).toBeNull();
     expect(await Promise.all(running)).toEqual(running.map(() => null));
     expect(totalPosts, 'the cancelled job never cost a worker').toBe(running.length);
+  });
+});
+
+describe('a carry preview in the pool', () => {
+  /** A worker's carry answer for `state`: its grid back on the wire and a one-cell loss. */
+  const answerFor = (state: GridState): { preview: WireTransferPreview } => ({
+    preview: {
+      grid: { wire: encodeCells(state.cells, 2, 2), objects: [], lockedLayers: [], cellsVersion: 3, objectsVersion: 4 },
+      dropped: [{ x: -1, y: 0 }], moved: { cells: 1, objects: 0 }, droppedCounts: { cells: 1, objects: 0 },
+    },
+  });
+  const planet = (id: string): MapTemplate => ({ ...tinyState().template, id });
+
+  it('runs ahead of waiting candidates, sends its destination once per worker, and comes back as a map', async () => {
+    vi.stubGlobal('navigator', { hardwareConcurrency: 3 });
+    const pool = await loadPool();
+    const state = tinyState();
+    const target = planet('pool-target');
+    const cards = Array.from({ length: 2 }, () => pool.runCandidateInPool({ state, config, region: null }));
+    const first = pool.runTransferPreviewInPool(state, target);
+    expect(posted.map((p) => p.kind), 'one worker, busy with the first card').toEqual(['candidate']);
+    deliverOne();
+    expect(posted.map((p) => p.kind), 'the preview jumps the card that was waiting').toEqual(['transfer']);
+    expect(posted[0]!.templates).toEqual([target.id]);
+    deliverOne(answerFor(state));
+    const preview = await first;
+    expect(preview?.state.template).toBe(target);
+    expect(preview?.state.cellsVersion).toBe(3);
+    expect(preview?.dropped).toEqual([{ x: -1, y: 0 }]);
+    expect(preview?.droppedCounts).toEqual({ cells: 1, objects: 0 });
+
+    const again = pool.runTransferPreviewInPool(state, target);
+    deliverOne();
+    expect(posted[0]!.kind).toBe('transfer');
+    expect(posted[0]!.templates, 'the worker already holds the destination').toEqual([]);
+    deliverOne(answerFor(state));
+    expect((await again)?.state.template).toBe(target);
+    await Promise.all(cards);
+  });
+
+  it('sends nothing extra when the destination is the map\'s own planet', async () => {
+    const pool = await loadPool();
+    const state = tinyState();
+    const job = pool.runTransferPreviewInPool(state, state.template);
+    expect(posted[0]).toMatchObject({ kind: 'transfer', hasTemplate: true, templates: [] });
+    deliverOne(answerFor(state));
+    expect((await job)?.state.template).toBe(state.template);
+  });
+
+  it('resolves null without posting when cancelled while it waits', async () => {
+    vi.stubGlobal('navigator', { hardwareConcurrency: 3 });
+    const pool = await loadPool();
+    const state = tinyState();
+    const card = pool.runCandidateInPool({ state, config, region: null });
+    const signal = { cancelled: false };
+    const preview = pool.runTransferPreviewInPool(state, planet('pool-target'), signal);
+    signal.cancelled = true;
+    deliverOne();
+    expect(await preview).toBeNull();
+    expect(posted).toHaveLength(0);
+    expect(totalPosts).toBe(1);
+    await card;
   });
 });
 

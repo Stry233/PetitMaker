@@ -1,21 +1,21 @@
 /**
- * Transfers a build by aligning source and destination plaza centers, repairing terrain against the
- * new template, and replaying terrain, corners, then objects through live rules. Paint batches split
- * on refusal and land and build use separate strokes. Work occurs on a detached map and installs only
- * when complete. Existing cell/object provenance is translated with the content.
+ * Transfers a build by aligning source and destination plaza centers, clearing the destination's
+ * own terrain under the carried build, repairing terrain against the new template, and replaying
+ * terrain, corners, then objects through live rules. Paint batches split on refusal and land and
+ * build use separate strokes. Work occurs on a detached map; `transfer-map.ts` installs it when
+ * complete. Existing cell/object provenance is translated with the content. Nothing here reaches
+ * the live editor, so the generation worker runs this module for the carry preview.
  */
-import { CommandExecutor } from '../../core/commands/command-executor';
-import { EventBus } from '../../core/commands/event-bus';
-import { PLAZA_ID } from '../../core/model/constants';
-import { cellKey, getCell, isBuildableZone, NEIGHBORS4 } from '../../core/model/grid-model';
+import type { CommandExecutor } from '../../core/commands/command-executor';
+import { cellKey, getCell, hasLandmark, isBuildableZone, NEIGHBORS4, isLandmarkItem } from '../../core/model/grid-model';
 import { isCoating } from '../../core/model/traits';
-import { structuralTop, surfaceElevation } from '../../core/edge-cut/terrain-silhouette';
+import { createGridState, templateHasTerrain } from '../../core/model/planet';
+import { structuralTop, surfaceElevation, patchSupport } from '../../core/edge-cut/terrain-silhouette';
 import { ProvSource } from '../../core/provenance/types';
 import {
   CommandType,
   TerrainType,
   type Corners,
-  type EditorEvents,
   type GridState,
   type MacroCoord,
   type MapTemplate,
@@ -25,44 +25,19 @@ import {
   type TrimCornersCommand,
   type ValidationError,
 } from '../../core/model/types';
-import { getMapTemplate } from '../../config/maps';
 import { createDefaultRegistry } from '../../rules';
 import type { RuleRegistry } from '../../rules/registry';
-import { catalogLoadValue, getCatalogItem } from '../../state/catalog';
-import { getObjectIndex, objectAt, roadLookup } from '../../state/object-index';
-import { makeScratchState, planToCommands, repairPlan, type TerrainPlan } from '../../tools/generation/core';
+import { getCatalogItem } from '../../state/catalog';
+import { createExecutor } from '../../state/executor';
+import { getObjectIndex, objectAt } from '../../state/object-index';
+import { footprintCells, getPlacedObjectSize, terrainCellsUnder } from '../../state/object-geometry';
+import { planToCommands, repairPlan, type TerrainPlan } from '../../tools/generation/core';
 import { movedObject, objectPlacementCommand } from '../../tools/objects';
-import { installLoadedMap, type KitContext } from '../context';
-import { forgetGenerationScope } from './generate';
-import { newMap } from './map';
 
 /** Cells and objects are counted apart, because the report names both. */
 export interface TransferCounts {
   cells: number;
   objects: number;
-}
-
-export interface TransferOutcome {
-  /** The planet arrived at. The template itself, so a caller can name it without a second lookup. */
-  target: MapTemplate;
-  /** The macro offset everything carried moved by: the difference of the two plaza centres. */
-  offset: MacroCoord;
-  /** False = the destination opened empty (the plain new-map path). */
-  carried: boolean;
-  /** What stands on the destination that stood on the source. */
-  moved: TransferCounts;
-  /** What the destination would not take. */
-  dropped: TransferCounts;
-  /** Post-stroke violations that survived the commit. Empty on success. */
-  violations: ValidationError[];
-}
-
-export interface TransferOptions {
-  /** The destination planet: a built-in template id, or the template itself (a planet the built-in
-   *  registry does not hold). */
-  target: string | MapTemplate;
-  /** Default true. False is the plain new-map path — the build is left behind. */
-  carry?: boolean;
 }
 
 /** Round to the macro grid, normalising the negative zero `Math.round` returns for -0.5..0, which
@@ -74,7 +49,7 @@ const macroRound = (v: number): number => Math.round(v) || 0;
  *  middle, which is the only other thing two maps of different sizes share. */
 function plazaAnchor(t: MapTemplate): { x: number; y: number } {
   const p = t.plaza;
-  if (!p || p.width === 0 || p.height === 0) return { x: t.width / 2, y: t.height / 2 };
+  if (!hasLandmark(p)) return { x: t.width / 2, y: t.height / 2 };
   return { x: p.x + p.width / 2, y: p.y + p.height / 2 };
 }
 
@@ -85,12 +60,9 @@ export function plazaOffset(from: MapTemplate, to: MapTemplate): MacroCoord {
   return { x: macroRound(b.x - a.x), y: macroRound(b.y - a.y) };
 }
 
-const resolveTarget = (target: string | MapTemplate): MapTemplate =>
-  typeof target === 'string' ? getMapTemplate(target) : target;
-
 /** The plaza of the map being left. The destination made its own from its own template, and
  *  V-LOCK-02 would refuse this one anyway. */
-const isPlaza = (o: PlacedObject): boolean => o.id === PLAZA_ID || o.catalogId === PLAZA_ID;
+const isPlaza = (o: PlacedObject): boolean => isLandmarkItem(o.catalogId);
 
 /**
  * Whether this map holds anything a transfer would carry.
@@ -110,66 +82,64 @@ export function hasCarriableContent(state: GridState): boolean {
   return false;
 }
 
+/** A transfer's arrival on a detached map, before anything is installed. */
+export interface BuiltTransfer {
+  dest: GridState;
+  registry: RuleRegistry;
+  offset: MacroCoord;
+  moved: TransferCounts;
+  dropped: TransferCounts;
+  /** Every destination cell that would have held carried terrain or part of a carried object's
+   *  footprint and does not, cells off the destination included; each cell once. */
+  droppedCells: MacroCoord[];
+  violations: ValidationError[];
+}
+
 /**
- * Change planet, carrying the current build to the new one.
+ * The whole transfer on a detached destination. Reads `source` and touches nothing live, so the
+ * real transfer and its preview are one computation.
  *
- * History resets exactly as it does for any other template switch: the destination arrives under a
- * fresh executor, so a transfer is not undoable (the modal that offers it carries that warning).
+ * The destination starts as a fresh state of `target`, the planet's own terrain included. Wherever
+ * the source holds terrain or a carried object stands, that terrain is cleared first: the build
+ * replaces the planet's mountains where the two overlap.
  */
-export function transferMap(kit: KitContext, opts: TransferOptions): TransferOutcome {
-  const target = resolveTarget(opts.target);
-  const source = kit.state;
+export function buildTransfer(source: GridState, target: MapTemplate): BuiltTransfer {
   const offset = plazaOffset(source.template, target);
-
-  if (opts.carry === false) {
-    newMap(target);
-    return {
-      target, offset, carried: false,
-      moved: { cells: 0, objects: 0 },
-      dropped: { cells: 0, objects: 0 },
-      violations: [],
-    };
-  }
-
   const registry = createDefaultRegistry();
-  // The destination as `initMap` builds it: the template's own zones, its own plaza object, no
-  // terrain. Built detached — nothing is live until the whole arrival stands.
-  const dest = makeScratchState(target);
-  const executor = new CommandExecutor(
-    dest, new EventBus<EditorEvents>(), registry, roadLookup(dest), catalogLoadValue,
-  );
+  // The destination as `initMap` builds it: the template's own zones, terrain and plaza object.
+  const dest = createGridState(target);
+  dest.ignoreChunkLoad = source.ignoreChunkLoad;
+  clearUnderBuild(source, dest, offset);
+  const executor = createExecutor(dest, registry);
 
-  executor.pushSource({ source: ProvSource.Imported, tool: 'transfer' });
-  let violations: ValidationError[];
-  try {
+  const violations = executor.withSource({ source: ProvSource.Imported, tool: 'transfer' }, (): ValidationError[] => {
     // Silenced for the reason a generation is: a refusal here is an outcome the report counts, not
     // an error to raise per cell.
     const paintable = paintableMask(dest, registry);
     // The land first, as its own stroke; its cuts commit with it.
-    const land = executor.getUndoStackSize();
-    executor.runSilently(() => {
-      replayTerrain(source, dest, executor, registry, offset, paintable);
-      replayCorners(source, dest, executor, offset, paintable);
+    executor.transaction({}, (tx) => {
+      executor.runSilently(() => {
+        replayTerrain(source, dest, executor, registry, offset, paintable);
+        replayCorners(source, dest, executor, offset, paintable);
+      });
+      tx.commit();
     });
-    executor.commitStrokeGroup(land);
-    violations = settleArrival(dest, executor, registry);
+    const settled = settleArrival(dest, executor, registry);
 
     // THE BUILD IS ONLY OFFERED TO LAND THAT STANDS. A stroke laid over an illegal map is judged
     // against the whole map, so the build stroke's own commit would find the land's violations and
     // unwind every object on the way to a map it cannot fix — the loss lands on the content that
     // was never the problem. Ground that will not settle arrives bare, and the report says so.
-    if (violations.length === 0) {
-      const build = executor.getUndoStackSize();
+    if (settled.length > 0) return settled;
+    executor.transaction({}, (tx) => {
       executor.runSilently(() => replayObjects(source, dest, executor, offset));
-      executor.commitStrokeGroup(build);
-      // What the map still says about itself, rather than what a commit said on its way to fixing
-      // it: `commitStroke` returns the violations it FOUND and then reverts until they are gone, so
-      // its answer describes a map that no longer stands.
-      violations = settleArrival(dest, executor, registry);
-    }
-  } finally {
-    executor.popSource();
-  }
+      tx.commit();
+    });
+    // What the map still says about itself, rather than what a commit said on its way to fixing
+    // it: `commitStroke` returns the violations it FOUND and then reverts until they are gone, so
+    // its answer describes a map that no longer stands.
+    return settleArrival(dest, executor, registry);
+  });
 
   // The work's own history comes along with the work: what the replay dropped stays behind
   // (`keepCell`/`keepObject` read the arrival), and what landed keeps its author.
@@ -186,11 +156,42 @@ export function transferMap(kit: KitContext, opts: TransferOptions): TransferOut
   // from it.
   if (source.notes) dest.notes = { ...source.notes };
 
-  installLoadedMap(dest, registry);
-  forgetGenerationScope();
+  const { moved, dropped, droppedCells } = countCarried(source, dest, offset);
+  return { dest, registry, offset, moved, dropped, droppedCells, violations };
+}
 
-  const { moved, dropped } = countCarried(source, dest, offset);
-  return { target, offset, carried: true, moved, dropped, violations };
+/** The destination cells a carried object's footprint covers on the zone and object grid, a
+ *  half-step anchor included. */
+function carriedFootprint(o: PlacedObject, offset: MacroCoord): MacroCoord[] {
+  const { w, h } = getPlacedObjectSize(o);
+  return footprintCells(o.position.x + offset.x, o.position.y + offset.y, w, h);
+}
+
+/** The destination terrain cells a carried object rests on. Terrain sits half a cell up-left of the
+ *  object grid, so a whole-cell footprint rests on one more column and row than it covers. */
+function carriedGround(o: PlacedObject, offset: MacroCoord): MacroCoord[] {
+  const { w, h } = getPlacedObjectSize(o);
+  return terrainCellsUnder(o.position.x + offset.x, o.position.y + offset.y, w, h);
+}
+
+/** Clears the planet's own terrain from every destination cell a source terrain cell lands on and
+ *  every terrain cell a carried object rests on. Runs on the fresh scratch state before any
+ *  executor or index has read it. */
+function clearUnderBuild(source: GridState, dest: GridState, offset: MacroCoord): void {
+  if (!templateHasTerrain(dest.template)) return;
+  const clear = (x: number, y: number): void => {
+    const cell = getCell(dest.cells, x, y);
+    if (cell) cell.terrain = null;
+  };
+  for (let sy = 0; sy < source.template.height; sy++) {
+    const row = source.cells[sy];
+    if (!row) continue;
+    for (let sx = 0; sx < row.length; sx++) if (row[sx]?.terrain) clear(sx + offset.x, sy + offset.y);
+  }
+  for (const o of source.objects.values()) {
+    if (isPlaza(o)) continue;
+    for (const c of carriedGround(o, offset)) clear(c.x, c.y);
+  }
 }
 
 // ── terrain ──────────────────────────────────────────────────────────────────────────────────────
@@ -198,12 +199,14 @@ export function transferMap(kit: KitContext, opts: TransferOptions): TransferOut
 /**
  * Where the destination will take terrain at all, asked of the rules rather than re-derived.
  *
- * A one-cell probe answers it: what refuses a paint on empty ground is the zone, the half-cell bleed
- * onto the up/left neighbours, and an object standing in the way (the plaza) — none of which any
- * later paint changes, so one answer per cell holds for the whole replay. The mask has to be applied
- * BEFORE the plan is repaired: `repairPlan` certifies the plan as it would stand, and a plan holding
- * cells the map will refuse certifies a map that never arrives, leaving the real one a support cell
- * short and the whole stroke reverted at commit.
+ * A one-cell probe answers it: what refuses a paint is the zone, the half-cell bleed onto the
+ * up/left neighbours, and an object standing in the way (the plaza) — none of which any later paint
+ * changes, so one answer per cell holds for the whole replay. The probe runs after
+ * `clearUnderBuild`, so every cell the build lands on is empty ground and the planet's own terrain
+ * stands only around it. The mask has to be applied BEFORE the plan is repaired: `repairPlan`
+ * certifies the plan as it would stand, and a plan holding cells the map will refuse certifies a map
+ * that never arrives, leaving the real one a support cell short and the whole stroke reverted at
+ * commit.
  */
 function paintableMask(dest: GridState, registry: RuleRegistry): (x: number, y: number) => boolean {
   const { width, height } = dest.template;
@@ -335,7 +338,7 @@ function replayCorners(
         beforeCorners: undefined, afterCorners: corners,
       };
       if (t.patchOnly) {
-        const base = t.patchBase ?? t.elevation - 1;
+        const base = patchSupport(t);
         const standing = base < 1
           ? now === null && paintable(dx, dy)
           : !!now && !now.patchOnly && now.type === t.type && now.elevation === base;
@@ -452,7 +455,7 @@ function settleArrival(
     if (violations.length === 0) {
       if (!taken) return [];
       taken = false;
-      executor.commitStrokeGroup(start);
+      executor.commitStroke(start);
       continue;
     }
     const watermark = executor.getUndoStackSize();
@@ -491,25 +494,33 @@ function countCarried(
   source: GridState,
   dest: GridState,
   offset: MacroCoord,
-): { moved: TransferCounts; dropped: TransferCounts } {
+): { moved: TransferCounts; dropped: TransferCounts; droppedCells: MacroCoord[] } {
+  const lost = new Map<string, MacroCoord>();
+  const lose = (x: number, y: number): void => {
+    const k = cellKey(x, y);
+    if (!lost.has(k)) lost.set(k, { x, y });
+  };
   let movedCells = 0, droppedCells = 0;
   for (let sy = 0; sy < source.template.height; sy++) {
     const row = source.cells[sy];
     if (!row) continue;
     for (let sx = 0; sx < row.length; sx++) {
       if (!row[sx]?.terrain) continue;
-      if (getCell(dest.cells, sx + offset.x, sy + offset.y)?.terrain) movedCells++;
-      else droppedCells++;
+      const dx = sx + offset.x, dy = sy + offset.y;
+      if (getCell(dest.cells, dx, dy)?.terrain) movedCells++;
+      else { droppedCells++; lose(dx, dy); }
     }
   }
   let movedObjects = 0, droppedObjects = 0;
   for (const o of source.objects.values()) {
     if (isPlaza(o)) continue;
-    if (dest.objects.has(o.id)) movedObjects++;
-    else droppedObjects++;
+    if (dest.objects.has(o.id)) { movedObjects++; continue; }
+    droppedObjects++;
+    for (const c of carriedFootprint(o, offset)) lose(c.x, c.y);
   }
   return {
     moved: { cells: movedCells, objects: movedObjects },
     dropped: { cells: droppedCells, objects: droppedObjects },
+    droppedCells: [...lost.values()],
   };
 }

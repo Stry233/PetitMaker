@@ -1,5 +1,5 @@
 /*
- * BuildChecklist.tsx — the third section of the save-and-share window: the materials, for someone
+ * The third section of the save-and-share window: the materials, for someone
  * rebuilding this map by hand in the game.
  *
  * It renders `state/build-checklist.ts` and derives nothing of its own, so what a reader counts
@@ -26,14 +26,14 @@ import { subscribeMapStats } from '../../../../state/map-stats';
 import type { GridState } from '../../../../core/model/types';
 import { useEditorStore } from '../../../../state/store';
 import { btnReset, buttonMotion, exitTransition, radii, shadows, springs } from '../../../design/styles';
-import { skin } from '../../../design/window-skin';
+import { skin, windowChip } from '../../../design/window-skin';
 import { roleFont, roleWeight } from '../../../design/text-weight';
 
 const sectionTitle: CSSProperties = { ...roleFont('head'), color: skin.ink };
 const noteText: CSSProperties = { ...roleFont('caption'), color: skin.plateInk, opacity: 0.8, lineHeight: 1.45 };
 const totalChip: CSSProperties = { ...roleFont('small'), color: skin.plateInk, fontVariantNumeric: 'tabular-nums' };
 
-/** The supply crate itself: an inset plate (the same fill today's rows already stand on), heavy
+/** The supply crate itself: an inset plate (the same fill the rows stand on), heavy
  *  header, everything else inside. */
 const card: CSSProperties = {
   background: skin.inset, borderRadius: radii.md, padding: '10px 14px 12px',
@@ -70,10 +70,7 @@ const chipsRow: CSSProperties = { display: 'flex', flexWrap: 'wrap', gap: 8 };
 /** A layer chip steps back up to `skin.plate`, the cream one level lighter than the card's own
  *  `skin.inset` — the alternation `window-skin.ts` describes, so a chip reads as its own token
  *  sitting IN the crate rather than another row of it. */
-const layerChip: CSSProperties = {
-  background: skin.plate, borderRadius: radii.pill, padding: '5px 12px', ...roleFont('chip'),
-  color: skin.ink, display: 'flex', alignItems: 'baseline', gap: 6,
-};
+const layerChip: CSSProperties = { ...windowChip('inset'), display: 'flex', alignItems: 'baseline', gap: 6 };
 // The figure outranks the layer name it sits beside inside the chip. `subhead` is the 13px Heavy
 // answer, borrowed for its weight alone, so the count adapts with the rest of the window.
 const layerChipCount: CSSProperties = { fontWeight: roleWeight('subhead'), fontVariantNumeric: 'tabular-nums' };

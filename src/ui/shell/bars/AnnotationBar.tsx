@@ -1,17 +1,19 @@
 import { AnimatePresence, motion } from 'framer-motion';
+import { mapEdgeAttr } from '../../primitives/map-edge';
 import {
   ANNOTATION_COLORS, SELECTABLE_ANNOTATION_TAGS, type AnnotationTool, type TagId,
 } from '../../../core/model/annotations';
 import { helpTargetAttr } from '../../chrome/modals/help/targets';
 import { SWATCH_ROW_BOTTOM, SWATCH_ROW_GAP, ToolRow } from './ToolRow';
 import { useFrameLayout, useRailClearance } from '../frame-layout';
-import { cssMotion, useMotion } from '../motion/use-motion';
+import { useMotion } from '../motion/use-motion';
+import { cssMotion } from '../../design/motion';
 import { MOTIONS } from '../motion/registry';
 import { useT } from '../../../i18n/context';
 import { useEditorStore } from '../../../state/store';
 import { endCurveSession } from '../../../tools/paint';
-import { btnReset, cursors, pressable, z } from '../../design/styles';
-import { ACTIVE, PLATE, PLATE_INK, plateShapeEdge } from '../../design/tokens';
+import { btnReset, cursors, pressable, z, radii } from '../../design/styles';
+import { ACTIVE, INK, PLATE, PLATE_INK, plateShapeEdge } from '../../design/tokens';
 import type { Glyph } from '../frame';
 import { EDGE_RIGHT, QUAD, SCALE, TEXT } from '../units';
 import { BarText } from './bar-atoms';
@@ -25,7 +27,6 @@ import { useSwatchStripRow } from './RoadStyles';
 import { ToolOptions } from './ToolOptions';
 
 /** The glyph ink every drawn cell in this frame uses. */
-const GLYPH_INK = '#574935';
 
 /** A cell drawing of this bar's own, emitted as SVG in the row's ink: the terrain row's drawings
  *  each carry their SURFACE (its eraser stands on a mountain), so an annotation cell wearing one
@@ -42,7 +43,7 @@ const svgGlyph = (body: string, ink: Glyph['ink']): Glyph => ({
 
 /** The free zone brush: a pen, since what it lays is drawn ink. */
 const PEN_GLYPH = svgGlyph(
-  `<g stroke="${GLYPH_INK}" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" fill="none">`
+  `<g stroke="${INK}" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" fill="none">`
   + `<path d="M14 50l3-10L40.5 16.5a5.5 5.5 0 0 1 7.8 7.8L24.5 47.5 14 50z"/>`
   + `<path d="M19.5 39l6 6"/></g>`,
   { x: 11.2, y: 13.7, w: 42, h: 39, gx: 30.5, gy: 32.5, area: 575 },
@@ -50,29 +51,29 @@ const PEN_GLYPH = svgGlyph(
 
 /** A tag chip: a plate with a short bar of lettering. */
 const CHIP_GLYPH = svgGlyph(
-  `<g stroke="${GLYPH_INK}" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" fill="none">`
+  `<g stroke="${INK}" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" fill="none">`
   + `<rect x="9" y="19" width="46" height="26" rx="9"/><path d="M20 32h24"/></g>`,
   { x: 6.2, y: 16.2, w: 51.5, h: 31.5, gx: 32, gy: 32, area: 700 },
 );
 
 /** A route: a curve running into a filled head, drawn solid — dashes at glyph size read as breaks. */
 const ROUTE_GLYPH = svgGlyph(
-  `<path d="M10 50C24 50 21 25 35 25c4.6 0 8 2.4 11 5" fill="none" stroke="${GLYPH_INK}" stroke-width="6" stroke-linecap="round"/>`
-  + `<path d="M55.5 35.5L43 35.2 49 24.8z" fill="${GLYPH_INK}" stroke="${GLYPH_INK}" stroke-width="2" stroke-linejoin="round"/>`,
+  `<path d="M10 50C24 50 21 25 35 25c4.6 0 8 2.4 11 5" fill="none" stroke="${INK}" stroke-width="6" stroke-linecap="round"/>`
+  + `<path d="M55.5 35.5L43 35.2 49 24.8z" fill="${INK}" stroke="${INK}" stroke-width="2" stroke-linejoin="round"/>`,
   { x: 7, y: 22, w: 51.5, h: 31, gx: 30, gy: 38.5, area: 353 },
 );
 
 /** The eraser, drawn bare: the terrain row's eraser cell stands on its surface, which is exactly
  *  what this one must not claim. */
 const ERASE_GLYPH = svgGlyph(
-  `<g stroke="${GLYPH_INK}" stroke-width="6.5" stroke-linecap="round" stroke-linejoin="round" fill="none">`
+  `<g stroke="${INK}" stroke-width="6.5" stroke-linecap="round" stroke-linejoin="round" fill="none">`
   + `<path d="M50 53H24l-13-13a5.5 5.5 0 0 1 0-7.8L32.6 10.6a5.5 5.5 0 0 1 7.8 0l12.8 12.8a5.5 5.5 0 0 1 0 7.8L38 46"/>`
   + `<path d="M22.5 21.5 42 41"/></g>`,
   { x: 6.7, y: 7, w: 50.5, h: 49.5, gx: 31, gy: 32, area: 1100 },
 );
 
 const MEASURE_GLYPH = svgGlyph(
-  `<g stroke="${GLYPH_INK}" stroke-width="4.5" stroke-linecap="round" fill="none">`
+  `<g stroke="${INK}" stroke-width="4.5" stroke-linecap="round" fill="none">`
   + '<rect x="8" y="21" width="48" height="22" rx="4"/><path d="M17 22v9m10-9v14m10-14v9m10-9v14"/></g>',
   { x: 5.5, y: 18.5, w: 53, h: 27, gx: 32, gy: 32, area: 650 },
 );
@@ -108,7 +109,7 @@ export function AnnotationBar() {
   const setBrushSize = useEditorStore((s) => s.setBrushSize);
   const draft = useEditorStore((s) => s.annotationDraft);
   const commitDraft = useEditorStore((s) => s.commitAnnotationDraft);
-  const setDraft = useEditorStore((s) => s.setAnnotationDraft);
+  const setDraft = useEditorStore((s) => s.discardAnnotationDraft);
   const sized = tool === 'erase' || (tool === 'zone' && zoneShape !== 'rect' && zoneShape !== 'circle');
   const activeIndex = NOTE_TOOLS.findIndex(cell => cell.tool === tool);
   // A draft with something in it can be finished; a route needs two points to be a route.
@@ -120,15 +121,16 @@ export function AnnotationBar() {
   return (
     <div
       {...helpTargetAttr('notes')}
+      {...mapEdgeAttr('bottom')}
       style={{
         position: 'fixed', left: QUAD.left, right: layout?.edgeRight ?? EDGE_RIGHT, bottom: QUAD.bottom, zIndex: z.panel,
-        transition: cssMotion('frame.layout.adapt', 'right'),
+        transition: cssMotion('frame.layout.adapt', ['right']),
         display: 'flex', flexDirection: 'column', gap: SWATCH_ROW_GAP,
         pointerEvents: 'none',
       }}
     >
-      <div style={{ marginRight: tagClearance, transition: cssMotion('frame.layout.adapt', 'margin-right') }}><TagRow /></div>
-      <div style={{ marginRight: colorClearance, transition: cssMotion('frame.layout.adapt', 'margin-right') }}><SwatchRow /></div>
+      <div style={{ marginRight: tagClearance, transition: cssMotion('frame.layout.adapt', ['margin-right']) }}><TagRow /></div>
+      <div style={{ marginRight: colorClearance, transition: cssMotion('frame.layout.adapt', ['margin-right']) }}><SwatchRow /></div>
       <ToolRow>
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: TOOL_PILL_GAP, flex: 'none' }}>
           {NOTE_TOOLS.map((cell, i) => <ToolPill key={cell.tool} glyph={cell.glyph} label={t(cell.labelKey)}
@@ -150,7 +152,7 @@ export function AnnotationBar() {
               transition={actionsArrive}
               style={{ display: 'flex', alignItems: 'center', gap: QUAD.gap, marginLeft: ACTION_GAP - QUAD.gap }}
             >
-              <Action label={t('annot.discard')} onPress={() => { endCurveSession(); setDraft(null); }} />
+              <Action label={t('annot.discard')} onPress={() => { endCurveSession(); setDraft(); }} />
               <Action label={t('annot.done')} primary onPress={() => { commitDraft(); }} />
             </motion.span>
           ) : null}
@@ -195,11 +197,12 @@ function RouteOptions() {
 function TagRow() {
   const t = useT();
   const tag = useEditorStore((s) => s.annotationTag);
+  const tool = useEditorStore((s) => s.annotationTool);
   const setTag = useEditorStore((s) => s.setAnnotationTag);
   const { rowRef, rowProps } = useSwatchStripRow();
   return (
     <div ref={rowRef} role="group" aria-label={t('annot.tag')} {...rowProps}>
-      {SELECTABLE_ANNOTATION_TAGS.map((entry) => <TagPill key={entry.id} id={entry.id} label={t(entry.labelKey)} on={entry.id === tag} onPick={setTag} />)}
+      {SELECTABLE_ANNOTATION_TAGS.map((entry) => <TagPill key={entry.id} id={entry.id} label={t(entry.labelKey)} on={entry.id === tag} onPick={(id) => setTag(id === tag && tool !== 'chip' ? null : id)} />)}
     </div>
   );
 }
@@ -222,7 +225,7 @@ function TagPill({ id, label, on, onPick }: { id: TagId; label: string; on: bool
       <span
         style={{
           position: 'absolute', background: on ? ACTIVE : PLATE, boxShadow: plateShapeEdge(),
-          inset: on ? -TAG_GROW : 0, borderRadius: 999,
+          inset: on ? -TAG_GROW : 0, borderRadius: radii.pill,
         }}
       />
       <span style={{ position: 'relative' }}><BarText size={TEXT.label} color={PLATE_INK}>{label}</BarText></span>

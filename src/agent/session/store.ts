@@ -11,7 +11,7 @@ import {
 
 const SAVE_DEBOUNCE_MS = 500;
 
-export interface AgentSessionState {
+interface AgentSessionState {
   log: SessionLog;
   live: readonly Part[] | null;
   epoch: number;
@@ -63,12 +63,10 @@ function cancelPendingLive(): void {
   pendingLive = NO_PENDING;
 }
 
-/* The live digest tracks display-relevant changes and buckets reasoning into 256-character steps. */
-const REASONING_BUCKET_BITS = 8;
-
+/** Frame coalescing bounds publication; reasoning characters still reach an open transcript. */
 function liveDigest(parts: readonly Part[]): string {
   return parts.map((p) => (
-    p.kind === 'reasoning' ? `r${p.text.length >> REASONING_BUCKET_BITS}`
+    p.kind === 'reasoning' ? `r${p.text.length}`
       : p.kind === 'text' ? `t${p.text.length}`
         : `c${p.callId}:${String(p.argsDone)}`
   )).join('|');

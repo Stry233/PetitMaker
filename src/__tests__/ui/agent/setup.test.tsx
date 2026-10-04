@@ -8,7 +8,7 @@ import { translations } from '../../../i18n/translations';
 import { SetupScreen, withModelsDeadline, type ListModels } from '../../../ui/agent/SetupScreen';
 import { classify } from '../../../agent/core/errors';
 import { keyDestination, readKeyShape, stepSlide } from '../../../ui/agent/setup-parts';
-import { framerMotion, seconds } from '../../../ui/agent/motion';
+import { framerMotion, seconds } from '../../../ui/design/motion';
 import { runnerSettings, useAgentPanelSettings } from '../../../ui/agent/settings';
 import { forgetRosters } from '../../../ui/agent/model-roster';
 import { PROVIDER_IDS, PROVIDER_META, type ProviderId } from '../../../agent/providers/defaults';
@@ -47,7 +47,7 @@ const KEY = {
 
 const IDLE = 900;
 
-beforeEach(() => {
+beforeEach(async () => {
   backing.clear();
   forgetRosters();
   useEditorStore.setState({ locale: 'en' });
@@ -60,6 +60,7 @@ beforeEach(() => {
   for (const id of PROVIDER_IDS) useAgentPanelSettings.getState().forgetKey(id);
   useAgentPanelSettings.setState({ provider: 'claude', providerPinned: false });
   backing.clear();
+  await useAgentPanelSettings.getState().hydrate();
 });
 
 afterEach(() => { vi.useRealTimers(); });
@@ -84,6 +85,135 @@ describe('readKeyShape', () => {
     expect(readKeyShape(KEY.claude)).toBe('claude');
     expect(readKeyShape('sk-or-v1-abcdef123456')).toBe('openrouter');
     expect(readKeyShape(KEY.unknown)).toBe('unknown');
+  });
+});
+
+describe('local provider identification', () => {
+  it.each([
+    ['claude', KEY.claude],
+    ['openai', 'sk-proj-abcdefghijklmnop'],
+    ['openai', 'sk-svcacct-abcdefghijklmnop'],
+    ['openrouter', 'sk-or-v1-abcdefghijklmnop'],
+    ['gemini', 'AIzaSyD-abcdefghijklmnopqrst'],
+    ['perplexity', 'pplx-abcdefghijklmnop'],
+  ] as const)('automatically checks a distinctive %s key only with its provider', async (provider, key) => {
+    vi.useFakeTimers();
+    const listModels = vi.fn(() => Promise.resolve(['model']));
+    renderWithI18n(<SetupScreen listModels={listModels} />);
+    fireEvent.change(screen.getByTestId('setup-key-input'), { target: { value: key } });
+    expect(rowFace().getAttribute('data-provider')).toBe(provider);
+    expect(listModels).not.toHaveBeenCalled();
+    await act(async () => { vi.advanceTimersByTime(IDLE); });
+    expect(listModels).toHaveBeenCalledExactlyOnceWith({ provider, apiKey: key });
+    expect(phaseOf()).toBe('manage');
+  });
+
+  it('reuses a saved ambiguous key and its chosen regional endpoint', async () => {
+    vi.useFakeTimers();
+    const state = useAgentPanelSettings.getState();
+    state.setProviderRegion('qwen', 1);
+    state.connectKey('qwen', KEY.ambiguous);
+    state.setProvider('claude');
+    const listModels = vi.fn(() => Promise.resolve(['model']));
+    renderWithI18n(<SetupScreen listModels={listModels} />);
+    fireEvent.change(screen.getByTestId('setup-key-input'), { target: { value: KEY.ambiguous } });
+    expect(rowFace().getAttribute('data-provider')).toBe('qwen');
+    await act(async () => { vi.advanceTimersByTime(IDLE); });
+    expect(listModels).toHaveBeenCalledExactlyOnceWith({ provider: 'qwen', apiKey: KEY.ambiguous, region: 1 });
+  });
+
+  it('asks before routing a distinctive key saved for both a provider and a gateway', async () => {
+    vi.useFakeTimers();
+    const state = useAgentPanelSettings.getState();
+    state.connectKey('claude', KEY.claude);
+    state.setCustomBaseUrl('https://gateway.example/v1');
+    state.connectKey('custom', KEY.claude);
+    state.setProvider('openai');
+    const listModels = vi.fn(() => Promise.resolve(['model']));
+    renderWithI18n(<SetupScreen listModels={listModels} />);
+    fireEvent.change(screen.getByTestId('setup-key-input'), { target: { value: KEY.claude } });
+    await act(async () => { vi.advanceTimersByTime(IDLE); });
+    expect(screen.getAllByRole('menuitemradio').length).toBeGreaterThan(1);
+    expect(rowFace().getAttribute('data-provider')).toBeNull();
+    expect(listModels).not.toHaveBeenCalled();
+  });
+
+  it('keeps a detected regional provider visible while waiting for the region', async () => {
+    vi.useFakeTimers();
+    const key = '0123456789abcdef0123456789abcdef.AbCdEfGh12345678';
+    const listModels = vi.fn(() => Promise.resolve(['model']));
+    renderWithI18n(<SetupScreen listModels={listModels} />);
+    fireEvent.change(screen.getByTestId('setup-key-input'), { target: { value: key } });
+    await act(async () => { vi.advanceTimersByTime(IDLE); });
+    expect(rowFace().getAttribute('data-provider')).toBe('zhipu');
+    expect(noteText()).toBe(translations.en['agent3.setup_note_region']!.replace('{name}', PROVIDER_META.zhipu.name));
+    expect(screen.getAllByRole('menuitemradio').slice(0, 2).every(item => item.textContent?.includes(PROVIDER_META.zhipu.name))).toBe(true);
+    expect(listModels).not.toHaveBeenCalled();
+  });
+
+  it('requires a region when management selects a keyless regional provider', async () => {
+    vi.useFakeTimers();
+    useAgentPanelSettings.getState().pinProvider('moonshot');
+    const listModels = vi.fn(() => Promise.resolve(['model']));
+    renderWithI18n(<SetupScreen listModels={listModels} />);
+    fireEvent.change(screen.getByTestId('setup-key-input'), { target: { value: KEY.unknown } });
+    await act(async () => { vi.advanceTimersByTime(IDLE); });
+    expect(rowFace().getAttribute('data-provider')).toBe('moonshot');
+    expect(listModels).not.toHaveBeenCalled();
+    const choice = screen.getAllByRole('menuitemradio').find(item => item.textContent?.includes(PROVIDER_META.moonshot.name)
+      && item.textContent.includes(translations.en['agent3.endpoint_cn']!));
+    await act(async () => { fireEvent.click(choice!); });
+    expect(listModels).toHaveBeenCalledExactlyOnceWith({ provider: 'moonshot', apiKey: KEY.unknown, region: 1 });
+  });
+
+  it('lets automatic detection replace a manual provider choice without sending to the old provider', async () => {
+    vi.useFakeTimers();
+    useAgentPanelSettings.getState().pinProvider('openai');
+    const listModels = vi.fn(() => Promise.resolve(['model']));
+    renderWithI18n(<SetupScreen listModels={listModels} />);
+    fireEvent.change(screen.getByTestId('setup-key-input'), { target: { value: KEY.claude } });
+    fireEvent.click(screen.getByTestId('setup-prov-row'));
+    fireEvent.click(screen.getByText(translations.en['agent3.setup_detect_automatically']!));
+    expect(rowFace().getAttribute('data-provider')).toBe('claude');
+    await act(async () => { vi.advanceTimersByTime(IDLE); });
+    expect(listModels).toHaveBeenCalledExactlyOnceWith({ provider: 'claude', apiKey: KEY.claude });
+  });
+
+  it('releases a manual choice when leaving setup so the next entry can detect another provider', async () => {
+    const listModels = vi.fn(() => Promise.resolve(['model']));
+    const view = renderWithI18n(<SetupScreen listModels={listModels} onLeave={() => {}} />);
+    fireEvent.click(screen.getByTestId('setup-prov-row'));
+    fireEvent.click(screen.getByText(PROVIDER_META.openai.name));
+    fireEvent.click(screen.getByTestId('setup-leave'));
+    expect(useAgentPanelSettings.getState().providerPinned).toBe(false);
+    view.unmount();
+    renderWithI18n(<SetupScreen listModels={listModels} />);
+    fireEvent.change(screen.getByTestId('setup-key-input'), { target: { value: KEY.claude } });
+    expect(rowFace().getAttribute('data-provider')).toBe('claude');
+    expect(listModels).not.toHaveBeenCalled();
+  });
+
+  it('releases a manual provider choice after a completed setup', async () => {
+    const listModels = vi.fn(() => Promise.resolve(['model']));
+    useAgentPanelSettings.getState().pinProvider('deepseek');
+    renderWithI18n(<SetupScreen listModels={listModels} />);
+    fireEvent.change(screen.getByTestId('setup-key-input'), { target: { value: KEY.ambiguous } });
+    await act(async () => { fireEvent.keyDown(screen.getByTestId('setup-key-input'), { key: 'Enter' }); });
+    expect(phaseOf()).toBe('manage');
+    expect(useAgentPanelSettings.getState().providerPinned).toBe(false);
+    expect(useAgentPanelSettings.getState().provider).toBe('deepseek');
+  });
+
+  it('ignores a late authentication refusal after leaving the key check', async () => {
+    let refuse!: (error: Error) => void;
+    const listModels = vi.fn(() => new Promise<string[]>((_resolve, reject) => { refuse = reject; }));
+    const view = renderWithI18n(<SetupScreen listModels={listModels} />);
+    fireEvent.change(screen.getByTestId('setup-key-input'), { target: { value: KEY.claude } });
+    await act(async () => { fireEvent.keyDown(screen.getByTestId('setup-key-input'), { key: 'Enter' }); });
+    view.unmount();
+    useAgentPanelSettings.getState().connectKey('claude', `${KEY.claude}-replacement`);
+    await act(async () => { refuse(Object.assign(new Error('Unauthorized'), { status: 401 })); });
+    expect(runnerSettings(useAgentPanelSettings.getState()).apiKey).toBe(`${KEY.claude}-replacement`);
   });
 });
 
@@ -424,7 +554,7 @@ describe('the row is the chooser, and an explicit pick outranks the shape', () =
 });
 
   it('opens the endpoint field below the row from the row\'s own Custom entry', () => {
-    renderWithI18n(<SetupScreen />);
+    renderWithI18n(<SetupScreen listModels={() => new Promise(() => {})} />);
     fireEvent.click(screen.getByTestId('setup-prov-row'));
     fireEvent.click(screen.getByText(translations.en['agent3.setup_custom_endpoint']!));
     expect(phaseOf()).toBe('custom');
@@ -438,7 +568,7 @@ describe('the row is the chooser, and an explicit pick outranks the shape', () =
     expect(useAgentPanelSettings.getState().customBaseUrl).toBe('http://localhost:11434/v1');
     expect(useAgentPanelSettings.getState().provider).toBe('custom');
     expect(useAgentPanelSettings.getState().providerPinned).toBe(true);
-    expect(phaseOf()).toBe('key');
+    expect(phaseOf()).toBe('checking');
   });
 
   it('refuses an address it cannot use, and says so in the note it already has', () => {
@@ -566,6 +696,7 @@ describe('a check that failed says so on the row it failed at', () => {
     renderWithI18n(
       <SetupScreen
         onFace={(face) => { seen.push(face?.step ?? null); }}
+        listModels={() => new Promise(() => {})}
       />,
     );
     fireEvent.change(screen.getByTestId('setup-key-input'), { target: { value: KEY.ambiguous } });
@@ -582,10 +713,9 @@ describe('a check that failed says so on the row it failed at', () => {
     fireEvent.change(screen.getByTestId('setup-endpoint-input'), { target: { value: 'https://gateway.example/v1' } });
     fireEvent.click(screen.getByTestId('setup-endpoint-save'));
 
-    expect(phaseOf()).toBe('key');
+    expect(phaseOf()).toBe('checking');
     expect(screen.queryByTestId('setup-row-cross')).toBeNull();
     expect(screen.getByTestId('setup-prov-face').getAttribute('data-provider')).toBe('custom');
-    // The key is still in the field, so the pinned row is on its way to committing it — the face a
     expect(screen.getByTestId('setup-prov-sub').textContent).toBe(translations.en['agent3.setup_row_pinned_checking']);
     expect(seen[seen.length - 1]).not.toBe('no-answer');
   });
@@ -595,7 +725,10 @@ describe('a check that failed says so on the row it failed at', () => {
  fireEvent.change(screen.getByTestId('setup-key-input'), { target: { value: '0123456789abcdef0123456789abcdef.AbCdEfGh12345678' } });
  await act(async () => { fireEvent.keyDown(screen.getByTestId('setup-key-input'), { key: 'Enter' }); });
  expect(listModels).not.toHaveBeenCalled();
- await act(async () => { fireEvent.click(screen.getAllByText(PROVIDER_META.zhipu.name)[1]!); });
+ await act(async () => {
+   fireEvent.click(screen.getAllByRole('menuitemradio').find(item => item.textContent?.includes(PROVIDER_META.zhipu.name)
+     && item.textContent.includes(translations.en['agent3.endpoint_cn']!))!);
+ });
  expect(listModels.mock.calls[0]![0]).toMatchObject({ provider: 'zhipu', region: 1 });
  expect(listModels).toHaveBeenCalledTimes(1);
 });
@@ -627,9 +760,6 @@ describe('a check that failed says so on the row it failed at', () => {
     expect(noteText()).not.toBe(translations.en['agent3.setup_key_refused']);
   });
 
-  /** A LIST THAT WILL NOT COME IS NOT A STEP OF THIS SCREEN. The settings card's model row owns the
-   *  state (the typed id, the unverified note), so the flow ROUTES there by itself: no dead-end note,
-   *  no door to press, no Done into a panel with no model. */
   it('routes a connection with no model and no list coming to the settings card', async () => {
     const onManage = vi.fn();
     renderWithI18n(
@@ -950,28 +1080,70 @@ describe('one leave verb per screen', () => {
 });
 
 describe('custom providers use the same management page', () => {
-  /** Walks the chooser to the custom endpoint and files an address, which lands back on the key step
-   *  with `custom` pinned. */
-  function armEndpoint(): void {
+  /** Confirms the custom address and starts model discovery with the current credential. */
+  async function armEndpoint(): Promise<void> {
     fireEvent.click(screen.getByTestId('setup-prov-row'));
     fireEvent.click(screen.getByText(translations.en['agent3.setup_custom_endpoint']!));
     fireEvent.change(screen.getByTestId('setup-endpoint-input'), { target: { value: 'http://localhost:11434/v1' } });
-    fireEvent.click(screen.getByTestId('setup-endpoint-save'));
+    await act(async () => { fireEvent.click(screen.getByTestId('setup-endpoint-save')); });
   }
+
+  it.each(['', 'x', 'lms+opaque/token=='])('connects custom endpoints with an optional opaque key %j', async apiKey => {
+    const listModels = vi.fn(() => Promise.resolve(['local-model']));
+    renderWithI18n(<SetupScreen listModels={listModels} />);
+    fireEvent.click(screen.getByTestId('setup-prov-row'));
+    fireEvent.click(screen.getByText(translations.en['agent3.setup_custom_endpoint']!));
+    expect(screen.getByTestId('setup-key-input').getAttribute('placeholder')).toBe(translations.en['agent3.setup_key_optional']);
+    fireEvent.change(screen.getByTestId('setup-key-input'), { target: { value: apiKey } });
+    fireEvent.change(screen.getByTestId('setup-endpoint-input'), { target: { value: 'http://localhost:1234/v1' } });
+    expect(listModels).not.toHaveBeenCalled();
+    await act(async () => { fireEvent.keyDown(screen.getByTestId('setup-endpoint-input'), { key: 'Enter' }); });
+    expect(phaseOf()).toBe('manage');
+    expect(listModels).toHaveBeenCalledExactlyOnceWith({ provider: 'custom', apiKey, customBaseUrl: 'http://localhost:1234/v1' });
+    expect(useAgentPanelSettings.getState().customAuth).toBe(apiKey ? 'key' : 'none');
+    expect(screen.getByTestId('manage-forget-key').textContent).toBe(translations.en[apiKey ? 'agent3.setup_manage_forget_key' : 'agent3.setup_manage_disconnect']);
+    pickDefault();
+    expect((screen.getByTestId('manage-done') as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it.each(['', 'lms+opaque/token=='])('keeps the custom provider selected when authentication fails with %j', async apiKey => {
+    const listModels = vi.fn((): Promise<string[]> => Promise.reject(Object.assign(new Error('Unauthorized'), { status: 401 })));
+    renderWithI18n(<SetupScreen listModels={listModels} />);
+    fireEvent.change(screen.getByTestId('setup-key-input'), { target: { value: apiKey } });
+    await armEndpoint();
+    expect(phaseOf()).toBe('key');
+    expect(screen.getByTestId('setup-key-input').getAttribute('value')).toBe(apiKey);
+    expect(noteText()).toBe(translations.en['agent3.setup_key_refused']);
+    expect(useAgentPanelSettings.getState()).toMatchObject({ provider: 'custom', providerPinned: true, customAuth: 'key' });
+    expect(listModels).toHaveBeenCalledTimes(1);
+    listModels.mockResolvedValueOnce(['local-model']);
+    fireEvent.change(screen.getByTestId('setup-key-input'), { target: { value: 'fixed/token==' } });
+    await act(async () => { fireEvent.keyDown(screen.getByTestId('setup-key-input'), { key: 'Enter' }); });
+    expect(phaseOf()).toBe('manage');
+    expect(listModels).toHaveBeenLastCalledWith({ provider: 'custom', apiKey: 'fixed/token==', customBaseUrl: 'http://localhost:11434/v1' });
+  });
+
+  it('retries an unauthenticated connection only when the user asks after a refusal', async () => {
+    const listModels = vi.fn((): Promise<string[]> => Promise.reject(Object.assign(new Error('Unauthorized'), { status: 401 })));
+    renderWithI18n(<SetupScreen listModels={listModels} />);
+    await armEndpoint();
+    expect(phaseOf()).toBe('key');
+    expect(listModels).toHaveBeenCalledTimes(1);
+    listModels.mockResolvedValueOnce(['local-model']);
+    await act(async () => { fireEvent.click(screen.getByTestId('setup-act-recheck')); });
+    expect(phaseOf()).toBe('manage');
+    expect(listModels).toHaveBeenCalledTimes(2);
+    expect(listModels).toHaveBeenLastCalledWith({ provider: 'custom', apiKey: '', customBaseUrl: 'http://localhost:11434/v1' });
+  });
 
   it('opens management without choosing the endpoint\'s first model', async () => {
     const done = vi.fn();
     const asked = vi.fn(() => Promise.resolve(['qwen2.5-coder:14b', 'llama3.2']));
     renderWithI18n(<SetupScreen listModels={asked} onDone={done} />);
-    armEndpoint();
-    expect(phaseOf()).toBe('key');
+    await armEndpoint();
     expect(useAgentPanelSettings.getState().provider).toBe('custom');
 
-    fireEvent.change(screen.getByTestId('setup-key-input'), { target: { value: KEY.unknown } });
-    await act(async () => { fireEvent.keyDown(screen.getByTestId('setup-key-input'), { key: 'Enter' }); });
-
     expect(phaseOf()).toBe('manage');
-    // The list was asked against the endpoint's own address, and its first id is what got filed.
     expect(asked).toHaveBeenCalledWith(expect.objectContaining({
       provider: 'custom', customBaseUrl: 'http://localhost:11434/v1',
     }));
@@ -997,9 +1169,8 @@ describe('custom providers use the same management page', () => {
         onManage={manage}
       />,
     );
-    armEndpoint();
     fireEvent.change(screen.getByTestId('setup-key-input'), { target: { value: KEY.unknown } });
-    await act(async () => { fireEvent.keyDown(screen.getByTestId('setup-key-input'), { key: 'Enter' }); });
+    await armEndpoint();
 
     expect(phaseOf()).toBe('manage');
     expect(screen.queryByTestId('setup-models-unavailable'), 'no unavailable-model dead end').toBeNull();
@@ -1027,10 +1198,10 @@ describe('custom providers use the same management page', () => {
     fireEvent.click(screen.getByText(translations.en['agent3.setup_custom_endpoint']!));
     fireEvent.change(screen.getByTestId('setup-endpoint-input'), { target: { value: 'https://gateway.example/v1' } });
     fireEvent.click(screen.getByTestId('setup-endpoint-save'));
-    expect(phaseOf()).toBe('key');
+    expect(phaseOf()).toBe('checking');
 
-    await act(async () => { vi.advanceTimersByTime(IDLE + 50); });
-    expect(phaseOf(), 'a gate still held would leave the screen reading a key forever').toBe('manage');
+    await act(async () => {});
+    expect(phaseOf()).toBe('manage');
     expect(asked).toHaveBeenCalledWith({
       provider: 'custom', apiKey: KEY.unknown, customBaseUrl: 'https://gateway.example/v1',
     });

@@ -1,3 +1,4 @@
+import { Pill } from '../primitives/Pill';
 /*
  * Renders the fixed-height assistant status dock and character seat. Face identity controls keyed
  * flips; clock and metadata changes repaint in place. Context screens can override session state.
@@ -8,7 +9,7 @@ import type { ErrorClass } from '../../agent/core/types';
 import { MAX_TURN_RETRIES } from '../../agent/core/retry';
 import type { AskRecord, JobView, PanelView, SessionPhase } from '../../agent/core/project-view';
 import { useT } from '../../i18n/context';
-import { IconButton, Pill } from './atoms';
+import { IconButton } from './atoms';
 import { editCount } from './job-stats';
 import { Character } from './character/Character';
 import { poseForPhase, type PoseName } from './character/poses';
@@ -18,12 +19,13 @@ import type { SetupFace, SetupStep } from './setup-parts';
 import { Icon, type IconId } from './icons';
 import { metaInk, statePaper, type PaperState } from './tokens';
 import { CHARACTER_SEAT } from '../shell/panel-frame';
-import { amplitude, cssMotion, flipProfile, framerMotion, outMotion, turnSeconds } from './motion';
+import { amplitude, cssMotion, flipProfile, framerMotion, outMotion, turnSeconds } from '../design/motion';
 import { TimedButton } from '../primitives/TimedButton';
 import { INK } from '../design/tokens';
 import { colors, font } from '../design/styles';
 import { roleWeight, roleFont } from '../design/text-weight';
 import { windowPill } from '../design/window-skin';
+import type { Translate } from '../../core/model/types';
 
 /** Dock-card height in pixels. */
 export const DOCK_HEIGHT = 74;
@@ -177,7 +179,7 @@ function settledKind(view: PanelView, ctx: DockContext): { job?: JobView; kind: 
 }
 
 /** Live shell context that is not part of the replayable session projection. */
-export interface DockContext {
+interface DockContext {
   connected?: boolean;
   mapName?: string;
   providerName?: string;
@@ -256,7 +258,7 @@ export function dockGlyph(view: PanelView, ctx: DockContext = {}): IconId {
 }
 
 /** The one seat above the gear: which control it holds, what pressing it does, and how it reads. */
-export interface DockSeat {
+interface DockSeat {
   id: 'pause' | 'stop' | 'resume';
   /** Invoked verb, or null while the seat is temporarily noninteractive. */
   act: 'pause' | 'stop' | 'resume' | null;
@@ -347,7 +349,7 @@ interface Face {
   stall?: { prefix: string; suffix: string; clock: string };
 }
 
-export interface DeskHeaderProps {
+interface DeskHeaderProps {
   view: PanelView;
   /** Connection readiness; callers explicitly report disconnected state. */
   connected?: boolean;
@@ -448,6 +450,9 @@ export function DeskHeader({
     ...(unsaved ? { unsaved: true } : {}),
   };
   const key = dockFaceKey(view, ctx);
+  // Tool and text streaming share one card so rapid updates cannot repeatedly hide its controls.
+  const flowing = key === 'thinking' || key === 'streaming' || key === 'executing';
+  const stateKey = flowing ? 'working' : key;
 
   // Publish surface-specific poses to the externally hosted live character.
   const surfacePose = dockPose(view, ctx);
@@ -466,7 +471,7 @@ export function DeskHeader({
   const confirmLeft = useRef(STOP_CONFIRM_MS);
 
   // Face replacement can unmount before pointerleave, so it clears both confirmation and hover state.
-  useEffect(() => { setAsking(false); setReading(false); }, [key]);
+  useEffect(() => { setAsking(false); setReading(false); }, [stateKey]);
   // Process external stop nonces after the face-reset effect.
   const askedAt = useRef(askStop);
   useEffect(() => {
@@ -495,8 +500,7 @@ export function DeskHeader({
   const showing: Face = asking
     ? { kind: 'confirm', paper: face.paper, glyph: 'pw-stop', word: t('agent3.dock_stop_question') }
     : face;
-  /** Stop confirmation is a separate face that retains the interrupted paper color. */
-  const faceKey = asking ? `confirm|${face.paper}` : key;
+  const faceKey = asking ? 'confirm' : stateKey;
   // Disable input for the turn duration so a stationary pointer cannot activate the incoming face.
   const [turning, setTurning] = useState(false);
   const firstFace = useRef(true);
@@ -589,13 +593,11 @@ export function DeskHeader({
 
 /* ── the faces ────────────────────────────────────────────── */
 
-type T = (key: string, params?: Record<string, string | number>) => string;
-
 /**
  * Highest-priority transient detail for a running job: a refusal, queued guidance or live helper.
  * Each source clears itself when the condition ends, so the dock cannot retain stale status.
  */
-function runningSub(view: PanelView, ctx: DockContext, t: T): string | undefined {
+function runningSub(view: PanelView, ctx: DockContext, t: Translate): string | undefined {
   if (!RUNNING.has(view.phase)) return undefined;
   // Only a settled operation can supply a result for the running-status line.
   const settledOp = [...(view.current?.ops ?? [])].reverse()
@@ -612,7 +614,7 @@ function runningSub(view: PanelView, ctx: DockContext, t: T): string | undefined
 }
 
 /** Returns option, plan-stage or cell count for the open gate without repeating its question. */
-function gateSize(view: PanelView, ctx: DockContext, t: T): string | undefined {
+function gateSize(view: PanelView, ctx: DockContext, t: Translate): string | undefined {
   const open = view.gate;
   if (!open) return undefined;
   const ask = openAsk(view);
@@ -644,7 +646,7 @@ function dockSkill(job: JobView | undefined): string | undefined {
 const AWAITING_STREAM: ReadonlySet<SessionPhase> = new Set<SessionPhase>(['thinking', 'streaming']);
 
 /** The state's own card, as data: what the four seats hold. */
-function buildFace(view: PanelView, ctx: DockContext, now: number, activeAt: number, t: T): Face {
+function buildFace(view: PanelView, ctx: DockContext, now: number, activeAt: number, t: Translate): Face {
   const paper = dockPaper(view, ctx);
   const glyph = dockGlyph(view, ctx);
   /** Filing dismisses completed turns, including their closing questions; capped jobs remain visible. */
@@ -929,7 +931,7 @@ interface DockCardProps {
   gear: boolean;
   allowAll: boolean;
   reduced: boolean;
-  t: T;
+  t: Translate;
   onSeat(act: 'pause' | 'stop' | 'resume'): void;
   onManage?: () => void;
   onConfirmStop(): void;
@@ -972,11 +974,13 @@ function DockCard({
         transition: cssMotion('panel.dock.paper', ['background-color'], reduced),
       }}
     >
-      <span data-testid="dock-beta" aria-hidden="true" style={BETA_TAG}>{t('agent3.beta_tag')}</span>
+      <span data-testid="dock-beta" aria-hidden="true" style={BETA_TAG}>{t('app.beta')}</span>
 
-      <span data-testid="dock-glyph" data-icon={face.glyph} style={GLYPH_SLOT}>
+      <motion.span key={face.glyph} data-testid="dock-glyph" data-icon={face.glyph} style={GLYPH_SLOT}
+        initial={reduced ? false : { opacity: 1 - amplitude('panel.status.update') }}
+        animate={{ opacity: 1 }} transition={framerMotion('panel.status.update')}>
         <Icon id={face.glyph} size={20} />
-      </span>
+      </motion.span>
 
       <div
         data-testid="dock-col-words"
@@ -994,7 +998,11 @@ function DockCard({
         }}
       >
         <div data-testid="dock-deck-word" style={{ display: 'flex', alignItems: 'center', minWidth: 0 }}>
-          <span data-testid="dock-sentence" style={WORD_STYLE}>{face.word}</span>
+          <motion.span key={face.word} data-testid="dock-sentence" style={WORD_STYLE}
+            initial={reduced ? false : { opacity: 1 - amplitude('panel.status.update') }}
+            animate={{ opacity: 1 }} transition={framerMotion('panel.status.update')}>
+            {face.word}
+          </motion.span>
           {face.datum !== undefined && (
             <span data-testid="dock-datum" style={DATUM_STYLE}>{face.datum}</span>
           )}
@@ -1136,7 +1144,7 @@ function Ghost() {
 /** Renders timed retry progress from the loop, or a plain action for connectivity-gated retry. */
 function RetryPill(
   { retry, t, reduced, onRetryNow }:
-  { retry: NonNullable<Face['retry']>; t: T; reduced: boolean; onRetryNow?: () => void },
+  { retry: NonNullable<Face['retry']>; t: Translate; reduced: boolean; onRetryNow?: () => void },
 ) {
   if (!retry.timed) {
     return (

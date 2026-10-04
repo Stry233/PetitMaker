@@ -7,19 +7,11 @@ import { useEditorStore } from '../../../state/store';
 import { iconUrl } from '../../../assets/icon-urls';
 import { animConfig, easeOutBack } from '../../../core/runtime/anim-config';
 import { arcMotion, arcOffset, spinOffset, type GroupRotation } from '../../group-arc';
-import { isMotionReduced } from '../motion-state';
+import { isMotionReduced } from '../../../core/runtime/motion-state';
 import { requestRender as broadcastRender } from '../render-scheduler';
 import { spawnPuff } from '../draw/particles';
 import { iconColor } from '../draw/icon-color';
-
-export function lerpColor(a: number, b: number, t: number): number {
-  const ar = (a >> 16) & 0xff, ag = (a >> 8) & 0xff, ab = a & 0xff;
-  const br = (b >> 16) & 0xff, bg = (b >> 8) & 0xff, bb = b & 0xff;
-  const r = Math.round(ar + (br - ar) * t);
-  const g = Math.round(ag + (bg - ag) * t);
-  const bl = Math.round(ab + (bb - ab) * t);
-  return (r << 16) | (g << 8) | bl;
-}
+import { CATEGORY_BY_ID } from '../../../config/catalog/categories';
 
 export function fadeLayer(
   lc: PIXI.Container, elev: number, show: boolean,
@@ -262,7 +254,7 @@ export function animateRemove(
   const color = (delUrl ? iconColor(delUrl) : null)
     ?? (item?.color
       ? hexStringToNumber(item.color)
-      : (item ? (animConfig.categoryColor[item.category] ?? animConfig.fallbackColor) : animConfig.fallbackColor));
+      : ((item && CATEGORY_BY_ID.get(item.category)?.tint) ?? animConfig.fallbackColor));
   const size = obj ? getPlacedObjectSize(obj) : { w: 1, h: 1 };
   const lcx = (size.w * TILE_SIZE) / 2, lcy = (size.h * TILE_SIZE) / 2;
   const worldCx = wrapper.x + lcx, worldCy = wrapper.y + lcy;

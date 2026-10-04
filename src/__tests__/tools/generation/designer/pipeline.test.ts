@@ -56,7 +56,7 @@ function build(seed: number, template: MapTemplate, richness = DEFAULT_RICHNESS)
       state, execute: (c: Command) => exec.execute(c), reg: exec.getRegistry(), seed, richness,
     });
   });
-  const violations = exec.commitStrokeGroup(exec.getUndoStackSize());
+  const violations = exec.commitStroke(exec.getUndoStackSize());
   return { state, outcome: outcome!, violations };
 }
 
@@ -241,7 +241,7 @@ describe('the generate facade', () => {
     exec.runSilently(() => {
       result = generateTerrain(config('designed', { richness: 0.5 }), state, (c) => exec.execute(c), exec.getRegistry());
     });
-    exec.commitStrokeGroup(exec.getUndoStackSize());
+    exec.commitStroke(exec.getUndoStackSize());
     expect(result!.designed).toBeDefined();
     expect(result!.skipped).toBe(0);
     expect(result!.placed).toBeGreaterThan(0);
@@ -330,8 +330,8 @@ describe('the water system, on the committed map', () => {
     // them for no reason anybody stated.
     expect(bothEnds, `${bothEnds} of ${present} courses read both ends`)
       .toBeGreaterThanOrEqual(present * 0.3);
-    // THE WIDTH CLAIM IS NOT MADE HERE. That a course narrows and widens along its way (§水体: 局部变宽
-    // 变窄) is a claim about the planner, and `water-story.test.ts` asserts it on the course's own cells
+    // THE WIDTH CLAIM IS NOT MADE HERE. That a course narrows and widens along its way (local widening
+    // and narrowing) is a claim about the planner, and `water-story.test.ts` asserts it on the course's own cells
     // where nothing else is in the way. On a finished map whose water is composed this reading answers
     // for whichever body it picked, and a trough or a comb the figure pass drew runs at one width by
     // construction — measured, it read 5 to 6 of 10 depending on which ground the landmark took first,

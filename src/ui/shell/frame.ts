@@ -4,6 +4,10 @@
  * while the assistant occupies a second aligned row and is sized by its visible character art.
  */
 import type { BuildMode } from '../../core/model/edit-mode';
+import type { PlanetSession } from '../../state/slices/planet-session';
+import type { ModalId } from '../../state/slices/shell';
+import type { TourTargetId } from '../chrome/tour/steps';
+import type { HelpPageId } from '../chrome/modals/help/page-schema';
 import {
   BLOCK_W, BLOCK_W_ON, EDGE, EDGE_LEFT, EDGE_RIGHT, EDGE_TOP, LABEL_BOX_DEPTH, LABEL_INK_DEPTH, MODE, MODE_PLATE_W, TOP_RIGHT_GAP,
   MODE_SCALE, RAIL, RAIL_FLOOR,
@@ -74,6 +78,17 @@ export interface FrameArt {
    * 49.3. Kept separate from `apparent` so the measurement stays a measurement.
    */
   trim?: number;
+  /** What pressing the control opens: the menu sheet or a modal. Absent for a readout. */
+  opens?: 'menu' | ModalId;
+  /** The tour step that points at the control. Only controls that act are named. */
+  tourTarget?: TourTargetId;
+  /** The Help page the control teaches. */
+  helpTarget?: HelpPageId;
+  /** The focus ring's corner radius, for a drawing that is not the rounded rectangle
+   *  `FOCUS_SHAPE_RADIUS` assumes. */
+  focusRadius?: number;
+  /** The control stays in the corner during a planet session. */
+  inSession?: boolean;
 }
 
 /** A block of the top-left row: its resting drawing, plus the heavier one the design draws for the
@@ -88,6 +103,11 @@ export interface BlockArt extends FrameArt {
 /** A build-mode block, named by the mode it arms. */
 export interface ModeArt extends BlockArt {
   id: Exclude<BuildMode, null>;
+  /** i18n key for the name inside a planet session, where the mode shapes the ground rather than
+   *  mountains. Absent when the name is the same there. */
+  sessionLabelKey?: string;
+  /** The Help page the block teaches; the three terrain surfaces share one page. */
+  helpTarget: HelpPageId;
 }
 
 /** A drawing at a chosen width, keeping the proportions it was drawn at. */
@@ -108,18 +128,20 @@ const MODES_DRAWN: readonly {
   src: string;
   on: string;
   labelKey: string;
+  sessionLabelKey?: string;
+  helpTarget: HelpPageId;
   rest: { w: number; h: number };
   sel: { w: number; h: number };
 }[] = [
-  { id: 'object', src: modeObject, on: modeObjectOn, labelKey: 'mode.object',
+  { id: 'object', src: modeObject, on: modeObjectOn, labelKey: 'mode.object', helpTarget: 'objects',
     rest: { w: 172, h: 184 }, sel: { w: 207, h: 212 } },
-  { id: 'road', src: modeRoad, on: modeRoadOn, labelKey: 'mode.road',
+  { id: 'road', src: modeRoad, on: modeRoadOn, labelKey: 'mode.road', helpTarget: 'terrain',
     rest: { w: 172, h: 190 }, sel: { w: 207, h: 200 } },
-  { id: 'mountain', src: modeMountain, on: modeMountainOn, labelKey: 'mode.mountain',
+  { id: 'mountain', src: modeMountain, on: modeMountainOn, labelKey: 'mode.mountain', sessionLabelKey: 'mode.terrain', helpTarget: 'terrain',
     rest: { w: 172, h: 165 }, sel: { w: 207, h: 187 } },
-  { id: 'water', src: modeWater, on: modeWaterOn, labelKey: 'mode.water',
+  { id: 'water', src: modeWater, on: modeWaterOn, labelKey: 'mode.water', helpTarget: 'terrain',
     rest: { w: 172, h: 168 }, sel: { w: 207, h: 200 } },
-  { id: 'generate', src: modeGenerate, on: modeGenerateOn, labelKey: 'mode.generate',
+  { id: 'generate', src: modeGenerate, on: modeGenerateOn, labelKey: 'mode.generate', helpTarget: 'generate',
     rest: { w: 176, h: 174 }, sel: { w: 208, h: 180 } },
 ];
 
@@ -128,9 +150,32 @@ export const MODES: readonly ModeArt[] = MODES_DRAWN.map((art) => ({
   id: art.id,
   src: art.src,
   labelKey: art.labelKey,
+  helpTarget: art.helpTarget,
+  ...(art.sessionLabelKey ? { sessionLabelKey: art.sessionLabelKey } : {}),
   ...atWidth(art.rest, BLOCK_W),
   selected: { src: art.on, ...atWidth(art.sel, BLOCK_W_ON) },
 }));
+
+/** The modes a planet session draws with, ground first; every mode outside one. */
+const PLANET_SESSION_MODES: readonly BuildMode[] = ['mountain', 'water', 'object'];
+
+export function sessionModes(planetSession: PlanetSession | null): BuildMode[] {
+  return planetSession ? [...PLANET_SESSION_MODES] : MODES.map((art) => art.id);
+}
+
+/** The i18n key naming mode `id`, inside a planet session or outside one. */
+export function modeLabelKey(id: ModeArt['id'], inSession: boolean): string {
+  const art = MODES.find((a) => a.id === id)!;
+  return (inSession && art.sessionLabelKey) || art.labelKey;
+}
+
+/** The mode row's blocks for the session state, each carrying the name it wears there. */
+export function sessionModeArt(planetSession: PlanetSession | null): ModeArt[] {
+  return sessionModes(planetSession).map((id) => {
+    const art = MODES.find((a) => a.id === id)!;
+    return { ...art, labelKey: modeLabelKey(art.id, planetSession !== null) };
+  });
+}
 
 /**
  * The splat that marks the selected mode, drawn behind its block.
@@ -281,8 +326,11 @@ export const ASSISTANT_INK = {
  */
 export const TOP_RIGHT: readonly FrameArt[] = [
   { id: 'load', labelKey: 'hud.region_load', w: 157, h: 157, botSlack: 0, apparent: 175.7 },
-  { id: 'share', src: shareButton, labelKey: 'a11y.save_share', w: 130, h: 136, botSlack: 3.8, apparent: 125.9, trim: 0.84 },
-  { id: 'menu', src: menuButton, labelKey: 'a11y.open_menu', w: 131, h: 132, botSlack: 1, apparent: 140.5, trim: 0.95 },
+  { id: 'share', src: shareButton, labelKey: 'a11y.save_share', w: 130, h: 136, botSlack: 3.8, apparent: 125.9, trim: 0.84,
+    opens: 'share', tourTarget: 'share', helpTarget: 'share' },
+  // A disc, so its focus ring is one too.
+  { id: 'menu', src: menuButton, labelKey: 'a11y.open_menu', w: 131, h: 132, botSlack: 1, apparent: 140.5, trim: 0.95,
+    opens: 'menu', tourTarget: 'menu', helpTarget: 'frame', focusRadius: 999, inSession: true },
 ];
 
 /** How tall a top-right drawing is rendered, in css px: the height at which its own ink reads the
@@ -297,11 +345,36 @@ export function topRightSlack(art: FrameArt): number {
   return ((art.botSlack ?? 0) / art.h) * topRightHeight(art);
 }
 
+/** The top-right controls over a map, and the one a planet session keeps: the menu, whose rows
+ *  follow the session (`MenuSheet.tsx:menuRows`). */
+export function cornerArt(inSession: boolean): readonly FrameArt[] {
+  return inSession ? SESSION_CORNER : TOP_RIGHT;
+}
+const SESSION_CORNER: readonly FrameArt[] = TOP_RIGHT.filter((art) => art.inSession);
+
+/** How wide a corner cluster of these drawings stands, in css px. */
+export function cornerWidth(arts: readonly FrameArt[]): number {
+  return arts.reduce((sum, art) => sum + topRightHeight(art) * art.w / art.h, 0)
+    + (arts.length - 1) * TOP_RIGHT_GAP;
+}
+
+/** How far right a mode row of `count` blocks reaches, in css px: the splat under its last block. */
+export function modeRowRight(count: number): number {
+  return blockCentre(count - 1) + MODE_PLATE_W * MODE_SCALE / 2;
+}
+
 /**
  * The corner cluster's own depth, in css px: from the highest ink in it down to the line the three
  * stand on. Each drawing is a different height now, so the box is the deepest of them.
  */
 export const TOP_RIGHT_H = Math.max(...TOP_RIGHT.map((art) => topRightHeight(art) - topRightSlack(art)));
+
+/** The line through the middle of the resting mode blocks' ink, in css px from the window's top:
+ *  what the top-right cluster and the planet session's nameplate centre on. */
+export const MODE_ROW_INK_CENTRE = MODES.reduce(
+  (sum, art) => sum + (MODE_ROW_BASE - (art.h * MODE_SCALE) / 2),
+  0,
+) / MODES.length;
 
 /**
  * Where the top-right cluster's box starts, in css px: its ink CENTRED ON THE INK it faces.
@@ -326,12 +399,7 @@ export const TOP_RIGHT_H = Math.max(...TOP_RIGHT.map((art) => topRightHeight(art
  * measured to the INK, per drawing, since each carries its own slack under its own art
  * (`Shell.tsx:Piece`).
  */
-const RESTING_INK_CENTRE = MODES.reduce(
-  (sum, art) => sum + (MODE_ROW_BASE - (art.h * MODE_SCALE) / 2),
-  0,
-) / MODES.length;
-
-export const TOP_RIGHT_TOP = RESTING_INK_CENTRE - TOP_RIGHT_H / 2;
+export const TOP_RIGHT_TOP = MODE_ROW_INK_CENTRE - TOP_RIGHT_H / 2;
 
 /**
  * Where the right-hand column starts: level with the ASSISTANT on the other side of the window.
@@ -543,18 +611,18 @@ export interface FrameLayout {
   rail: RailPlan;
 }
 
-/** All dimensions are local to the zoomed, dock-inset frame. */
+/** All dimensions are local to the zoomed, dock-inset frame. `modes` and `corner` are the mode
+ *  blocks and corner controls that show (a planet session draws fewer); both default to the full
+ *  editor's. */
 export function planFrame(
   width: number, height: number,
-  opts: { open: boolean; plateDepth: number; plateMinDepth?: number; plateMinWidth?: number },
+  opts: { open: boolean; plateDepth: number; plateMinDepth?: number; plateMinWidth?: number; modes?: number; corner?: readonly FrameArt[] },
 ): FrameLayout {
   const edgeRight = opts.plateMinWidth === undefined ? EDGE_RIGHT : Math.max(EDGE, Math.min(EDGE_RIGHT,
     width - ASSISTANT_INK.right - 2 * RAIL.groupMin - railStack(MOST_FOLDED.kit) - opts.plateMinWidth));
-  const cornerWidth = TOP_RIGHT.reduce((sum, art) => sum + topRightHeight(art) * art.w / art.h, 0)
-    + (TOP_RIGHT.length - 1) * TOP_RIGHT_GAP;
-  const modeRight = blockCentre(MODES.length - 1) + MODE_PLATE_W * MODE_SCALE / 2;
+  const corner = cornerWidth(opts.corner ?? TOP_RIGHT);
   const modeBottom = MODE_ROW_BASE + MODE.label.gap + LABEL_BOX_DEPTH * MODE.label.size + MODE.rowClearance;
-  const cornerTop = width - edgeRight - cornerWidth >= modeRight + RAIL.groupMin
+  const cornerTop = width - edgeRight - corner >= modeRowRight(opts.modes ?? MODES.length) + RAIL.groupMin
     ? TOP_RIGHT_TOP : modeBottom;
   const railTop = Math.max(RAIL_TOP, cornerTop + TOP_RIGHT_H + RAIL.gap);
   let rail = planRail(height, { ...opts, top: railTop });
@@ -563,7 +631,7 @@ export function planFrame(
   const plateTop = rail.plateInLane ? railTop
     : Math.max(RAIL_TOP, modeBottom);
   if (!rail.plateInLane && plateTop < cornerTop + TOP_RIGHT_H + RAIL.gap) {
-    rail = { ...rail, plateRight: Math.max(rail.plateRight, EDGE_RIGHT + cornerWidth + RAIL.gap) };
+    rail = { ...rail, plateRight: Math.max(rail.plateRight, EDGE_RIGHT + corner + RAIL.gap) };
   }
   rail = { ...rail, plateRight: rail.plateRight + edgeRight - EDGE_RIGHT };
   // Keep the panel beside the assistant when their vertical spans meet, preserving the room above.
@@ -602,7 +670,7 @@ export function railClearanceFor(layout: FrameLayout, bottom: number, height: nu
  * on, since here it sits on a round plate the group draws. Several are more than one shape,
  * so a glyph is a list of parts with a shared box: `x`/`y` are inside that box, in design px.
  */
-export interface GlyphPart { src: string; x: number; y: number; w: number; h: number }
+interface GlyphPart { src: string; x: number; y: number; w: number; h: number }
 export interface Glyph { w: number; h: number; ink: GlyphInk; parts: readonly GlyphPart[] }
 
 /**
@@ -691,7 +759,7 @@ export const GLYPHS = {
       { src: railZoomOutMark, x: 15, y: 21, w: 34, h: 21 },
     ],
   ),
-  /** The eye the design source draws for putting the interface away (`侧边栏/隐藏`). It is ONE
+  /** The eye the design source draws for putting the interface away (the sidebar hide icon). It is ONE
    *  shape — outline and pupil in a single even-odd path — so unlike its neighbours it has no parts
    *  to place. */
   hideUi: glyph(

@@ -1,5 +1,10 @@
+import type { Translate } from '../core/model/types';
+
 /** Localized operation names shared by approvals and progress displays. */
 export const TOOL_VERB_KEYS: Readonly<Record<string, string>> = {
+  get_annotations: 'agent3.verb_get_annotations',
+  set_annotation: 'agent3.verb_set_annotation',
+  remove_annotation: 'agent3.verb_remove_annotation',
   inspect_region: 'agent3.verb_inspect_region',
   get_objects: 'agent3.verb_get_objects',
   get_selection: 'agent3.verb_get_selection',
@@ -41,8 +46,6 @@ export const TOOL_VERB_KEYS: Readonly<Record<string, string>> = {
 export function toolVerbKey(name: string): string {
   return TOOL_VERB_KEYS[name] ?? 'agent3.verb_operation';
 }
-
-type Translate = (key: string, params?: Record<string, string | number>) => string;
 
 /** Replaces operation identifiers only in displayed assistant text; provider history stays verbatim. */
 export function displayAgentText(text: string, t: Translate): string {

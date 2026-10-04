@@ -38,7 +38,7 @@ function reach(seed: number, maxElevation: number): Record<MacroId, number> {
     // about relief. What stands on it is the case's own subject, planted or laid below.
     clearAllObjects(state, (c: Command) => exec.execute(c));
   });
-  exec.commitStrokeGroup(exec.getUndoStackSize());
+  exec.commitStroke(exec.getUndoStackSize());
 
   // A PERSON'S MAP HAS THINGS STANDING ON IT, and for `roads` that is the whole question: it connects
   // what is there, so on bare terrain its honest answer is that there is nothing to connect. It used
@@ -50,7 +50,7 @@ function reach(seed: number, maxElevation: number): Record<MacroId, number> {
       const cell = state.cells[y]![x]!;
       if (cell.zone !== CellZone.Grass || cell.terrain) continue;
       const obj = { id: generateObjectId(), catalogId: 'building-stall', position: { x, y }, rotation: 0 as const, elevation: 0 };
-      if (exec.execute({ type: CommandType.PlaceObject, timestamp: 1, object: obj, loadValue: 0 }).success) stalls.push({ x, y });
+      if (exec.execute({ type: CommandType.PlaceObject, timestamp: 1, object: obj }).success) stalls.push({ x, y });
     }
   }
   expect(stalls.length, 'the planet had nowhere to stand a stall').toBeGreaterThan(2);

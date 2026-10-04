@@ -6,7 +6,7 @@
  * `MapRenderer.captureState` builds the real base, terrain and object layers over the candidate's
  * own grid, off the stage, and rasterizes them with the live renderer's GPU context. The colours,
  * the trims, the road shapes, the waterfall arrows and the icons are the map's own by construction,
- * and the framing is the template exactly, which is the view the editor opens on.
+ * and whole-island framing excludes the sea added for the reference grid.
  *
  * WHAT IS LEFT HERE is the framing. A run bounded by a painted region only writes inside it, so a
  * card framed on the whole planet photographs a change a few cells across at a few pixels:

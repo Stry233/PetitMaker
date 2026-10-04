@@ -89,7 +89,7 @@ function script(): ScriptedTurn[] {
     ),
     toolTurn(
       'Terrace stands. Measuring before I put anything on it.',
-      [{ callId: 'a4', name: 'evaluate_map', args: {} }],
+      [{ callId: 'a4', name: 'evaluate_map', args: {} }, { callId: 'stage-2', name: 'update_plan', args: { completedStages: 2 } }],
     ),
     toolTurn(
       'Room for the lookout on the top step, back from the edge.',
@@ -98,7 +98,7 @@ function script(): ScriptedTurn[] {
     toolTurn(
       'The rise is two terraces now, with the lookout on the upper step facing the plaza. '
       + 'The lower step is left clear so a path can come up to it later.',
-      [{ callId: 'a6', name: 'suggest_reply', args: { reply: 'Yes, run a path up to it' } }],
+      [{ callId: 'stage-3', name: 'update_plan', args: { completedStages: 3 } }, { callId: 'a6', name: 'suggest_reply', args: { reply: 'Yes, run a path up to it' } }],
     ),
   ];
 }
@@ -164,7 +164,7 @@ describe('one small job, driven by a model-shaped actor through the real loop', 
           args: {
             stages: [{ label: 'Raise the terrace at the north end of the plaza to two full layers of mountain' }],
           },
-        }],
+        }, { callId: 'done', name: 'update_plan', args: { completedStages: 1 } }],
       ),
       toolTurn(
         'Done. It is finished. All of it. Every part. Nothing remains. The rise is terraced.',

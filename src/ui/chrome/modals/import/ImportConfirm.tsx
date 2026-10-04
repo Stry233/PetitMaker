@@ -1,3 +1,4 @@
+import { windowFooterPrimary, windowFooterGhost, skin, windowTitle } from '../../../design/window-skin';
 /**
  * The look before the leap: a decoded map's picture, title and description, and the word that
  * installs it. Every import path shows this one card, whether the file came through the Import
@@ -8,8 +9,7 @@ import { motion } from 'framer-motion';
 import { useT } from '../../../../i18n/context';
 import type { ImportPreview } from '../../../../io/import-file';
 import { renderThumbnail } from '../../../../canvas/thumbnail';
-import { colors, radii, buttonMotion, footerGhost, footerPrimary } from '../../../design/styles';
-import { skin, windowTitle } from '../../../design/window-skin';
+import { colors, radii, buttonMotion } from '../../../design/styles';
 import { roleFont } from '../../../design/text-weight';
 
 /** Long side of the preview picture, in css px; the card is 520 wide. */
@@ -24,7 +24,7 @@ const confirmPanel: CSSProperties = {
 };
 
 const dangerReplaceButton: CSSProperties = {
-  ...footerPrimary,
+  ...windowFooterPrimary,
   background: colors.statusError,
   color: colors.white,
 };
@@ -74,10 +74,10 @@ export function ImportConfirm({ preview, name, replacing, busy, onConfirm, onCan
       </div>
       {replacing && <div role="alert" style={confirmPanel}>{t('import.confirm_replace')}</div>}
       <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
-        <motion.button type="button" style={footerGhost} onClick={onCancel} {...buttonMotion}>
+        <motion.button type="button" style={windowFooterGhost} onClick={onCancel} {...buttonMotion}>
           {t('import.drop_cancel')}
         </motion.button>
-        <motion.button type="button" style={replacing ? dangerReplaceButton : footerPrimary} aria-busy={busy || undefined} onClick={() => { if (!busy) onConfirm(); }} {...buttonMotion}>
+        <motion.button type="button" style={replacing ? dangerReplaceButton : windowFooterPrimary} aria-busy={busy || undefined} onClick={() => { if (!busy) onConfirm(); }} {...buttonMotion}>
           {t(replacing ? 'import.drop_replace' : 'import.confirm_import')}
         </motion.button>
       </div>

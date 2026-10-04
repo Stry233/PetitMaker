@@ -1,5 +1,5 @@
 /*
- * use-press-repeat.ts — press and hold to repeat.
+ * Press and hold to repeat.
  *
  * For a STEPPER and nothing else: a control whose action means something again when it is done
  * again, so holding it is a shorter way of pressing it several times. A toggle must never take it —
@@ -9,7 +9,7 @@
  */
 import { useEffect, useRef } from 'react';
 
-export interface PressRepeatOptions {
+interface PressRepeatOptions {
   /** The action to fire on press and on each repeat tick. */
   action: () => void;
   /** Optional gate: when it returns false the action is skipped / repeating stops
@@ -21,7 +21,7 @@ export interface PressRepeatOptions {
   intervalMs: number;
 }
 
-export interface PressRepeatHandlers {
+interface PressRepeatHandlers {
   onPointerDown: (e: { button: number }) => void;
   onPointerUp: () => void;
   onPointerLeave: () => void;

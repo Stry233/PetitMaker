@@ -1,5 +1,5 @@
 /*
- * tensor.ts — pixels to model input and back, with no browser API involved so the maths is testable.
+ * Pixels to model input and back, with no browser API involved so the maths is testable.
  *
  * The students are fully convolutional with three 2x downsamplings, so they accept any size but
  * return a band cropped to multiples of 8; `modelSize` picks the input size that makes the output

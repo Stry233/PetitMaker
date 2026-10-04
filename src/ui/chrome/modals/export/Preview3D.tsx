@@ -1,6 +1,6 @@
 import { helpTargetAttr } from '../help/targets';
 import { showToast } from '../../../../core/runtime/toast-bus';
-import { IS_LITE } from '../../../../core/runtime/edition';
+import { SUPPORTS_DOWNLOADS } from '../../../../core/runtime/edition';
 /**
  * Full-screen 3D preview overlay. Mounts a ThreeScene from the current GridState
  * snapshot, owns its entrance/exit motion (Quiet Toybox: scale-in via springs,
@@ -14,13 +14,14 @@ import { useHeldPan } from '../../../../canvas/interaction/use-view-shortcuts';
 import { motion, AnimatePresence, useReducedMotionConfig } from 'framer-motion';
 import { useEditorStore } from '../../../../state/store';
 import { useT } from '../../../../i18n/context';
-import { springs, exitTransition, colors, font, shadows, pressable, radii, cursors } from '../../../design/styles';
+import { springs, exitTransition, colors, font, shadows, pressable, radii, cursors, z } from '../../../design/styles';
 import { skin } from '../../../design/window-skin';
 import { roleFont } from '../../../design/text-weight';
 import { downloadBlob, dataUrlToBlob } from '../../../../io/image-export';
 import { ThreeScene } from '../../../../canvas/map3d/scene/scene';
 import { replaceShot } from '../../../../canvas/map3d/shot-list';
 import { CARD_3D_CELL_ASPECT } from '../../../../io/export/paint';
+import { NO_MOTION } from '../../../design/motion';
 
 // Cozy float button, matching the zoom/history controls idiom (dark glyph on a
 // cream squircle with the espresso float shadow). Stacked top-right of the view.
@@ -122,10 +123,10 @@ export function Preview3D({ onClose }: { onClose: () => void }) {
           aria-label={t('preview3d.title')}
           initial={reduced ? false : { opacity: 0, scale: 0.96 }}
           animate={{ opacity: 1, scale: 1 }}
-          exit={reduced ? { opacity: 0, transition: { duration: 0 } } : { opacity: 0, scale: 0.98, transition: exitTransition }}
+          exit={reduced ? { opacity: 0, transition: NO_MOTION } : { opacity: 0, scale: 0.98, transition: exitTransition }}
           transition={springs.stiff}
           style={{
-            position: 'fixed', inset: 0, zIndex: 250,
+            position: 'fixed', inset: 0, zIndex: z.stylizeWindow,
             background: colors.bgCanvas, overflow: 'hidden',
           }}
         >
@@ -133,7 +134,7 @@ export function Preview3D({ onClose }: { onClose: () => void }) {
               renders the WHOLE view so there's context around the frame. */}
           <div ref={hostRef} style={{ position: 'absolute', inset: 0, touchAction: 'none' }} />
 
-          {/* Edit mode viewfinder — now TRUTHFUL. The export re-renders the shot at
+          {/* Edit mode viewfinder. The export re-renders the shot at
               CARD_3D_CELL_ASPECT with the SAME vertical FOV as this full-screen view,
               so the exported still is exactly the full-HEIGHT, centre-WIDTH slice of
               what's on screen. The frame marks that slice (largest centred box of the
@@ -162,7 +163,7 @@ export function Preview3D({ onClose }: { onClose: () => void }) {
           </motion.button>
 
           {/* save a PNG of the current framing */}
-          {gridState && !IS_LITE && (
+          {gridState && SUPPORTS_DOWNLOADS && (
             <motion.button
               type="button"
               onClick={onCapture}

@@ -1,9 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { fnv1a, mulberry32, contentRandom, makeNoise, makeNoise1 } from '../../../../io/stylize/proc/noise';
+import { fnv1a, mulberry32, contentRandom, makeNoise } from '../../../../io/stylize/proc/noise';
 import {
   hexToRgb, rgbToHex, rgbToOklab, oklabToRgb, hexToLch, lchToHex, lightness, reColor, mixHex,
 } from '../../../../io/stylize/proc/oklab';
-import { traceMask, chaikin, wobble, ringArea, distanceField, signedDistanceField } from '../../../../io/stylize/proc/geom';
+import { distanceField, signedDistanceField } from '../../../../io/stylize/proc/geom';
 import { validatePalette, valueRange, type PackPalette } from '../../../../io/stylize/proc/palette';
 
 describe('proc/noise — the same seed draws the same picture', () => {
@@ -33,17 +33,6 @@ describe('proc/noise — the same seed draws the same picture', () => {
       expect(v).toBeLessThanOrEqual(1);
       expect(v).toBe(n2.fbm(i * 0.37, i * 0.11, 4));
     }
-  });
-
-  it('the 1-D field is correlated along its argument rather than independent per sample', () => {
-    const f = makeNoise1(3);
-    let near = 0;
-    let far = 0;
-    for (let i = 0; i < 200; i++) {
-      near += Math.abs(f(i * 0.01) - f(i * 0.01 + 0.01));
-      far += Math.abs(f(i * 0.01) - f(i * 0.01 + 5.13));
-    }
-    expect(near).toBeLessThan(far);
   });
 
   it('fnv1a is stable and distinguishes near-identical keys', () => {
@@ -94,62 +83,12 @@ describe('proc/oklab — value is authored, not hoped for', () => {
   });
 });
 
-describe('proc/geom — a mask becomes an outline', () => {
+describe('proc/geom — distance fields over a cell mask', () => {
   const box = (w: number, h: number, x0: number, y0: number, x1: number, y1: number): Uint8Array => {
     const m = new Uint8Array(w * h);
     for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) m[y * w + x] = 1;
     return m;
   };
-
-  it('traces one ring around one region, closed and of the right area', () => {
-    const rings = traceMask(box(10, 10, 2, 2, 6, 6), 10, 10);
-    expect(rings).toHaveLength(1);
-    expect(Math.abs(ringArea(rings[0]!))).toBeCloseTo(16, 5);
-  });
-
-  it('traces a hole as its own ring, wound the other way', () => {
-    const m = box(12, 12, 1, 1, 11, 11);
-    for (let y = 4; y < 8; y++) for (let x = 4; x < 8; x++) m[y * 12 + x] = 0;
-    const rings = traceMask(m, 12, 12);
-    expect(rings).toHaveLength(2);
-    const areas = rings.map(ringArea).sort((a, b) => a - b);
-    expect(Math.sign(areas[0]!)).not.toBe(Math.sign(areas[1]!));
-  });
-
-  it('finds every disjoint region', () => {
-    const m = new Uint8Array(20 * 8);
-    for (let x = 1; x < 4; x++) for (let y = 1; y < 4; y++) m[y * 20 + x] = 1;
-    for (let x = 12; x < 16; x++) for (let y = 2; y < 6; y++) m[y * 20 + x] = 1;
-    expect(traceMask(m, 20, 8)).toHaveLength(2);
-  });
-
-  it('an empty mask traces nothing', () => {
-    expect(traceMask(new Uint8Array(64), 8, 8)).toHaveLength(0);
-  });
-
-  it('smoothing preserves the enclosed area to within a corner, and adds vertices', () => {
-    const ring = traceMask(box(12, 12, 3, 3, 9, 9), 12, 12)[0]!;
-    const smoothed = chaikin(ring, 2);
-    expect(smoothed.length).toBeGreaterThan(ring.length);
-    expect(Math.abs(ringArea(smoothed))).toBeGreaterThan(Math.abs(ringArea(ring)) * 0.8);
-  });
-
-  it('wobble moves points but keeps the ring closed and bounded by its amplitude', () => {
-    const ring = chaikin(traceMask(box(20, 20, 4, 4, 16, 16), 20, 20)[0]!, 2);
-    const moved = wobble(ring, 0.15, 1.5, makeNoise1(11));
-    expect(moved).toHaveLength(ring.length);
-    let maxShift = 0;
-    for (let i = 0; i < ring.length; i++) {
-      maxShift = Math.max(maxShift, Math.hypot(moved[i]![0] - ring[i]![0], moved[i]![1] - ring[i]![1]));
-    }
-    expect(maxShift).toBeLessThanOrEqual(0.15 + 1e-6);
-    expect(maxShift).toBeGreaterThan(0);
-  });
-
-  it('zero amplitude is exactly the identity, so a pack can turn the hand off', () => {
-    const ring = traceMask(box(8, 8, 2, 2, 6, 6), 8, 8)[0]!;
-    expect(wobble(ring, 0, 2, makeNoise1(1))).toBe(ring);
-  });
 
   it('the distance field is exact, not an approximation', () => {
     const m = new Uint8Array(9 * 9);

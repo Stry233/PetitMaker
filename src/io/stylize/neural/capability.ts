@@ -1,5 +1,5 @@
 /*
- * capability.ts — whether this engine can run the on-device students at all.
+ * Whether this engine can run the on-device students at all.
  *
  * The ONNX runtime ships here in its SIMD build only, so a WebAssembly engine without SIMD cannot
  * load the models however willing it is. That is a fixed fact about the engine, so it is probed

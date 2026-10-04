@@ -3,9 +3,9 @@ import { encodeMapPayload, decodeMapPayload } from '../../../../io/share/codec/p
 import { canonicalize, canonicalBytes } from '../../../../io/share/canonical';
 import { sha256 } from '../../../../io/share/crypto/sha256';
 import { CompressionMethod, deflate, inflate } from '../../../../io/share/raster/zlib';
-import { createBlankGridState } from '../../../../io/share/codec/blank-grid';
+import { createGridState } from '../../../../core/model/planet';
 import { makeState } from '../../../rules/_helpers';
-import { MAP_TEMPLATES } from '../../../../config/maps';
+import { getMapTemplate, MAP_TEMPLATES } from '../../../../config/maps';
 import { CellZone, TerrainType } from '../../../../core/model/types';
 import { MODEL_VARIANTS } from '../../../../io/share/codec/map-coder';
 import type { GridState } from '../../../../core/model/types';
@@ -51,7 +51,7 @@ async function asFrame3(frame4: Uint8Array, state: GridState): Promise<Uint8Arra
   frame3.set(frame4.subarray(0, offset));
   frame3.set(frame4.subarray(offset + 2), offset);
   frame3[2] = 3;
-  frame3.set(await sha256(canonicalBytes(canonicalize(state))), hashOffset);
+  frame3.set(await sha256(canonicalBytes({ ...canonicalize(state), version: frame4[4]! })), hashOffset);
   return frame3;
 }
 
@@ -71,7 +71,7 @@ function annotationBlobRange(frame: Uint8Array): { lengthOffset: number; start: 
 
 describe('payload frame', () => {
   it('omits supplied titles from new payloads without changing the frame version', async () => {
-    const state = createBlankGridState('hexia');
+    const state = createGridState(getMapTemplate('hexia'));
     const meta = { ...META, createdAt: '2026-09-12T12:00:00.000Z' };
     const oldCallerMeta = { ...meta, title: 'River garden' };
     const bytes = await encodeMapPayload(state, null, oldCallerMeta);
@@ -82,16 +82,16 @@ describe('payload frame', () => {
   });
 
   it.each([3, 4])('reads titles in older frame %i records without changing the imported map', async version => {
-    const state = createBlankGridState('hexia');
+    const state = createGridState(getMapTemplate('hexia'));
     const frozen = Uint8Array.from(atob(TITLED_FRAME), char => char.charCodeAt(0));
     const bytes = version === 3 ? await asFrame3(frozen, state) : frozen;
     const decoded = await decodeMapPayload(bytes);
     expect(decoded.provenance).toEqual({ ...META, createdAt: '2026-09-12T12:00:00.000Z', title: 'River garden', aiUsed: false, proceduralUsed: false });
-    expect(canonicalBytes(decoded.canonical)).toEqual(canonicalBytes(canonicalize(state)));
+    expect(canonicalBytes(decoded.canonical)).toEqual(canonicalBytes({ ...canonicalize(state), version: 1 }));
   });
 
   it('carries the map title and description in frame 5, reads them back, and stays at frame 4 without them', async () => {
-    const state = createBlankGridState('hexia');
+    const state = createGridState(getMapTemplate('hexia'));
     const bare = await encodeMapPayload(state, null, META);
     expect(bare[2]).toBe(4);
     state.notes = { title: 'River garden 河畔花园', description: 'A quiet bend with three homes.' };
@@ -103,7 +103,7 @@ describe('payload frame', () => {
   });
 
   it('a tampered notes record fails the content hash', async () => {
-    const state = createBlankGridState('hexia');
+    const state = createGridState(getMapTemplate('hexia'));
     state.notes = { title: 'River garden' };
     const bytes = await encodeMapPayload(state, null, META);
     const at = bytes.indexOf(new TextEncoder().encode('River')[0]!, 40);
@@ -113,14 +113,14 @@ describe('payload frame', () => {
   });
 
   it('empty map round-trips tiny (< 150 B) and hash-exact', async () => {
-    const state = createBlankGridState('hexia');
+    const state = createGridState(getMapTemplate('hexia'));
     const bytes = await encodeMapPayload(state, null, META);
     expect(bytes.length).toBeLessThan(150);
     const dec = await decodeMapPayload(bytes);
     expect(canonicalBytes(dec.canonical)).toEqual(canonicalBytes(canonicalize(state)));
   });
   it('treats an empty annotation layer as the annotation-free frame 4 case', async () => {
-    const state = createBlankGridState('hexia');
+    const state = createGridState(getMapTemplate('hexia'));
     state.annotations = { items: [], visible: false, locked: true };
     const bytes = await encodeMapPayload(state, null, META);
     expect(bytes[2]).toBe(4);
@@ -149,7 +149,7 @@ describe('payload frame', () => {
     await expect(decodeMapPayload(edited)).rejects.toMatchObject({ code: 'corrupt' });
   });
   it('continues to read annotation-free frame 3 payloads', async () => {
-    const state = createBlankGridState('hexia');
+    const state = createGridState(getMapTemplate('hexia'));
     const frame3 = await asFrame3(await encodeMapPayload(state, null, META), state);
     const dec = await decodeMapPayload(frame3);
     expect(dec.annotations).toBeUndefined();
@@ -164,7 +164,7 @@ describe('payload frame', () => {
     expect(dec.provenance.title).toBeUndefined();
   });
   it('falls back to an unmasked model when a state contains data outside the template mask', async () => {
-    const state = createBlankGridState('hexia');
+    const state = createGridState(getMapTemplate('hexia'));
     let target: { x: number; y: number } | undefined;
     for (let y = 0; y < state.template.height && !target; y++) {
       for (let x = 0; x < state.template.width; x++) {

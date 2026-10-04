@@ -14,7 +14,7 @@
   "color": "#699787",
   "width": 1,
   "height": 1,
-  "loadValue": 10,
+  "loadValue": 0,
   "rotatable": false,
   "placementMode": "brush",
   "traits": [
@@ -24,5 +24,74 @@
     {
       "type": "surfaceCoating"
     }
-  ]
+  ],
+  "roadMaterial": {
+    "feather": 0.06,
+    "edge": {
+      "color": "#ffffff",
+      "pattern": {
+        "kind": "inlay",
+        "repeat": 2.5,
+        "background": "#328c9a",
+        "color": "#f6d978",
+        "rim": "#ba8844",
+        "motifs": [
+          {"x": 0.16, "y": 0.16, "radius": 0.125, "rotation": 18, "shape": "star"},
+          {"x": 0.58, "y": 0.16, "radius": 0.125, "rotation": -18, "shape": "star"},
+          {"x": 0.3, "y": 0.48, "radius": 0.125, "rotation": 34, "shape": "star"},
+          {"x": 0.8, "y": 0.48, "radius": 0.125, "rotation": -14, "shape": "star"},
+          {"x": 0.06, "y": 0.8, "radius": 0.082, "rotation": 12, "shape": "star"},
+          {"x": 0.42, "y": 0.8, "radius": 0.073, "rotation": -8, "shape": "star"},
+          {"x": 0.7, "y": 0.84, "radius": 0.064, "rotation": -5, "shape": "star"},
+          {"x": 0.83, "y": 0.13, "radius": 0.031, "rotation": 8, "shape": "star"},
+          {"x": 0.05, "y": 0.41, "radius": 0.032, "rotation": -12, "shape": "star"},
+          {"x": 0.55, "y": 0.49, "radius": 0.031, "rotation": 2, "shape": "star"},
+          {"x": 0.97, "y": 0.67, "radius": 0.032, "rotation": 16, "shape": "star"},
+          {"x": 0.31, "y": 0.16, "radius": 0.0131, "rotation": -90, "shape": "dash"},
+          {"x": 0.2327, "y": 0.2912, "radius": 0.0131, "rotation": -29, "shape": "dash"},
+          {"x": 0.0805, "y": 0.2872, "radius": 0.0131, "rotation": 32, "shape": "dash"},
+          {"x": 0.0102, "y": 0.1521, "radius": 0.0131, "rotation": 93, "shape": "dash"},
+          {"x": 0.0942, "y": 0.0252, "radius": 0.0131, "rotation": 154, "shape": "dash"},
+          {"x": 0.246, "y": 0.0371, "radius": 0.0131, "rotation": 215, "shape": "dash"},
+          {"x": 0.7234, "y": 0.2039, "radius": 0.0131, "rotation": -73, "shape": "dash"},
+          {"x": 0.6112, "y": 0.3067, "radius": 0.0131, "rotation": -12, "shape": "dash"},
+          {"x": 0.4668, "y": 0.2584, "radius": 0.0131, "rotation": 49, "shape": "dash"},
+          {"x": 0.439, "y": 0.1087, "radius": 0.0131, "rotation": 110, "shape": "dash"},
+          {"x": 0.5565, "y": 0.0118, "radius": 0.0131, "rotation": 171, "shape": "dash"},
+          {"x": 0.6982, "y": 0.0677, "radius": 0.0131, "rotation": 232, "shape": "dash"},
+          {"x": 0.4244, "y": 0.5639, "radius": 0.0131, "rotation": -56, "shape": "dash"},
+          {"x": 0.2869, "y": 0.6294, "radius": 0.0131, "rotation": 5, "shape": "dash"},
+          {"x": 0.163, "y": 0.541, "radius": 0.0131, "rotation": 66, "shape": "dash"},
+          {"x": 0.1802, "y": 0.3897, "radius": 0.0131, "rotation": 127, "shape": "dash"},
+          {"x": 0.3209, "y": 0.3315, "radius": 0.0131, "rotation": 188, "shape": "dash"},
+          {"x": 0.44, "y": 0.4262, "radius": 0.0131, "rotation": 249, "shape": "dash"},
+          {"x": 0.8944, "y": 0.5966, "radius": 0.0131, "rotation": -39, "shape": "dash"},
+          {"x": 0.7438, "y": 0.6191, "radius": 0.0131, "rotation": 22, "shape": "dash"},
+          {"x": 0.6511, "y": 0.4983, "radius": 0.0131, "rotation": 83, "shape": "dash"},
+          {"x": 0.7118, "y": 0.3586, "radius": 0.0131, "rotation": 144, "shape": "dash"},
+          {"x": 0.8634, "y": 0.3441, "radius": 0.0131, "rotation": 205, "shape": "dash"},
+          {"x": 0.9496, "y": 0.4695, "radius": 0.0131, "rotation": 266, "shape": "dash"},
+          {"x": 0.0969, "y": 0.8912, "radius": 0.0086, "rotation": -22, "shape": "dash"},
+          {"x": 0.9981, "y": 0.8765, "radius": 0.0086, "rotation": 39, "shape": "dash"},
+          {"x": 0.9631, "y": 0.7829, "radius": 0.0086, "rotation": 100, "shape": "dash"},
+          {"x": 0.028, "y": 0.707, "radius": 0.0086, "rotation": 161, "shape": "dash"},
+          {"x": 0.1258, "y": 0.7269, "radius": 0.0086, "rotation": 222, "shape": "dash"},
+          {"x": 0.1559, "y": 0.8221, "radius": 0.0086, "rotation": 283, "shape": "dash"},
+          {"x": 0.4276, "y": 0.8873, "radius": 0.0077, "rotation": -5, "shape": "dash"},
+          {"x": 0.3474, "y": 0.849, "radius": 0.0077, "rotation": 56, "shape": "dash"},
+          {"x": 0.3419, "y": 0.7602, "radius": 0.0077, "rotation": 117, "shape": "dash"},
+          {"x": 0.4169, "y": 0.7125, "radius": 0.0077, "rotation": 178, "shape": "dash"},
+          {"x": 0.4951, "y": 0.7549, "radius": 0.0077, "rotation": 239, "shape": "dash"},
+          {"x": 0.4959, "y": 0.8438, "radius": 0.0077, "rotation": 300, "shape": "dash"},
+          {"x": 0.684, "y": 0.9151, "radius": 0.0067, "rotation": 12, "shape": "dash"},
+          {"x": 0.6266, "y": 0.8625, "radius": 0.0067, "rotation": 73, "shape": "dash"},
+          {"x": 0.6448, "y": 0.7867, "radius": 0.0067, "rotation": 134, "shape": "dash"},
+          {"x": 0.7199, "y": 0.7658, "radius": 0.0067, "rotation": 195, "shape": "dash"},
+          {"x": 0.7745, "y": 0.8214, "radius": 0.0067, "rotation": 256, "shape": "dash"},
+          {"x": 0.7524, "y": 0.8962, "radius": 0.0067, "rotation": 317, "shape": "dash"}
+        ]
+      }
+    },
+    "layers": []
+  }
 }

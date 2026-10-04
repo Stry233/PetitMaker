@@ -3,7 +3,8 @@
  * thread: the page stays smooth while six generations run, and two or three run at once instead
  * of one after another. The macro tool's ghost preview shares it — the same closure at a smaller
  * size — and jumps the queue, since a preview answers a pointer that is waiting right now while a
- * card can arrive a moment later.
+ * card can arrive a moment later. Change Planet's carry preview (a whole-map transfer replay) jumps
+ * the queue the same way: a loader is waiting on it.
  *
  * The pool is small — `min(3, cores - 2)` — because the main thread still has the
  * map to draw and each worker holds a whole grid. Jobs queue when every worker is busy; a job
@@ -18,50 +19,39 @@
  * one.
  */
 import { SUPPORTS_WORKERS } from '../../core/runtime/edition';
-import { decodeCells, encodeCells, type WireCells } from '../../core/model/grid-wire';
-import type { Command, GenerateConfig, GridState, MacroCoord, MapTemplate, PlacedObject } from '../../core/model/types';
+import { decodeGridState, encodeGridState, type WireGridState } from '../../core/model/grid-wire';
+import type { GenerateConfig, GridState, MacroCoord, MapTemplate } from '../../core/model/types';
 import type { MacroBuild, MacroId, MacroOpts, MacroPreview } from '../../tools/macros';
-import type { Outcome } from './outcome';
+import type { TransferPreview } from './planet-preview';
+import type { TransferCounts } from './transfer';
+import type { Run } from './generate';
 
 /**
- * A grid on the wire: cells as one transferable buffer (`core/model/grid-wire`), objects and
- * locks as plain lists, and the TEMPLATE only the first time each worker sees it — a template is
- * immutable per map and its `zones` array is as big as the cells. The provenance ledger and the
- * objects delta never cross: no job reads them.
+ * A grid on its way to a worker (`core/model/grid-wire`), naming its template and carrying it only
+ * the first time each worker sees it — a template is immutable per map and its `zones` array is as
+ * big as the cells.
  */
-export interface WireGrid {
-  wire: WireCells;
-  objects: PlacedObject[];
-  lockedLayers: number[];
-  cellsVersion: number;
-  objectsVersion: number;
+export interface WireGrid extends WireGridState {
   templateId: string;
   template?: MapTemplate;
 }
 
-/** What a worker hands back for a candidate: the grid it built, the run's report, the accepted
- *  commands ready for a replay on the live map, and the fingerprint of the ground they were
- *  validated against (the copy after the run's own clearing). */
-export interface CandidateRun {
-  state: GridState;
-  outcome: Outcome;
-  commands: Command[];
-  bare: string;
-}
+/** What a worker hands back for a candidate: the run on the grid it built. */
+export type CandidateRun = Run & { state: GridState };
 
 /** The same, as it crosses. The grid goes back the way it came — one transferable buffer rather
  *  than ~24k nested objects — because the ANSWER is deserialized on the main thread, where the
  *  clone costs the frame the pool exists to protect. The template never crosses either way: this
  *  side has the one the job was sent with. */
-export interface WireCandidate {
-  wire: WireCells;
-  objects: PlacedObject[];
-  lockedLayers: number[];
-  cellsVersion: number;
-  objectsVersion: number;
-  outcome: Outcome;
-  commands: Command[];
-  bare: string;
+export type WireCandidate = WireGridState & Run;
+
+/** A carry preview as it crosses back: the destination grid on the wire and the loss report as
+ *  plain data. */
+export interface WireTransferPreview {
+  grid: WireGridState;
+  dropped: MacroCoord[];
+  moved: TransferCounts;
+  droppedCounts: TransferCounts;
 }
 
 interface Job {
@@ -70,6 +60,8 @@ interface Job {
    *  its template cache) is known. */
   state: GridState;
   payload: Record<string, unknown>;
+  /** Templates the job names by id besides its grid's own, each sent once per worker like it. */
+  templates?: MapTemplate[] | undefined;
   signal?: { cancelled: boolean } | undefined;
   resolve: (result: unknown) => void;
   reject: (err: Error) => void;
@@ -167,28 +159,32 @@ function dispatch(): void {
   }
 }
 
-function post(slot: Slot, job: Job): void {
-  const { state } = job;
-  const grid: WireGrid = {
-    wire: encodeCells(state.cells, state.template.width, state.template.height),
-    objects: [...state.objects.values()],
-    lockedLayers: [...state.lockedLayers],
-    cellsVersion: state.cellsVersion ?? 0,
-    objectsVersion: state.objectsVersion ?? 0,
+/** `state` as it crosses to a worker, its template included only when `withTemplate`. Exported for
+ *  the tests that hold the worker's answer equal to the main thread's; `post` is the one sender. */
+export function wireGrid(state: GridState, withTemplate: boolean): WireGrid {
+  return {
+    ...encodeGridState(state),
     templateId: state.template.id,
-    ...(slot.templates.has(state.template.id) ? {} : { template: state.template }),
+    ...(withTemplate ? { template: state.template } : {}),
   };
-  slot.templates.add(state.template.id);
-  slot.worker.postMessage({ id: job.id, grid, ...job.payload }, [grid.wire.buffer]);
 }
 
-function enqueue(state: GridState, payload: Record<string, unknown>, opts: { signal?: { cancelled: boolean }; front?: boolean }): Promise<unknown> {
+function post(slot: Slot, job: Job): void {
+  const { state } = job;
+  const grid = wireGrid(state, !slot.templates.has(state.template.id));
+  slot.templates.add(state.template.id);
+  const templates = (job.templates ?? []).filter((t) => !slot.templates.has(t.id));
+  for (const t of templates) slot.templates.add(t.id);
+  slot.worker.postMessage({ id: job.id, grid, ...(templates.length ? { templates } : {}), ...job.payload }, [grid.wire.buffer]);
+}
+
+function enqueue(state: GridState, payload: Record<string, unknown>, opts: { signal?: { cancelled: boolean } | undefined; front?: boolean; templates?: MapTemplate[] }): Promise<unknown> {
   return new Promise<unknown>((resolve, reject) => {
     // A broken pool takes no jobs: `dispatch` returns at the door, so a job queued here would wait
     // for a worker that is gone. The macro runners are installed once and retire on a rejection,
     // so this rejection is also how they learn.
     if (broken) { reject(new Error('generation pool is broken')); return; }
-    const job: Job = { id: nextId++, state, payload, signal: opts.signal, resolve, reject };
+    const job: Job = { id: nextId++, state, payload, templates: opts.templates, signal: opts.signal, resolve, reject };
     if (opts.front) queue.unshift(job);
     else queue.push(job);
     dispatch();
@@ -201,7 +197,7 @@ function enqueue(state: GridState, payload: Record<string, unknown>, opts: { sig
 export function warmPool(): void {
   if (!poolAvailable()) return;
   try { ensureSlots(); } catch (err) {
-    breakPool(err instanceof Error ? err : new Error(String(err)));
+    breakPool(asError(err));
   }
 }
 
@@ -219,19 +215,22 @@ export async function runCandidateInPool(
 /** The worker's answer as a grid again. Exported for the test that holds the two ends of the wire
  *  equal — nothing else builds one. */
 export function reviveCandidate(run: WireCandidate, template: MapTemplate): CandidateRun {
-  return {
-    state: {
-      template,
-      cells: decodeCells(run.wire),
-      objects: new Map(run.objects.map((o) => [o.id, o])),
-      lockedLayers: new Set(run.lockedLayers),
-      cellsVersion: run.cellsVersion,
-      objectsVersion: run.objectsVersion,
-    },
-    outcome: run.outcome,
-    commands: run.commands,
-    bare: run.bare,
-  };
+  return { state: decodeGridState(run, template), outcome: run.outcome, commands: run.commands, bare: run.bare };
+}
+
+/** Work out the carry of `state` onto `target` in the pool, at the FRONT of the queue. Resolves null
+ *  when `signal` was cancelled before a worker picked it up; rejects when the pool is broken. */
+export async function runTransferPreviewInPool(
+  state: GridState, target: MapTemplate, signal?: { cancelled: boolean },
+): Promise<TransferPreview | null> {
+  const data = await enqueue(state, { kind: 'transfer', targetId: target.id }, { signal, front: true, templates: [target] }) as { preview?: WireTransferPreview } | null;
+  return data?.preview ? reviveTransferPreview(data.preview, target) : null;
+}
+
+/** The worker's carry preview as the painter reads it. Exported for the test that holds it equal
+ *  to the main thread's. */
+export function reviveTransferPreview(wire: WireTransferPreview, target: MapTemplate): TransferPreview {
+  return { state: decodeGridState(wire.grid, target), dropped: wire.dropped, moved: wire.moved, droppedCounts: wire.droppedCounts };
 }
 
 /** Run one macro preview in the pool, at the FRONT of the queue: a pointer is waiting on it. */

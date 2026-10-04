@@ -11,33 +11,32 @@ import { seaFrame } from '../../../canvas/thumbnail';
 import { WATER_COLOR } from '../../../core/model/constants';
 import { useT } from '../../../i18n/context';
 import { useEditorStore } from '../../../state/store';
-import { INK, PLATE, PLATE_INK, TRACK } from '../../design/tokens';
-import { colors, cursors, font, radii } from '../../design/styles';
+import { INK, INSET, PLATE, PLATE_INK, TRACK } from '../../design/tokens';
+import { cursors, font, radii } from '../../design/styles';
 import { roleFont } from '../../design/text-weight';
+import { ActionButton } from '../../primitives/ActionButton';
 import { LoadingDots } from '../../primitives/LoadingDots';
 import { getCharacterHandle } from '../character/Character';
 import { Icon } from '../icons';
 import { MapShot } from '../map-shot';
-import { CARD_PAD, edge, PANEL_PAD, PANEL_WIDTH } from '../tokens';
+import { edge, POSTCARD } from '../tokens';
 import { withAlpha } from '../../design/styles';
 import type { SketchArt, SketchIdea } from './propose';
 import { GARNISH, RITUALS, SCRIBBLE_BADGE_MS, SKETCH, type Beat } from './sketch-motion';
 
 /** Full-width card thumbnail size in CSS pixels. */
-const THUMB = { width: PANEL_WIDTH - 2 * PANEL_PAD - 2 * CARD_PAD, height: 172 } as const;
+const THUMB = { width: POSTCARD.width, height: 172 } as const;
 
 /**
  * The tracing-paper wash over the photograph: the sketch reads as an overlay, not as map paint.
  *
  * The ground is a full-saturation live map, so the wash must separate pencil marks while leaving the
- * map legible. At 0.16 the wash was imperceptible — the dashed proposal competed with the map's own
- * road lines and the pencil read as one more thing painted on it rather than as a plan laid over it.
- * Heavy enough to knock the ground back, light enough that the map is still legible under it, which
- * is the whole point of drawing on the map the user is standing on rather than on a stand-in.
+ * map legible: too light, and the dashed proposal competes with the map's own road lines and reads as
+ * one more thing painted on it rather than as a plan laid over it.
  */
 const WASH = withAlpha(PLATE, 0.45);
 /** Below this the pencil competes with the map's own lines (see `WASH`). Exported for the token
- *  guard, so a later tidy cannot walk the wash back to invisible without saying so. */
+ *  guard. */
 export const WASH_FLOOR = 0.35;
 
 /**
@@ -318,7 +317,7 @@ function SketchPaper({ idea, wiping, still, mapVersion }: {
   );
 }
 
-export interface SketchbookProps {
+interface SketchbookProps {
   /** What the open map offers, in the order the card cycles them. Empty renders nothing. */
   ideas: readonly SketchIdea[];
   /** Hand the standing order to the composer. Fills the field; never sends. */
@@ -413,12 +412,12 @@ export function Sketchbook({ ideas, onOrder, mapVersion }: SketchbookProps) {
   if (!idea || !words) return null;
 
   return (
-    <div data-testid="sketchbook" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-      <p style={{ ...roleFont('label'), fontFamily: font.family, color: PLATE_INK, lineHeight: 1.5, margin: 0 }}>
-        {t('agent3.sketch_say')}
-      </p>
-      <button
+    // Vertical clearance keeps the shared focus ring inside the scrolling zone.
+    <div data-testid="sketchbook" style={{ display: 'flex', flexDirection: 'column', padding: '6px 0' }}>
+      <ActionButton
         type="button"
+        interaction="actionTap"
+        hoverFill={INSET}
         data-testid="sketch-card"
         data-kind={idea.kind}
         title={words.order}
@@ -442,10 +441,7 @@ export function Sketchbook({ ideas, onOrder, mapVersion }: SketchbookProps) {
             {capText}
           </span>
         </span>
-      </button>
-      <p style={{ ...roleFont('note'), fontFamily: font.family, color: colors.brownText, lineHeight: 1.45, margin: 0, padding: '0 3px' }}>
-        {t('agent3.sketch_note')}
-      </p>
+      </ActionButton>
     </div>
   );
 }

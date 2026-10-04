@@ -9,14 +9,13 @@ import {
   type MapTemplate,
   type PaintTerrainCommand,
   type PlacedObject,
-  type PlaceObjectCommand,
+  type PlaceObjectCommand, type Rotation,
 } from '../../core/model/types';
 import { createGrid, createDefaultTerrainCell } from '../../core/model/grid-model';
 import { CommandExecutor } from '../../core/commands/command-executor';
 import { EventBus } from '../../core/commands/event-bus';
-import { createDefaultRegistry } from '../../rules/index';
+import { createDefaultRegistry, type RuleRegistry } from '../../rules/index';
 import { roadLookup } from '../../state/object-index';
-import { catalogLoadValue } from '../../state/catalog';
 
 export function makeTemplate(width = 20, height = 20): MapTemplate {
   const zones: CellZone[][] = Array.from({ length: height }, () =>
@@ -73,20 +72,20 @@ export function eraseCmd(cells: MacroCoord[]): EraseTerrainCommand {
   };
 }
 
-export function placeCmd(object: PlacedObject, loadValue = 0): PlaceObjectCommand {
+export function placeCmd(object: PlacedObject): PlaceObjectCommand {
   return {
     type: CommandType.PlaceObject,
     timestamp: 0,
-    object, loadValue,
+    object,
   };
 }
 
 export function makeObject(
-  id: string, x: number, y: number, rotation: 0 | 90 | 180 | 270 = 0,
+  id: string, x: number, y: number, rotation: Rotation = 0,
 ): PlacedObject {
   return { id, catalogId: id, position: { x, y }, rotation, elevation: 0 };
 }
 
-export function makeExecutor(state: GridState): CommandExecutor {
-  return new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state), catalogLoadValue);
+export function makeExecutor(state: GridState, registry: RuleRegistry = createDefaultRegistry()): CommandExecutor {
+  return new CommandExecutor(state, new EventBus<EditorEvents>(), registry, roadLookup(state));
 }

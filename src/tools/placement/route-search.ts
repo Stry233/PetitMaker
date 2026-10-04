@@ -10,7 +10,7 @@ export interface RouteJump {
   far: MacroCoord[];
   portal: Portal;
 }
-export interface RouteStep { at: MacroCoord; jump?: RouteJump }
+interface RouteStep { at: MacroCoord; jump?: RouteJump }
 
 /** When travel cost ties, prefer a shorter structure over a longer deck. */
 const SPAN_PREMIUM = 0.15;

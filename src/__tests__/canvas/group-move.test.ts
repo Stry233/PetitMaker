@@ -34,7 +34,7 @@ function mapWith(specs: Spec[]): { gs: GridState; exec: CommandExecutor } {
       rotation: 0, elevation: 0,
       ...(s.locked ? { locked: true } : {}),
     };
-    const res = exec.execute({ type: CommandType.PlaceObject, timestamp: 0, object, loadValue: 0 });
+    const res = exec.execute({ type: CommandType.PlaceObject, timestamp: 0, object });
     expect(res.success).toBe(true);
   }
   return { gs, exec };

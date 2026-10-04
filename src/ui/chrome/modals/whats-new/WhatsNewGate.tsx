@@ -11,6 +11,7 @@ import { arrivalOpens } from '../../floating/arrival-gate';
 import { hasSeenTour } from '../../tour/use-tour';
 import { currentNotes, lastSeenVersion, recordSeenVersion } from './current';
 import { whatsNewDue } from './notes';
+import { anyModalOpen } from '../../../../state/slices/shell';
 
 export function WhatsNewGate({ splashActive }: { splashActive: boolean }) {
   const blocked = useEditorStore((s) => s.portraitBlocked);
@@ -26,7 +27,7 @@ export function WhatsNewGate({ splashActive }: { splashActive: boolean }) {
     const gate = arrivalOpens({
       splashActive, blocked, tourRunning, tourSettled: hasSeenTour(), tourDoneOpen: modals.tourDone, whatsNewOpen: modals.whatsNew,
     });
-    if (!gate || Object.values(modals).some(Boolean)) return undefined;
+    if (!gate || anyModalOpen({ modals })) return undefined;
     // Decided in this commit's effects: the arrival notice defers its own reading past them, so the
     // window it should wait for is already open when it looks.
     decided.current = true;

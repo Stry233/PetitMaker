@@ -23,7 +23,7 @@ function build(stencil: Stencil, fill: StencilPlan['fill'], read: StencilPlan['r
     algorithm: 'stencil', mode: 'mixed', corridorWidth: 1, maxElevation: 8, seed: 1, region: null,
     stencilPlan: { read, fill, stencil, origin: { x: 3, y: 3 }, allow },
   }, state, (c) => exec.execute(c), exec.getRegistry());
-  expect(exec.commitStrokeGroup(0)).toEqual([]);
+  expect(exec.commitStroke(0)).toEqual([]);
   return { state, result };
 }
 

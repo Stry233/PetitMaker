@@ -6,7 +6,7 @@
  * The three hand states retain the same finger grid so drag-state changes do not alter silhouette
  * identity. Refusal and selection-membership badges occupy the shared top-right badge slot.
  */
-import { INK, CREAM, ERROR_RED } from '../../core/runtime/brand-palette';
+import { FRAME_INK, CREAM, ERROR_RED } from '../../core/runtime/brand-palette';
 import { ELEVATION_COLORS, WATER_COLOR } from '../../core/model/constants';
 import type { CursorId } from '../../core/runtime/cursor-spec';
 
@@ -19,7 +19,7 @@ const MOUNTAIN = ELEVATION_COLORS[3]!;
 
 /** A filled shape with the house outline: ink stroke, cream or material fill. */
 function body(d: string, fill: string): string {
-  return `<path d="${d}" fill="${fill}" stroke="${INK}"`
+  return `<path d="${d}" fill="${fill}" stroke="${FRAME_INK}"`
     + ' stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>';
 }
 
@@ -27,32 +27,32 @@ function body(d: string, fill: string): string {
 function haloed(d: string, width: number, extra = ''): string {
   return `<path d="${d}" fill="none" stroke="${CREAM}" stroke-width="${width + 3.6}"`
     + ' stroke-linecap="round" stroke-linejoin="round"/>'
-    + `<path d="${d}" fill="none" stroke="${INK}" stroke-width="${width}"`
+    + `<path d="${d}" fill="none" stroke="${FRAME_INK}" stroke-width="${width}"`
     + ` stroke-linecap="round" stroke-linejoin="round"${extra}/>`;
 }
 
 /** Interior ink lines that divide a hand's silhouette into fingers. */
 function creases(d: string): string {
-  return `<path d="${d}" fill="none" stroke="${INK}" stroke-width="2" stroke-linecap="round"/>`;
+  return `<path d="${d}" fill="none" stroke="${FRAME_INK}" stroke-width="2" stroke-linecap="round"/>`;
 }
 
 /** The refusal badge: a circle-slash at the TOP-RIGHT, where no glyph puts its identifying feature. */
 const FORBIDDEN_BADGE = [
-  `<circle cx="25.5" cy="6.5" r="5.8" fill="${CREAM}" stroke="${INK}" stroke-width="2"/>`,
+  `<circle cx="25.5" cy="6.5" r="5.8" fill="${CREAM}" stroke="${FRAME_INK}" stroke-width="2"/>`,
   `<circle cx="25.5" cy="6.5" r="3.6" fill="none" stroke="${ERROR_RED}" stroke-width="1.9"/>`,
   `<path d="M23 9 L28 4" stroke="${ERROR_RED}" stroke-width="1.9" stroke-linecap="round"/>`,
 ].join('');
 
 /** The same top-right circle as the refusal badge, ink over cream and no status colour. */
-const MEMBERSHIP_BADGE_CIRCLE = `<circle cx="25.5" cy="6.5" r="5.8" fill="${CREAM}" stroke="${INK}" stroke-width="2"/>`;
+const MEMBERSHIP_BADGE_CIRCLE = `<circle cx="25.5" cy="6.5" r="5.8" fill="${CREAM}" stroke="${FRAME_INK}" stroke-width="2"/>`;
 
 /** Ctrl held over an unselected object: this click joins it to the selection. */
 const ADD_BADGE = MEMBERSHIP_BADGE_CIRCLE
-  + `<path d="M25.5 3.3 L25.5 9.7 M22.3 6.5 L28.7 6.5" stroke="${INK}" stroke-width="1.9" stroke-linecap="round"/>`;
+  + `<path d="M25.5 3.3 L25.5 9.7 M22.3 6.5 L28.7 6.5" stroke="${FRAME_INK}" stroke-width="1.9" stroke-linecap="round"/>`;
 
 /** Ctrl held over a selected object: this click drops it from the selection. */
 const REMOVE_BADGE = MEMBERSHIP_BADGE_CIRCLE
-  + `<path d="M22.3 6.5 L28.7 6.5" stroke="${INK}" stroke-width="1.9" stroke-linecap="round"/>`;
+  + `<path d="M22.3 6.5 L28.7 6.5" stroke="${FRAME_INK}" stroke-width="1.9" stroke-linecap="round"/>`;
 
 /**
  * The one pointer arrow, shared by every cursor that points: `select` (there is something here to
@@ -84,7 +84,7 @@ const SHAPES: Partial<Record<CursorId, string>> = {
   // pointer's stem; both crests stay clear of it.
   water: pointing(['M11.8 13.2 C14.1 10.2 17.6 10.2 20 13.2 C22.4 16.2 25.9 16.2 28.2 13.2',
     'M11.8 24.2 C14.1 21.2 17.6 21.2 20 24.2 C22.4 27.2 25.9 27.2 28.2 24.2']
-    .map((d) => `<path d="${d}" fill="none" stroke="${INK}" stroke-width="6.5" stroke-linecap="round"/>`
+    .map((d) => `<path d="${d}" fill="none" stroke="${FRAME_INK}" stroke-width="6.5" stroke-linecap="round"/>`
       + `<path d="${d}" fill="none" stroke="${WATER_COLOR}" stroke-width="2.8" stroke-linecap="round"/>`)
     .join('')),
   // A paved strip running away in perspective. Its centre line, which is what says "road", runs
@@ -99,18 +99,18 @@ const SHAPES: Partial<Record<CursorId, string>> = {
   eraser: pointing(body('M18.1 11.6 L27.4 16.2 Q29.9 17.5 28.7 20 L24.9 27.5 Q23.6 30 21.1 28.7'
     + ' L11.8 24.1 Q9.3 22.8 10.6 20.3 L14.4 12.8 Q15.6 10.3 18.1 11.6 Z', CREAM)
     + body('M10.9 19.8 L25.2 26.9 L24.9 27.5 Q23.6 30 21.1 28.7 L11.8 24.1'
-      + ' Q9.3 22.8 10.6 20.3 Z', INK)
-    + `<circle cx="4.3" cy="26.6" r="1.6" fill="${INK}"/>`
-    + `<circle cx="7.6" cy="30.2" r="1.1" fill="${INK}"/>`),
+      + ' Q9.3 22.8 10.6 20.3 Z', FRAME_INK)
+    + `<circle cx="4.3" cy="26.6" r="1.6" fill="${FRAME_INK}"/>`
+    + `<circle cx="7.6" cy="30.2" r="1.1" fill="${FRAME_INK}"/>`),
   // A tile with one corner taken off and the removed corner ghosted in. The notch spans half the
   // side, not a nick, and sits at the bottom-right where the arrow never reaches.
   'edge-cut': pointing(body('M12.5 17 Q12.5 12.5 17 12.5 L26 12.5 Q30.5 12.5 30.5 17 L30.5 19.3'
     + ' Q30.5 21.5 28.9 23.1 L23.1 28.9 Q21.5 30.5 19.3 30.5 L17 30.5 Q12.5 30.5 12.5 26 Z', CREAM)
-    + `<path d="M30.5 23.6 L30.5 28.2 Q30.5 30.5 28.2 30.5 L23.6 30.5" fill="none" stroke="${INK}"`
+    + `<path d="M30.5 23.6 L30.5 28.2 Q30.5 30.5 28.2 30.5 L23.6 30.5" fill="none" stroke="${FRAME_INK}"`
     + ' stroke-width="1.8" stroke-dasharray="2.8 2.6" stroke-linecap="round"/>'),
   // A tile with a plus, the "add here" idiom. The plus is centred clear of the arrow.
-  place: pointing(`<rect x="12.5" y="12.5" width="18" height="18" rx="4.5" fill="${CREAM}" stroke="${INK}" stroke-width="2"/>`
-    + `<path d="M21.5 16 L21.5 27 M16 21.5 L27 21.5" fill="none" stroke="${INK}"`
+  place: pointing(`<rect x="12.5" y="12.5" width="18" height="18" rx="4.5" fill="${CREAM}" stroke="${FRAME_INK}" stroke-width="2"/>`
+    + `<path d="M21.5 16 L21.5 27 M16 21.5 L27 21.5" fill="none" stroke="${FRAME_INK}"`
     + ' stroke-width="2.8" stroke-linecap="round"/>'),
   select: ARROW,
   // The pointer arrow plus a membership badge, the same composition `blocked` uses.
@@ -139,8 +139,8 @@ const SHAPES: Partial<Record<CursorId, string>> = {
   // An arrow curving around a point: the head sits AT the arc's end, near 9 o'clock where the
   // clockwise tangent runs upward, and points along it, so arc and head read as one sweep.
   orbit: haloed('M16 5 A11 11 0 1 1 5.2 18.1', 3.4)
-    + `<path d="M2 17.5 L8.4 17.5 L5.2 10.5 Z" fill="${INK}" stroke="${CREAM}" stroke-width="1.6" stroke-linejoin="round"/>`
-    + `<circle cx="16" cy="16" r="3.4" fill="${INK}" stroke="${CREAM}" stroke-width="1.8"/>`,
+    + `<path d="M2 17.5 L8.4 17.5 L5.2 10.5 Z" fill="${FRAME_INK}" stroke="${CREAM}" stroke-width="1.6" stroke-linejoin="round"/>`
+    + `<circle cx="16" cy="16" r="3.4" fill="${FRAME_INK}" stroke="${CREAM}" stroke-width="1.8"/>`,
   // A dashed selection box around a crosshair, so the acting point is on the hotspot rather
   // than in the empty middle of a rectangle.
   marquee: haloed('M7 3.5 L25 3.5 Q28.5 3.5 28.5 7 L28.5 25 Q28.5 28.5 25 28.5 L7 28.5'

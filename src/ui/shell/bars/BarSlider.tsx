@@ -1,6 +1,5 @@
-import { clientPoint, viewportSize } from '../../../core/runtime/viewport-space';
 /*
- * BarSlider.tsx — the slider every bottom bar uses: a track, a row of tick marks, and a knob.
+ * The slider every bottom bar uses: a track, a row of tick marks, and a knob.
  *
  * The design draws one slider and reuses it, so this takes the art and the geometry as arguments
  * rather than importing either. Two numbers are deliberately independent: how many STOPS the value
@@ -17,11 +16,12 @@ import { clientPoint, viewportSize } from '../../../core/runtime/viewport-space'
  * reflow the row every time the context changed, and a knob you can see not applying is information.
  * A single-stop range (`min === max`) is that state by construction and needs no caller to say so.
  */
+import { clientPoint, viewportSize } from '../../../core/runtime/viewport-space';
 import { useLayoutEffect, useRef, useState, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import { usePx } from '../../design/scale';
-import { cursors, font, UNAVAILABLE, z } from '../../design/styles';
+import { cursors, font, UNAVAILABLE, z, radii } from '../../design/styles';
 import { useUiPreview } from '../../primitives/ui-preview';
 import { BarText, Plate } from './bar-atoms';
 import { PANEL_EDGE, PLATE, PLATE_INK } from '../../design/tokens';
@@ -46,7 +46,7 @@ export interface SliderShape {
   pip: number;
 }
 
-export interface SliderArt {
+interface SliderArt {
   /** Optional: a slider standing on a plate the same colour as the drawn track has to have the
    *  groove drawn behind it by whatever owns that plate, and passes no track here. */
   track?: string;
@@ -252,7 +252,7 @@ function SliderReading({ anchor, centre, width, text }: {
       style={{
         position: 'absolute', left: pictured ? centre : 0, bottom: '100%',
         translateX: '-50%', marginBottom: 6,
-        padding: '2px 8px', borderRadius: 999, background: PLATE,
+        padding: '2px 8px', borderRadius: radii.pill, background: PLATE,
         pointerEvents: 'none', whiteSpace: 'nowrap',
         display: 'flex', alignItems: 'center', border: PANEL_EDGE,
       }}

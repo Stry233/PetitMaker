@@ -17,7 +17,6 @@ import { readFileSync } from 'node:fs';
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { EventBus } from '../../../core/commands/event-bus';
-import { ELEVATION_MAX } from '../../../core/model/constants';
 import { bumpCellsVersion } from '../../../core/model/grid-model';
 import { CellZone, CommandType, TerrainType, type Command, type EditorEvents, type GridState } from '../../../core/model/types';
 import { I18nProvider } from '../../../i18n/context';
@@ -29,6 +28,7 @@ import { ACTIVE, INK, MAP_EDGE_ALPHA } from '../../../ui/design/tokens';
 import { EDGE_RIGHT, RAIL, ZOOM } from '../../../ui/shell/units';
 import { frameFit } from '../../../ui/design/scale';
 import { makeState, setTerrain, setZone } from '../../rules/_helpers';
+import { ELEVATION_MAX } from '../../../core/model/game-profile';
 
 /** A map with a shape to it: a broad first floor, a narrower second, one cell on the third. */
 function stepped(): GridState {

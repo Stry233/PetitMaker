@@ -63,7 +63,7 @@ export const SET_PIECE_CELLS_MIN = 80;
  *
  * THE LADDER RATIO IS NOT GATED anywhere, and the reference is why: read by this code its banner and its
  * flooded lettering field come to 1010 and 971 cells, so a "three times the second largest" rule reads
- * 1.04 on the expert map and a bar on it would fail the map it was derived from.
+ * 1.04 on the reference map and a bar on it would fail the map it was derived from.
  *
  * ONE DECLARATION: the harness and the committed probe read it from here, so the gate and the test
  * cannot drift apart.

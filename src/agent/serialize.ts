@@ -7,11 +7,14 @@
  * REGION_CAP per axis — the agent subdivides rather than dumping whole maps.
  */
 import { CellZone, TerrainType, type GridState, type MacroCoord, type PlacedObject } from '../core/model/types';
-import { cellKey, cellOverlapsRect, getCell } from '../core/model/grid-model';
-import { ELEVATION_MAX } from '../core/model/constants';
+import { cellKey, cellOverlapsRect, getCell, isBuildableZone } from '../core/model/grid-model';
 import { isCoating } from '../core/model/traits';
 import { getCatalogItem } from '../state/catalog';
 import { objectRect } from '../state/object-geometry';
+import { getMapStats } from '../state/map-stats';
+import { isChunkLoadEnforced, roundLoad } from '../core/model/load';
+import { chunkName, mapChunkOrigin } from '../core/model/map-chunks';
+import { CHUNK_LOAD_LIMIT, CHUNK_SIZE, ELEVATION_MAX } from '../core/model/game-profile';
 
 export const REGION_CAP = 45;
 
@@ -75,7 +78,12 @@ function cellToken(state: GridState, x: number, y: number, marks: ObjectMarks): 
   const t = cell.terrain;
   if (t?.type === TerrainType.Mountain) return String(Math.min(t.elevation, ELEVATION_MAX));
   if (t?.type === TerrainType.Water) return String.fromCharCode(65 + Math.min(t.elevation, ELEVATION_MAX));
-  return ZONE_GLYPH[cell.zone] ?? '.';
+  return zoneGlyph(cell.zone);
+}
+
+/** The token a bare cell of `zone` reads as in a map view. */
+export function zoneGlyph(zone: CellZone): string {
+  return ZONE_GLYPH[zone] ?? '.';
 }
 
 export function regionTokens(state: GridState, r: { x1: number; y1: number; x2: number; y2: number }): string {
@@ -112,6 +120,9 @@ export function objectLine(o: PlacedObject): string {
   return `${o.id}: ${o.catalogId} at (${o.position.x},${o.position.y}) rot=${o.rotation} elev=${o.elevation}${span}${o.locked ? ' [locked]' : ''}`;
 }
 
+/** The share of a region's limit from which the map summary names the region. */
+const NEAR_LIMIT_SHARE = 0.8;
+
 export function mapSummary(state: GridState): string {
   const { width, height } = state.template;
   const mountain = new Map<number, number>();
@@ -123,7 +134,7 @@ export function mapSummary(state: GridState): string {
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
       const cell = state.cells[y]![x]!;
-      if (cell.zone === CellZone.Grass) {
+      if (isBuildableZone(cell.zone)) {
         if (x < minX) minX = x;
         if (x > maxX) maxX = x;
         if (y < minY) minY = y;
@@ -155,6 +166,16 @@ export function mapSummary(state: GridState): string {
     `Mountain cells — ${mountainStr}. Water cells: ${water}.`,
     `Objects (${state.objects.size}) — ${objStr}.`,
   ];
+  const origin = mapChunkOrigin(state.template);
+  lines.push(`Regional load enforcement: ${isChunkLoadEnforced(state) ? 'on' : 'off'}. Limit per region: ${CHUNK_LOAD_LIMIT}. Regions are ${CHUNK_SIZE}x${CHUNK_SIZE} cells from origin (${origin.x},${origin.y}). Unknown loads count as 0, not confirmed free capacity.`);
+  const occupied = [...getMapStats(state).chunks].map(([key, chunk]) => {
+    const [cx, cy] = key.split(',').map(Number) as [number, number];
+    return { cx, cy, chunk };
+  }).sort((a, b) => a.cy - b.cy || a.cx - b.cx);
+  const near = occupied.filter(({ chunk }) => chunk.load >= NEAR_LIMIT_SHARE * CHUNK_LOAD_LIMIT);
+  const loads = near.map(({ cx, cy, chunk }) =>
+    `${chunkName(cx, cy)} load=${chunk.load} remaining=${roundLoad(CHUNK_LOAD_LIMIT - chunk.load)}${chunk.unknownLoads > 0 ? ` unknown=${chunk.unknownLoads}` : ''}`);
+  lines.push(`Regions are named as in the UI and the game: row letter from the top, column number from the left (B4 is row 2, column 4). Regions at ${NEAR_LIMIT_SHARE * 100}% of the limit or more: ${loads.join('; ') || 'none'}. Occupied regions below that share: ${occupied.length - near.length}. Empty regions have zero load.`);
   if (immovable.length > 0) {
     lines.push(`IMMOVABLE structures (nothing can be placed/painted on their footprint): ${immovable.join('; ')}.`);
   }
@@ -195,7 +216,7 @@ export function mapOverview(state: GridState): string {
           } else if (t?.type === TerrainType.Water) {
             water++;
             if (t.elevation > maxWtr) maxWtr = t.elevation;
-          } else if (cell.zone === CellZone.Grass) grass++;
+          } else if (isBuildableZone(cell.zone)) grass++;
         }
       }
       if (water >= total * 0.25 && water >= mountains) row += String.fromCharCode(65 + Math.min(maxWtr, ELEVATION_MAX));

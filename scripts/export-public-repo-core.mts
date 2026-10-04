@@ -3,9 +3,9 @@
 // them without running copy operations or subprocesses.
 
 // @ts-ignore - node:fs is untyped here (no @types/node)
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 // @ts-ignore - node:path is untyped here (no @types/node)
-import { join } from 'node:path';
+import { join, relative, sep } from 'node:path';
 
 // ---------------------------------------------------------------------------
 // Minimal glob matcher — intentionally small, no dependency added.
@@ -24,6 +24,19 @@ import { join } from 'node:path';
 const DOUBLESTAR_SLASH = ''; // placeholder for a leading/embedded "**/" segment
 const SLASH_DOUBLESTAR = ''; // placeholder for a trailing "/**" segment
 const BARE_DOUBLESTAR = ''; // placeholder for a standalone "**" with no adjacent slash
+
+/** Every file under `dir`, relative to `base` with forward slashes, in directory order. Entries
+ *  named in `skip` are left out at every depth. */
+export function listFiles(dir: string, skip: readonly string[] = [], base = dir): string[] {
+  const out: string[] = [];
+  for (const entry of readdirSync(dir, { withFileTypes: true }) as Array<{ name: string; isDirectory(): boolean }>) {
+    if (skip.includes(entry.name)) continue;
+    const full = join(dir, entry.name);
+    if (entry.isDirectory()) out.push(...listFiles(full, skip, base));
+    else out.push(relative(base, full).split(sep).join('/'));
+  }
+  return out;
+}
 
 function escapeRegExpLiteral(s: string): string {
   // Escape regex metacharacters EXCEPT '*' and '/', which the steps below handle specially.

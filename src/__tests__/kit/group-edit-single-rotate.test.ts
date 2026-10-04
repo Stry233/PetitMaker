@@ -1,6 +1,6 @@
 /**
  * `rotateObjectAction` is the SINGLE call path behind a single-object rotate: validate, execute,
- * play the spin on success, emit `validation-failed` on refusal. ContextMenu, SelectionHandles and
+ * play the spin on success, emit `validation-failed` on refusal. ContextMenu, SelectionCard and
  * the keyboard shortcut (kit/commands.ts) all route through it rather than repeating the same
  * five-line sequence — the deleted `ui/chrome/object-actions.ts:rotateObjectAction` held this once,
  * "so no caller can forget it or fire it on a doomed command".
@@ -13,9 +13,11 @@ import { TerrainType, type EditorEvents, type PlacedObject } from '../../core/mo
 import { makeState, setTerrain } from '../rules/_helpers';
 import { rotateObjectAction } from '../../kit/group-edit';
 import { roadLookup } from '../../state/object-index';
+import { getCatalogItem } from '../../state/catalog';
 
-// 7x4, rotatable, plain 'flat' trait only.
+// Rotatable, plain 'flat' trait only, and at least two cells wider than deep.
 const HOUSE = 'building-myhouse';
+const { width: W, height: H } = getCatalogItem(HOUSE)!;
 
 function house(id: string, x: number, y: number): PlacedObject {
   return { id, catalogId: HOUSE, position: { x, y }, rotation: 0, elevation: 0 };
@@ -40,11 +42,13 @@ describe('rotateObjectAction (the shared single-object rotate call path)', () =>
 
   it('refuses a doomed rotation, leaves the object untouched, and emits validation-failed', () => {
     const state = makeState(30, 30);
-    // Unrotated (7x4) the flat-trait sweep reaches y<=14; rotated 90 (4x7) it reaches y<=17 —
-    // a raised strip at y=16 is outside the unrotated sweep but inside the rotated one, so
+    // Unrotated the flat-trait sweep reaches y<=10+H; rotated 90 it reaches y<=10+W, so a
+    // raised strip at y=10+H+2 is outside the unrotated sweep but inside the rotated one, so
     // rotating alone flips this placement from legal to illegal (mirrors
     // object-placer-rotation.test.ts's ghost-preview case, exercised here on a PLACED object).
-    for (let x = 10; x <= 14; x++) setTerrain(state, x, 16, TerrainType.Mountain, 1);
+    const stripY = 10 + H + 2;
+    expect(stripY).toBeLessThanOrEqual(10 + W);
+    for (let x = 10; x <= 10 + H; x++) setTerrain(state, x, stripY, TerrainType.Mountain, 1);
     const obj = house('h1', 10, 10);
     state.objects.set(obj.id, obj);
     const bus = new EventBus<EditorEvents>();

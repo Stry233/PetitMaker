@@ -2,7 +2,6 @@ import { TerrainType, ToolType } from '../../core/model/types';
 import { microToTerrain } from '../../core/model/grid-model';
 import type { Command, GridState, ValidationResult } from '../../core/model/types';
 import type { CommandExecutor } from '../../core/commands/command-executor';
-import type { MapRenderer } from '../../canvas/map2d/map-renderer';
 import type { EditorView } from '../../canvas/view-projection';
 import type { CursorId } from '../../core/runtime/cursor-spec';
 import { translateFor } from '../../i18n/context';
@@ -34,8 +33,8 @@ export class ToolManager {
   private lastScreenX = 0;
   private lastScreenY = 0;
 
-  constructor(renderer: MapRenderer, executor: CommandExecutor, gridState: GridState) {
-    this.view = renderer.asEditorView();
+  constructor(view: EditorView, executor: CommandExecutor, gridState: GridState) {
+    this.view = view;
     this.executor = executor;
     this.gridState = gridState;
 
@@ -176,6 +175,8 @@ export class ToolManager {
     this.ctx.terrainType = this.terrainType;
     this.ctx.elevation = this.elevation;
     this.ctx.layerPinned = s.layerPinned;
+    this.ctx.groundEditable = s.planetSession !== null;
+    this.ctx.planetMaterial = s.planetMaterial;
     this.ctx.brushSize = this.brushSize;
     this.ctx.contentType = s.contentType;
     this.ctx.layerVisibility = s.layerVisibility;
@@ -197,6 +198,8 @@ export class ToolManager {
     this.ctx.annotationRouteDashed = s.annotationRouteDashed;
     this.ctx.annotationSelection = s.annotationSelection;
     this.ctx.annotationDraft = s.annotationDraft;
+    this.ctx.annotationHistoryEpoch = s.annotationHistoryEpoch;
+    this.ctx.annotationDiscardPending = s.annotationDiscardAction !== null;
   }
 
   /** The active tool's cursor, from a context refreshed first (`getContext()`): the push happens on
@@ -227,6 +230,9 @@ export class ToolManager {
       terrainType: this.terrainType,
       elevation: this.elevation,
       layerPinned: s.layerPinned,
+      groundEditable: s.planetSession !== null,
+      planetMaterial: s.planetMaterial,
+      reportGroundClipped: () => useEditorStore.getState().eventBus.emit('ground-clipped', {}),
       brushSize: this.brushSize,
       contentType: s.contentType,
       layerVisibility: s.layerVisibility,
@@ -249,6 +255,8 @@ export class ToolManager {
       annotationRouteDashed: s.annotationRouteDashed,
       annotationSelection: s.annotationSelection,
       annotationDraft: s.annotationDraft,
+      annotationHistoryEpoch: s.annotationHistoryEpoch,
+      annotationDiscardPending: s.annotationDiscardAction !== null,
       annotationEdit: {
         begin: () => useEditorStore.getState().beginAnnotationStroke(),
         apply: (fn) => useEditorStore.getState().applyAnnotationEdit(fn),

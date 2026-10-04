@@ -1,5 +1,5 @@
 /**
- * region-chip.test.tsx — the region attachment, and the one fact it is a view of.
+ * The region attachment, and the one fact it is a view of.
  *
  * THE PANEL OWNS NO REGION. Everything here is driven through the editor's own store — paint the
  * region and the chip docks, empty it and the chip leaves, arm the brush and the panel wears the
@@ -253,7 +253,7 @@ describe('the marking state', () => {
     expect(field.disabled).toBe(true);
     expect(field.placeholder).toBe('The map has the pencil');
     expect(queryByTestId('job-ticket')).toBeNull();
-    expect(getByTestId('panel-job-zone').childElementCount).toBe(0);
+    expect(getByTestId('panel-job-zone').querySelector('[data-scroll-content]')!.childElementCount).toBe(0);
     // The way out has to stay pressable, or the state can only be left with a key.
     expect((getByTestId('composer-region-mark') as HTMLButtonElement).disabled).toBe(false);
   });

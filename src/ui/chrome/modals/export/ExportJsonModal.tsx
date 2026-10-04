@@ -1,3 +1,5 @@
+import { isCustomTemplate } from '../../../../core/model/planet';
+import { framerMotion } from '../../../design/motion';
 import { useAttribution } from './use-attribution';
 import { useMapReview } from './review/use-map-review';
 import { MapReviewStatus } from './review/MapReviewStatus';
@@ -12,7 +14,7 @@ import { useEditorStore } from '../../../../state/store';
 import { clampNotes, NOTE_LIMITS } from '../../../../core/model/notes';
 import type { GridState, MapNotes } from '../../../../core/model/types';
 import { serializeWithSections, sectionSizeFormats, type ExportJsonOptions, type SectionSizes, type SessionSection } from '../../../../io/export-json';
-import { downloadJSON } from '../../../../io/image-export';
+import { downloadJSON, safeName } from '../../../../io/image-export';
 import { host } from '../../../../kit/host';
 import { ModalShell } from '../../../primitives/ModalShell';
 import { Expand } from '../../../primitives/Expand';
@@ -20,11 +22,14 @@ import { Switch } from '../../../primitives/Switch';
 import { SegmentedControl } from '../../../primitives/SegmentedControl';
 import { HelpBubble } from './HelpBubble';
 import { ReviewIndicator } from './review/ReviewIndicator';
-import { useTextReview } from './review/use-text-review';
+import { useTextReview } from '../../../hooks/use-text-review';
+import { REVIEW_FIELD_LABEL } from './review/review-fields';
+import { shownPlanetName, withShownPlanetName } from '../../../../io/planet-library';
 import { needsTextReview, type TextPart } from '../../../../io/moderation/text/policy';
 import { Spinner } from '../../../primitives/Spinner';
 import { LoadingDots } from '../../../primitives/LoadingDots';
-import { useScrollFade } from '../../../primitives/scroll-fade';
+import { ScrollArea } from '../../../primitives/ScrollArea';
+import { CONTROL_CLEARANCE } from '../../../primitives/use-scroll-row';
 import { showToast } from '../../floating/Toast';
 import { useCursorCss } from '../../../design/cursors/cursor-vars';
 
@@ -34,7 +39,9 @@ function notesByteLen(n: MapNotes | undefined, pretty: boolean): number {
   return n ? enc.encode(JSON.stringify(n, null, pretty ? 2 : undefined)).length : 0;
 }
 
-type HistoryDepthKey = 'all' | 'last100';
+type HistoryDepthKey = 'all' | 'recent';
+/** Undo steps the shorter history choice keeps. */
+const RECENT_HISTORY_STEPS = 100;
 
 
 /** Human-friendly byte size: B under 1 KB, KB under 1 MB, else MB (one decimal above B). */
@@ -47,8 +54,6 @@ function formatBytes(bytes: number): string {
 // Directional size feedback uses green for increases and amber for decreases.
 const SIZE_UP = '#5FA046';
 const SIZE_DOWN = '#CE9145';
-// easeOutExpo.
-const ROLL_EASE = [0.16, 1, 0.3, 1] as const;
 
 /** Size changes animate direction and magnitude; reduced motion updates immediately. */
 function AnimatedTotal({ bytes, label }: { bytes: number | null; label: string }) {
@@ -65,7 +70,7 @@ function AnimatedTotal({ bytes, label }: { bytes: number | null; label: string }
     if (from == null || reduced) { value.set(bytes); setDir(0); return; }
     if (bytes === from) return;
     setDir(bytes > from ? 1 : -1);
-    const controls = animate(value, bytes, { duration: 0.6, ease: ROLL_EASE });
+    const controls = animate(value, bytes, framerMotion('export.total'));
     const clear = setTimeout(() => setDir(0), 720);
     return () => { controls.stop(); clearTimeout(clear); };
   }, [bytes, reduced, value]);
@@ -82,8 +87,8 @@ function AnimatedTotal({ bytes, label }: { bytes: number | null; label: string }
           y: [dir === 1 ? 3 : dir === -1 ? -3 : 0, 0],
         }}
         transition={{
-          color: { duration: 0.7, ease: 'easeInOut', times: [0, 0.3, 1] },
-          y: { duration: 0.6, ease: ROLL_EASE },
+          color: { ...framerMotion('export.tint'), times: [0, 0.3, 1] },
+          y: framerMotion('export.total'),
         }}
         style={{ color: skin.plateInk, fontVariantNumeric: 'tabular-nums', display: 'inline-block' }}
       >
@@ -182,9 +187,6 @@ export function ExportJsonPanel({ open, onDone }: { open: boolean; onDone: () =>
     return () => { exportRevision.current++; clearTimeout(exportTimer.current); };
   }, [open, noticeRevision, gridState, mapReview.revision]);
 
-  const sectionsRef = useRef<HTMLDivElement>(null);
-  const sectionsFade = useScrollFade(sectionsRef, 'y');
-
   // Generation and provenance default on only when the map contains them.
   useEffect(() => {
     if (!open) return;
@@ -220,7 +222,7 @@ export function ExportJsonPanel({ open, onDone }: { open: boolean; onDone: () =>
     const id = setTimeout(() => {
       if (!alive) return;
       const entries = commandExecutor.getUndoEntries();
-      const depth: 'all' | number = historyDepthKey === 'all' ? 'all' : 100;
+      const depth: 'all' | number = historyDepthKey === 'all' ? 'all' : RECENT_HISTORY_STEPS;
       const maximal: ExportJsonOptions = {
         notes: null,               // notes are measured live (notesByteLen); ignore here
         includeGeneration: true,
@@ -282,7 +284,7 @@ export function ExportJsonPanel({ open, onDone }: { open: boolean; onDone: () =>
     exportTimer.current = setTimeout(() => {
       try {
         if (revision !== exportRevision.current) return;
-        const depth: 'all' | number = historyDepthKey === 'all' ? 'all' : 100;
+        const depth: 'all' | number = historyDepthKey === 'all' ? 'all' : RECENT_HISTORY_STEPS;
         const opts: ExportJsonOptions = {
           notes: selectedNotes ?? null,
           includeAnnotations: annotationsOn,
@@ -295,8 +297,10 @@ export function ExportJsonPanel({ open, onDone }: { open: boolean; onDone: () =>
           pretty,
         };
 
-        const json = serializeWithSections(state, opts);
-        downloadJSON(json, `petit-planet-${state.template.id}-${Date.now()}.json`);
+        // The file carries the planet under its shown name: approved, or the default name.
+        const locale = useEditorStore.getState().locale;
+        const json = serializeWithSections(withShownPlanetName(state, locale), opts);
+        downloadJSON(json, `petit-planet-${isCustomTemplate(state.template) ? safeName(shownPlanetName(state.template, locale)) : state.template.id}-${Date.now()}.json`);
         useEditorStore.getState().markExported();   // this map has now left the browser
         showToast(translate('toast.exported_json'), 'info');
         setExporting(false);
@@ -309,17 +313,18 @@ export function ExportJsonPanel({ open, onDone }: { open: boolean; onDone: () =>
   }
 
   const setNoteField = (k: keyof MapNotes) => (v: string) => setMapNotes({ ...notesVal, [k]: v });
+  const textIssue = issue && (
+    <div role="alert" style={rowDesc}>
+      {issue === 'unavailable' ? t('export.review.unavailable') : issue === 'too-long' ? t('export.review.too_long') : t('export.review.content', { fields: issue.fields.map(field => t(REVIEW_FIELD_LABEL[field])).join(', ') })}
+      {issue === 'unavailable' && <button type="button" onClick={textReview.retry} style={{ ...windowFooterGhost, marginTop: 8 }}>{t('export.review.retry')}</button>}
+    </div>
+  );
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', flex: '1 1 auto', minHeight: 0 }}>
       {notice.notice}
-      {/* The section toggles scroll; the pretty-print + button rows below the
-          separator are flex:none so they always pin to the bottom of the card,
-          even when a large UI scale would otherwise push them off-screen. */}
-      {/* scrollbar-gutter: stable always reserves the scrollbar track, so rows
-          don't jump sideways the moment expanding a sub-panel makes the list
-          overflow (the scrollbar appears into reserved space, not into content). */}
-      <div ref={sectionsRef} style={{ display: 'flex', flexDirection: 'column', gap: 14, flex: '1 1 auto', minHeight: 0, overflowY: 'auto', overflowX: 'hidden', scrollbarGutter: 'stable', paddingRight: 4, ...sectionsFade }}>
+      <ScrollArea gutter="stable" style={{ flex: '1 1 auto' }}
+        contentStyle={{ display: 'flex', flexDirection: 'column', gap: 14, padding: CONTROL_CLEARANCE }}>
         <SectionRow
           name={t('exportjson.core')}
           desc={t('exportjson.core_desc')}
@@ -348,8 +353,7 @@ export function ExportJsonPanel({ open, onDone }: { open: boolean; onDone: () =>
           bytes={shown ? notesBytes : undefined}
         />
         <Expand open={notesOn}>
-          {/* Padding contains the five-pixel focus ring inside the expand clip. */}
-          <div onCompositionStartCapture={() => setComposing(true)} onCompositionEndCapture={() => setComposing(false)} style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: '8px 8px 2px' }}>
+          <div onCompositionStartCapture={() => setComposing(true)} onCompositionEndCapture={() => setComposing(false)} style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: '8px 0 2px' }}>
             <div style={fieldWrap}>
               <span style={fieldCaption}>{t('export.field_title')} {attribution.titleLocked && <HelpBubble text={t('export.attribution_locked')} />}</span>
               <span style={{ display: 'block', position: 'relative' }}>
@@ -364,10 +368,7 @@ export function ExportJsonPanel({ open, onDone }: { open: boolean; onDone: () =>
                 {checking('description') && <ReviewIndicator label={t('export.review.checking')} />}
               </span>
             </div>
-            {issue && <div role="alert" style={rowDesc}>
-              {issue === 'unavailable' ? t('export.review.unavailable') : issue === 'too-long' ? t('export.review.too_long') : t('export.review.content', { fields: issue.fields.map(field => t(field === 'title' ? 'export.field_title' : field === 'description' ? 'export.field_desc' : 'exportjson.author')).join(', ') })}
-              {issue === 'unavailable' && <button type="button" onClick={textReview.retry} style={{ ...windowFooterGhost, marginTop: 8 }}>{t('export.review.retry')}</button>}
-            </div>}
+            {textIssue}
           </div>
         </Expand>
         </div>
@@ -405,8 +406,8 @@ export function ExportJsonPanel({ open, onDone }: { open: boolean; onDone: () =>
             <SegmentedControl<HistoryDepthKey>
               idPrefix="history-depth"
               value={historyDepthKey}
-              options={['all', 'last100']}
-              render={(k) => (k === 'all' ? t('exportjson.depth_all') : t('exportjson.depth_last'))}
+              options={['all', 'recent']}
+              render={(k) => (k === 'all' ? t('exportjson.depth_all') : t('exportjson.depth_last', { n: RECENT_HISTORY_STEPS }))}
               onChange={setHistoryDepthKey}
             />
             <span style={rowDesc}>{t('exportjson.steps', { n: historyCount })}</span>
@@ -437,7 +438,7 @@ export function ExportJsonPanel({ open, onDone }: { open: boolean; onDone: () =>
           onToggle={() => setCatalogOn((v) => !v)}
           bytes={shown?.catalogInfo}
         />
-      </div>
+      </ScrollArea>
 
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginTop: 16, paddingTop: 12, borderTop: `1.5px solid ${skin.line}`, flex: '0 0 auto' }}>
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>

@@ -29,7 +29,7 @@ import { useEditorStore } from '../../state/store';
 import { CommandExecutor } from '../../core/commands/command-executor';
 import { createDefaultRegistry } from '../../rules/index';
 import { ToolManager } from '../../tools/runtime/tool-manager';
-import { makeStubRenderer } from '../tools/_tool-manager';
+import { makeStubView } from '../tools/_tool-manager';
 import { makeState } from '../rules/_helpers';
 import { setStoreState } from '../_store';
 import { roadLookup } from '../../state/object-index';
@@ -83,7 +83,7 @@ function arm(itemId: string, objects: PlacedObject[] = []): void {
   for (const o of objects) gs.objects.set(o.id, o);
   if (objects.length) bumpObjectsVersion(gs, { added: objects });
   const executor = new CommandExecutor(gs, useEditorStore.getState().eventBus, createDefaultRegistry(), roadLookup(gs));
-  const tm = new ToolManager(makeStubRenderer(), executor, gs);
+  const tm = new ToolManager(makeStubView(), executor, gs);
   const made = makeView();
   overlay = made.overlay;
   setActiveView(made.view);

@@ -1,4 +1,3 @@
-// src/io/share/crypto/sha256.ts
 // Async SHA-256: Web Crypto where available, else a pure-JS implementation. `crypto.subtle`
 // exists only in SECURE contexts, and the app must also run from a plain-http origin (a LAN IP,
 // a tunnel, an http mirror) — without the fallback every share-code build there throws.

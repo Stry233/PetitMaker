@@ -1,9 +1,7 @@
-import { helpTargetAttr } from '../modals/help/targets';
-import { useEffect, useRef, type CSSProperties, type ReactElement } from 'react';
-import { useChromeScale, useWeightVars } from '../../design/scale';
-import { roleFont } from '../../design/text-weight';
+import { useEffect, useRef, type ReactElement, type RefObject } from 'react';
+import { useChromeScale, useTouchPrimary, useWeightVars } from '../../design/scale';
 import { getActiveView } from '../../../canvas/active-view';
-import { motion, AnimatePresence, type MotionStyle } from 'framer-motion';
+import { AnimatePresence, type MotionStyle } from 'framer-motion';
 import { useEditorStore } from '../../../state/store';
 import { getCatalogItem } from '../../../state/catalog';
 import { getPlacedObjectSize } from '../../../state/object-geometry';
@@ -11,33 +9,9 @@ import { getCell } from '../../../core/model/grid-model';
 import { peelTerrain } from '../../../tools/objects';
 import { deleteSelection } from '../../../kit/group-edit';
 import { useT, localizedName } from '../../../i18n/context';
-import { colors, radii, shadows, font, btnBase, springs, pressable, exitTransition, z } from '../../design/styles';
-
-// Visual only — position (left/top), centering (Framer x:'-50%') and the
-// enter/exit motion live on the motion.div so Framer owns `transform`.
-// maxWidth + wrap: `title` embeds a localized item name (delete.confirm) or a
-// longer sentence (ru/th/fr delete.confirm_terrain) that can run well past the
-// en/zh baseline length. Without a cap the popover (auto-width, positioned at
-// an arbitrary map point) grows into a single unbroken line that can run off
-// the viewport edge; capping the width lets it wrap onto a second line instead.
-const popoverStyle: CSSProperties = {
-  position: 'fixed',
-  zIndex: z.contextMenu,
-  background: colors.panelCream,
-  borderRadius: 16,
-  boxShadow: shadows.float,
-  padding: 12,
-  display: 'flex',
-  flexDirection: 'column',
-  gap: 8,
-  maxWidth: 280,
-  ...font.body,
-  color: colors.textPrimary,
-};
-
-const btnRow: CSSProperties = { display: 'flex', gap: 8, justifyContent: 'flex-end' };
-const cancelBtn: CSSProperties = { ...btnBase, padding: '6px 16px', borderRadius: radii.pill, ...roleFont('chip'), background: colors.surfaceSecondary, color: colors.frameDark };
-const deleteBtn: CSSProperties = { ...btnBase, padding: '6px 16px', borderRadius: radii.pill, ...roleFont('chip'), background: colors.statusError, color: colors.textInverse };
+import type { FloatingTarget } from '../../primitives/use-floating-position';
+import { visualRect } from '../../design/visual-rect';
+import { AnchoredConfirm } from '../../primitives/AnchoredConfirm';
 
 /** The question a single object's removal asks, with the piece named in the visitor's language. */
 export function objectDeleteTitle(t: (key: string) => string, name: string): string {
@@ -46,8 +20,13 @@ export function objectDeleteTitle(t: (key: string) => string, name: string): str
 
 /** The confirmation card: the question and its two answers. Every surface that raises this
  *  question mounts THIS — the live card over the map, and the Help Center's figure of it.
- *  `style` carries the position and the scale the card draws at. */
-export function DeleteConfirmFace({ title, onCancel, onConfirm, style }: {
+ *  `style` carries the position and the scale the card draws at. `trigger` is the control that
+ *  asked, if any: pressing it again closes the card rather than counting as a press outside. */
+export function DeleteConfirmFace({ title, onCancel, onConfirm, style, anchor, trigger, prefer, zoom = 1 }: {
+  anchor?: FloatingTarget;
+  trigger?: RefObject<HTMLElement | null>;
+  prefer?: 'above' | 'below';
+  zoom?: number;
   title: string;
   onCancel: () => void;
   onConfirm: () => void;
@@ -55,33 +34,24 @@ export function DeleteConfirmFace({ title, onCancel, onConfirm, style }: {
 }) {
   const t = useT();
   return (
-    <motion.div
-
-          {...helpTargetAttr('select', 'select-confirm')}
-          initial={{ scale: 0.85, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.85, opacity: 0, transition: exitTransition }}
-      transition={springs.bouncy}
-      style={{ ...popoverStyle, ...style }}
-    >
-      <span>{title}</span>
-      <div style={btnRow}>
-        <motion.button {...pressable} style={cancelBtn} onClick={onCancel}>{t('delete.cancel')}</motion.button>
-        <motion.button {...pressable} style={deleteBtn} onClick={onConfirm}>{t('delete.confirm_btn')}</motion.button>
-      </div>
-    </motion.div>
+    <AnchoredConfirm title={title} cancelLabel={t('delete.cancel')} confirmLabel={t('delete.confirm_btn')}
+      onCancel={onCancel} onConfirm={onConfirm} helpTarget={{ page: 'select', anchor: 'select-confirm' }}
+      anchor={anchor} trigger={trigger} prefer={prefer} zoom={zoom} style={style} />
   );
 }
 
 export function DeletePopover() {
-  const chrome = useChromeScale();
+  // A fingertip gets the card at its designed size at least, so its answers stay easy to tap.
+  const touch = useTouchPrimary();
+  const scale = useChromeScale();
+  const chrome = touch ? Math.max(scale, 1) : scale;
   const weights = useWeightVars();
   const t = useT();
   const sel = useEditorStore((s) => s.deletePopover);
   const gridState = useEditorStore((s) => s.gridState);
   const executor = useEditorStore((s) => s.commandExecutor);
-  const confirmRef = useRef<(() => void) | null>(null);
 
-  // Any pan/zoom strands the popover at a stale screen spot while its Enter shortcut
-  // still deletes the (possibly off-screen) target — dismiss on viewport movement.
+  // Viewport movement invalidates the projected anchor and can move the deletion target off screen.
   const eventBus = useEditorStore((s) => s.eventBus);
   useEffect(() => {
     if (!sel) return;
@@ -90,17 +60,9 @@ export function DeletePopover() {
     return () => eventBus.off('viewport-changed', close);
   }, [sel, eventBus]);
 
-  useEffect(() => {
-    if (!sel) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') useEditorStore.getState().setDeletePopover(null);
-      else if (e.key === 'Enter') { e.preventDefault(); confirmRef.current?.(); }
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [sel]);
-
   const dismiss = () => useEditorStore.getState().setDeletePopover(null);
+  // One stable ref, so the surface scope sees the same trigger across renders.
+  const controlRef = useRef<HTMLElement | null>(null);
 
   // Build the popover content (or null). Returning it through AnimatePresence
   // keeps it mounted to play a close-exit instead of vanishing.
@@ -149,15 +111,27 @@ export function DeletePopover() {
       }
     }
 
+    // When the selection card is on screen the question grows from its delete control, off the
+    // card's far edge so it covers neither the card's row nor the thing being deleted.
+    const control = document.querySelector<HTMLElement>('[data-selection-delete]');
+    const card = control?.closest<HTMLElement>('[data-testid="selection-card"]');
+    const shown = !!control && card?.style.visibility === 'visible';
+    controlRef.current = shown ? control : null;
+    const growUp = card?.dataset.grow === 'up';
+    let anchor: FloatingTarget = { x: screenX, y: screenY };
+    if (shown && card && control) {
+      const button = visualRect(control), plate = visualRect(card.firstElementChild ?? card);
+      anchor = { x: button.left + button.width / 2, y: growUp ? plate.top : plate.bottom };
+    }
     if (confirm) {
-      confirmRef.current = confirm;
       content = (
         <DeleteConfirmFace
           key="popover"
           title={title}
           onCancel={dismiss}
           onConfirm={confirm}
-          style={{ zoom: chrome, ...weights, left: screenX / chrome, top: screenY / chrome, x: '-50%' }}
+          anchor={anchor} trigger={shown ? controlRef : undefined} prefer={shown && growUp ? 'above' : 'below'} zoom={chrome}
+          style={{ zoom: chrome, ...weights }}
         />
       );
     }

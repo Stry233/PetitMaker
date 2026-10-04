@@ -1,14 +1,13 @@
 import type { Corners, CornerTrim, GridState } from '../model/types';
 import { TerrainType } from '../model/types';
-import { getCell } from '../model/grid-model';
+import { getCell, type Side, OPPOSITE_SIDE } from '../model/grid-model';
 import { cornerWrappedAt, enclosedGap, surfaceElevation } from './terrain-silhouette';
-import { CORNER_INDEX, type CornerPos } from './corner-index';
+import { CORNER_INDEX, type CornerPos, isSquareCorners } from './corner-index';
 import type { RoadLookup } from '../model/road-lookup';
 import {
   detectRoadConn, isRoadNeighbor, matchActualRoadState, matchCanonicalRoadState, roadSideKept,
 } from './road-cut-states';
 
-type Side = 'N' | 'E' | 'S' | 'W';
 type EdgeInterval = [number, number];
 
 const EPSILON = 1e-6;
@@ -102,8 +101,6 @@ function flipIntervals(intervals: EdgeInterval[]): EdgeInterval[] {
   return intervals.map(([a, b]) => [1 - b, 1 - a] as EdgeInterval);
 }
 
-const OPPOSITE: Record<Side, Side> = { N: 'S', S: 'N', E: 'W', W: 'E' };
-
 export function hasPositiveEdgeContact(
   candidateCorners: Corners | undefined,
   candidateSide: Side,
@@ -174,14 +171,14 @@ export function validateCut(
         const cState = matchActualRoadState(candidateCorners, cConn);
         const nState = matchCanonicalRoadState(nbr?.corners);
         if (cState !== null && nState !== null) {
-          if (!roadSideKept(cState, cConn, side) || !roadSideKept(nState, nConn, OPPOSITE[side])) {
+          if (!roadSideKept(cState, cConn, side) || !roadSideKept(nState, nConn, OPPOSITE_SIDE[side])) {
             return false;
           }
           continue;
         }
       }
       const neighborCorners = getNeighborCorners(state, roads, nx, ny, layer);
-      if (!hasPositiveEdgeContact(candidateCorners, side, neighborCorners, OPPOSITE[side])) {
+      if (!hasPositiveEdgeContact(candidateCorners, side, neighborCorners, OPPOSITE_SIDE[side])) {
         return false;
       }
     }
@@ -191,7 +188,7 @@ export function validateCut(
     const hasOpposite = (connectedSides.includes('N') && connectedSides.includes('S'))
       || (connectedSides.includes('W') && connectedSides.includes('E'));
     if (hasOpposite || connectedSides.length >= 3) {
-      if (!candidateCorners.every(c => c === 'square')) return false;
+      if (!isSquareCorners(candidateCorners)) return false;
     } else {
       // L-shape (2 adjacent): non-square corners adjacent to a connected side
       // must be triangles (straight edge), not fans (curved notch).

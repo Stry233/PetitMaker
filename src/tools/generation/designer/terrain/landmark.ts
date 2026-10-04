@@ -60,7 +60,7 @@ export const GLYPHS: Readonly<Record<string, readonly string[]>> = { ...LETTERS,
 
 /** One thing the map can be made to say. Adding a row is the whole of extending the bank, provided
  *  every glyph it names is drawn above. */
-export interface Phrase {
+interface Phrase {
   id: string;
   /** Keys into `GLYPHS`, in reading order. */
   glyphs: readonly string[];
@@ -129,7 +129,7 @@ export function rasterizePhrase(
 
 // --- what a landmark is ----------------------------------------------------------------------------
 
-export type LandmarkKind = 'wall-banner' | 'ground-field' | 'terrace-court';
+type LandmarkKind = 'wall-banner' | 'ground-field' | 'terrace-court';
 
 export interface LandmarkPlan {
   kind: LandmarkKind;
@@ -149,7 +149,7 @@ export interface LandmarkPlan {
   axis: 'h' | 'v';
 }
 
-export interface LandmarkInput {
+interface LandmarkInput {
   terrain: TerrainPlan;
   /** The plaza's own centre: where a court is pulled toward when no landmark region was drawn, and
    *  the side of a panel the walk arrives from. */
@@ -163,7 +163,7 @@ export interface LandmarkInput {
   clearance: Int16Array;
   /** The map-scale wall the banner is cut into. */
   wall: { rect: Rect; peak: number };
-  /** The 文字/图案景观 region the list drew, where the list drew one: a ground field lands where the
+  /** The text or pattern landmark region the list drew, where the list drew one: a ground field lands where the
    *  plan wanted one. Absent, a field is pulled toward the plaza like a court. */
   region?: RegionPlan;
   seed: number;
@@ -199,7 +199,7 @@ const FIELD_KEEP = 2;
  * How often a map builds a landmark BELOW `SET_PIECE_FROM`, at richness 0 and that threshold.
  *
  * A quiet planet is a garden town and a set piece written across it is not what the axis is for, so
- * down there 文字/图案景观 stays OCCASIONAL. At and above the threshold the roll is gone: the map is
+ * down there the text or pattern landmark stays OCCASIONAL. At and above the threshold the roll is gone: the map is
  * required to carry one figure, per the size ladder below.
  */
 const OCCURRENCE = { min: 0.4, max: 0.6 } as const;
@@ -220,7 +220,7 @@ const OCCURRENCE = { min: 0.4, max: 0.6 } as const;
  * whatever the best ground can carry.
  */
 const SET_PIECE_FROM = 0.5;
-export const SET_PIECE_WANT = 300;
+const SET_PIECE_WANT = 300;
 export const SET_PIECE_MIN = 120;
 /**
  * THE ONE BIG THING: the panel a full-richness planet is asked for FIRST, and the shape of the ask.
@@ -267,7 +267,7 @@ const COURT_SIZES: readonly { w: number; h: number }[] = [
 
 // --- the entry points --------------------------------------------------------------------------------
 
-/** The 文字/图案景观 region, where the region list drew one. Its presence is the FIRST of the three
+/** The text or pattern landmark region, where the region list drew one. Its presence is the FIRST of the three
  *  gates a landmark passes: `region-list.ts` holds the theme at `minRichness`, so a map below that
  *  richness never carries one. The other two are `OCCURRENCE` and finding a panel at all. */
 export function landmarkRegion(plan: DesignPlan): RegionPlan | null {
@@ -354,8 +354,8 @@ const KIND_WEIGHTS: ReadonlyArray<{ kind: LandmarkKind; low: number; high: numbe
  *
  * THE QUIET END LEANS ON THE COURT, and that is the arrival rule rather than taste: a flat garden town
  * carries no cascade and few composed bodies, so its court is the one thing on it built to be arrived
- * at, and the two text forms both want a large clear panel a low-relief planet rarely has. Drawn evenly
- * down there, `tafa/1024` at richness 0.2 comes back with 4 of its 14 street ends arriving at nothing.
+ * at, and the two text forms both want a large clear panel a low-relief planet rarely has; drawn evenly
+ * down there, street ends arrive at nothing.
  * At full richness the three are even, so no one form is the planet's answer twice over.
  */
 function drawKind(rng: Rng, richness: number): LandmarkKind {
@@ -438,9 +438,8 @@ function planBanner(phrase: Phrase, cache: TierSearches): Found | null {
  * every phrase the bank offers.
  *
  * A search is two summed-area tables over the whole map. Built inside the placement functions they
- * would be rebuilt on every call — the bank calls once per phrase and the size ladder calls twice, up to
- * ten times for the banner alone, measured at about 600 ms of the second on `hexia/12345` at
- * richness 0.5.
+ * would be rebuilt on every call: the bank calls once per phrase and the size ladder calls twice, up to
+ * ten times for the banner alone.
  */
 interface TierSearches {
   keys: readonly number[];
@@ -499,9 +498,9 @@ function fieldSearches(input: LandmarkInput): TierSearches {
   // banner's, unchanged: water at the panel's tier with its ring at that tier or above shows no face,
   // and a letter left standing at the same tier keeps the 3x3 window it had before the flood.
   // A RAISED FIELD IS A TERRACED-PLANET FORM. Below the set-piece richness the map is a garden town and
-  // the ground field is its own ground-level version, exactly as the reference garden town draws it;
-  // offering the raised variant down there put a panel on ground `tafa/1024` at richness 0.2 needed for
-  // its street ends, which the arrival rule reads as four ends arriving at nothing.
+  // the ground field is its own ground-level version, exactly as the reference garden town draws it.
+  // The raised variant down there takes ground the street ends need, and the arrival rule then reads
+  // those ends as arriving at nothing.
   const tiers: number[] = [];
   const top = input.richness >= SET_PIECE_FROM ? Math.max(input.wall.peak, 0) : 0;
   for (let tier = top; tier >= 0; tier--) tiers.push(tier);

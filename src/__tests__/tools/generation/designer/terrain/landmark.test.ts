@@ -248,7 +248,7 @@ describe('landmark: what reaches the map', () => {
       landmark = outcome.sculpt.landmark;
       refused = outcome.refused.roads + outcome.refused.anchors + outcome.refused.lanes;
     });
-    const violations = exec.commitStrokeGroup(exec.getUndoStackSize()).length;
+    const violations = exec.commitStroke(exec.getUndoStackSize()).length;
     return { state, landmark, violations, refused };
   }
 

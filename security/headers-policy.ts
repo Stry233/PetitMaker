@@ -23,7 +23,7 @@ const CUSTOM_ENDPOINT_SOURCES: readonly string[] = [
 ];
 
 export interface HeadersPolicy {
-  /** Ordered CSP sources, including response-header-only directives. */
+  /** CSP sources in output order (key insertion order), including response-header-only directives. */
   cspDirectives: Record<string, string[]>;
   /** Names that cannot be enforced by a CSP meta tag. */
   headerOnlyDirectives: readonly string[];
@@ -42,7 +42,9 @@ export const HEADERS_POLICY: HeadersPolicy = {
     'style-src': ["'self'", "'unsafe-inline'"],
     'font-src': ["'self'"],
     'img-src': ["'self'", 'data:', 'blob:'],
-    'media-src': ["'none'"],
+    // The planet video import plays the chosen recording from a blob: URL and its guide's example
+    // recording from the site; neither reaches the network beyond the site.
+    'media-src': ["'self'", 'blob:'],
     'form-action': ["'self'"],
     'frame-ancestors': ["'none'"],
     // The OCR core carries its WebAssembly as a data: URL and fetches it; a data: URL reaches no network.
@@ -60,27 +62,9 @@ export const HEADERS_POLICY: HeadersPolicy = {
   },
 };
 
-/** Stable directive order for generated output. */
-const CSP_ORDER = [
-  'default-src',
-  'base-uri',
-  'object-src',
-  'script-src',
-  'style-src',
-  'font-src',
-  'img-src',
-  'media-src',
-  'form-action',
-  'frame-ancestors',
-  'connect-src',
-] as const;
-
 function buildCspString(policy: HeadersPolicy, opts: { includeHeaderOnly: boolean }): string {
-  const names = CSP_ORDER.filter((name) => {
-    if (!(name in policy.cspDirectives)) return false;
-    if (!opts.includeHeaderOnly && policy.headerOnlyDirectives.includes(name)) return false;
-    return true;
-  });
+  const names = Object.keys(policy.cspDirectives)
+    .filter((name) => opts.includeHeaderOnly || !policy.headerOnlyDirectives.includes(name));
   return names.map((name) => `${name} ${policy.cspDirectives[name]!.join(' ')}`).join('; ');
 }
 
@@ -262,13 +246,8 @@ export function toVercelJson(existing: VercelJsonLike, policy: HeadersPolicy = H
  * "verify live post-deploy" reminder, because what gates a launch is a checked
  * response header on the deployed site, not the existence of this document.
  */
-export function toEsaDoc(
-  policy: HeadersPolicy = HEADERS_POLICY,
-  domains: { canonicalOrigin?: string; legacyOrigins?: readonly string[] } = {},
-): string {
+export function toEsaDoc(policy: HeadersPolicy = HEADERS_POLICY): string {
   const entries = headerEntries(policy);
-  const legacy = (domains.legacyOrigins ?? []).filter((o) => o && o !== domains.canonicalOrigin);
-  const canonical = domains.canonicalOrigin ?? '<canonicalOrigin>';
   const lines = [
     '# Alibaba ESA — response header rule set',
     '',
@@ -291,28 +270,10 @@ export function toEsaDoc(
     '- Apply the same immutable caching for fingerprinted assets and no-cache/must-revalidate for `index.html` as `public/_headers` documents, using whatever cache-rule mechanism ESA exposes.',
     '- Only enable `Strict-Transport-Security` (and `includeSubDomains`) once the production domain serves HTTPS exclusively and every subdomain is ready for it — reverting HSTS after enabling it is slow (clients cache it for the `max-age`).',
     '',
-    ...(legacy.length
-      ? [
-        '## Legacy domain redirects',
-        '',
-        `The site moved to \`${canonical}\`. Every domain below must answer with a **301 to the same path** on the canonical origin, so old links, bookmarks, and search results keep working and only one origin is indexed (the sitemap, canonical tags, and security.txt all name the canonical origin alone). Configure the redirect as an ESA rule on each legacy domain; keep it in place indefinitely, since links live longer than deployments.`,
-        '',
-        '| Legacy domain | Redirect target |',
-        '|---|---|',
-        ...legacy.map((o) => `| \`${o}/*\` | \`301 ${canonical}/$1\` |`),
-        '',
-        '- Serve the redirect over HTTPS on the legacy domain too: its certificate must stay valid, or a visitor on an old `https://` link gets a TLS error instead of the redirect.',
-        '- The legacy domain must keep answering `/.well-known/security.txt`, or redirect it, so a reporter following an old link still reaches the policy.',
-        '',
-      ]
-      : []),
     '## Verify live post-deploy',
     '',
     "- [ ] After the ESA rule is applied, fetch the production origin and confirm every header above is present with the exact value (e.g. `curl -sI https://<canonicalOrigin> | grep -i 'content-security-policy\\|strict-transport-security\\|x-frame-options\\|x-content-type-options\\|referrer-policy\\|permissions-policy'`).",
     "- [ ] Confirm `frame-ancestors` and `Strict-Transport-Security` are present in the LIVE response — these can never be verified from the CSP `<meta>` alone, since the meta doesn't carry them.",
-    ...(legacy.length
-      ? [`- [ ] Confirm each legacy domain 301s to \`${canonical}\` with the path preserved (e.g. \`curl -sI ${legacy[0]}/privacy | grep -i 'HTTP/\\|location'\`).`]
-      : []),
     '- [ ] Re-run this check after any ESA rule change; the release checklist gates launch on this being green.',
   ];
   return lines.join('\n') + '\n';

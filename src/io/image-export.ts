@@ -5,6 +5,11 @@
  * through `host.capture2d` (the tightly-framed, chrome-free path).
  */
 
+/** A file-name fragment: letters, digits, underscore and hyphen; a run of anything else becomes one hyphen. */
+export function safeName(name: string): string {
+  return name.replace(/[^\p{L}\p{N}_-]+/gu, '-').replace(/^-+|-+$/g, '') || 'planet';
+}
+
 /**
  * Trigger a browser download for an arbitrary Blob.
  */

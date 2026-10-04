@@ -1,12 +1,12 @@
-/**
- * The layer panel's per-layer cell/object counts, read from `state/map-stats`.
- * `core/model/layer-utils` cannot import `state/` (a lower layer), so the derivation lives
- * here and that module keeps only the LayerInfo type.
- */
-import { ELEVATION_MAX } from '../core/model/constants';
+/** The layer panel's per-layer cell/object counts, read from `state/map-stats`. */
 import type { GridState } from '../core/model/types';
-import type { LayerInfo } from '../core/model/layer-utils';
 import { getMapStats } from './map-stats';
+import { ELEVATION_MAX } from '../core/model/game-profile';
+
+export interface LayerInfo {
+  elevation: number;
+  cellCount: number;
+}
 
 export function getActiveLayers(state: GridState, activeLayer = 1): LayerInfo[] {
   const stats = getMapStats(state);
@@ -26,9 +26,6 @@ export function getActiveLayers(state: GridState, activeLayer = 1): LayerInfo[] 
       // objects on flat ground and that row's eye toggle (which fades those objects) is
       // discoverable.
       cellCount: (stats.cellsByLayer[e] ?? 0) + (stats.objectsByLayer[e] ?? 0),
-      visible: true,
-      locked: false,
-      name: e === 0 ? 'layer.ground' : `layer.${e}`,
     });
   }
   return layers;

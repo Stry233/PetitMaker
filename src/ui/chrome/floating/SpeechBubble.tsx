@@ -17,7 +17,7 @@ import { tourTargetSelector, type TourTargetId } from '../tour/steps';
 /** Air between the anchor and the bubble, as a share of the anchor's height so it scales with the control. */
 export const BUBBLE_GAP_SHARE = 0.45;
 /** Seconds the bubble stands before its clock closes it; the clock holds while a pointer is on it. */
-export const BUBBLE_SECONDS = 5;
+const BUBBLE_SECONDS = 5;
 const TAIL = 16;
 const CLOSE = 28;
 
@@ -80,7 +80,7 @@ export function emphasize(text: string): ReactNode[] {
   return text.split('**').map((run, i) => (i % 2 ? <b key={i}>{run}</b> : run));
 }
 
-export interface SpeechBubbleProps {
+interface SpeechBubbleProps {
   anchor: TourTargetId;
   text: string;
   onAct: () => void;

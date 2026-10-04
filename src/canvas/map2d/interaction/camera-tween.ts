@@ -1,12 +1,12 @@
 import type { MapRenderer } from '../map-renderer';
-import { isMotionReduced } from '../motion-state';
+import { isMotionReduced } from '../../../core/runtime/motion-state';
 import { getMapRenderer } from '../renderer-registry';
+import { easeOutCubic, animConfig } from '../../../core/runtime/anim-config';
 
 type ViewState = { zoom: number; offsetX: number; offsetY: number };
 
 /** rAF tween over `durationMs` with an ease-out (non-linear) curve. `onFrame`
- *  receives eased progress 0→1 (1 exactly on the final frame). Returns a cancel fn.
- *  Shared by the map-zoom and UI-scale animations. */
+ *  receives eased progress 0→1 (1 exactly on the final frame). Returns a cancel fn. */
 function tweenEaseOut(durationMs: number, onFrame: (eased: number) => void): () => void {
   let raf = 0;
   let alive = true;
@@ -14,7 +14,7 @@ function tweenEaseOut(durationMs: number, onFrame: (eased: number) => void): () 
   const step = (now: number) => {
     if (!alive) return;
     const p = Math.min((now - start) / durationMs, 1);
-    onFrame(1 - Math.pow(1 - p, 3));
+    onFrame(easeOutCubic(p));
     if (p < 1) raf = requestAnimationFrame(step);
   };
   raf = requestAnimationFrame(step);
@@ -54,7 +54,7 @@ export function animateCamera(
   if (isMotionReduced()) { renderer.applyViewportTransform(); return; }
   renderer.viewport.setView(from);
   handle.cancel?.();
-  handle.cancel = tweenEaseOut(220, (e) => {
+  handle.cancel = tweenEaseOut(animConfig.cameraGlide.map2dMs, (e) => {
     const r = getMapRenderer();
     if (!r) return;
     r.viewport.setView(lerpView(from, target, e));

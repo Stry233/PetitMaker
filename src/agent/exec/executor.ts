@@ -1,15 +1,15 @@
 /** Adapts editor tool schemas and results to the agent loop's `ToolExecutor` contract.
  * `delegate_task` runs at depth one; child executors omit delegation from their allowed tools. */
 import type { ToolExecutor, ExecutedResult, LoopDeps } from '../core/loop';
-import { runJob } from '../core/loop';
+import { DEFAULT_CONTEXT_TOKENS, runJob } from '../core/loop';
 import { append, createLog, eventsOf, subscribe, type SessionLog } from '../core/log';
 import { answerGate, askGate, awaitGate, type Oversight } from '../core/gates';
-import { SUBAGENT_MAX_TURNS } from '../core/governor';
+import { retainedWrite, SUBAGENT_MAX_TURNS } from '../core/governor';
 import type { ErrorClass, SessionEvent, TextPart, ToolResultDetail } from '../core/types';
 import type { Adapter } from '../providers/types';
 import {
   TOOL_SCHEMAS, SUBAGENT_TOOL_SCHEMAS, WRITE_TOOLS, buildMapContext, executeToolCall, type AgentToolDeps,
-} from '../tools/tools';
+} from '../tools';
 import { describeToolCall } from '../describe-call';
 import { translate } from '../../i18n/context';
 
@@ -26,9 +26,6 @@ export interface DelegateOpts {
   /** Latest child operation and count; null after the child settles. */
   onChildProgress?: (p: { task: string; opName?: string; ops: number; label?: string } | null) => void;
 }
-
-/** Kept local to preserve the executor-to-runner import direction. */
-const DELEGATE_BUDGET_TOKENS = 128_000;
 
 type AssistantEvent = Extract<SessionEvent, { kind: 'assistant' }>;
 
@@ -50,11 +47,13 @@ function childDetail(childLog: SessionLog): ToolResultDetail | undefined {
   let objects = 0;
   let reverted = false;
   let partialRevert = false;
+  let retained = false;
   const childOps: NonNullable<ToolResultDetail['childOps']> = [];
   let childError: ErrorClass | undefined;
   for (const e of eventsOf(childLog)) {
     if (e.kind === 'incident') { childError = e.error.cls; continue; }
     if (e.kind !== 'toolResult') continue;
+    if (retainedWrite(e)) retained = true;
     cells += e.detail?.cells ?? 0;
     objects += e.detail?.objects ?? 0;
     if (e.detail?.reverted) reverted = true;
@@ -69,7 +68,7 @@ function childDetail(childLog: SessionLog): ToolResultDetail | undefined {
   if (cells > 0) detail.cells = cells;
   if (objects > 0) detail.objects = objects;
   if (reverted) detail.reverted = true;
-  if (partialRevert) detail.partialRevert = true;
+  if (partialRevert || (reverted && retained)) detail.partialRevert = true;
   if (childOps.length > 0) detail.childOps = childOps;
   if (childError) detail.childError = childError;
   return Object.keys(detail).length > 0 ? detail : undefined;
@@ -146,7 +145,7 @@ async function delegateTask(
     // tier, and a child mid-task must answer to a change the user has just made.
     get oversight() { return delegate.oversight; },
     sameModel: true,
-    budgetTokens: DELEGATE_BUDGET_TOKENS,
+    budgetTokens: DEFAULT_CONTEXT_TOKENS,
     maxTurns: SUBAGENT_MAX_TURNS,
     signal: delegate.signal,
     undoStackSize: () => deps.getExecutor().getUndoStackSize(),
@@ -183,7 +182,7 @@ async function delegateTask(
 }
 
 /** Tools whose blast radius can reach far beyond what the model named in its own args (a
- *  generator run, a region clear, a whole road network) — gated as "wide" regardless of the
+ *  region clear, a whole road network) — gated as "wide" regardless of the
  *  oversight tier's ordinary write gate.
  *
  *  `delegate_task` is the widest of them: the helper it spawns runs its own writes ungated in a

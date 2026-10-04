@@ -17,6 +17,7 @@ import { roadLookup } from '../../state/object-index';
 import { generateMap, __resetCandidateCache } from '../../kit/operations/generate';
 import type { KitContext } from '../../kit/context';
 import { makeState, setTerrain } from '../rules/_helpers';
+import { mapFingerprint } from '../../tools/macros';
 
 const SIZE = 24;
 
@@ -47,6 +48,24 @@ function textConfig(origin: { x: number; y: number }, n: number): GenerateConfig
 beforeEach(() => { __resetCandidateCache(); });
 
 describe('a text run reports where it landed', () => {
+  it('preserves the previous generation and undo history when the structural minimum cannot fit', async () => {
+    const kit = kitOn();
+    const original = textConfig({ x: 0, y: 0 }, 8);
+    original.stencilPlan!.fill = { kind: 'object', catalogId: 'flower-protea' };
+    await generateMap(kit, { config: original, region: null });
+    expect(kit.state.objects.size).toBe(64);
+    const before = mapFingerprint(kit.state), history = kit.executor.getUndoStackSize();
+    const dense = textConfig({ x: 0, y: 0 }, 16);
+    dense.stencilPlan!.fill = { kind: 'object', catalogId: 'tree-apple' };
+    dense.stencilPlan!.stencil.coverage.forEach((_, i, coverage) => {
+      coverage[i] = i % 2 === 0 && Math.floor(i / 16) % 2 === 0 ? 255 : 0;
+    });
+    const result = await generateMap(kit, { config: dense, region: null });
+    expect(result.stencilBudget).toBe('blocked');
+    expect(mapFingerprint(kit.state)).toBe(before);
+    expect(kit.executor.getUndoStackSize()).toBe(history);
+  });
+
   it('carries the tier and the three skip counts out through the kit', async () => {
     const kit = kitOn();
     const outcome = await generateMap(kit, { config: textConfig({ x: 8, y: 8 }, 6), region: null });

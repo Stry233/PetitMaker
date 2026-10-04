@@ -1,3 +1,4 @@
+import { Pill } from '../primitives/Pill';
 import { displayAgentText } from '../../agent/tool-labels';
 /*
  * Shared card, verdict and quick-answer primitives for approval gates. An open gate uses an active
@@ -7,12 +8,12 @@ import { displayAgentText } from '../../agent/tool-labels';
  */
 import type { CSSProperties, ReactNode } from 'react';
 import { motion } from 'framer-motion';
-import { Pill } from './atoms';
+
 import { Icon, type IconId } from './icons';
-import { amplitude, framerMotion } from './motion';
+import { amplitude, framerMotion } from '../design/motion';
 import { edge } from './tokens';
 import { ACTIVE, INK, INSET, LINE, PLATE, PLATE_INK } from '../design/tokens';
-import { colors, cursors, font, UNAVAILABLE } from '../design/styles';
+import { colors, cursors, font, UNAVAILABLE, radii } from '../design/styles';
 import { roleFont } from '../design/text-weight';
 import { windowFooterPrimary } from '../design/window-skin';
 import { translate, useT } from '../../i18n/context';
@@ -97,8 +98,8 @@ const VERDICT_SPEC: Record<VerdictMark, VerdictSpec> = {
 /**
  * The settled answer, standing on the card's own baseline.
  *
- * INSET FILL WITH PLATE INK, which is an accessibility ruling rather than a taste: the muted brown
- * on the inset measures 4.57:1 and the plate ink 7.20:1, and a chip is the one line on a settled
+ * INSET FILL WITH PLATE INK, for contrast: the muted brown on the inset measures 4.57:1 and the plate
+ * ink 7.20:1, and a chip is the one line on a settled
  * card the reader has to be able to take at a glance.
  */
 export function VerdictChip({ verdict, word }: { verdict: VerdictMark; word?: string }) {
@@ -118,7 +119,7 @@ export function VerdictChip({ verdict, word }: { verdict: VerdictMark; word?: st
         gap: 5,
         background: spec.bad ? colors.dangerBg : INSET,
         color: spec.bad ? colors.dangerText : PLATE_INK,
-        borderRadius: 999,
+        borderRadius: radii.pill,
         padding: '3px 10px',
         ...roleFont('small'),
         fontFamily: font.family,

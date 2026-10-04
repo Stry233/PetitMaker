@@ -1,5 +1,5 @@
 /*
- * ItemCard.tsx — one item in the object shelf's row.
+ * One item in the object shelf's row.
  *
  * A CARD IS A PICTURE AND A COUNT, and that is the whole of it — the game's own cards carry a
  * sprite and a number and nothing else. Everything a card could say about an item it does not: the

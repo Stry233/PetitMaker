@@ -5,6 +5,7 @@ import { TUNING } from './tuning';
 import { tryPlace, removePlaced, type PlaceCtx } from './object';
 import { getPlaceableByCategory } from '../../state/catalog';
 import type { PlacementAnalysis } from './analysis';
+import { findTrait } from '../../core/model/traits';
 
 /** A crossing validated through placement rules, with the open regions served by its two ends. */
 export interface Portal {
@@ -47,7 +48,7 @@ function scanBridgePortals(
 /** RAMP portals: a LOW region edge that comes within reach of a region exactly ONE tier higher. (Only the
  *  low side is generated — the high side is the same pair, found when scanning from the low cell.) The
  *  anchor is the cliff-base cell (its neighbour toward the high region is the +1 mountain), where the
- *  heightDrop trait can snap a valid 2x4 ramp. */
+ *  heightDrop trait can snap a catalog-sized ramp. */
 function scanRampPortals(
   a: PlacementAnalysis, state: PlaceCtx['state'], W: number, H: number,
   inB: (x: number, y: number) => boolean, idx: (x: number, y: number) => number,
@@ -81,10 +82,7 @@ export function scanPortals(ctx: PlaceCtx, a: PlacementAnalysis, perPair: number
   const portals: Portal[] = [];
 
   const bridge = getPlaceableByCategory(ItemCategory.Bridge)[0];
-  const bridgeSpanTrait = bridge?.traits.find((t) => t.type === 'waterSpan');
-  const bridgeW = bridge?.width ?? 1;
-  const spanMin = bridgeSpanTrait?.type === 'waterSpan' ? bridgeSpanTrait.min : 3;
-  const spanMax = bridgeSpanTrait?.type === 'waterSpan' ? bridgeSpanTrait.max : 6;
+  const bridgeSpanTrait = findTrait(bridge, 'waterSpan');
   const bridgeId = bridge?.id;
   const rampId = getPlaceableByCategory(ItemCategory.Ramp)[0]?.id;
   const hasRamp = rampId !== undefined;
@@ -131,7 +129,9 @@ export function scanPortals(ctx: PlaceCtx, a: PlacementAnalysis, perPair: number
     return null;
   };
 
-  if (bridge) scanBridgePortals(state, W, H, bridgeW, spanMin, spanMax, probe, accept, commit);
+  if (bridge && bridgeSpanTrait?.type === 'waterSpan') {
+    scanBridgePortals(state, W, H, bridge.width, bridgeSpanTrait.min, bridgeSpanTrait.max, probe, accept, commit);
+  }
   if (hasRamp) scanRampPortals(a, state, W, H, inB, idx, probe, accept, commit);
 
   return { portals, regionAdj: portalAdjacency(portals) };

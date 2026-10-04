@@ -1,5 +1,5 @@
 /*
- * placement.perf.test.ts — the shared placement machinery's operation costs.
+ * The shared placement machinery's operation costs.
  *
  * Placement is the shared verb behind the designer's build stage, every smart-build press, and the
  * agent's director tools (`decorate_zone`, `plant_forest`, `build_road_network`), so its cost lands
@@ -107,7 +107,7 @@ describe.runIf(PERF)('perf: placement', () => {
     await s.bench('network/build', () => {
       const start = f.world.executor.getUndoStackSize();
       buildNetwork(f.ctx, f.a, 1, f.nodes, f.regionAdj);
-      f.world.executor.commitStrokeGroup(start);
+      f.world.executor.commitStroke(start);
     }, {
       setup: () => { f = networkFixture(island); },
       minSamples: 3, maxSamples: 8, budgetMs: 6000,
@@ -121,7 +121,7 @@ describe.runIf(PERF)('perf: placement', () => {
     await s.bench('nature/place', () => {
       const start = f.world.executor.getUndoStackSize();
       placeNature(f.ctx, f.a, 1, new Set());
-      f.world.executor.commitStrokeGroup(start);
+      f.world.executor.commitStroke(start);
     }, {
       setup: () => { f = natureFixture(island); },
       minSamples: 3, maxSamples: 8, budgetMs: 6000,
@@ -134,7 +134,7 @@ describe.runIf(PERF)('perf: placement', () => {
     await s.bench('themes/decorate-zone', () => {
       const start = f.world.executor.getUndoStackSize();
       decorateZone(f.ctx, f.a, f.zone, 1, 1, new Set(), makeRng(7));
-      f.world.executor.commitStrokeGroup(start);
+      f.world.executor.commitStroke(start);
     }, {
       setup: () => { f = zoneFixture(island); },
       minSamples: 5, maxSamples: 30,

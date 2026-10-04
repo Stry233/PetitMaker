@@ -1,18 +1,7 @@
-export const CHUNK_SIZE = 16;
-export const CHUNK_LOAD_LIMIT = 10_000;
-/**
- * Whether chunk load limits are enforced. Off for now: the real in-game load values are
- * unknown, so every placement is free (effective load 0). The enforcement is fully wired
- * and footprint-correct (see rules/chunk-load.ts) — flip this to true and set real catalog
- * loadValues to enable it.
- */
-export const CHUNK_LOAD_ENABLED = false;
-
-export const ELEVATION_MAX = 8;
-
 export const TILE_SIZE = 64;
 
-/** The reserved id (object id + catalogId) of the immutable central-plaza object. */
+/** The reserved id (object id and catalogId) of the template landmark. Saves and share codes carry it.
+ *  Code asks the landmark helpers in `grid-model.ts`; only the catalog, which registers the item, reads the id. */
 export const PLAZA_ID = '__plaza__';
 export const ZOOM_MIN = 0.05;
 export const ZOOM_MAX = 4.0;
@@ -34,6 +23,10 @@ export const ELEVATION_COLORS: Record<number, string> = {
 };
 
 export const WATER_COLOR = '#97e1ff';
+
+/** The warning red over map content an edit would lose, and under an invalid placement ghost, in
+ *  every view that draws it. */
+export const LOSS_COLOR = '#e2574c';
 
 export const ZONE_COLORS: Record<number, string> = {
   0: '#97e1ff',

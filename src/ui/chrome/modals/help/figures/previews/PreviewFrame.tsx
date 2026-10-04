@@ -1,5 +1,5 @@
 /*
- * PreviewFrame.tsx — the Help Center's window onto a REAL component.
+ * The Help Center's window onto a REAL component.
  *
  * A UI figure is the product's own surface mounted live, not a drawing of it: the frame provides
  * `ModalPreviewContext` (a `ModalShell` inside renders contained, passive, un-zoomed), kills every
@@ -24,7 +24,7 @@ import { useFigureReady } from '../figure-ready';
 // React 18 has no typed `inert` prop; the empty-string spread is the codebase's idiom for it.
 const INERT = { inert: '' } as unknown as HTMLAttributes<HTMLDivElement>;
 
-export interface PreviewFrameProps {
+interface PreviewFrameProps {
   width?: number | string;
   height: number;
   /** CSS zoom applied to the mounted surface, for components wider than the frame. */

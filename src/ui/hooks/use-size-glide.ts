@@ -6,8 +6,9 @@
  */
 import { useLayoutEffect, useRef, useState } from 'react';
 import type { RefObject } from 'react';
-import { animate, useReducedMotionConfig, type AnimationPlaybackControls, type Transition } from 'framer-motion';
-import { springs } from '../design/styles';
+import { animate, useReducedMotionConfig, type AnimationPlaybackControls } from 'framer-motion';
+import { framerMotion } from '../design/motion';
+import type { MotionId } from '../shell/motion/registry';
 
 /** How far the box's natural size may have moved under a glide before the difference is travelled
  *  rather than taken, in css px. Under a pixel there is nothing to see. */
@@ -20,13 +21,13 @@ const SETTLE_LEGS = 2;
 
 export type GlideAxis = 'width' | 'height';
 
-export interface SizeGlideOptions {
+interface SizeGlideOptions {
   axis: GlideAxis;
-  /** Motion transition; callers may use a non-overshooting tween for card-sized surfaces. */
-  transition?: Transition;
+  /** The registry motion the box travels on; card-sized surfaces use one that does not overshoot. */
+  motionId: MotionId;
 }
 
-export interface SizeGlide<T extends HTMLElement> {
+interface SizeGlide<T extends HTMLElement> {
   /** Hang this on the box whose size should ease. */
   ref: RefObject<T>;
   /** Whether the box is travelling right now: what the caller clips on. */
@@ -40,7 +41,7 @@ export interface SizeGlide<T extends HTMLElement> {
  */
 export function useSizeGlide<T extends HTMLElement = HTMLDivElement>(
   change: unknown,
-  { axis, transition = springs.gentle }: SizeGlideOptions,
+  { axis, motionId }: SizeGlideOptions,
 ): SizeGlide<T> {
   const ref = useRef<T>(null);
   /** The size the box settled at last, and what the next glide starts from. Zero means there is
@@ -75,7 +76,7 @@ export function useSizeGlide<T extends HTMLElement = HTMLDivElement>(
     const run = (a: number, b: number) => {
       legs += 1;
       const leg = animate(a, b, {
-        ...transition,
+        ...framerMotion(motionId),
         onUpdate: (v: number) => { el.style[axis] = `${v}px`; },
       });
       glide = leg;
@@ -123,9 +124,7 @@ export function useSizeGlide<T extends HTMLElement = HTMLDivElement>(
       el.style[axis] = '';
       setGliding(false);
     };
-    // `transition` is a caller's constant, not a reason to re-measure: a fresh object literal each
-    // render would restart the glide on every parent render.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- the motion is a caller's constant
   }, [change, axis, reduced]);
 
   return { ref, gliding };

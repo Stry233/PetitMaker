@@ -16,17 +16,28 @@ import { detectPortraitBlocked } from '../../core/runtime/portrait-signals';
 import { readPref, writePref, type DockSide } from '../../core/runtime/prefs';
 
 /** Every overlay the editor can open. Adding a modal is one member here plus its component. */
-export type ModalId =
-  | 'help' | 'keyboard' | 'settings' | 'about' | 'newProject'
-  | 'preview3d' | 'export' | 'exportJson' | 'import' | 'tourDone' | 'regionLoad'
-  /** The save-and-share window, which carries `export` and `exportJson` as two of its three
-   *  sections. Those two keep their own ids so an opener with no shell of its own (the agent's
-   *  export tool, the new-map warning) can name the section it wants rather than the window. */
-  | 'share'
-  /** The dedicated stylize window, reached from the export controls' own entry group. */
-  | 'stylize'
-  /** The release notes a returning browser has not read yet. */
-  | 'whatsNew';
+export const MODAL_IDS = [
+  'help', 'keyboard', 'settings', 'about', 'newProject',
+  'preview3d', 'export', 'exportJson', 'import', 'tourDone', 'regionLoad',
+  // The save-and-share window, which carries `export` and `exportJson` as two of its three
+  // sections. Those two keep their own ids so an opener with no shell of its own (the agent's
+  // export tool, the new-map warning) can name the section it wants rather than the window.
+  'share',
+  // The dedicated stylize window, reached from the export controls' own entry group.
+  'stylize',
+  // The release notes a returning browser has not read yet.
+  'whatsNew',
+  // Import planet's window over Change Planet: from a planet file or from a game video.
+  'planetImport',
+] as const;
+export type ModalId = typeof MODAL_IDS[number];
+
+/** Whether any window other than `except` is open. The one reading of "a modal is up"; the
+ *  keyboard gate's lock in `core/runtime/overlay-state.ts` also counts the tour, the portrait guard
+ *  and the what's-this layer, which are not windows. */
+export function anyModalOpen(s: { modals: Record<ModalId, boolean> }, except?: ModalId): boolean {
+  return MODAL_IDS.some((id) => id !== except && s.modals[id]);
+}
 
 export interface ShellSlice {
   /** Which overlays are open. One home for every modal, so opening one from a place that has no
@@ -90,7 +101,7 @@ export interface ShellSlice {
 }
 
 export const createShellSlice: StateCreator<ShellSlice, [], [], ShellSlice> = (set) => ({
-  modals: { help: false, keyboard: false, settings: false, about: false, newProject: false, preview3d: false, export: false, exportJson: false, import: false, tourDone: false, share: false, regionLoad: false, stylize: false, whatsNew: false },
+  modals: Object.fromEntries(MODAL_IDS.map((id) => [id, false])) as Record<ModalId, boolean>,
   setModal: (id, open) => set((st) => (st.modals[id] === open ? st : { modals: { ...st.modals, [id]: open } })),
   aboutTarget: null,
   setAboutTarget: (id) => set({ aboutTarget: id }),
@@ -135,7 +146,7 @@ export const createShellSlice: StateCreator<ShellSlice, [], [], ShellSlice> = (s
   setPreview3DEdit: (v) => set({ preview3DEdit: v }),
   // Neither floating surface OPENS while the tour runs. The tour is not modal — its dim takes no
   // pointer events, and working the real controls under it is how two steps advance — but both of
-  // these sit at z.contextMenu, three orders of magnitude above z.tour, so either would paint over
+  // these sit at z.contextMenu, above z.tour, so either would paint over
   // the walkthrough it interrupted. Closing is always allowed. The gate is here rather than at the
   // call sites because they are a right-click, a selection corner handle and a keybinding, and the
   // next one to be added would not know to carry it.

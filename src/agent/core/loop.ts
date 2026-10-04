@@ -9,8 +9,8 @@ import { compact, needsCompaction, COMPACTION_RESERVE } from './compaction';
 import { isRetryable } from './errors';
 import { askGate, awaitGate, shouldGate, type Oversight } from './gates';
 import {
-  budgetWarning, capMessage, consecutiveLengthStops, deliveryNudge, emptyTurnNudge, hasLandedWrite,
-  jobEvents, landedWriteCount, lengthStopNudge, planOwedNudge, reasoningOnlyNudge, repeatedFailure,
+  budgetWarning, capMessage, consecutiveLengthStops, deliveryNudge, emptyTurnNudge, hasLandedWrite, hasRecentVerification,
+  jobEvents, landedWriteCount, lengthStopNudge, planProgress, reasoningOnlyNudge, repeatedFailure,
   repeatRefusal, revertNudge, reviewNudge, unfinishedPlanNudge, verbatimRetryNudge,
   MAX_TURNS_DEFAULT, REVIEW_MIN_TURNS_LEFT, REVIEW_MIN_WRITES,
 } from './governor';
@@ -23,6 +23,7 @@ import { parseStages, thoughtSize } from './types';
 import type {
   GateAnswer, JobOutcome, Part, SessionEvent, ToolPart, ToolResultDetail,
 } from './types';
+import { createSkippableSleeper } from './skippable-sleep';
 
 export interface ExecutedResult { content: string; isError: boolean; image?: string; detail?: ToolResultDetail }
 export interface ToolExecutor {
@@ -48,7 +49,7 @@ export interface LoopDeps {
   screen?: (orderText: string) => Promise<string | null>;
   onLive?: (parts: readonly Part[] | null) => void;
   sleep?: (ms: number, signal: AbortSignal) => Promise<void>; // injected for fake-timer tests
-  contextWindow?: number; // default 128000
+  contextWindow?: number; // default DEFAULT_CONTEXT_TOKENS
 }
 
 type AssistantEvent = Extract<SessionEvent, { kind: 'assistant' }>;
@@ -58,8 +59,8 @@ const REISSUE_MESSAGE = '(system) The turn was cut off before the arguments were
   + 'Reissue the calls with complete arguments.';
 const defaultEstimate = (s: string): number => Math.ceil(s.length / 4);
 
-/** Recognizes halfwidth and fullwidth question endings. */
-const QUESTION_END = /[?？]\s*$/;
+/** Closing emphasis and quotation marks do not change a question's ending. */
+const QUESTION_END = /[?？][\s*_~`"'”’」』）)\]]*$/;
 
 function isToolPart(p: Part): p is ToolPart { return p.kind === 'tool'; }
 
@@ -162,13 +163,14 @@ function existingGateId(log: SessionLog, scope: 'tool' | 'plan', callId: string,
 /** Records an undo watermark for each stage the plan has entered. */
 function syncStageCheckpoints(log: SessionLog, deps: LoopDeps): void {
   if (!hasPlanEvent(log)) return;
+  const stageCount = planProgress(log)?.stageCount ?? 0;
   const events = jobEvents(log);
   const done = new Set<number>();
   for (const e of events) {
     if (e.kind === 'checkpoint' && e.stageIndex !== undefined) done.add(e.stageIndex);
   }
   for (const e of events) {
-    if (e.kind === 'stage' && !done.has(e.index)) {
+    if (e.kind === 'stage' && e.index < stageCount && !done.has(e.index)) {
       append(log, { kind: 'checkpoint', undoIndex: deps.undoStackSize(), label: 'stage', stageIndex: e.index });
       done.add(e.index);
     }
@@ -189,25 +191,6 @@ function endJob(
   append(log, { kind: 'jobEnd', ...end, undoIndex: deps.undoStackSize() });
 }
 
-/** A successful evaluation after a write marks the current plan stage complete. */
-const STAGE_BOUNDARY_TOOL = 'evaluate_map';
-
-/** Advances after an evaluation only when the current stage contains a successful write. */
-function advanceStageAtBoundary(log: SessionLog, deps: LoopDeps, toolName: string): void {
-  if (toolName !== STAGE_BOUNDARY_TOOL) return;
-  let stageCount = 0;
-  let current = 0;
-  let wroteSinceStage = false;
-  for (const e of jobEvents(log)) {
-    if (e.kind === 'plan') { stageCount = e.stages.length; current = 0; wroteSinceStage = false; }
-    else if (e.kind === 'stage') { current = e.index; wroteSinceStage = false; }
-    else if (e.kind === 'toolResult' && !e.isError && deps.executor.isWrite(e.name)) wroteSinceStage = true;
-  }
-  if (stageCount === 0 || !wroteSinceStage) return;
-  if (current >= stageCount - 1) return;
-  advanceStage(log, current + 1);
-}
-
 export function isJobActive(log: SessionLog): boolean {
   const events = eventsOf(log);
   for (let i = events.length - 1; i >= 0; i--) {
@@ -218,21 +201,8 @@ export function isJobActive(log: SessionLog): boolean {
   return false;
 }
 
-function abortError(): Error {
-  if (typeof DOMException !== 'undefined') return new DOMException('The wait was aborted.', 'AbortError');
-  const err = new Error('The wait was aborted.');
-  err.name = 'AbortError';
-  return err;
-}
-
-function realSleep(ms: number, signal: AbortSignal): Promise<void> {
-  if (signal.aborted) return Promise.reject(abortError());
-  return new Promise((resolve, reject) => {
-    const onAbort = () => { clearTimeout(timer); reject(abortError()); };
-    const timer = setTimeout(() => { signal.removeEventListener('abort', onAbort); resolve(); }, ms);
-    signal.addEventListener('abort', onAbort, { once: true });
-  });
-}
+/** The wait a job takes when its deps bring no sleep of their own: a sleeper nothing skips. */
+const realSleep = createSkippableSleeper().sleep;
 
 /** Resolves a call's supervision gate, reusing this occurrence's persisted question and answer. */
 async function resolveGate(log: SessionLog, deps: LoopDeps, part: ToolPart, assistantSeq: number): Promise<boolean | 'aborted'> {
@@ -263,6 +233,21 @@ function resultStamp(deps: LoopDeps, name: string, assistantSeq: number): { writ
 const MAX_PLAN_FILINGS = 2;
 
 async function handleUpdatePlan(log: SessionLog, deps: LoopDeps, part: ToolPart, assistantSeq: number): Promise<ReissueSignal> {
+  if ('completedStages' in part.input) {
+    const plan = planProgress(log);
+    const completed = part.input.completedStages;
+    const valid = plan !== undefined && part.input.stages === undefined
+      && typeof completed === 'number' && Number.isInteger(completed)
+      && completed >= plan.current && completed <= plan.stageCount;
+    if (valid && completed > plan.current) advanceStage(log, completed);
+    append(log, {
+      kind: 'toolResult', callId: part.callId, name: part.name, isError: !valid,
+      content: valid ? `Plan progress: ${completed}/${plan.stageCount} stages complete.`
+        : 'Progress requires an existing plan and completedStages alone, an integer from the current completed count through the total stage count. Do not rebuild work to update progress.',
+      ...resultStamp(deps, part.name, assistantSeq),
+    });
+    return 'continue';
+  }
   const stages = parseStages(part.input.stages);
   if (!stages) {
     append(log, {
@@ -422,7 +407,6 @@ async function processCalls(
       ...(detail !== undefined ? { detail } : {}),
       ...resultStamp(deps, part.name, assistantSeq),
     });
-    if (!executed.isError) advanceStageAtBoundary(log, deps, part.name);
   }
   return 'continue';
 }
@@ -558,9 +542,13 @@ async function runAdapterTurn(
   }
 }
 
+/** The context window a job assumes when its model reports none, and the history budget the
+ *  runner and a delegated child take. */
+export const DEFAULT_CONTEXT_TOKENS = 128_000;
+
 export async function runJob(log: SessionLog, deps: LoopDeps): Promise<JobOutcome | 'paused'> {
   const maxTurns = deps.maxTurns ?? MAX_TURNS_DEFAULT;
-  const contextWindow = deps.contextWindow ?? 128000;
+  const contextWindow = deps.contextWindow ?? DEFAULT_CONTEXT_TOKENS;
   const estimate = deps.estimate ?? defaultEstimate;
   const budgetTokens = Math.min(deps.budgetTokens, contextWindow - COMPACTION_RESERVE);
   const sleep = deps.sleep ?? realSleep;
@@ -615,7 +603,7 @@ export async function runJob(log: SessionLog, deps: LoopDeps): Promise<JobOutcom
     const isFinalTurn = turnsUsed === maxTurns - 1;
     const appendSystemNote = isFinalTurn
       ? capMessage()
-      : lengthStopNudge(lengthStreak) ?? budgetWarning(turnsUsed, maxTurns) ?? planOwedNudge(log)
+      : lengthStopNudge(lengthStreak) ?? budgetWarning(turnsUsed, maxTurns)
         ?? (silent.reasoningOnly ? reasoningOnlyNudge(silent.n) : emptyTurnNudge(silent.n));
 
     const buildRequest = (): AdapterRequest => ({
@@ -663,6 +651,7 @@ export async function runJob(log: SessionLog, deps: LoopDeps): Promise<JobOutcom
     };
     const nudgeReview = (): boolean => {
       if (landedWriteCount(log) < REVIEW_MIN_WRITES) return false;
+      if (hasRecentVerification(log)) return false;
       if (maxTurns - countAssistantTurns(log) < REVIEW_MIN_TURNS_LEFT) return false;
       if (jobEvents(log).some((e) => e.kind === 'systemNote' && e.note === 'review')) return false;
       append(log, { kind: 'systemNote', note: 'review', text: reviewNudge() });

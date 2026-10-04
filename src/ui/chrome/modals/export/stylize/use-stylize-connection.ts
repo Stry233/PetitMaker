@@ -1,5 +1,5 @@
 /*
- * use-stylize-connection.ts — the connection the whole window works against: which provider, which
+ * The connection the whole window works against: which provider, which
  * key, which address, which model, and how far each of those has got.
  *
  * THE MODEL IS A LIST READ OFF THE KEY, never a field the user is asked to fill from memory. A key
@@ -29,9 +29,9 @@ import {
 import { sanitizeEndpointUrl } from '../../../../../core/runtime/endpoint-url';
 
 /** How long the hands stay still before the key or the address is taken as settled. */
-export const PROBE_DEBOUNCE_MS = 600;
+const PROBE_DEBOUNCE_MS = 600;
 
-export type ModelsState = 'none' | 'loading' | 'ready' | 'unlisted';
+type ModelsState = 'none' | 'loading' | 'ready' | 'unlisted';
 
 /** The model-list request, injectable so a test drives the form without a network. `null` is an
  *  endpoint that will not enumerate. */

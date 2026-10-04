@@ -254,7 +254,7 @@ describe('objectAt', () => {
     expect(objectAt(getObjectIndex(state), { x: 12, y: 5 })).toBeNull();
   });
 
-  it('a whole-anchored object still hit-tests exactly its integer cells (fix is byte-identical there)', () => {
+  it('a whole-anchored object still hit-tests exactly its integer cells', () => {
     const state = makeState(30, 30);
     add(state, tree('a', 4, 4));
     expect(objectAt(getObjectIndex(state), { x: 4, y: 4 })?.id).toBe('a');

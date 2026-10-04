@@ -17,7 +17,8 @@
   "icon": "facility-station",
   "width": 38,
   "height": 16,
-  "loadValue": 2000,
+  "loadValue": 0,
+  "loadUnknown": true,
   "maxCount": 1,
   "ruleTBD": true,
   "disabled": true,
@@ -682,6 +683,8 @@
         ],
         "color": "#d9a94f"
       }
-    ]
+    ],
+    "heightInLayers": 3.4,
+    "heightScale": "vertical"
   }
 }

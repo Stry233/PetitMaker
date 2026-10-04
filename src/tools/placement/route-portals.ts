@@ -3,11 +3,12 @@ import { detectBridgeSpan } from '../../core/model/bridge-span';
 import { getCell, isBuildableZone, NEIGHBORS4 } from '../../core/model/grid-model';
 import { ItemCategory, TerrainType, type CatalogItem, type MacroCoord, type PlacedObject } from '../../core/model/types';
 import { getPlaceableByCategory } from '../../state/catalog';
-import { objectRect } from '../../state/object-geometry';
+import { crossingRunsAlongX, objectRect, rampOrientation } from '../../state/object-geometry';
 import type { PlacementAnalysis } from './analysis';
 import { probePlacement, type PlaceCtx } from './object';
 import { portalAdjacency, type Portal } from './portals';
 import { TUNING } from './tuning';
+import { findTrait, isBridge, isRamp } from '../../core/model/traits';
 
 type CrossingContext = Pick<PlaceCtx, 'state' | 'reg'>;
 
@@ -27,10 +28,10 @@ function approach(ctx: CrossingContext, a: PlacementAnalysis, start: MacroCoord,
 }
 
 function approaches(ctx: CrossingContext, a: PlacementAnalysis, item: CatalogItem, obj: PlacedObject): Pick<Portal, 'approachA' | 'approachB' | 'landingA' | 'landingB'> | null {
-  const r = objectRect(obj), horizontal = r.w >= r.h;
-  const drop = item.traits.find(t => t.type === 'heightDrop');
-  const highAtStart = obj.rotation === 0 || obj.rotation === 90;
-  const low = obj.elevation - (drop?.type === 'heightDrop' ? drop.layers : 0);
+  const r = objectRect(obj), horizontal = crossingRunsAlongX(obj);
+  const drop = findTrait(item, 'heightDrop');
+  const { highAtStart } = rampOrientation(obj.rotation);
+  const low = obj.elevation - (drop?.layers ?? 0);
   const levelA = highAtStart ? obj.elevation : low, levelB = highAtStart ? low : obj.elevation;
   const cross = horizontal ? r.y : r.x, span = horizontal ? r.h : r.w;
   const center = Math.floor(cross + (span - 1) / 2);
@@ -77,9 +78,9 @@ export function scanRoutePortals(ctx: CrossingContext, a: PlacementAnalysis): { 
     const key = `${item.id}|${anchor.x},${anchor.y}`;
     if (tried.has(key)) return;
     tried.add(key);
-    const waterSpan = item.traits.find(t => t.type === 'waterSpan');
+    const waterSpan = findTrait(item, 'waterSpan');
     let spanKey = '';
-    if (waterSpan?.type === 'waterSpan') {
+    if (waterSpan) {
       const span = detectBridgeSpan(ctx.state, anchor, item.width, waterSpan.min, waterSpan.max);
       if (!span) return;
       spanKey = `${item.id}|${span.position.x},${span.position.y},${span.spanLength},${span.rotation},${span.elevation}`;
@@ -88,7 +89,7 @@ export function scanRoutePortals(ctx: CrossingContext, a: PlacementAnalysis): { 
     const obj = probePlacement(ctx, item.id, anchor.x, anchor.y);
     if (!obj) return;
     if (spanKey) bridgeSpans.add(spanKey);
-    const r = objectRect(obj), kind = item.category === ItemCategory.Bridge ? 'bridge' : 'ramp';
+    const r = objectRect(obj), kind = isBridge(item) ? 'bridge' : 'ramp';
     const geometry = `${kind}|${r.x},${r.y},${r.w},${r.h}|${obj.rotation},${obj.elevation}`;
     if (geometries.has(geometry)) return;
     geometries.add(geometry);
@@ -104,8 +105,8 @@ export function scanRoutePortals(ctx: CrossingContext, a: PlacementAnalysis): { 
     if (!NEIGHBORS4.some(([dx, dy]) => levelAt(x + dx, y + dy) > level)) continue;
     const bridge = gap(x, y, level);
     for (const item of items) {
-      if (!bridge && item.category === ItemCategory.Bridge) continue;
-      if (level < 0 && item.category === ItemCategory.Ramp) continue;
+      if (!bridge && isBridge(item)) continue;
+      if (level < 0 && isRamp(item)) continue;
       for (const [ox, oy] of [[0, 0], [-0.5, 0], [0, -0.5], [-0.5, -0.5]] as const) retain(item, { x: x + ox, y: y + oy });
     }
   }

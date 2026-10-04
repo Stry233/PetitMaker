@@ -157,6 +157,32 @@ describe('selection-view-sync: the ring follows the active view', () => {
     expect(two.overlay.clearSelection).toHaveBeenCalled();
   });
 
+  it('repaints the active view on objects-changed while an object is selected, and only then', () => {
+    const two = makeFakeView(), three = makeFakeView(true);
+    setStoreState({ gridState: mapWithObject('a'), selection: [{ kind: 'terrain', x: 1, y: 1 }] });
+    uninstall = installSelectionViewSync();
+    setActiveView(two.view);
+    setActiveView(three.view);
+    const bus = useEditorStore.getState().eventBus;
+    (two.overlay.showSelection as ReturnType<typeof vi.fn>).mockClear();
+    (three.overlay.showSelection as ReturnType<typeof vi.fn>).mockClear();
+
+    bus.emit('objects-changed', {});
+    expect(three.overlay.showSelection).not.toHaveBeenCalled(); // terrain only
+
+    setStoreState({ selection: [{ kind: 'object', id: 'a' }] });
+    (three.overlay.showObjectSelection as ReturnType<typeof vi.fn>).mockClear();
+    bus.emit('objects-changed', {});
+    expect(three.overlay.showObjectSelection).toHaveBeenCalledWith('a', false);
+    expect(two.overlay.showSelection).not.toHaveBeenCalled();
+
+    uninstall();
+    uninstall = null;
+    (three.overlay.showObjectSelection as ReturnType<typeof vi.fn>).mockClear();
+    bus.emit('objects-changed', {});
+    expect(three.overlay.showObjectSelection).not.toHaveBeenCalled();
+  });
+
   it('drops the selection when the mode cannot hold one', () => {
     const two = makeFakeView();
     setStoreState({ gridState: mapWithObject('a'), selection: [{ kind: 'object', id: 'a' }] });

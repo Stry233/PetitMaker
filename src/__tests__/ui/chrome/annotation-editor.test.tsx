@@ -12,6 +12,7 @@ vi.mock('../../../canvas/active-view', () => ({
     screenToHalf: (x: number, y: number) => ({ x: x / 10, y: y / 10 }),
   } }),
   onActiveViewChange: () => () => {},
+  onProjectionChange: () => () => {},
 }));
 const s = () => useEditorStore.getState();
 const note = () => s().gridState!.annotations!.items[0]!;

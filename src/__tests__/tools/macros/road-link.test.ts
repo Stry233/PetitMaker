@@ -17,7 +17,7 @@ import { gateTerminalCells } from '../../../tools/placement/route';
 import { generateObjectId } from '../../../core/model/object-id';
 import {
   CellZone, ItemCategory, TerrainType,
-  type EditorEvents, type GridState, type MacroCoord, type PlacedObject,
+  type EditorEvents, type GridState, type MacroCoord, type PlacedObject, type Rotation,
 } from '../../../core/model/types';
 import { applyMacro } from '../../../tools/macros';
 import { routeWorld } from '../../../tools/macros/route-world';
@@ -41,7 +41,7 @@ function makeKit(size = SIZE): Kit {
   return { state, executor, registry: executor.getRegistry() };
 }
 
-function place(kit: Kit, catalogId: string, x: number, y: number, rotation: 0 | 90 | 180 | 270 = 0): PlacedObject {
+function place(kit: Kit, catalogId: string, x: number, y: number, rotation: Rotation = 0): PlacedObject {
   const obj: PlacedObject = { id: generateObjectId(), catalogId, position: { x, y }, rotation, elevation: 0 };
   const r = kit.executor.execute(objectPlacementCommand(obj));
   expect(r.success, `place ${catalogId}@${x},${y}: ${r.errors?.[0]?.message ?? ''}`).toBe(true);

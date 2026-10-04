@@ -1,0 +1,464 @@
+{
+ "avc-bframes.mp4": {
+  "command": "ffmpeg -f lavfi -i testsrc2=size=64x64:rate=30 -frames:v 20 -c:v libx264 -preset medium -bf 2 -g 8 -keyint_min 8 -sc_threshold 0 -pix_fmt yuv420p avc-bframes.mp4",
+  "codec": "h264",
+  "tag": "avc1",
+  "width": 64,
+  "height": 64,
+  "packets": [
+   {
+    "offset": 48,
+    "size": 1801,
+    "time": 0,
+    "key": true
+   },
+   {
+    "offset": 1849,
+    "size": 275,
+    "time": 100000,
+    "key": false
+   },
+   {
+    "offset": 2124,
+    "size": 105,
+    "time": 33333,
+    "key": false
+   },
+   {
+    "offset": 2229,
+    "size": 108,
+    "time": 66667,
+    "key": false
+   },
+   {
+    "offset": 2337,
+    "size": 314,
+    "time": 200000,
+    "key": false
+   },
+   {
+    "offset": 2651,
+    "size": 159,
+    "time": 133333,
+    "key": false
+   },
+   {
+    "offset": 2810,
+    "size": 102,
+    "time": 166667,
+    "key": false
+   },
+   {
+    "offset": 2912,
+    "size": 196,
+    "time": 233333,
+    "key": false
+   },
+   {
+    "offset": 3108,
+    "size": 1312,
+    "time": 266667,
+    "key": true
+   },
+   {
+    "offset": 4420,
+    "size": 256,
+    "time": 300000,
+    "key": false
+   },
+   {
+    "offset": 4676,
+    "size": 345,
+    "time": 400000,
+    "key": false
+   },
+   {
+    "offset": 5021,
+    "size": 158,
+    "time": 333333,
+    "key": false
+   },
+   {
+    "offset": 5179,
+    "size": 117,
+    "time": 366667,
+    "key": false
+   },
+   {
+    "offset": 5296,
+    "size": 306,
+    "time": 500000,
+    "key": false
+   },
+   {
+    "offset": 5602,
+    "size": 134,
+    "time": 433333,
+    "key": false
+   },
+   {
+    "offset": 5736,
+    "size": 124,
+    "time": 466667,
+    "key": false
+   },
+   {
+    "offset": 5860,
+    "size": 1232,
+    "time": 533333,
+    "key": true
+   },
+   {
+    "offset": 7092,
+    "size": 343,
+    "time": 566667,
+    "key": false
+   },
+   {
+    "offset": 7435,
+    "size": 144,
+    "time": 600000,
+    "key": false
+   },
+   {
+    "offset": 7579,
+    "size": 140,
+    "time": 633333,
+    "key": false
+   }
+  ]
+ },
+ "avc-faststart.mov": {
+  "command": "ffmpeg -f lavfi -i testsrc2=size=64x64:rate=30 -frames:v 12 -c:v libx264 -bf 0 -g 6 -pix_fmt yuv420p -movflags +faststart avc-faststart.mov",
+  "codec": "h264",
+  "tag": "avc1",
+  "width": 64,
+  "height": 64,
+  "packets": [
+   {
+    "offset": 856,
+    "size": 1719,
+    "time": 0,
+    "key": true
+   },
+   {
+    "offset": 2575,
+    "size": 238,
+    "time": 33333,
+    "key": false
+   },
+   {
+    "offset": 2813,
+    "size": 213,
+    "time": 66667,
+    "key": false
+   },
+   {
+    "offset": 3026,
+    "size": 162,
+    "time": 100000,
+    "key": false
+   },
+   {
+    "offset": 3188,
+    "size": 255,
+    "time": 133333,
+    "key": false
+   },
+   {
+    "offset": 3443,
+    "size": 235,
+    "time": 166667,
+    "key": false
+   },
+   {
+    "offset": 3678,
+    "size": 1255,
+    "time": 200000,
+    "key": true
+   },
+   {
+    "offset": 4933,
+    "size": 257,
+    "time": 233333,
+    "key": false
+   },
+   {
+    "offset": 5190,
+    "size": 176,
+    "time": 266667,
+    "key": false
+   },
+   {
+    "offset": 5366,
+    "size": 198,
+    "time": 300000,
+    "key": false
+   },
+   {
+    "offset": 5564,
+    "size": 235,
+    "time": 333333,
+    "key": false
+   },
+   {
+    "offset": 5799,
+    "size": 178,
+    "time": 366667,
+    "key": false
+   }
+  ]
+ },
+ "avc-fragmented.mp4": {
+  "command": "ffmpeg -f lavfi -i testsrc2=size=64x64:rate=30 -frames:v 16 -c:v libx264 -bf 2 -g 8 -keyint_min 8 -sc_threshold 0 -pix_fmt yuv420p -movflags frag_keyframe+empty_moov+default_base_moof avc-fragmented.mp4",
+  "codec": "h264",
+  "tag": "avc1",
+  "width": 64,
+  "height": 64,
+  "packets": [
+   {
+    "offset": 953,
+    "size": 1801,
+    "time": 66667,
+    "key": true
+   },
+   {
+    "offset": 2754,
+    "size": 275,
+    "time": 166667,
+    "key": false
+   },
+   {
+    "offset": 3029,
+    "size": 105,
+    "time": 100000,
+    "key": false
+   },
+   {
+    "offset": 3134,
+    "size": 108,
+    "time": 133333,
+    "key": false
+   },
+   {
+    "offset": 3242,
+    "size": 314,
+    "time": 266667,
+    "key": false
+   },
+   {
+    "offset": 3556,
+    "size": 159,
+    "time": 200000,
+    "key": false
+   },
+   {
+    "offset": 3715,
+    "size": 102,
+    "time": 233333,
+    "key": false
+   },
+   {
+    "offset": 3817,
+    "size": 196,
+    "time": 300000,
+    "key": false
+   },
+   {
+    "offset": 4189,
+    "size": 1312,
+    "time": 333333,
+    "key": true
+   },
+   {
+    "offset": 5501,
+    "size": 256,
+    "time": 366667,
+    "key": false
+   },
+   {
+    "offset": 5757,
+    "size": 345,
+    "time": 466667,
+    "key": false
+   },
+   {
+    "offset": 6102,
+    "size": 158,
+    "time": 400000,
+    "key": false
+   },
+   {
+    "offset": 6260,
+    "size": 117,
+    "time": 433333,
+    "key": false
+   },
+   {
+    "offset": 6377,
+    "size": 190,
+    "time": 566667,
+    "key": false
+   },
+   {
+    "offset": 6567,
+    "size": 138,
+    "time": 500000,
+    "key": false
+   },
+   {
+    "offset": 6705,
+    "size": 138,
+    "time": 533333,
+    "key": false
+   }
+  ]
+ },
+ "hevc.mp4": {
+  "command": "ffmpeg -f lavfi -i testsrc2=size=64x64:rate=30 -frames:v 8 -c:v libx265 -x265-params log-level=error:keyint=4:bframes=2 -tag:v hvc1 -pix_fmt yuv420p hevc.mp4",
+  "codec": "hevc",
+  "tag": "hvc1",
+  "width": 64,
+  "height": 64,
+  "packets": [
+   {
+    "offset": 44,
+    "size": 857,
+    "time": 0,
+    "key": true
+   },
+   {
+    "offset": 901,
+    "size": 142,
+    "time": 66667,
+    "key": false
+   },
+   {
+    "offset": 1043,
+    "size": 41,
+    "time": 33333,
+    "key": false
+   },
+   {
+    "offset": 1084,
+    "size": 902,
+    "time": 133333,
+    "key": true
+   },
+   {
+    "offset": 1986,
+    "size": 42,
+    "time": 100000,
+    "key": false
+   },
+   {
+    "offset": 2028,
+    "size": 138,
+    "time": 200000,
+    "key": false
+   },
+   {
+    "offset": 2166,
+    "size": 39,
+    "time": 166667,
+    "key": false
+   },
+   {
+    "offset": 2205,
+    "size": 109,
+    "time": 233333,
+    "key": false
+   }
+  ]
+ },
+ "av1.mp4": {
+  "command": "ffmpeg -f lavfi -i testsrc2=size=64x64:rate=30 -frames:v 6 -c:v libsvtav1 -g 3 -pix_fmt yuv420p av1.mp4",
+  "codec": "av1",
+  "tag": "av01",
+  "width": 64,
+  "height": 64,
+  "packets": [
+   {
+    "offset": 48,
+    "size": 1051,
+    "time": 0,
+    "key": true
+   },
+   {
+    "offset": 1099,
+    "size": 340,
+    "time": 33333,
+    "key": false
+   },
+   {
+    "offset": 1439,
+    "size": 3,
+    "time": 66667,
+    "key": false
+   },
+   {
+    "offset": 1442,
+    "size": 1104,
+    "time": 100000,
+    "key": true
+   },
+   {
+    "offset": 2546,
+    "size": 361,
+    "time": 133333,
+    "key": false
+   },
+   {
+    "offset": 2907,
+    "size": 3,
+    "time": 166667,
+    "key": false
+   }
+  ]
+ },
+ "vp9.mp4": {
+  "command": "ffmpeg -f lavfi -i testsrc2=size=64x64:rate=30 -frames:v 6 -c:v libvpx-vp9 -g 3 -pix_fmt yuv420p vp9.mp4",
+  "codec": "vp9",
+  "tag": "vp09",
+  "width": 64,
+  "height": 64,
+  "packets": [
+   {
+    "offset": 44,
+    "size": 1692,
+    "time": 0,
+    "key": true
+   },
+   {
+    "offset": 1736,
+    "size": 182,
+    "time": 33333,
+    "key": false
+   },
+   {
+    "offset": 1918,
+    "size": 204,
+    "time": 66667,
+    "key": false
+   },
+   {
+    "offset": 2122,
+    "size": 1760,
+    "time": 100000,
+    "key": true
+   },
+   {
+    "offset": 3882,
+    "size": 277,
+    "time": 133333,
+    "key": false
+   },
+   {
+    "offset": 4159,
+    "size": 185,
+    "time": 166667,
+    "key": false
+   }
+  ]
+ }
+}

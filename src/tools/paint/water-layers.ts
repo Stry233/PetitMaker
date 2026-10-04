@@ -26,9 +26,9 @@ import type {
 import type { RuleDispatcher } from '../../core/model/rule-dispatcher';
 import { getCell, scratchGrid } from '../../core/model/grid-model';
 import { surfaceElevation } from '../../core/edge-cut/terrain-silhouette';
-import { ELEVATION_MAX } from '../../core/model/constants';
 import { applyCommand } from '../../core/commands/command-apply';
 import { EventBus } from '../../core/commands/event-bus';
+import { ELEVATION_MAX } from '../../core/model/game-profile';
 
 /** Nothing listens to a scratch grid, and the probe issues terrain commands only. */
 const silentBus = new EventBus<EditorEvents>();

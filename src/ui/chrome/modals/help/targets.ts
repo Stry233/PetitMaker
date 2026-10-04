@@ -1,5 +1,5 @@
 /*
- * targets.ts — how the rest of the interface points INTO the Help Center.
+ * How the rest of the interface points INTO the Help Center.
  *
  * A surface marks itself with `helpTargetAttr(page)` (the tour's `data-tour-target` pattern): the
  * text stays in the help tables, the pointing stays local to the control it describes. `openHelp`

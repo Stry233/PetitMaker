@@ -4,7 +4,7 @@
 
 {app}, maintained by {operator}, is a browser-based map-planning tool. Maps are edited and saved in the current browser; you export and keep files for long-term storage.
 
-Visiting the site still generates ordinary network requests. Online AI features send relevant instructions, map information or images to the service you choose. Export content checks and local illustration processing run on your device without uploading text or maps for that purpose. The same on-device check screens Agent task text and custom illustration style text before a request is sent, and a refused request is not sent.
+Visiting the site still generates ordinary network requests. Online AI features send relevant instructions, map information or images to the service you choose. Export content checks and local illustration processing run on your device without uploading text or maps for that purpose. Importing a planet from a game video reads the recording on your device; the video is not uploaded. The same on-device check screens Agent task text and custom illustration style text before a request is sent, and a refused request is not sent.
 
 This policy explains how each category of information is used, where it is stored and how it can be deleted. Service-use rules and content responsibilities are in the [Terms of Use](/terms). Privacy questions can be sent to {email}.
 
@@ -27,6 +27,7 @@ Where applicable law requires a processing basis, we rely on what is necessary t
 | Information | Purpose and when it is saved |
 | --- | --- |
 | Maps and recovery data | Saves the current map and necessary recovery state after edits; may include planning annotations, map notes, provenance, camera position and some undo history |
+| Saved planets | Keeps the planets you save or import under My planets, and planets that arrive with a map you open, including their names and shapes |
 | Interface and editing preferences | Remembers language, scale, display, hints, shortcuts and other settings when the relevant options change |
 | Export settings | Remembers the preset, size, display options and footer template, including custom text in that template. Image titles and descriptions are not stored as export preferences; JSON notes may be saved with the map |
 | Own-image recognition | Stores content digests of recent successful image exports to recognize your own work when you import it again in this browser. These records stay in local storage and are not added to shared files; no browser fingerprint or personal identifier is collected for this purpose |

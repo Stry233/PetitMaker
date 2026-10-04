@@ -1,23 +1,23 @@
-/*
- * Renders one row per tool call with shared icon and verb metadata. Refusals show a localized result
- * and actionable rule text, omitting model-facing rule ids and hints; successful rows may show the
- * tool's first data line. Refusals with details open automatically. `OpsList` initially collapses
- * older rows beyond the newest three and is shared by flat tickets and plan stages.
- */
+/** Operation descriptions and outcomes use structured log data; provider diagnostics stay private. */
+import { Disclosure, DisclosureStack } from '../primitives/Disclosure';
+import { useReadingIntent } from '../primitives/scroll-intent';
 import { displayAgentText } from '../../agent/tool-labels';
-import { Fragment, useState, type ReactNode, type KeyboardEvent } from 'react';
+import { describeToolArgs } from '../../agent/describe-call';
+import { getCatalogItem } from '../../state/catalog';
+import { useEditorStore } from '../../state/store';
+import { useState, type ReactNode, type KeyboardEvent } from 'react';
 import { AnimatePresence, motion, useReducedMotionConfig } from 'framer-motion';
-import { amplitude, cssMotion, framerMotion } from './motion';
+import { amplitude, cssMotion, framerMotion } from '../design/motion';
 import { Icon } from './icons';
 import { iconForTool, verbKeyForTool } from './tool-meta';
 import { CountPill, ResultChip, Stamp, TickDot } from './atoms';
 import { Lane, laneRollup, type LaneView } from './Lane';
-import { withAlpha } from '../design/styles';
+import { withAlpha, colors, cursors, font } from '../design/styles';
 import { INK, INSET, PLATE_INK } from '../design/tokens';
-import { colors, cursors, font } from '../design/styles';
 import { roleFont } from '../design/text-weight';
-import { useT } from '../../i18n/context';
+import { localizedName, quantityParams, useT } from '../../i18n/context';
 import type { OpRow as OpRowData } from '../../agent/core/project-view';
+import type { Translate } from '../../core/model/types';
 
 /** The tool whose work runs in a helper lane rather than on this row. */
 const DELEGATE = 'delegate_task';
@@ -42,8 +42,9 @@ function ruleText(summary: string): string {
 function localizedRule(op: OpRowData, t: Translate): ReactNode | undefined {
   const first = op.detail?.violations?.[0];
   if (first === undefined) return undefined;
-  const message = t(first.message, first.params);
-  return message === first.message ? undefined : displayAgentText(message.replace(/^[^:：]{1,24}[:：]\s*/, ''), t);
+  // Rule message params are limits and counts.
+  const message = t(first.message, quantityParams(useEditorStore.getState().locale, first.params));
+  return message === first.message ? undefined : displayAgentText(message, t);
 }
 
 /** A translated sentence with a rich fragment standing in for its one `{text}` token. `t()`'s own
@@ -53,8 +54,6 @@ function withFragment(template: string, node: ReactNode): ReactNode {
   const [before = '', after = ''] = template.split('{text}');
   return <>{before}{node}{after}</>;
 }
-
-type Translate = (key: string, params?: Record<string, string | number>) => string;
 
 /** Failure states whose actionable details open on arrival. */
 const OPENS_ON_ARRIVAL: ReadonlySet<OpRowData['status']> = new Set<OpRowData['status']>([
@@ -84,6 +83,17 @@ function detailFor(op: OpRowData, t: Translate): ReactNode | undefined {
     return t('agent3.op_detail_failed');
   }
   return undefined;
+}
+
+/** Counts represent retained changes, including the surviving part of a reverted stroke. */
+function resultCounts(op: OpRowData, t: Translate): string | undefined {
+  const cells = op.detail?.cells ?? 0;
+  const objects = op.detail?.objects ?? 0;
+  const counts = [
+    cells > 0 ? t(cells === 1 ? 'agent3.op_cells_one' : 'agent3.op_cells', { n: cells }) : '',
+    objects > 0 ? t(objects === 1 ? 'agent3.op_objects_one' : 'agent3.op_objects', { n: objects }) : '',
+  ].filter(Boolean);
+  return counts.length ? counts.join(', ') : undefined;
 }
 
 /** The chip beside a row: the outcome in a word or two, where the mark alone cannot say it. A live
@@ -140,25 +150,33 @@ const GHOST_EDGE = `1px dashed ${withAlpha(INK, 0.35)}`;
  *  from the record the call left behind instead (`laneRollup`). */
 export function OpRow({ op, lane }: { op: OpRowData; lane?: LaneView }) {
   const t = useT();
+  const locale = useEditorStore(s => s.locale);
   const verbKey = verbKeyForTool(op.name);
   const phrase = t(verbKey);
+  const target = op.input ? describeToolArgs({ name: op.name, input: op.input }, t, {
+    catalog: id => { const item = getCatalogItem(id); return item ? localizedName(item.name, locale) : undefined; },
+    object: () => undefined,
+  }) : undefined;
   // A LANE ONLY STANDS WHILE THE HELPER DOES: a settled call's child log is gone, and what it left
   // behind rolls up onto this row as a chip instead (`laneRollup`).
   const helper = op.name === DELEGATE && op.status === 'run' ? lane : undefined;
-  const detail = detailFor(op, t);
-  const chip = chipFor(op, helper, t);
-  const canOpen = detail !== undefined || op.image !== undefined;
+  const counts = resultCounts(op, t);
+  const feedback = detailFor(op, t);
+  const detail = feedback !== undefined ? <>{feedback}{counts ? ` ${counts}` : ''}</> : counts;
+  const chip = chipFor(op, helper, t) ?? (counts ? { text: counts } : undefined);
+  const canOpen = detail !== undefined || target !== undefined || op.image !== undefined;
   const [open, setOpen] = useState(canOpen && OPENS_ON_ARRIVAL.has(op.status));
   const muted = op.isRead;
   const ghost = GHOST_ROWS.has(op.status);
-  const toggle = () => canOpen && setOpen((o) => !o);
+  const preserveReading = useReadingIntent();
+  const toggle = () => { if (canOpen) { preserveReading(); setOpen((o) => !o); } };
   const ink = muted || ghost ? colors.brownText : PLATE_INK;
   const reduced = useReducedMotionConfig() === true;
 
   return (
     <>
       <motion.div
-        initial={{ opacity: 0, y: ROW_RISE }}
+        initial={reduced ? false : { opacity: 0, y: ROW_RISE }}
         animate={{ opacity: 1, y: 0 }}
         transition={framerMotion('panel.op.enter')}
         data-testid="op-row"
@@ -167,6 +185,7 @@ export function OpRow({ op, lane }: { op: OpRowData; lane?: LaneView }) {
         data-muted={muted}
         data-ghost={ghost}
         role={canOpen ? 'button' : undefined}
+        aria-expanded={canOpen ? open : undefined}
         tabIndex={canOpen ? 0 : undefined}
         onClick={canOpen ? toggle : undefined}
         onKeyDown={canOpen ? (e) => activate(e, toggle) : undefined}
@@ -210,18 +229,17 @@ export function OpRow({ op, lane }: { op: OpRowData; lane?: LaneView }) {
           >
             {phrase}
           </span>
+          {target && (
+            <span data-testid="op-target" style={{
+              display: 'block', ...roleFont('note'), fontFamily: font.family, color: colors.brownText,
+              lineHeight: 1.4, overflowWrap: 'anywhere',
+            }}>{target}</span>
+          )}
           {/* The well UNFOLDS on the shared beat (`panel.detail.unfold`): height opens from nothing
               with the content deciding where it lands, the ThoughtsBox reveal grammar. */}
           <AnimatePresence initial={false}>
             {open && (detail !== undefined || op.image !== undefined) && (
-              <motion.span
-                key="well"
-                initial={reduced ? false : { height: 0, opacity: 0 }}
-                animate={{ height: 'auto', opacity: 1 }}
-                exit={{ height: 0, opacity: 0 }}
-                transition={framerMotion('panel.detail.unfold')}
-                style={{ display: 'block', overflow: 'hidden' }}
-              >
+              <Disclosure key="well" inline>
                 {detail !== undefined && (
                   <span
                     data-testid="op-detail"
@@ -250,7 +268,7 @@ export function OpRow({ op, lane }: { op: OpRowData; lane?: LaneView }) {
                     style={{ display: 'block', width: '100%', marginTop: 6, borderRadius: 8, border: `1px solid ${withAlpha(INK, 0.15)}` }}
                   />
                 )}
-              </motion.span>
+              </Disclosure>
             )}
           </AnimatePresence>
         </span>
@@ -291,21 +309,30 @@ interface OpsListProps {
  *  to hide. */
 export function OpsList({ ops, lane, marks }: OpsListProps) {
   const [expanded, setExpanded] = useState(false);
+  const preserveReading = useReadingIntent();
   const overflow = ops.length > TAIL;
   const first = expanded || !overflow ? 0 : ops.length - TAIL;
   const visible = ops.slice(first);
 
   return (
-    <div data-testid="ops-list" style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-      {overflow && (
-        <CountPill total={ops.length} shown={TAIL} expanded={expanded} onClick={() => setExpanded(value => !value)} />
-      )}
-      {visible.map((op, i) => (
-        <Fragment key={op.callId}>
-          {marks?.(first + i)}
-          <OpRow op={op} {...(lane ? { lane } : {})} />
-        </Fragment>
-      ))}
+    <div data-testid="ops-list" style={{ display: 'flex', flexDirection: 'column' }}>
+      <DisclosureStack gap={2}>
+        <AnimatePresence initial={false}>
+          {overflow && (
+            <Disclosure key="count">
+              <CountPill total={ops.length} shown={TAIL} expanded={expanded} onClick={() => { preserveReading(); setExpanded(value => !value); }} />
+            </Disclosure>
+          )}
+          {visible.map((op, i) => (
+            <Disclosure key={op.callId}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                {marks?.(first + i)}
+                <OpRow op={op} {...(lane ? { lane } : {})} />
+              </div>
+            </Disclosure>
+          ))}
+        </AnimatePresence>
+      </DisclosureStack>
       {/* A turn that thought and called nothing files after every row there is: it is the newest
           thing that happened, and the rows below it do not exist yet. */}
       {marks?.(ops.length)}

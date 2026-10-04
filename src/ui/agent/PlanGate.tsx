@@ -6,7 +6,7 @@ import { displayAgentText } from '../../agent/tool-labels';
  */
 import { AskActions, AskCard, HeldNote, VerdictChip, markFor } from './GateBlock';
 import { Icon } from './icons';
-import { inkTint } from './tokens';
+import { panelTint } from './tokens';
 import { INK, PLATE_INK } from '../design/tokens';
 import { colors, font } from '../design/styles';
 import { roleFont } from '../design/text-weight';
@@ -25,7 +25,7 @@ function Bead({ n }: { n: number }) {
         width: BEAD,
         height: BEAD,
         borderRadius: '50%',
-        background: inkTint.chip,
+        background: panelTint.chip,
         color: INK,
         ...roleFont('small'),
         fontFamily: font.family,

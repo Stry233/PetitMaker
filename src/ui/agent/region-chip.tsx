@@ -8,12 +8,12 @@ import { motion } from 'framer-motion';
 import { useT } from '../../i18n/context';
 import type { RegionBounds } from '../../state/region-bounds';
 import { ACTIVE, INK, PLATE } from '../design/tokens';
-import { cursors } from '../design/styles';
+import { cursors, withAlpha, radii } from '../design/styles';
 import { Icon } from './icons';
 import { MarkedShot } from './map-shot';
-import { amplitude, framerMotion } from './motion';
+import { amplitude, framerMotion } from '../design/motion';
 import { edge } from './tokens';
-import { withAlpha } from '../design/styles';
+import type { Translate } from '../../core/model/types';
 
 /** Composer-chip vignette size in CSS pixels. */
 export const CHIP_VIGNETTE = { width: 34, height: 25 } as const;
@@ -26,7 +26,7 @@ const CHIP_GROWTH = amplitude('panel.steer.chip') ?? 0;
 
 /** The count as the chip says it, with the one/many split English and Thai need and the other five
  *  locales spell as a single form. */
-function cellsSaid(t: (key: string, params?: Record<string, string | number>) => string, n: number): string {
+function cellsSaid(t: Translate, n: number): string {
   return t(n === 1 ? 'agent3.region_in_one' : 'agent3.region_in', { n });
 }
 
@@ -53,7 +53,7 @@ export function RegionVignette({ bounds, width, height }: {
 const BUTTON_BASE: CSSProperties = {
   width: 30,
   height: 30,
-  borderRadius: 999,
+  borderRadius: radii.pill,
   flex: '0 0 auto',
   border: 'none',
   display: 'inline-flex',
@@ -111,7 +111,7 @@ export function RegionChip({ bounds, vignette, onMark, onClear }: {
         gap: 5,
         background: PLATE,
         border: edge,
-        borderRadius: 999,
+        borderRadius: radii.pill,
         padding: '3px 5px 3px 3px',
         flex: '0 0 auto',
       }}

@@ -1,3 +1,4 @@
+import { windowTitle } from '../../design/window-skin';
 import { BrandName } from '../BrandName';
 import { viewportSize } from '../../../core/runtime/viewport-space';
 /**
@@ -13,7 +14,7 @@ import {
 import { AnimatePresence, motion, useReducedMotionConfig } from 'framer-motion';
 import { useT } from '../../../i18n/context';
 import { useEditorStore } from '../../../state/store';
-import { colors, font, modalTitle, radii, scaleRest, shadows, snapTween, springs, exitTransition, pressable, cursors, z } from '../../design/styles';
+import { colors, font, radii, scaleRest, shadows, snapTween, springs, exitTransition, pressable, cursors, z } from '../../design/styles';
 import { roleFont } from '../../design/text-weight';
 import { useChromeScale, useTouchPrimary, useViewportSize } from '../../design/scale';
 import { useFullscreen } from '../../hooks/useFullscreen';
@@ -24,6 +25,7 @@ import { measureTarget } from './measure';
 import { useTour } from './use-tour';
 import { type TourStep } from './steps';
 import type { VisualRect } from '../../design/visual-rect';
+import { NO_MOTION } from '../../design/motion';
 
 // CSS pixels inside the chrome-zoomed subtree; reused by the Help Center preview.
 export const BUBBLE_W = 340;
@@ -192,7 +194,7 @@ function StepTitle({ text, name }: { text: string; name: string }) {
   );
 }
 
-export interface TourBubbleProps {
+interface TourBubbleProps {
   step: TourStep;
   /** This step's place in the run, for the progress line ("3 of 10"). */
   index: number;
@@ -246,7 +248,7 @@ export function TourBubble({
         style={{ position: 'relative', overflow: 'hidden', display: 'grid' }}
         initial={false}
         animate={contentH?.card === cardId ? { height: contentH.h } : {}}
-        transition={reduced ? { duration: 0 } : springs.stiff}
+        transition={reduced ? NO_MOTION : springs.stiff}
       >
         <AnimatePresence initial={false}>
           <motion.div
@@ -254,8 +256,8 @@ export function TourBubble({
             style={{ gridArea: '1 / 1' }}
             initial={reduced ? false : { opacity: 0 }}
             animate={{ opacity: 1 }}
-            exit={reduced ? { opacity: 0, transition: { duration: 0 } } : { opacity: 0, transition: exitTransition }}
-            transition={reduced ? { duration: 0 } : springs.gentle}
+            exit={reduced ? { opacity: 0, transition: NO_MOTION } : { opacity: 0, transition: exitTransition }}
+            transition={reduced ? NO_MOTION : springs.gentle}
           >
             {/* The measured element is this plain box rather than the motion element around it:
                 AnimatePresence reads its children's `ref` prop, which React 18 does not carry. */}
@@ -271,7 +273,7 @@ export function TourBubble({
                   <BrandLockup size={54} logoOnly />
                 </div>
               )}
-              <div style={{ ...modalTitle, textAlign: align, lineHeight: 1.15, marginBottom: 6 }}>
+              <div style={{ ...windowTitle, textAlign: align, lineHeight: 1.15, marginBottom: 6 }}>
                 <StepTitle text={t(step.titleKey)} name={t('app.name')} />
               </div>
               {/* brownText, not textSecondary: this text is normal-size, and textSecondary sits
@@ -311,7 +313,7 @@ export function TourBubble({
   );
 }
 
-export interface TourOverlayProps {
+interface TourOverlayProps {
   /** Fired once per step as it becomes current, in order — before its target is confirmed
    *  measurable, so this is where the app prepares a step (e.g. revealing its target), not where
    *  it reacts to the step already being shown. */
@@ -607,8 +609,8 @@ export function TourOverlay({ onStepEnter, steps, diagram }: TourOverlayProps) {
             : `${generated} translateZ(0)`)}
           initial={reduced ? false : { scale: 0.4, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
-          exit={reduced ? { opacity: 0, transition: { duration: 0 } } : { scale: 0.4, opacity: 0, transition: exitTransition }}
-          transition={reduced ? { duration: 0 } : { ...springs.bouncy, ...scaleRest }}
+          exit={reduced ? { opacity: 0, transition: NO_MOTION } : { scale: 0.4, opacity: 0, transition: exitTransition }}
+          transition={reduced ? NO_MOTION : { ...springs.bouncy, ...scaleRest }}
         >
           <TourBubble
             step={shown.step}

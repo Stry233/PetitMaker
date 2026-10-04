@@ -3,10 +3,11 @@ import { viewportSize } from '../../core/runtime/viewport-space';
 // open popover on any outside click, plus the viewport clamps for positioning it. Anything that
 // opens a fixed-position panel anchored to a button or a caret uses these two together.
 import type { CSSProperties } from 'react';
+import { z } from '../design/styles';
 
 /** Invisible fixed full-viewport div that calls `onDismiss` on any click. Render it BEHIND the
  *  popover it guards (the popover needs a higher zIndex, typically `zIndex + 1`). */
-export function ClickCatcher({ onDismiss, zIndex = 300 }: { onDismiss(): void; zIndex?: number }) {
+export function ClickCatcher({ onDismiss, zIndex = z.popover }: { onDismiss(): void; zIndex?: number }) {
   // `pointerEvents` explicitly, because a catcher inside the shell's frame stands on a plane that is
   // deaf by rule (`shell/Shell.tsx`) and would otherwise inherit that and catch nothing.
   const style: CSSProperties = { position: 'fixed', inset: 0, zIndex, pointerEvents: 'auto' };

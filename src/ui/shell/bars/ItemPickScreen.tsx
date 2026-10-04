@@ -1,5 +1,5 @@
 /*
- * ItemPickScreen.tsx — choosing what a LETTER is built out of, which is the item shelf standing in
+ * Choosing what a LETTER is built out of, which is the item shelf standing in
  * for the generate shelf.
  *
  * IT IS THAT SHELF, NOT A LIST OF OUR OWN, for the same reason `ScopeScreen` wears the terrain bar's
@@ -11,8 +11,8 @@
  * armed, the map is not left under a placement cursor, and the object block in the mode row does not
  * light up for a press that was answering the generator's question.
  *
- * IT OFFERS ONLY WHAT CAN TILE. A letter needs the same item many times over, so every unique cabin
- * (`maxCount: 1`) is unusable: pick one and the letter's second cell onward is refused, for a reason
+ * IT OFFERS ONLY WHAT CAN TILE. A letter needs the same item many times over, so any item with a
+ * `maxCount` is unusable: pick one and the letter's cells past that count are refused, for a reason
  * nothing on screen explains. `tilesAShape` reads the ITEM rather than a list of ids, so a catalog
  * addition is offered or excluded on its own terms — and the categories left holding nothing are
  * dropped from the row of names with it.

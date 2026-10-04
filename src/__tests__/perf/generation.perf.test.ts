@@ -1,5 +1,5 @@
 /*
- * generation.perf.test.ts — the generation system's operation costs.
+ * The generation system's operation costs.
  *
  * Covers the paths a Generate press actually pays for: the full designed run (what a candidate
  * worker computes), the command replay (what the main thread pays when a cached candidate lands),
@@ -26,7 +26,7 @@ function runGeneration(world: World, config: GenerateConfig): Command[] {
     commands.push(c);
     return world.executor.execute(c);
   }, world.executor.getRegistry());
-  world.executor.commitStrokeGroup(start);
+  world.executor.commitStroke(start);
   return commands;
 }
 
@@ -48,7 +48,7 @@ describe.runIf(PERF)('perf: generation', () => {
     await s.bench('designed/replay-apply', () => {
       const start = world.executor.getUndoStackSize();
       for (const c of commands) world.executor.execute(c);
-      world.executor.commitStrokeGroup(start);
+      world.executor.commitStroke(start);
     }, {
       setup: () => { world = templateWorld(); },
       minSamples: 3, maxSamples: 10, budgetMs: 6000,
@@ -107,7 +107,7 @@ describe.runIf(PERF)('perf: generation', () => {
       const start = world.executor.getUndoStackSize();
       clearAllObjects(world.state, (c) => world.executor.execute(c));
       clearAllTerrain(world.state, (c) => world.executor.execute(c));
-      world.executor.commitStrokeGroup(start);
+      world.executor.commitStroke(start);
     }, {
       setup: () => { world = cloneWorld(island); },
       minSamples: 5, maxSamples: 20, budgetMs: 4000,
@@ -118,13 +118,13 @@ describe.runIf(PERF)('perf: generation', () => {
       const start = w.executor.getUndoStackSize();
       clearAllObjects(w.state, (c) => w.executor.execute(c));
       clearAllTerrain(w.state, (c) => w.executor.execute(c));
-      w.executor.commitStrokeGroup(start);
+      w.executor.commitStroke(start);
     };
     clearOn(cleared);
     await s.bench('landing/replay-on-cleared', () => {
       const start = cleared.executor.getUndoStackSize();
       for (const c of replay) cleared.executor.execute(detachCommand(c));
-      cleared.executor.commitStrokeGroup(start);
+      cleared.executor.commitStroke(start);
     }, {
       setup: () => { cleared = cloneWorld(island); clearOn(cleared); },
       minSamples: 5, maxSamples: 20, budgetMs: 4000,

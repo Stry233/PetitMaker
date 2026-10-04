@@ -3,6 +3,7 @@
  * including folded layouts and room for the layer panel. Hover labels open toward the map without
  * moving their button targets; zoom and rotation controls repeat while held.
  */
+import { mapEdgeAttr } from '../primitives/map-edge';
 import {
   useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode,
 } from 'react';
@@ -11,15 +12,15 @@ import { getActiveView } from '../../canvas/active-view';
 import { tourTargetAttr, type TourTargetId } from '../chrome/tour/steps';
 import { helpTargetAttr } from '../chrome/modals/help/targets';
 import type { HelpPageId } from '../chrome/modals/help/page-schema';
-import { ELEVATION_MAX } from '../../core/model/constants';
 import { hasWebGL2 } from '../../core/runtime/device-quality';
 import { showToast } from '../chrome/floating/Toast';
 import { useT } from '../../i18n/context';
 import { host } from '../../kit/host';
+import { endCurveSession } from '../../tools/paint';
 import { useEditorStore } from '../../state/store';
 import { IconFit } from './glyph-icons';
 import { layerName } from './layer-name';
-import { btnReset, cursors, pressable, pressOnly, z } from '../design/styles';
+import { btnReset, cursors, pressable, pressOnly, z, radii } from '../design/styles';
 import { usePressRepeat } from '../hooks/use-press-repeat';
 import { useUiZooming } from '../design/ui-zoom-anim';
 import {
@@ -32,18 +33,20 @@ import { LayerPanel } from './windows/LayerPanel';
 import { FrameLayoutProvider, useFrameLayout } from './frame-layout';
 import { CSS_CURVES } from './motion/curves';
 import { MOTIONS } from './motion/registry';
-import { cssMotion, useMotion } from './motion/use-motion';
+import { useMotion } from './motion/use-motion';
+import { cssMotion } from '../design/motion';
 import { useDockStage } from './use-dock';
 import { ACTIVE, DARK_PLATE, INK, MAP_LABEL, PLATE, PLATE_INK, plateShapeEdge } from '../design/tokens';
 import { PANEL_RIGHT } from './panel-frame';
 import { useFrameZoom, useFrameReadableWeight } from './use-frame-zoom';
 import { EDGE_RIGHT, RAIL, TEXT } from './units';
 import { visualRect } from '../design/visual-rect';
+import { ELEVATION_MAX } from '../../core/model/game-profile';
 
 
 /** Apply the frame veil clock to caller-owned CSS properties. */
 const veilTransition = (hidden: boolean, ...properties: string[]) =>
-  cssMotion(hidden ? 'frame.veil' : 'frame.unveil', ...properties);
+  cssMotion(hidden ? 'frame.veil' : 'frame.unveil', [...properties]);
 
 /** How the pair travels between its two places. */
 const YIELD_MOTION = MOTIONS['rail.history.yield'];
@@ -205,7 +208,7 @@ function RailButton({ label, onPress, disabled, on, arrival, files, grow, repeat
         position: 'relative',
         gridColumnStart: cell?.column,
         gridRowStart: cell?.row,
-        width: RAIL.button, height: RAIL.button, borderRadius: 999,
+        width: RAIL.button, height: RAIL.button, borderRadius: radii.pill,
         color: INK, flex: 'none',
         // ONE PROPERTY, ONE CLOCK. A button its group only offers sometimes fades itself through
         // Framer (`arrival`), which writes an opacity per frame, so a CSS transition on opacity
@@ -226,7 +229,7 @@ function RailButton({ label, onPress, disabled, on, arrival, files, grow, repeat
         transition={reach}
         style={{
           position: 'absolute', top: 0, [grow === 'left' ? 'right' : 'left']: 0,
-          height: RAIL.button, borderRadius: 999, overflow: 'hidden',
+          height: RAIL.button, borderRadius: radii.pill, overflow: 'hidden',
           background: on ? ACTIVE : PLATE,
           display: 'flex', alignItems: 'center',
           // The button's whole ink, so the veil and the two dimmings are drawn here rather than on
@@ -353,11 +356,12 @@ function LayerControl({ panelOpen, onOpen, veiled }: { panelOpen: boolean; onOpe
     <div
       data-testid="shell-layer-control"
       {...helpTargetAttr('layers')}
+      {...mapEdgeAttr('right')}
       style={{
         ...group, top: layout?.railTop ?? RAIL_TOP, right: (layout?.edgeRight ?? EDGE_RIGHT) + LAYER_STEP_RIGHT - EDGE_RIGHT, flexDirection: 'row', gap: RAIL.layer.gap,
         opacity: veiled ? 0 : 1,
         visibility: veiled ? 'hidden' : 'visible',
-        transition: [veilTransition(veiled), cssMotion('frame.layout.adapt', 'top')].join(', '),
+        transition: [veilTransition(veiled), cssMotion('frame.layout.adapt', ['top'])].join(', '),
       }}
     >
       {panelOpen ? null : (
@@ -372,7 +376,7 @@ function LayerControl({ panelOpen, onOpen, veiled }: { panelOpen: boolean; onOpe
             // A stadium, which is the yellow pill this count wears once the panel is open: focus
             // shows the shape the press produces.
             style={{
-              ...btnReset, ...inGroup, display: 'flex', borderRadius: 999, cursor: cursors.clickable,
+              ...btnReset, ...inGroup, display: 'flex', borderRadius: radii.pill, cursor: cursors.clickable,
               // Where a panel stands under part of the word the box itself goes deaf and the lane
               // below re-claims what is clear of it. The lane is a CHILD, so a press on it still
               // reaches this button's own `onClick`.
@@ -410,7 +414,7 @@ function LayerControl({ panelOpen, onOpen, veiled }: { panelOpen: boolean; onOpe
               display: 'flex', flexDirection: 'column',
               // No clip here: each step already clips its own half of the drawing, and a clip on
               // the plate would take a focused step's ring with it.
-              background: DARK_PLATE, borderRadius: 999,
+              background: DARK_PLATE, borderRadius: radii.pill,
             }}
           >
             <LayerStep
@@ -438,6 +442,9 @@ function HistoryGroup({ top, right, files, placement, veiled }: { top: number; r
   const zooming = useUiZooming();
   const offset = useRailReflow(0, top, placement, zooming);
   const eventBus = useEditorStore((s) => s.eventBus);
+  const annotating = useEditorStore(s => s.editMode.mode === 'annotate');
+  const annotationUndo = useEditorStore(s => s.annotationUndoLane.length > 0);
+  const annotationRedo = useEditorStore(s => s.annotationRedoLane.length > 0);
   const [{ canUndo, canRedo }, setHistory] = useState({ canUndo: false, canRedo: false });
   useEffect(() => {
     const onHistory = (e: { canUndo: boolean; canRedo: boolean }) => setHistory({ canUndo: e.canUndo, canRedo: e.canRedo });
@@ -447,6 +454,7 @@ function HistoryGroup({ top, right, files, placement, veiled }: { top: number; r
   return (
     <motion.div
       data-testid="shell-rail-history"
+      {...mapEdgeAttr('right')}
       style={{
         ...group,
         ...offset,
@@ -462,30 +470,36 @@ function HistoryGroup({ top, right, files, placement, veiled }: { top: number; r
         // so the pair still arrives at the place the panel left it and simply does not travel there.
         // The veil is on the same declaration because an element has ONE `transition`, and a second
         // one written here would silently drop the travel this group is placed by.
-        transition: [zooming ? '' : `${YIELD_TRANSITION}, ${cssMotion('frame.layout.adapt', 'right')}`, veilTransition(veiled)].filter(Boolean).join(', '),
+        transition: [zooming ? '' : `${YIELD_TRANSITION}, ${cssMotion('frame.layout.adapt', ['right'])}`, veilTransition(veiled)].filter(Boolean).join(', '),
       }}
     >
       <RailButton
         label={t('a11y.undo')}
         helpTarget="undo"
-        disabled={!canUndo}
+        disabled={!(annotating ? annotationUndo : canUndo)}
         files={files}
         cell={railCell(0, HISTORY_BUTTONS, files)}
         grow="left"
         veiled={veiled}
-        onPress={() => useEditorStore.getState().commandExecutor?.undo()}
+        onPress={() => {
+          const s = useEditorStore.getState();
+          if (annotating) { endCurveSession(); s.undoAnnotation(); } else s.commandExecutor?.undo();
+        }}
       >
         <GlyphIcon glyph={GLYPHS.undo} size={RAIL.glyph} />
       </RailButton>
       <RailButton
         label={t('a11y.redo')}
         helpTarget="undo"
-        disabled={!canRedo}
+        disabled={!(annotating ? annotationRedo : canRedo)}
         files={files}
         cell={railCell(1, HISTORY_BUTTONS, files)}
         grow="left"
         veiled={veiled}
-        onPress={() => useEditorStore.getState().commandExecutor?.redo()}
+        onPress={() => {
+          const s = useEditorStore.getState();
+          if (annotating) { endCurveSession(); s.redoAnnotation(); } else s.commandExecutor?.redo();
+        }}
       >
         <GlyphIcon glyph={GLYPHS.undo} size={RAIL.glyph} flip />
       </RailButton>
@@ -527,6 +541,11 @@ const YAW_TURNS = [
   { dir: 1, flip: false, labelKey: 'a11y.rotate_right' },
 ] as const;
 
+/** The planet session's kit: fit, zoom in and zoom out, standing where the view switch and the hide
+ *  toggle (`SESSION_VEILED`, the kit's first two cells) stood. */
+const SESSION_KIT = 3;
+const SESSION_VEILED = 2;
+
 /** How far under its own size a yaw button starts and ends. The registry's amplitude is how far it
  *  travels, and this shape is that travel spent on a scale. */
 const YAW_FROM = 1 - MOTIONS['rail.yaw.offer'].amplitude;
@@ -555,7 +574,7 @@ const yawArrival = (offer: Record<string, unknown>) => ({
  * front of it. A remnant is better than a key nobody was told about and better than "press
  * anything", which would make the hidden state unusable for the panning and looking it is for.
  */
-function ViewKit({ plan, right, hidden, onHide }: { plan: RailPlan; right: number; hidden: boolean; onHide: () => void }) {
+function ViewKit({ plan, right, hidden, onHide, session }: { plan: RailPlan; right: number; hidden: boolean; onHide: () => void; session: boolean }) {
   const t = useT();
   const zooming = useUiZooming();
   const weightAt = useFrameReadableWeight();
@@ -566,18 +585,21 @@ function ViewKit({ plan, right, hidden, onHide }: { plan: RailPlan; right: numbe
   // What the kit is SHOWING, which is not what it is planned for: the plan reserves room for the
   // full complement so nothing moves across a view switch, but the row that ends up short is the
   // one drawn, so the fill direction is answered against the buttons actually on screen.
-  const shown = KIT_BUTTONS - (viewMode === '3d' ? 0 : YAW_TURNS.length);
-  const cell = (i: number) => viewKitCell(i, shown, plan.kitFiles);
+  // A planet session is drawn in 2D with the interface up, so it keeps only the camera steps: the
+  // view switch and the hide toggle veil away where they stand, and the three steps close up.
+  const shown = session ? SESSION_KIT : KIT_BUTTONS - (viewMode === '3d' ? 0 : YAW_TURNS.length);
+  const cell = (i: number) => viewKitCell(session ? Math.max(0, i - SESSION_VEILED) : i, shown, plan.kitFiles);
   const offset = useRailReflow(0, plan.kitTop, String(plan.kitFiles), zooming);
   return (
     <motion.div
       data-testid="shell-view-kit"
       {...helpTargetAttr('camera')}
+      {...mapEdgeAttr('right')}
       style={{
         ...group,
         ...offset,
         top: plan.kitTop, right,
-        transition: zooming ? undefined : cssMotion('frame.layout.adapt', 'top', 'right'),
+        transition: zooming ? undefined : cssMotion('frame.layout.adapt', ['top', 'right']),
         // Explicit cells keep exiting yaw buttons from reflowing the remaining controls.
         display: 'grid',
         gridTemplateColumns: `repeat(${plan.kitFiles}, ${RAIL.button}px)`,
@@ -592,7 +614,7 @@ function ViewKit({ plan, right, hidden, onHide }: { plan: RailPlan; right: numbe
         files={plan.kitFiles}
         cell={cell(0)}
         grow="left"
-        veiled={hidden}
+        veiled={hidden || session}
         unavailable={!webgl2}
         tourTarget="view3d"
         onPress={() => {
@@ -611,6 +633,7 @@ function ViewKit({ plan, right, hidden, onHide }: { plan: RailPlan; right: numbe
         cell={cell(1)}
         grow="left"
         dim={hidden}
+        veiled={session}
         onPress={onHide}
       >
         <GlyphIcon glyph={GLYPHS.hideUi} size={RAIL.glyph} />
@@ -670,7 +693,7 @@ function ViewKit({ plan, right, hidden, onHide }: { plan: RailPlan; right: numbe
         would break the two-file arrangement a short window puts them in.
       */}
       <AnimatePresence initial={false}>
-        {viewMode === '3d' ? YAW_TURNS.map(({ dir, flip, labelKey }) => (
+        {viewMode === '3d' && !session ? YAW_TURNS.map(({ dir, flip, labelKey }) => (
           <RailButton
             key={dir}
             label={t(labelKey)}
@@ -692,11 +715,12 @@ function ViewKit({ plan, right, hidden, onHide }: { plan: RailPlan; right: numbe
 
 export function Rail({ hidden, onHide }: { hidden: boolean; onHide: () => void }) {
   const layout = useFrameLayout();
+  const session = useEditorStore((s) => s.planetSession !== null);
   if (!layout) return <FrameLayoutProvider><Rail hidden={hidden} onHide={onHide} /></FrameLayoutProvider>;
   const { layerMode: mode, setLayerMode: setMode, rail: plan } = layout;
   return (
     <>
-      <LayerControl panelOpen={mode !== 'pill'} onOpen={() => setMode('column')} veiled={hidden} />
+      <LayerControl panelOpen={mode !== 'pill'} onOpen={() => setMode('column')} veiled={hidden || session} />
       {/* A SIBLING OF THE THREE GROUPS, not a child of the one it replaces. A group carries a
           z-index, so it is a stacking context, and a plate nested inside one is ordered against its
           siblings INSIDE it however high its own z-index is: the buttons of the next group along
@@ -708,11 +732,11 @@ export function Rail({ hidden, onHide }: { hidden: boolean; onHide: () => void }
         top={layout.plateTop}
         maxWidth={layout.plateMaxWidth}
         maxHeight={plan.plateMaxH}
-        veiled={hidden}
+        veiled={hidden || session}
       />
       <HistoryGroup top={plan.historyTop} right={layout.edgeRight} files={plan.historyFiles}
         placement={`${plan.kitFiles}:${plan.historyFiles}:${layout.cornerTop}`} veiled={hidden} />
-      <ViewKit plan={plan} right={layout.edgeRight} hidden={hidden} onHide={onHide} />
+      <ViewKit plan={plan} right={layout.edgeRight} hidden={hidden} onHide={onHide} session={session} />
     </>
   );
 }

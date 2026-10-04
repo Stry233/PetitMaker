@@ -12,11 +12,12 @@ import { placementOverlapRule } from '../../rules/placement-overlap';
 import { placementMaxCountRule } from '../../rules/placement-max-count';
 import { lockedObjectRule } from '../../rules/locked-object';
 import { chunkLoadViolations } from '../../rules/chunk-load';
-import { CommandType, ItemCategory, TerrainType } from '../../core/model/types';
+import { CommandType, ItemCategory, TerrainType, type Rotation } from '../../core/model/types';
 import type { PaintTerrainCommand } from '../../core/model/types';
 import type { MacroCoord, PlacedObject, PlaceObjectCommand, RemoveObjectCommand } from '../../core/model/types';
 import { makeState, setTerrain } from './_helpers';
 import { registerCatalogItem } from '../../state/catalog';
+import { PLAZA_RECT } from '../fixtures/planet';
 
 registerCatalogItem({
   id: 'ev-house', category: ItemCategory.Building, name: { en: 'Evidence House' },
@@ -44,11 +45,10 @@ registerCatalogItem({
   traits: [],
 });
 
-function place(catalogId: string, x: number, y: number, rotation: 0 | 90 | 180 | 270 = 0): PlaceObjectCommand {
+function place(catalogId: string, x: number, y: number, rotation: Rotation = 0): PlaceObjectCommand {
   return {
     type: CommandType.PlaceObject, timestamp: 0,
     object: { id: 'candidate', catalogId, position: { x, y }, rotation, elevation: 0 },
-    loadValue: 0,
   };
 }
 
@@ -176,24 +176,24 @@ describe('evidence cells: V-PLACE-BLOCK', () => {
   });
 
   it('flashes the blocker\'s exact fractional rect', () => {
-    // A 20x27 plaza on the half grid touches a 21x28 whole-cell footprint. Rect evidence must
+    // A plaza on the half grid touches a whole-cell footprint one cell wider and taller. Rect evidence must
     // preserve its fractional body instead of adding half a cell on every side.
     const state = makeState(120, 120);
     const plaza: PlacedObject = {
-      id: '__plaza__', catalogId: '__plaza__', position: { x: 76.5, y: 58.5 },
-      width: 20, height: 27, rotation: 0, elevation: 1, locked: true,
+      id: '__plaza__', catalogId: '__plaza__', position: { x: PLAZA_RECT.x, y: PLAZA_RECT.y },
+      width: PLAZA_RECT.w, height: PLAZA_RECT.h, rotation: 0, elevation: 1, locked: true,
     };
     state.objects.set(plaza.id, plaza);
-    const errors = objectBlocksTerrainRule.validate(paintAt([{ x: 80, y: 60 }]), state);
+    const errors = objectBlocksTerrainRule.validate(paintAt([{ x: Math.floor(PLAZA_RECT.x) + 4, y: Math.floor(PLAZA_RECT.y) + 2 }]), state);
     expect(errors).toHaveLength(1);
-    expect(errors[0]!.rects).toEqual([{ x: 76.5, y: 58.5, w: 20, h: 27 }]);
+    expect(errors[0]!.rects).toEqual([{ ...PLAZA_RECT }]);
     expect(errors[0]!.grid).toBe('macro');
     // and the whole-cell evidence still names every cell the plaza touches, for the readers
     // that cannot draw a fractional body (the agent's echo).
     const cells = errors[0]!.cells;
-    expect(Math.min(...cells.map((c) => c.x))).toBe(76);
-    expect(Math.max(...cells.map((c) => c.x))).toBe(96);
-    expect(cells).toHaveLength(21 * 28);
+    expect(Math.min(...cells.map((c) => c.x))).toBe(Math.floor(PLAZA_RECT.x));
+    expect(Math.max(...cells.map((c) => c.x))).toBe(Math.floor(PLAZA_RECT.x) + PLAZA_RECT.w);
+    expect(cells).toHaveLength((PLAZA_RECT.w + 1) * (PLAZA_RECT.h + 1));
   });
 
   it('a multi-cell command collects every distinct blocker once', () => {

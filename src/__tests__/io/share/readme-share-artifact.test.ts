@@ -45,7 +45,7 @@ describe('README share-map artifacts', () => {
     expect(new DataView(header.buffer, header.byteOffset, header.byteLength).getUint32(0)).toBe(RESOLUTION_WIDTHS.standard);
   });
 
-  it.skipIf(FILES.some((f) => !existsSync(f)))('both decode back to 鱼松\'s hexia island', async () => {
+  it.skipIf(FILES.some((f) => !existsSync(f)))('both decode back to the same hexia island', async () => {
     const states = [] as GridState[];
     for (const file of FILES) states.push(await decode(file));
 

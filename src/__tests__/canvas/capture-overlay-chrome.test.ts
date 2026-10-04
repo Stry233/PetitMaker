@@ -1,11 +1,4 @@
-/**
- * An export capture with the grid on bakes the grid lines and nothing else the overlay layer draws.
- *
- * The grid lines share the overlay layer with the tool feedback (the generate region's highlight,
- * hover, selection, ghosts). A capture without the grid hides the whole layer; a capture WITH the
- * grid has to keep the layer visible for the lines, so the feedback has to be hidden on its own, and
- * put back exactly as it stood, hidden children included.
- */
+/** Captures control reference grids independently of annotations and omit transient tool feedback. */
 import './_pixi-env';
 import { describe, it, expect, afterEach } from 'vitest';
 import * as PIXI from 'pixi.js-legacy';
@@ -17,7 +10,7 @@ import { makeState } from '../rules/_helpers';
 const renderers: MapRenderer[] = [];
 afterEach(() => { for (const r of renderers.splice(0)) r.destroy(); });
 
-interface Bake { overlayVisible: boolean; regionVisible: boolean; gridVisible: boolean }
+interface Bake { overlayVisible: boolean; regionVisible: boolean; gridVisible: boolean; annotationsVisible: boolean }
 
 /** Capture once, reading the overlay's visibility flags at the instant the world is rasterized. */
 function captureReading(includeGrid: boolean, prepare: (r: MapRenderer) => void): { bake: Bake | null; renderer: MapRenderer } {
@@ -29,7 +22,10 @@ function captureReading(includeGrid: boolean, prepare: (r: MapRenderer) => void)
   const gl = (renderer as unknown as { app: { renderer: Record<string, unknown> } }).app.renderer;
   let bake: Bake | null = null;
   gl.generateTexture = () => {
-    bake = { overlayVisible: overlay.container.visible, regionVisible: overlay.buildableGraphics.visible, gridVisible: overlay.gridGraphics.visible };
+    bake = {
+      overlayVisible: overlay.container.worldVisible, regionVisible: overlay.buildableGraphics.worldVisible,
+      gridVisible: overlay.gridGraphics.worldVisible, annotationsVisible: renderer.annotationLayer.container.worldVisible,
+    };
     return { destroy: () => {} };
   };
   gl.extract = { canvas: () => document.createElement('canvas') };
@@ -38,10 +34,10 @@ function captureReading(includeGrid: boolean, prepare: (r: MapRenderer) => void)
 }
 
 describe('captureMapCanvas and the overlay layer', () => {
-  it('bakes the grid lines alone: the region highlight is hidden while the layer stays visible', () => {
+  it('bakes visible grid lines while omitting tool feedback', () => {
     const { bake } = captureReading(true, (r) => r.overlayLayer.showBuildableRegion([{ x: 2, y: 2 }, { x: 3, y: 2 }], true));
     expect(bake).not.toBeNull();
-    expect(bake!.overlayVisible).toBe(true);
+    expect(bake!.overlayVisible).toBe(false);
     expect(bake!.gridVisible).toBe(true);
     expect(bake!.regionVisible).toBe(false);
   });
@@ -57,8 +53,10 @@ describe('captureMapCanvas and the overlay layer', () => {
     expect(overlay.gridGraphics.visible).toBe(true);
   });
 
-  it('hides the whole layer when the grid is off, as before', () => {
+  it('hides the grid and tool feedback while retaining annotations for a capture without grids', () => {
     const { bake } = captureReading(false, (r) => r.overlayLayer.showBuildableRegion([{ x: 2, y: 2 }], true));
     expect(bake!.overlayVisible).toBe(false);
+    expect(bake!.gridVisible).toBe(false);
+    expect(bake!.annotationsVisible).toBe(true);
   });
 });

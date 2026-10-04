@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { CellZone, TerrainType } from '../../../../core/model/types';
 import type { GridState, MapTemplate, PlacedObject } from '../../../../core/model/types';
 import { createGrid } from '../../../../core/model/grid-model';
-import { buildProcFields, elevationMask, plantDrifts, plantingDensity, genusOf } from '../../../../io/stylize/proc/fields';
+import { buildProcFields } from '../../../../io/stylize/proc/fields';
 
 /** A small island: a ring of water around sand around grass, which is the shape of every template. */
 function template(w = 16, h = 12): MapTemplate {
@@ -49,9 +49,9 @@ describe('proc/fields — the map becomes typed arrays', () => {
   it('a flat map reports no elevation, which is the common case', () => {
     const f = buildProcFields(state(), 1);
     expect(f.maxElevation).toBe(0);
-    // Tier 0 is the island; every tier above it is empty, so an elevation-driven pack draws nothing.
-    expect(elevationMask(f, 0).some((v) => v === 1)).toBe(true);
-    expect(elevationMask(f, 1).some((v) => v === 1)).toBe(false);
+    // The island is land, and no cell stands above tier 0, so an elevation-driven pack draws nothing.
+    expect(f.land.some((v) => v === 1)).toBe(true);
+    expect(f.elevation.every((v) => v === 0)).toBe(true);
   });
 
   it('reads raised terrain into tiers', () => {
@@ -63,11 +63,9 @@ describe('proc/fields — the map becomes typed arrays', () => {
       }
     }), 1);
     expect(f.maxElevation).toBe(2);
-    const tier1 = elevationMask(f, 1);
-    const tier2 = elevationMask(f, 2);
-    const count = (m: Uint8Array) => m.reduce((a, b) => a + b, 0);
-    expect(count(tier1)).toBe(20);
-    expect(count(tier2)).toBe(10);
+    const atOrAbove = (tier: number) => Array.from(f.elevation).filter((v) => v >= tier).length;
+    expect(atOrAbove(1)).toBe(20);
+    expect(atOrAbove(2)).toBe(10);
   });
 
   it('stamps object footprints into the class masks and keeps the objects', () => {
@@ -97,37 +95,6 @@ describe('proc/fields — the map becomes typed arrays', () => {
     expect(f.landSdf[at(8, 6)]!).toBeLessThan(0);
     expect(f.landSdf[at(0, 0)]!).toBeGreaterThan(0);
     expect(f.waterSdf[at(0, 0)]!).toBeLessThan(0);
-  });
-
-  it('groups drifts by genus, so cultivars of one flower are one bed', () => {
-    expect(genusOf('flower-agapanthus-blue')).toBe('flower-agapanthus');
-    expect(genusOf('flower-agapanthus-white')).toBe('flower-agapanthus');
-    expect(genusOf('tree-peach')).toBe('tree-peach');
-    const objects: PlacedObject[] = [];
-    let n = 0;
-    for (let x = 5; x < 11; x++) {
-      objects.push(obj(`a${n++}`, 'flower-agapanthus-blue', x, 5));
-      objects.push(obj(`b${n++}`, 'flower-agapanthus-white', x, 6));
-    }
-    const f = buildProcFields(state(objects), 1);
-    const drifts = plantDrifts(f, 4);
-    expect(drifts).toHaveLength(1);
-    expect(drifts[0]!.genus).toBe('flower-agapanthus');
-    expect(drifts[0]!.cells).toBe(12);
-  });
-
-  it('drops a run below the floor, because single stamps in rows are the backbone not a bed', () => {
-    const f = buildProcFields(state([obj('t', 'tree-peach', 7, 7)]), 1);
-    expect(plantDrifts(f, 4)).toHaveLength(0);
-  });
-
-  it('density falls off away from planting', () => {
-    const f = buildProcFields(state([obj('t', 'tree-peach', 8, 6)]), 1);
-    const d = plantingDensity(f);
-    const at = (x: number, y: number) => y * f.width + x;
-    expect(d[at(8, 6)]!).toBeCloseTo(1, 3);
-    expect(d[at(9, 6)]!).toBeLessThan(d[at(8, 6)]!);
-    expect(d[at(12, 6)]!).toBeLessThan(d[at(9, 6)]!);
   });
 
   it('is a pure function of the map: the same state bakes identically', () => {

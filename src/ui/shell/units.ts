@@ -1,5 +1,5 @@
 /*
- * units.ts — the sizes the interface is laid out in.
+ * The sizes the interface is laid out in.
  *
  * The chrome is authored in FIXED CSS PIXELS under one page-level `zoom`, deliberately NOT the menu
  * scale: that maps the design canvas onto viewport height, so a 1440p monitor would draw the same
@@ -21,7 +21,7 @@ export const ZOOM = 1.25;
 
 /** A mode block's drawing width in design px, resting and selected. All five share one width
  *  (`frame.ts:MODES` brings them to it) because each is one grass cube with a different thing on it,
- *  and the cube is what the eye reads the row by. The selected pair is `物品图标`'s own footprint,
+ *  and the cube is what the eye reads the row by. The selected pair is the Objects icon's own footprint,
  *  which the side margins are also proportioned against. */
 export const BLOCK_W = 172;
 export const BLOCK_W_ON = 207;
@@ -99,7 +99,7 @@ export const EDGE_TOP = 28;
 /**
  * The `transform` for a caption centred under a control whose centre stands `centre` px from the
  * frame's left edge — centred unless that would take it off the window. The first control sits at the
- * margin, so its caption would hang half its width into it ("Свободная кисть" by 25 px). Text size is
+ * margin, so its caption would hang half its width into it (the Russian free-brush caption by 25 px). Text size is
  * fixed, so what gives is where the caption sits.
  */
 export function captionShift(centre: number): string {
@@ -119,7 +119,7 @@ export const MODE = {
   /** The name under the selected block, at the design source's proportion (a 51 design px em, top
    *  34 px below the baseline — just clear of the splat, which hangs 32). SIZE takes the frame's
    *  scale since type is one size per role; GAP takes the row's, being room under a picture. It is
-   *  the biggest type after the shelf names because it answers "what am I building". */
+   *  the caption size for the active editing mode. */
   label: { size: Math.round(51 * SCALE), weight: 800, gap: Math.round(34 * MODE_SCALE) },
   /** Clearance the assistant's drawing keeps under the row above, and the only chosen number in the
    *  two rows' separation — the rest is derived (`frame.ts:ASSISTANT_ROW_TOP`) from the chain the eye
@@ -198,7 +198,7 @@ export const QUAD = { left: EDGE_LEFT, bottom: 44, gap: 14 } as const;
 export const SHELF = { bottom: EDGE, pad: 12, gap: 9, radius: 22 } as const;
 
 /**
- * The backing the bottom bars stand on, as the design draws it (`底边栏`).
+ * The backing the bottom bars stand on, as the design draws it (the bottom bar).
  *
  * ONE shape, not a box around the rows: it runs past both side edges and well past the bottom of the
  * canvas. So content is not INSIDE the plate — cards and candidates stand up out of it, half on the
@@ -230,6 +230,7 @@ export const RAIL_FLOOR = PLATE_BAND.top + 12;
  * word and the mark under the chosen one.
  */
 const TAB_PAD_X = 18;
+const SHELF_FIELD_TEXT = 20;
 
 export const SHELF_TABS = {
   /** The row's BOX, set so the WORDS land on the frame's gutter rather than the box doing so — a tab
@@ -242,10 +243,9 @@ export const SHELF_TABS = {
    *  so the whole thing reads as a rectangle. */
   underline: 8,
   underlineGap: 7,
-  /** The plate a text field standing IN the row wears — the shelf's search and the generator's recipe
-   *  field are one object. The drawing's 82 design px lands at 31 and reads SHORT beside 28 px names
-   *  and 42 px pills, so this is judged at size instead. */
-  field: 38,
+  /** The search capsule preserves the drawing's plate-to-text proportion. */
+  fieldText: SHELF_FIELD_TEXT,
+  field: Math.round(SHELF_FIELD_TEXT * 82 / 44.5),
   /**
    * How far the row's bottom edge stands above the window's bottom. ONE number for both shelves,
    * which is the point: the block under the row is a different depth in each, so a row placed by its
@@ -278,9 +278,8 @@ export function standsInNameRow(h: number): number {
 export const TEXT = {
   /** Tabs, pills, and anything else naming a choice. */
   tab: 14.5,
-  /** The names above a bottom shelf. Drawn at 75.2 design px against a 217-deep band, roughly a third
-   *  of it, which makes them the shelf's heading rather than a caption inside it. */
-  shelfTab: Math.round(75.2 * SCALE),
+  /** Categories lead the shelf while fields remain subordinate to them. */
+  shelfTab: 24,
   /** A control's own caption: the tool under the row, a slider's name. Half the caption over a MODE
    *  block — the two name different sizes of thing and are deliberately not one size. */
   label: Math.round(35 * SCALE),
@@ -292,3 +291,9 @@ export const TEXT = {
    *  layer count on the right edge. */
   readout: 23,
 } as const;
+
+/** Both shelves reserve the same heading envelope, including a field centred beside the names. */
+export const SHELF_HEADING_HEIGHT = Math.max(
+  TEXT.shelfTab * LABEL_BOX_DEPTH + SHELF_TABS.underlineGap + SHELF_TABS.underline,
+  SHELF_TABS.field + standsInNameRow(SHELF_TABS.field),
+);

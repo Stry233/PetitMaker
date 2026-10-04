@@ -1,7 +1,7 @@
 /**
  * The rotate shortcut on a PLURAL selection: routing it through `singleSelection`, which returns null
  * for a group, makes the shortcut silently do nothing. It must instead run the exact call path the
- * SelectionHandles rotate button uses (`kit/group-edit.ts:rotateGroupAction`)
+ * SelectionCard rotate button uses (`kit/group-edit.ts:rotateGroupAction`)
  * — same rigid-body turn, same refusal register — so the keyboard and the button can never diverge.
  */
 import { describe, it, expect, afterEach } from 'vitest';
@@ -39,7 +39,7 @@ function place(specs: Spec[]): { gs: GridState; exec: CommandExecutor; eventBus:
       id: s.id, catalogId: s.catalogId, position: { x: s.x, y: s.y },
       rotation: 0, elevation: 0,
     };
-    const res = exec.execute({ type: CommandType.PlaceObject, timestamp: 0, object, loadValue: 0 });
+    const res = exec.execute({ type: CommandType.PlaceObject, timestamp: 0, object });
     expect(res.success).toBe(true);
   }
   return { gs, exec, eventBus };

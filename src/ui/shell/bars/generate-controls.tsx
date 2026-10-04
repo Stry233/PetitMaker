@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { motion } from 'framer-motion';
-import { btnReset, buttonMotion, cursors, UNAVAILABLE } from '../../design/styles';
+import { btnReset, buttonMotion, cursors, UNAVAILABLE, radii } from '../../design/styles';
 import { DARK_GROOVE, MUTED_INK, ON_DARK, PLATE, PLATE_INK } from '../../design/tokens';
 import { TEXT } from '../units';
 import { Switch } from '../../primitives/Switch';
@@ -43,7 +43,7 @@ export function StripChip({ name, value, onOpen, testId, disabled, width }: {
         ...btnReset, flex: '0 0 auto', pointerEvents: 'auto',
         cursor: disabled ? cursors.blocked : cursors.clickable,
         opacity: disabled ? UNAVAILABLE : 1,
-        height: STRIP.h, padding: `0 ${STRIP.padX}px`, borderRadius: 999, background: PLATE,
+        height: STRIP.h, padding: `0 ${STRIP.padX}px`, borderRadius: radii.pill, background: PLATE,
         display: 'flex', alignItems: 'center', gap: 8, minWidth: 0,
         ...(width ? { width, boxSizing: 'border-box' as const } : {}),
       }}
@@ -107,7 +107,7 @@ export function Knob({ label, control, groove = true }: {
         {groove ? (
           <span
             style={{
-              position: 'absolute', inset: 0, borderRadius: 999,
+              position: 'absolute', inset: 0, borderRadius: radii.pill,
               background: DARK_GROOVE, pointerEvents: 'none',
             }}
           />

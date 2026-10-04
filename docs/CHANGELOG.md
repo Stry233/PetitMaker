@@ -4,6 +4,72 @@ All notable changes to PetitMaker are documented here.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.532] - 2026-10-03
+
+### Added
+
+- The assistant can read, add, edit and remove notes, and changes only the notes in the region you select.
+
+- Regional load limits how much you, map generation and the assistant can add to each region, and shows how full each region is. You can turn the limit off in Regional load.
+
+- Custom planets let you draw your own planet with Ground, Sand, ponds and the Neighbor Center. Start one with New planet in Change a planet.
+
+- Import from a game video (Beta) reads a planet from a recording of the game's Map. In Change a planet, choose Import planet, then From a game video.
+
+### Changed
+
+- The assistant now suggests a reply more often after a simple question, and question cards close with File it away.
+
+- How it was built and Past jobs now list each step under its plan stage and show what it changed.
+
+- Custom endpoints now work without an API key, and the connection settings now let you search models or type a model ID.
+
+- The assistant panel now resizes smoothly and shows its reasoning as it streams in.
+
+- Selections now open a card with the item's name and buttons to rotate, pick and delete it, sized for touch screens.
+
+- Selections are now marked with corner brackets or an exact outline, and in 3D with their footprint on the ground.
+
+- The right-click menu and confirmation cards, including Erase local data in Settings, now match the rest of the interface and stay inside the window. Menus also work with the arrow keys.
+
+- Notes now previews the brush, lets you undo and redo while drawing, and asks before discarding an unfinished region.
+
+- The Area control for map generation now has a brush, an eraser and width and height guides.
+
+- Keyboard Shortcuts now always lists the keys for the current toolbar.
+
+- Change a planet now shows each planet's map and, before you switch, which parts of your build come with you.
+
+- Path edges now fade more smoothly at corners and narrow tips.
+
+- The 3D view now looks closer to the game, with taller terrain layers and remodeled plants, buildings, bridges and ramps.
+
+- The Light graphics quality now simplifies flower petals and roof decoration and keeps buildings intact.
+
+- Exported images now include the sea around the island.
+
+- Maps and share codes now use a new format that earlier versions of PetitMaker cannot open. Older maps update automatically when you open them.
+
+### Fixed
+
+- The assistant plans only as much as a task needs, asks when there is nothing to build, and keeps the parts of a build that were accepted.
+
+- Urban Asphalt Path joins up across cells, with curbs and white lines that follow bends and junctions. Patterned paths such as Radiant Star Stone Path and Wavy Terracotta Path continue their patterns across cells.
+
+- Chunk bounds on the built-in planets follow the game's 13 × 12 grid.
+
+- Ramps take 2 cells, as in the game. Ramps in existing maps adjust automatically.
+
+- Yunguo's Bamboo Harvest House takes 5 × 5 cells, as in the game. In existing maps you may need to move objects next to it.
+
+- Several item names match the game in English, French, Indonesian, Japanese, Russian and Thai.
+
+- The Neighbor Center uses its in-game name, shown as the Central Plaza in earlier versions.
+
+- Clicking the map takes keyboard focus away from text fields such as search.
+
+- With Motion set to Reduced, loading dots stay still and each Motion preview in Settings shows its own option.
+
 ## [1.4.18] - 2026-09-19
 
 ### Added

@@ -1,10 +1,12 @@
 PRO TERRAFORMING — the advanced terrain moves: tall walls, cascades, elevated water, and the exact patterns that pass validation first try.
 
+Adapt this reference to the requested area, features and scale. Its examples are optional; keep existing work and explicit constraints. Choose the relevant techniques, not the entire layout.
+
 WHEN TO USE: any serious landscaping beyond a 3-tier hill — backing walls, waterfall chains, elevated pools, coastline work.
 
 TALL FORMS (above sculpt_terrace's 3-tier cap)
-- paint_terrain mountain takes the FINAL elevation (max 8) and auto-builds the support tiers. The one legality: at elevation 4+ every cell needs a full 3x3 of neighbors at >= N-3 (V-MTN-03), so a sheer face can drop at most 3 layers. Build tall forms as stacked bands, each higher band inset 1+ cells inside the band 3 below it, each call under 4000 cells.
-- THE BACKING WALL (the expert planet's primary form): a band 30-40 rows deep along ONE map edge, graded in 2-3 paint_terrain bands (e.g. elev 3 base band, elev 6 inset band, elev 8 crown) with smooth:'round'. Keep the crown FLAT and broad — the reference paves and even floods its top; a wall you cannot stand on is scenery, a wall with a court on top is a destination.
+- paint_terrain mountain takes the FINAL elevation (up to the ceiling its schema gives) and auto-builds the support tiers. The one legality is V-MTN-03 (its rule hint gives the thresholds): a tall cell needs a full support window within the rule's reach below it, so a sheer face can drop at most that reach. Build tall forms as stacked bands, each higher band inset 1+ cells inside the band one reach below it, each call under 4000 cells.
+- THE BACKING WALL (the expert planet's primary form): a band 30-40 rows deep along ONE map edge, graded in 2-3 paint_terrain bands (e.g. a base band one support reach up, an inset band one reach higher, the crown at the elevation ceiling) with smooth:'round'. Keep the crown FLAT and broad — the reference paves and even floods its top; a wall you cannot stand on is scenery, a wall with a court on top is a destination.
 - Foothills: 1-2 sculpt_terrace calls (tiers 1-2, varied seeds) where the wall meets the plain, so the mass lands rather than stopping.
 
 ELEVATED WATER (the containment recipes)
@@ -20,5 +22,5 @@ RIVERS AND COASTS
 
 WORKFLOW
 - Large to small: wall, then river, then benches and pools, then coast detail. Check each result snapshot and fix as you go.
-- Ramps as you build: every ramp climbs one layer, so plan a bench per layer of climb and find_ramp_sites after each tier — cliff faces a route will use should stay unsmoothed.
+- Ramps as you build: check each ramp’s catalog heightDrop and use find_ramp_sites for the intended transition — cliff faces a route will use should stay unsmoothed.
 - Decorate only after all terrain: waterside beds, orchard benches, high tiers mostly bare.

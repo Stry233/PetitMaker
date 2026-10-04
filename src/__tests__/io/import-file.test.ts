@@ -10,6 +10,7 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import { importFile, inspectImportFile, type ImportFileDeps } from '../../io/import-file';
 import { MAX_IMPORT_BYTES } from '../../io/import-limits';
 import { serialize } from '../../io/json-codec';
+import { jsonFile } from '../fixtures/json-file';
 import { TerrainType, type GridState } from '../../core/model/types';
 import { setTerrain } from '../rules/_helpers';
 import { createGrid } from '../../core/model/grid-model';
@@ -41,14 +42,6 @@ function makeDeps(): ImportFileDeps & { loadMap: ReturnType<typeof vi.fn> } {
       setCamera: vi.fn(),
     }),
   };
-}
-
-// A real jsdom File/Blob has no `.text()` implementation (a jsdom gap, not a browser one — see
-// MDN File extends Blob), so a bare object satisfying the two members `importFile` actually reads
-// (`type`, `text()`) stands in for it. `name` is passed to `importFile` separately, exactly like
-// the real call sites do (File.name isn't read directly by the routing logic).
-function jsonFile(text: string, type = ''): File {
-  return { type, text: async () => text } as unknown as File;
 }
 
 describe('importFile routing', () => {

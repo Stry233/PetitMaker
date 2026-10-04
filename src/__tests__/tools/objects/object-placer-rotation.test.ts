@@ -12,6 +12,7 @@ import { createDefaultRegistry } from '../../../rules/index';
 import { TerrainType, type EditorEvents, type MacroCoord } from '../../../core/model/types';
 import { makeState, setTerrain } from '../../rules/_helpers';
 import { makeToolCtx, objectsByCatalog } from '../_tool-ctx';
+import { getCatalogItem } from '../../../state/catalog';
 import { useEditorStore } from '../../../state/store';
 import { COMMAND_BY_ID } from '../../../kit/commands';
 import { roadLookup } from '../../../state/object-index';
@@ -20,9 +21,10 @@ const m = (x: number, y: number): MacroCoord => ({ x, y });
 const exec = (s: any) => new CommandExecutor(s, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(s));
 const noopCtx = { openBuild: () => {}, handleTileAction: () => {}, toggleMenu: () => {} };
 
-// 7x4, rotatable, plain 'flat' trait only — big enough that a 90/270 rotation visibly swaps
-// the footprint's width and height.
+// Rotatable, plain 'flat' trait only, and at least two cells wider than deep, so a 90/270
+// rotation visibly swaps the footprint's width and height.
 const HOUSE = 'building-myhouse';
+const { width: W, height: H } = getCatalogItem(HOUSE)!;
 
 function reset(): void {
   useEditorStore.setState({
@@ -45,7 +47,7 @@ describe('ObjectPlacerTool: rotating the ghost before placement', () => {
       expect(before.rotation).toBe(0);
       const beforeW = Math.max(...before.cells.map((c) => c.x)) - Math.min(...before.cells.map((c) => c.x)) + 1;
       const beforeH = Math.max(...before.cells.map((c) => c.y)) - Math.min(...before.cells.map((c) => c.y)) + 1;
-      expect([beforeW, beforeH]).toEqual([7, 4]);
+      expect([beforeW, beforeH]).toEqual([W, H]);
 
       COMMAND_BY_ID.get('selection.rotate_cw')!.run(noopCtx);
       expect(useEditorStore.getState().placementRotation).toBe(90);
@@ -54,8 +56,8 @@ describe('ObjectPlacerTool: rotating the ghost before placement', () => {
       expect(after.rotation).toBe(90);
       const afterW = Math.max(...after.cells.map((c) => c.x)) - Math.min(...after.cells.map((c) => c.x)) + 1;
       const afterH = Math.max(...after.cells.map((c) => c.y)) - Math.min(...after.cells.map((c) => c.y)) + 1;
-      // The extents SWAP: 7 wide x 4 tall becomes 4 wide x 7 tall.
-      expect([afterW, afterH]).toEqual([4, 7]);
+      // The extents SWAP: W wide x H tall becomes H wide x W tall.
+      expect([afterW, afterH]).toEqual([H, W]);
     } finally {
       reset();
     }
@@ -65,11 +67,13 @@ describe('ObjectPlacerTool: rotating the ghost before placement', () => {
     arm(HOUSE);
     try {
       // Anchored at (10,10), the house's flat-trait sweep is dx:0..w, dy:0..h off the anchor
-      // (V-PLACE-TRAIT). Unrotated (7x4) that sweep reaches y<=14; rotated 90 (4x7) it reaches
-      // y<=17. A raised strip at y=16 therefore sits outside the unrotated sweep but inside the
+      // (V-PLACE-TRAIT). Unrotated that sweep reaches y<=10+H; rotated 90 it reaches y<=10+W.
+      // A raised strip at y=10+H+2 therefore sits outside the unrotated sweep but inside the
       // rotated one — so rotating alone must flip this placement from legal to illegal.
+      const stripY = 10 + H + 2;
+      expect(stripY).toBeLessThanOrEqual(10 + W);
       const state = makeState(30, 30);
-      for (let x = 10; x <= 14; x++) setTerrain(state, x, 16, TerrainType.Mountain, 1);
+      for (let x = 10; x <= 10 + H; x++) setTerrain(state, x, stripY, TerrainType.Mountain, 1);
       const ctx = makeToolCtx(state, exec(state));
 
       const flat = planPlacementGhost(HOUSE, m(10, 10), ctx, 0)!;

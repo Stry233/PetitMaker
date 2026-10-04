@@ -1,17 +1,16 @@
 /**
- * anim-config.ts — single source of truth for every CANVAS (PixiJS) animation
- * constant: durations, amplitudes, particle counts, the per-category poof
- * palette, and shared caps. Renderer layers and tools read from here so no
- * animation "magic numbers" live in render/tool code.
+ * Single source of truth for every CANVAS (PixiJS) animation constant: durations,
+ * amplitudes, particle counts, the per-category poof palette, and shared caps.
+ * Renderer layers and tools read from here so no animation "magic numbers" live
+ * in render/tool code.
  *
- * (DOM / Framer-Motion timings live separately in `ui/design/styles.ts`: `springs`,
- * `easing`, `durations` — that is the React side's source of truth. Keep the
- * two in sync conceptually, but each owns its own domain.)
+ * DOM / Framer-Motion timings live separately in `ui/design/styles.ts` (`springs`,
+ * `easing`, `durations`), the React side's source of truth.
  *
- * The defaults favor short, springy, toy-like motion; every consumer reads
- * from here, so the feel can be tuned in one place.
+ * The defaults favor short, springy, toy-like motion.
  */
-import { ItemCategory } from '../model/types';
+import { hexStringToNumber } from '../model/colors';
+import { ERROR_RED } from './brand-palette';
 
 /**
  * Overshoot ease, landing exactly on 1 at t = 1; `s` controls the overshoot. Lives here with the
@@ -21,6 +20,16 @@ import { ItemCategory } from '../model/types';
 export function easeOutBack(t: number, s = 1.7): number {
   const c3 = s + 1;
   return 1 + c3 * Math.pow(t - 1, 3) + s * Math.pow(t - 1, 2);
+}
+
+/** Ease-out cubic: fast out of the start, settling into 1. */
+export function easeOutCubic(t: number): number {
+  return 1 - Math.pow(1 - t, 3);
+}
+
+/** Ease-out quadratic: a gentler settle than the cubic. */
+export function easeOutQuad(t: number): number {
+  return 1 - (1 - t) * (1 - t);
 }
 
 /** A decaying regional flash. `alpha = peakAlpha * (1 - t²)` over `durationMs`. */
@@ -36,7 +45,7 @@ export const animConfig = {
      *  (a material-tint blended into matching terrain), still well under the error curve. */
     commit: { peakAlpha: 0.35, durationMs: 200, color: 0xffffff } as FlashSpec,
     /** Rare → loud. Used by `flashErrors`. */
-    error: { peakAlpha: 0.45, durationMs: 400, color: 0xff6b6b } as FlashSpec,
+    error: { peakAlpha: 0.45, durationMs: 400, color: hexStringToNumber(ERROR_RED) } as FlashSpec,
     /** A repeated violation with IDENTICAL evidence (a brush held over the plaza
      *  rejects once per pointer sample) stays quiet this long after its flash
      *  started, then may pulse again — one clean flash instead of a solid strobe. */
@@ -64,9 +73,13 @@ export const animConfig = {
   groupRotation: { durationMs: 280, overshoot: 1.2 },
 
   /** Selection ring pop: a CONSTANT PIXEL travel, not a constant scale fraction. A fixed fraction
-   *  moves a 9x9 plaza's edges nine times as far as a 1x1 tree's, so one easing would read as a
-   *  tick on the tree and a bounce on the plaza. `maxAmp` caps the travel on a sub-tile box. */
+   *  moves a large footprint's edges many times as far as a single cell's, so one easing would read
+   *  as a tick on a tree and a bounce on the plaza. `maxAmp` caps the travel on a sub-tile box. */
   selectionPop: { travelPx: 12, maxAmp: 0.2, durationMs: 180 },
+
+  /** How long a camera glide the view controls start (zoom and tilt steppers, fit to map) runs in
+   *  each view, eased out cubic. */
+  cameraGlide: { map2dMs: 220, map3dMs: 260 },
 
   /** Layer-visibility fade: the whole per-elevation object container, as one
    *  fade — never per-object. */
@@ -88,18 +101,6 @@ export const animConfig = {
      *  spread is footprint-INDEPENDENT (a tight central burst at any size). */
     delete: { countBase: 5, countPerArea: 1 / 3, countCap: 10, spreadMul: 1.7, lifetimeMs: 340, gravity: 14, arcSpread: 6.28, risePx: 6, maxRadiusPx: 13 },
   },
-
-  /** Per-category poof tint (same-hue). Only road items carry `item.color`;
-   *  icon-sprite items derive their tint from the catalog category here. */
-  categoryColor: {
-    [ItemCategory.Tree]: 0x7cc24a,
-    [ItemCategory.Flora]: 0xf2a8c8,
-    [ItemCategory.Building]: 0xe6c48a,
-    [ItemCategory.Bridge]: 0xc7a06a,
-    [ItemCategory.Ramp]: 0xb8aeb0,
-    [ItemCategory.Road]: 0xc4a882,
-    [ItemCategory.Facility]: 0xfb923c,
-  } as Record<ItemCategory, number>,
 
   /** Fallback tint when neither `item.color` nor a category match exists (= OBJECT_COLOR). */
   fallbackColor: 0xfb923c,

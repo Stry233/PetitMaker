@@ -5,12 +5,22 @@ import { makeState } from '../rules/_helpers';
 import { useEditorSession } from '../../ui/hooks/use-editor-session';
 import { scheduleAutosave } from '../../io/autosave';
 import { host } from '../../kit/host';
+import { listPlanets } from '../../io/planet-library';
+import { createGridState } from '../../core/model/planet';
+import { planetFixture } from '../fixtures/planet';
 
 vi.mock('../../io/autosave', () => ({ scheduleAutosave: vi.fn() }));
 vi.mock('../../canvas/interaction/selection-view-sync', () => ({ installSelectionViewSync: () => () => {} }));
 vi.mock('../../canvas/interaction/region-view-sync', () => ({ installRegionViewSync: () => () => {} }));
 vi.mock('../../kit/operations/map', () => ({ loadMap: (state: ReturnType<typeof makeState>) => useEditorStore.setState({ gridState: state }) }));
-vi.mock('../../kit/host', () => ({ host: { camera: { set2d: vi.fn(), set3d: vi.fn() } } }));
+vi.mock('../../kit/host', () => {
+  let queued: unknown = null;
+  return { host: { camera: {
+    set2d: vi.fn(), set3d: vi.fn(),
+    queue: (c: unknown) => { queued = c; },
+    takeQueued: () => { const c = queued; queued = null; return c; },
+  } } };
+});
 afterEach(() => { cleanup(); vi.clearAllMocks(); });
 
 describe('shared editor session', () => {
@@ -24,6 +34,18 @@ describe('shared editor session', () => {
     vi.mocked(scheduleAutosave).mockClear();
     act(() => useEditorStore.setState({ annotationsEpoch: 1 }));
     expect(scheduleAutosave).toHaveBeenLastCalledWith(map);
+  });
+  it('schedules no autosave while a planet session is open', () => {
+    const map = makeState();
+    useEditorStore.setState({ gridState: map, notesEpoch: 0, planetSession: null });
+    renderHook(() => useEditorSession());
+    const parked = {} as NonNullable<ReturnType<typeof useEditorStore.getState>['planetSession']>['parked'];
+    act(() => useEditorStore.setState({ planetSession: { entryId: null, name: '', nameReviewed: true, parked } }));
+    vi.mocked(scheduleAutosave).mockClear();
+    act(() => useEditorStore.setState({ gridState: makeState(), notesEpoch: 1 }));
+    act(() => useEditorStore.getState().eventBus.emit('cells-changed', { cells: [] } as never));
+    expect(scheduleAutosave).not.toHaveBeenCalled();
+    act(() => useEditorStore.setState({ planetSession: null }));
   });
   it('applies a restored camera after committing the map and before settling its view', () => {
     useEditorStore.setState({ gridState: makeState() });
@@ -41,5 +63,13 @@ describe('shared editor session', () => {
     expect(host.camera.set2d).toHaveBeenCalledWith(camera.view2d);
     expect(settle).toHaveBeenCalledWith(map);
     expect(vi.mocked(host.camera.set2d).mock.invocationCallOrder[0]).toBeLessThan(settle.mock.invocationCallOrder[0]!);
+  });
+  it('adds the planet of an accepted restore to the library', () => {
+    localStorage.clear();
+    useEditorStore.setState({ gridState: makeState() });
+    const { result } = renderHook(() => useEditorSession());
+    const map = createGridState(planetFixture());
+    act(() => result.current({ state: map }));
+    expect(listPlanets().map((e) => e.template.id)).toEqual([map.template.id]);
   });
 });

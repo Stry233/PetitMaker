@@ -3,7 +3,7 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach } from 'vitest';
 import { HUSHED, InlineConfirm } from '../../../ui/primitives/InlineConfirm';
 import { UNAVAILABLE } from '../../../ui/design/styles';
-import { CONFIRM_ARM } from '../../../ui/agent/motion';
+import { CONFIRM_ARM } from '../../../ui/design/motion';
 import { CURVES } from '../../../ui/shell/motion/curves';
 import { MOTIONS } from '../../../ui/shell/motion/registry';
 

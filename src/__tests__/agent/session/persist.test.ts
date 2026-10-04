@@ -34,6 +34,7 @@ function everyKindInputs(): SessionEventInput[] {
     { kind: 'compaction', summary: 'summary text', retainedFromSeq: 5 },
     { kind: 'incident', error: { cls: 'quota', detail: 'no quota' } },
     { kind: 'jobEnd', outcome: 'done', summary: 'done well' },
+    { kind: 'replySuggested', orderSeq: 1, reply: 'Add flowers', usage: { input: 100, output: 5 } },
   ];
 }
 

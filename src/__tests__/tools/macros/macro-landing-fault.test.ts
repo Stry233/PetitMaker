@@ -60,15 +60,25 @@ function makeMap(): { state: GridState; executor: CommandExecutor } {
 }
 
 /**
- * The live executor with its stroke commit throwing for the first `faults` landings — a rule or
+ * The live executor with its stroke commit, bare or through a transaction, throwing for the first `faults` landings — a rule or
  * executor fault, the one thing `landMacroRun` rethrows rather than reporting. Everything else
  * delegates, so the rollback it performs on the way out is the real one.
  */
 function faulty(real: CommandExecutor, faults: { left: number }): CommandExecutor {
   return new Proxy(real, {
     get(target, prop) {
-      if (prop === 'commitStrokeGroup' && faults.left > 0) {
+      if (prop === 'commitStroke' && faults.left > 0) {
         return (): never => { faults.left -= 1; throw new Error('commit fault'); };
+      }
+      if (prop === 'transaction') {
+        const open: CommandExecutor['transaction'] = (opts, body) => target.transaction(opts, (tx) => body({
+          ...tx,
+          commit: (o) => {
+            if (faults.left > 0) { faults.left -= 1; throw new Error('commit fault'); }
+            return tx.commit(o);
+          },
+        }));
+        return open;
       }
       const value = Reflect.get(target, prop, target);
       return typeof value === 'function' ? value.bind(target) : value;

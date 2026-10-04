@@ -8,7 +8,7 @@ import './_pixi-env';
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { Graphics, Text, type Container } from 'pixi.js-legacy';
 import { AnnotationLayer } from '../../canvas/map2d/layers/annotation-layer';
-import { setReducedMotion, __resetMotionState } from '../../canvas/map2d/motion-state';
+import { setReducedMotion, __resetMotionState } from '../../core/runtime/motion-state';
 import type { AnnotationsState, ZoneNote } from '../../core/model/annotations';
 
 const data = (): AnnotationsState => ({

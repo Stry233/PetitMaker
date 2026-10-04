@@ -37,7 +37,7 @@ describe.runIf(DUMP)('RENDER real map', () => {
       const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
       const config: GenerateConfig = { algorithm: 'designed', mode, corridorWidth: 1, maxElevation: 6, seed, region: null, richness: 0.7 };
       exec.runSilently(() => generateTerrain(config, state, (c) => exec.execute(c), exec.getRegistry()));
-      exec.commitStrokeGroup(exec.getUndoStackSize());
+      exec.commitStroke(exec.getUndoStackSize());
       const tier: number[] = [], water: number[] = [];
       for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
         const c = state.cells[y]![x]!.terrain;

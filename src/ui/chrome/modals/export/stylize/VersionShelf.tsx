@@ -1,5 +1,5 @@
 /*
- * VersionShelf.tsx — the session's contact sheet: 原图 first, then every take in the order it was
+ * The session's contact sheet: Original first, then every take in the order it was
  * drawn, then the card standing in for a job in flight.
  *
  * THE SHELF IS ALWAYS THE SAME ROW. Ghost slots keep it drawn to its six visible slots, so a take
@@ -16,6 +16,7 @@
  * nothing while a take is painting, because two indicators for one wait ask the eye which of them
  * is the job.
  */
+import { useChromeScale } from '../../../../design/scale';
 import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { motion, AnimatePresence, useReducedMotionConfig } from 'framer-motion';
 import { buttonMotion, colors, cursors, pressable, radii } from '../../../../design/styles';
@@ -27,7 +28,7 @@ import { useScrollFade } from '../../../../primitives/scroll-fade';
 import { useWheelToHorizontal } from '../../../../primitives/wheel-horizontal';
 import { MAP_ASPECT } from './sample-art';
 import { entering } from './atoms';
-import { amplitude, cssMotion, framerMotion } from './motion';
+import { amplitude, cssMotion, framerMotion, NO_MOTION } from '../../../../design/motion';
 
 /** How many slots stand in view; the row scrolls once the session has made more. */
 const SLOTS = 6;
@@ -72,7 +73,7 @@ export function VersionShelf({ versions, selectedId, running, runningBand, origi
   const scrollRef = useRef<HTMLDivElement>(null);
   const fade = useScrollFade(scrollRef, 'x');
   // A mouse over the shelf has only vertical notches; they drive the row's own travel.
-  useWheelToHorizontal(scrollRef);
+  useWheelToHorizontal(scrollRef, { zoom: useChromeScale() });
 
   // A card the row just GAINED (a finished take, or the one painting) belongs in view without a
   // hand on the scrollbar. Only growth scrolls: a retire must not yank the row to its end while
@@ -226,7 +227,7 @@ function PaintingCard({ band, reduced }: { band: string; reduced: boolean }) {
         // A minted take stands where this bar stood: the slot collapses on the leave's first
         // frame so the card pops in place, never one slot over sliding back.
         exit: (mintedJob: boolean) => mintedJob || reduced
-          ? { opacity: 0, flexBasis: 0, marginRight: 0, transition: { duration: 0 } }
+          ? { opacity: 0, flexBasis: 0, marginRight: 0, transition: NO_MOTION }
           : { opacity: 0, flexBasis: 0, marginRight: 0, transition: framerMotion('stylize.shelf.settle') },
       }}
       exit="exit"

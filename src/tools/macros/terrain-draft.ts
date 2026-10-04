@@ -1,10 +1,10 @@
-import { ELEVATION_MAX } from '../../core/model/constants';
 import { isBuildableZone, NEIGHBORS4, rectsOverlap } from '../../core/model/grid-model';
 import { CommandType, TerrainType, type AutoEdgeCut, type MacroCoord } from '../../core/model/types';
 import { getObjectIndex } from '../../state/object-index';
 import type { MacroContext } from './context';
 import { isClean, isWaterAt, paint, surfaceAt } from './terrain';
 import { applyAutoEdgeCut } from '../edge-cut/auto-edge-cut';
+import { BASE_SUPPORT, ELEVATION_MAX } from '../../core/model/game-profile';
 
 interface Surface { type: TerrainType; elevation: number }
 
@@ -88,9 +88,9 @@ export class TerrainDraft {
     for (let i = 0; i < queue.length; i++) {
       const key = queue[i]!;
       const t = this.cells.get(key)!;
-      if (t.elevation < 4) continue;
-      const c = this.coord(key), base = t.elevation - 3;
-      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+      if (t.elevation < BASE_SUPPORT.fromLayer) continue;
+      const c = this.coord(key), base = t.elevation - BASE_SUPPORT.reach, r = (BASE_SUPPORT.window - 1) / 2;
+      for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
         const n = { x: c.x + dx, y: c.y + dy };
         if (this.level(n) >= base) continue;
         if (this.water(n) || !this.raise(n, base)) return this.refuse(n);

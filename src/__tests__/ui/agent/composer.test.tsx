@@ -1,5 +1,5 @@
 /**
- * composer.test.tsx — the composer: four routes in one well, suggestions as ghosts.
+ * The composer: four routes in one well, suggestions as ghosts.
  *
  * Renders through `I18nProvider` (matches `gates.test.tsx`'s own wrapper) with a stubbed
  * `localStorage` the store's persisted locale pref can read/write safely in jsdom.
@@ -66,7 +66,7 @@ function lineBox(field: HTMLElement): number {
 
 describe('Composer: placeholder per route', () => {
   const EXPECT: Record<ComposerRoute, string> = {
-    order: 'Give an order',
+    order: 'Enter a task or question',
     steer: 'Add a note for the next step',
     'gate-words': 'Or answer in words',
     'resume-note': 'Add instructions and resume',
@@ -81,14 +81,6 @@ describe('Composer: placeholder per route', () => {
     });
   }
 
-  /**
-   * A SETTLED JOB'S STANDING QUESTION. The submission is an ORDER and takes exactly that route — a
-   * fifth route would be a lie about where the words go — but "Give an order" over the one card
-   * whose whole purpose is a question offered nothing that reads as answering it, and that card
-   * carries no quick answers of its own, so the field was the only reply and did not say so. The
-   * SHORT sentence is the one it says: the full one does not fit the field even undocked (measured
-   * clipped mid-word at en, zoom 1), which is why the route has no long form.
-   */
   it('says the answer is welcome too while a question stands, on the order route only', () => {
     const answering = renderWithI18n(
       <Composer route="order" answering running={false} onSend={noop} onStop={noop} onDropSuggestion={noop} />,
@@ -393,10 +385,11 @@ describe('Composer: off', () => {
   });
 
   /** The disabled state stays legible because its placeholder explains why input is unavailable. */
-  it('says the refusal in the tokens, and leaves the words readable', () => {
+  it('says the refusal in the tokens, and leaves the words readable', async () => {
     const { getByTestId } = renderWithI18n(
       <Composer route="order" running={false} marking onSend={noop} onStop={noop} onDropSuggestion={noop} />,
     );
+    await waitFor(() => expect(getByTestId('composer').style.opacity).toBe('1'));
     for (const id of ['composer', 'composer-well', 'composer-send']) {
       const fade = getByTestId(id).style.opacity;
       expect(fade === '' || fade === '1', `${id} opacity ${fade}`).toBe(true);

@@ -1,7 +1,7 @@
 {
   "name": "petitmaker",
   "private": true,
-  "version": "1.4.18",
+  "version": "1.5.532",
   "type": "module",
   "homepage": "https://petitmaker.cc/",
   "repository": {
@@ -22,7 +22,7 @@
     "test": "vitest",
     "test:run": "vitest run",
     "perf": "PETIT_PERF=1 vitest run --no-file-parallelism src/__tests__/perf",
-    "lint": "tsc --noEmit",
+    "lint": "tsc --noEmit && tsc --noEmit -p tsconfig.scripts.json",
     "docs:generate": "vite-node scripts/generate-reference.mts",
     "docs:check": "vite-node scripts/generate-reference.mts --check",
     "legal:licenses": "vite-node scripts/license-audit.mts",
@@ -39,6 +39,7 @@
     "@pixi/unsafe-eval": "^7.4.3",
     "@tensorflow/tfjs": "4.22.0",
     "@tensorflow/tfjs-backend-wasm": "4.22.0",
+    "clipper-lib": "6.4.2",
     "cuss": "2.2.0",
     "earcut": "^3.2.3",
     "fflate": "0.8.3",
@@ -64,6 +65,7 @@
   "devDependencies": {
     "@testing-library/react": "^16.3.3",
     "@types/earcut": "^3.0.0",
+    "@types/node": "^26.4.0",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
     "@types/three": "^0.169.0",

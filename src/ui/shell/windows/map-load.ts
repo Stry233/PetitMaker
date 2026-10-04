@@ -1,12 +1,9 @@
-/*
- * Per-chunk load reading using the same values and limits as placement validation. Chunk names match
- * the renderer's row letters and column numbers. Until load values are confirmed, production hides
- * the indicator and disables the rule; development may display provisional values for evaluation.
- * The reading is derived and never persisted.
- */
-import { CHUNK_LOAD_ENABLED, CHUNK_LOAD_LIMIT, CHUNK_SIZE } from '../../../core/model/constants';
 import { chunkKey } from '../../../core/model/grid-model';
+import { chunkName, mapChunkAxes } from '../../../core/model/map-chunks';
+import type { MapTemplate } from '../../../core/model/types';
 import type { MapStats } from '../../../state/map-stats';
+import { CHUNK_LOAD_ENABLED, CHUNK_LOAD_LIMIT } from '../../../core/model/game-profile';
+import { createSignal } from '../../../core/runtime/signal';
 
 /** Whether the indicator is drawn at all. */
 export const MAP_LOAD_SHOWN = CHUNK_LOAD_ENABLED || import.meta.env.DEV;
@@ -21,20 +18,13 @@ export interface ChunkLoad {
   value: number;
   /** How many objects stand there, which is what the value is derived from. */
   objects: number;
+  unknownLoads: number;
 }
 
 /** What one region may carry. */
 export const CHUNK_LOAD_MAX = CHUNK_LOAD_LIMIT;
 
-/**
- * A region's name, from its column and row.
- *
- * The same rule `canvas/map2d/map-renderer.ts` letters and numbers the map's edges by: rows are
- * A, B, C down the left and columns are 1, 2, 3 along the bottom. Rows wrap at Z, as they do there.
- */
-export function chunkName(cx: number, cy: number): string {
-  return `${String.fromCharCode(65 + (cy % 26))}${cx + 1}`;
-}
+export { chunkName };
 
 /**
  * WHICH REGION THE POINTER IS IN, held here and nowhere else.
@@ -48,32 +38,20 @@ export function chunkName(cx: number, cy: number): string {
  * The snapshot's identity only changes when the region does, so a `useSyncExternalStore` reader
  * re-renders on a crossing and not on a move.
  */
-let pointerRegion: { cx: number; cy: number } | null = null;
-const regionListeners = new Set<() => void>();
+const pointerRegion = createSignal<{ cx: number; cy: number } | null>(null);
 
 export function setPointerRegion(cx: number, cy: number): void {
-  if (pointerRegion && pointerRegion.cx === cx && pointerRegion.cy === cy) return;
-  pointerRegion = { cx, cy };
-  for (const listener of regionListeners) listener();
+  const at = pointerRegion.get();
+  if (at && at.cx === cx && at.cy === cy) return;
+  pointerRegion.emit({ cx, cy });
 }
 
 export function getPointerRegion(): { cx: number; cy: number } | null {
-  return pointerRegion;
+  return pointerRegion.get();
 }
 
 export function subscribePointerRegion(listener: () => void): () => void {
-  regionListeners.add(listener);
-  return () => { regionListeners.delete(listener); };
-}
-
-/** The region a macro cell falls in. */
-export function chunkAt(x: number, y: number): { cx: number; cy: number } {
-  return { cx: Math.floor(x / CHUNK_SIZE), cy: Math.floor(y / CHUNK_SIZE) };
-}
-
-/** How many regions a map that many cells wide is divided into. */
-export function chunksAcross(cells: number): number {
-  return Math.max(1, Math.ceil(cells / CHUNK_SIZE));
+  return pointerRegion.subscribe(listener);
 }
 
 /** What one region carries, or null while there is no reading to give. A region with nothing in it
@@ -81,7 +59,7 @@ export function chunksAcross(cells: number): number {
 export function chunkLoad(stats: MapStats, cx: number, cy: number): ChunkLoad | null {
   if (!CHUNK_LOAD_ENABLED && !import.meta.env.DEV) return null;
   const stat = stats.chunks.get(chunkKey(cx, cy));
-  return { cx, cy, name: chunkName(cx, cy), value: stat?.load ?? 0, objects: stat?.objects ?? 0 };
+  return { cx, cy, name: chunkName(cx, cy), value: stat?.load ?? 0, objects: stat?.objects ?? 0, unknownLoads: stat?.unknownLoads ?? 0 };
 }
 
 /**
@@ -90,11 +68,12 @@ export function chunkLoad(stats: MapStats, cx: number, cy: number): ChunkLoad | 
  * The empty ones are the point: a table that listed only the regions holding something would be a
  * list of objects with no map in it, and the question the table answers is where there is room.
  */
-export function allChunkLoads(stats: MapStats, width: number, height: number): ChunkLoad[] {
+export function allChunkLoads(stats: MapStats, template: MapTemplate): ChunkLoad[] {
   if (!CHUNK_LOAD_ENABLED && !import.meta.env.DEV) return [];
   const rows: ChunkLoad[] = [];
-  for (let cy = 0; cy < Math.ceil(height / CHUNK_SIZE); cy++) {
-    for (let cx = 0; cx < Math.ceil(width / CHUNK_SIZE); cx++) rows.push(chunkLoad(stats, cx, cy)!);
+  const axes = mapChunkAxes(template);
+  for (let cy = 0; cy < axes.rows.length; cy++) {
+    for (let cx = 0; cx < axes.columns.length; cx++) rows.push(chunkLoad(stats, cx, cy)!);
   }
   return rows;
 }

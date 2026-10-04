@@ -1,8 +1,7 @@
 /**
  * The runner: live app state assembled into `LoopDeps` per job, and the ONE place `send`/`stop`/
- * `pause`/`resume` reach the log. `makeToolDeps()` is called fresh at every job start (never
- * cached across jobs), which is what keeps a stale `GridState` captured at mount time from ever
- * reaching a later job, which is what the per-job `LoopDeps` shape exists to make impossible.
+ * `pause`/`resume` reach the log. `makeToolDeps()` is called fresh at every job start and never
+ * cached across jobs, so a `GridState` captured at mount time never reaches a later job.
  *
  * ONE JOB AT A TIME, JOIN NOT ERROR: `composerRoute` already turns a `send` mid-job into a steer
  * once the phase reflects it (an `order`/`resumed` append flips the phase before the caller could
@@ -15,10 +14,11 @@ import type { RuleDispatcher } from '../../core/model/rule-dispatcher';
 import { append } from '../core/log';
 import { classify } from '../core/errors';
 import { pendingGate, type Oversight } from '../core/gates';
-import { isJobActive, runJob, type LoopDeps } from '../core/loop';
+import { DEFAULT_CONTEXT_TOKENS, isJobActive, runJob, type LoopDeps } from '../core/loop';
 import { rawIsAllFrom } from '../core/project-messages';
 import { deriveView } from '../core/project-view';
 import { createSkippableSleeper } from '../core/skippable-sleep';
+import { requestReplySuggestion } from '../core/reply-suggestion';
 import type { JobOutcome } from '../core/types';
 import { queueSteer } from '../core/steering';
 import { baseUrlFor, QUIRKS, type ProviderId } from '../providers/defaults';
@@ -31,16 +31,12 @@ import { redactSecrets } from '../security/redact';
 import { composerRoute, submitComposer } from '../session/composer-routing';
 import { useAgentSession } from '../session/store';
 import { buildSystemPrompt } from '../system-prompt';
-import { buildMapContext, type AgentToolDeps } from '../tools/tools';
-import { regionBounds } from '../tools/tools-common';
+import { buildMapContext, type AgentToolDeps } from '../tools';
+import { regionBounds } from '../../state/region-bounds';
 import { createExecutor, wireSchemas, type DelegateOpts } from './executor';
 import { reviewText, ReviewWorkerLease } from '../../io/moderation/text/reviewer';
 import { translateFor } from '../../i18n/context';
 import { translations } from '../../i18n/translations';
-
-/** Same default `runJob` itself falls back to when `contextWindow` is omitted; kept explicit here
- *  since `budgetTokens` (unlike `contextWindow`) has no built-in fallback. */
-const DEFAULT_BUDGET_TOKENS = 128_000;
 
 export interface RunnerConfig {
   providerId: ProviderId; apiKey: string; model: string; customBaseUrl?: string;
@@ -162,8 +158,10 @@ export function createRunner(cfg: RunnerConfig): {
   // boundaries, and the sleeper only ever resolves a sleep genuinely pending when skip() runs, so
   // sharing it across a runner's whole life is exactly as safe as building a fresh one per launch.
   const sleeper = createSkippableSleeper();
+  let cancelReply = () => {};
 
   function launch(toolDeps: AgentToolDeps): void {
+    cancelReply();
     const { log } = useAgentSession.getState();
     const controller = new AbortController();
     abortController = controller;
@@ -175,6 +173,8 @@ export function createRunner(cfg: RunnerConfig): {
     const adapter = buildAdapter(cfg);
     const capabilities = modelCapabilities(cfg.providerId, cfg.model, cfg.customBaseUrl);
     const thinking = thinkingChoices(capabilities, cfg.providerId).find((choice) => thinkingChoiceKey(choice) === cfg.effort);
+    const replyEffort = ['none', 'minimal', 'low'].find(effort => capabilities?.efforts?.includes(effort));
+    const replyConnection = { model: cfg.model, capabilities, thinking: replyEffort ? { effort: replyEffort } : undefined };
     launched = {
       providerId: cfg.providerId,
       model: cfg.model,
@@ -215,7 +215,7 @@ export function createRunner(cfg: RunnerConfig): {
       // and all, are still sitting in it. So the answer is read from the log per launch rather
       // than assumed for the runner's life.
       sameModel: rawIsAllFrom(log, cfg.model),
-      budgetTokens: DEFAULT_BUDGET_TOKENS,
+      budgetTokens: DEFAULT_CONTEXT_TOKENS,
       signal: controller.signal,
       undoStackSize: () => toolDeps.getExecutor().getUndoStackSize(),
       // The order text meets the export content check before any provider does.
@@ -231,6 +231,28 @@ export function createRunner(cfg: RunnerConfig): {
       },
     };
     inflight = runJob(log, loopDeps)
+      .then((outcome) => {
+        const view = deriveView(log);
+        const job = view.jobs[view.jobs.length - 1];
+        const current = () => {
+          const session = useAgentSession.getState();
+          if (!job || session.log !== log || session.filed.has(job.orderSeq) || isJobActive(log)) return false;
+          const jobs = deriveView(log).jobs;
+          return jobs[jobs.length - 1]?.orderSeq === job.orderSeq;
+        };
+        if (outcome === 'done' && job?.question && job.summary && !view.suggestion && current()) {
+          const replyController = new AbortController();
+          const unwatch = useAgentSession.subscribe(() => { if (!current()) replyController.abort(); });
+          cancelReply = () => { replyController.abort(); unwatch(); };
+          void requestReplySuggestion(adapter, replyConnection, { request: job.orderText, question: job.summary }, replyController.signal)
+            .then((result) => {
+              if (result && !replyController.signal.aborted && current()) {
+                append(log, { kind: 'replySuggested', orderSeq: job.orderSeq, ...result });
+              }
+            }).finally(unwatch);
+        }
+        return outcome;
+      })
       .catch((err): JobOutcome => {
         // Convert an unexpected rejection into a terminal incident so the job always settles.
         const message = err instanceof Error ? err.message : String(err);
@@ -255,9 +277,8 @@ export function createRunner(cfg: RunnerConfig): {
    *
    * Two shapes reach it and both are the same fact — there is no loop, so nothing will ever end this
    * job by itself. One is a job the loop parked (`paused`); the other is an order the log carries with
-   * no end at all, which is what a reload mid-run or a session adopted from storage leaves behind. A
-   * guard on the `paused` phase alone left that second one unstoppable: every surface drew it as
-   * running, and the stop it offered reached a loop that was not there.
+   * no end at all, which is what a reload mid-run or a session adopted from storage leaves behind.
+   * Every surface draws the second as running, so its stop must settle it here.
    *
    * `stop()`, `setAside()` and a key going away are the same act arriving from three places, so they
    * settle it the one way.
@@ -321,10 +342,10 @@ export function createRunner(cfg: RunnerConfig): {
       if (result.route === 'resume-note') launch(cfg.makeToolDeps());
     },
     stop(): void {
+      cancelReply();
       // A JOB WITH NO LOOP HAS NOTHING TO ABORT, and an abort that reaches nothing leaves it
-      // standing. That is how a key revoked during a hold orphaned one: `settings.ts:forgetKey` calls
-      // this so the record survives the disconnection, `inflight` was undefined, and the job kept its
-      // phase with its partial edits on the map and no end on the log at all.
+      // standing. A key revoked during a hold arrives here that way (`settings.ts:forgetKey` calls
+      // this so the record survives the disconnection), so the job is settled directly.
       if (!inflight) { settleUnheld(); return; }
       abortController?.abort();
     },

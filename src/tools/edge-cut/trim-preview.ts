@@ -1,5 +1,5 @@
 /*
- * trim-preview.ts — what auto-trim WILL do to a stroke, worked out before the stroke happens.
+ * What auto-trim WILL do to a stroke, worked out before the stroke happens.
  *
  * The ghost draws squares, but with auto-trim on the committed shape has rounded or bevelled
  * corners and can gain Γ patches in its notches. The preview runs the REAL trim pass — the same
@@ -24,6 +24,7 @@ import { getCell, scratchGrid } from '../../core/model/grid-model';
 import { applyCommand } from '../../core/commands/command-apply';
 import { EventBus } from '../../core/commands/event-bus';
 import { applyAutoEdgeCut } from './auto-edge-cut';
+import { SQUARE_CORNERS, isSquareCorners } from '../../core/edge-cut/corner-index';
 
 /** One cell of the previewed result: the shape it will hold once the trim pass has run. */
 export interface TrimmedCell {
@@ -101,15 +102,13 @@ export function shapeOfSpans(spans: readonly { x: number; y: number; w: number }
  *  is listening to a scratch grid either way. */
 const silentBus = new EventBus<EditorEvents>();
 
-const SQUARE: Corners = ['square', 'square', 'square', 'square'];
 
 /** A cell's shape as one comparable value: what the preview is looking for a change in. */
 function shapeSig(t: TerrainCell | null | undefined): string {
-  return t ? `${t.type}:${t.elevation}:${t.patchOnly ? 1 : 0}:${(t.corners ?? SQUARE).join('')}` : '-';
+  return t ? `${t.type}:${t.elevation}:${t.patchOnly ? 1 : 0}:${(t.corners ?? SQUARE_CORNERS).join('')}` : '-';
 }
 
 const key = (x: number, y: number): string => `${x},${y}`;
-const isSquare = (c: Corners | undefined): boolean => !c || c.every((v) => v === 'square');
 
 /**
  * The cells the trim pass may read or write: the stroke, its 8-neighbour border, and one more ring
@@ -198,9 +197,9 @@ export function previewAutoTrim(
   for (const { x, y } of touched) {
     const t = getCell(scratch.cells, x, y)?.terrain;
     if (!t || t.type === TerrainType.None) continue;
-    if (isSquare(t.corners) && !t.patchOnly) continue;
+    if (isSquareCorners(t.corners) && !t.patchOnly) continue;
     if (!shape.contains(x, y) && shapeSig(t) === was.get(key(x, y))) continue;
-    out.push({ x, y, corners: (t.corners ?? SQUARE) as Corners, patch: !!t.patchOnly });
+    out.push({ x, y, corners: t.corners ?? [...SQUARE_CORNERS], patch: !!t.patchOnly });
   }
   return out;
 }

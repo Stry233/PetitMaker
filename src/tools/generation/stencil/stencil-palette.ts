@@ -1,5 +1,5 @@
 /*
- * stencil-palette.ts — WHAT a picture may be built out of.
+ * WHAT a picture may be built out of.
  *
  * The image mode matches every cell against a palette of things and places the nearest, so the
  * palette IS the material choice: the whole catalogue of one-cell items, the flowers alone, the trees
@@ -18,6 +18,7 @@ import type { CatalogItem } from '../../../core/model/types';
 import { hexStringToNumber } from '../../../core/model/colors';
 import { getAllItems } from '../../../state/catalog';
 import { tilesAShape } from './stencil';
+import { isCoating } from '../../../core/model/traits';
 
 /**
  * The material an image is built from.
@@ -48,7 +49,7 @@ export interface ColorEntry { catalogId: string; rgb: number }
 export function paletteItems(material: StencilMaterial): CatalogItem[] {
   const single = (i: CatalogItem): boolean => i.width === 1 && i.height === 1 && i.maxCount === undefined;
   const all = getAllItems();
-  if (material === 'roads') return all.filter((i) => i.category === ItemCategory.Road && single(i));
+  if (material === 'roads') return all.filter((i) => isCoating(i) && single(i));
   const usable = all.filter((i) => tilesAShape(i) && single(i));
   if (material === 'flora') return usable.filter((i) => i.category === ItemCategory.Flora);
   if (material === 'trees') return usable.filter((i) => i.category === ItemCategory.Tree);

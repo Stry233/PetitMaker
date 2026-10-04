@@ -1,5 +1,5 @@
 /**
- * panel-column.test.tsx — the SEAM, and the way it fails.
+ * The SEAM, and the way it fails.
  *
  * `PanelShell` renders projections and calls verbs; `PanelColumn` is the only production caller that
  * supplies them. A verb it forgets to pass type-checks (every one is optional, because a headless

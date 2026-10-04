@@ -1,5 +1,5 @@
 import * as PIXI from 'pixi.js-legacy';
-import { CHUNK_SIZE, TILE_SIZE } from '../../../core/model/constants';
+import { TILE_SIZE } from '../../../core/model/constants';
 import { chunkKey, getCell, macroToChunk } from '../../../core/model/grid-model';
 import { getTerrainColor, getZoneColor } from '../../../core/model/colors';
 import { HALF_TILE } from '../../../core/model/grid-model';
@@ -11,7 +11,9 @@ import { waterfallFaceMap, touchesWaterfallDependency } from '../../../core/mode
 import { requestRender } from '../render-scheduler';
 import { ChunkGrid, type CullRect } from './chunk-grid';
 import { NumberOverlay } from './number-overlay';
-import { cellRenderSpec, cellsAffectedByLayerToggle, hiddenSetFrom } from './layer-visibility';
+import { cellRenderSpec, cellsAffectedByLayerToggle, hiddenSetFrom } from '../../layer-visibility';
+import { CHUNK_SIZE } from '../../../core/model/game-profile';
+import { isSquareCorners } from '../../../core/edge-cut/corner-index';
 
 /** A cell needs a terrain graphic if it holds real terrain (mountain/water), OR it's a GROUND (None) cell
  *  carrying an islet cut — corners that aren't all square (the inverse of a water pond: grass rounds, the
@@ -19,7 +21,7 @@ import { cellRenderSpec, cellsAffectedByLayerToggle, hiddenSetFrom } from './lay
 function hasTerrainGraphic(t: TerrainCell | null | undefined): boolean {
   if (!t) return false;
   if (t.type !== TerrainType.None) return true;
-  return !!t.corners && !t.corners.every((c) => c === 'square');
+  return !isSquareCorners(t.corners);
 }
 
 export class TerrainLayer {

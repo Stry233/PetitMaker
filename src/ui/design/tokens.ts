@@ -1,5 +1,5 @@
 /*
- * tokens.ts — the interface palette, reduced from what the design source draws.
+ * The interface palette, reduced from what the design source draws.
  *
  * The document has no gradient, no pattern, no layer effect and not one stroke, so every token here
  * is a flat colour. Near-neighbours in the observation table (`#5B4833`, `#5C4934`, `#644933` beside
@@ -10,9 +10,10 @@
  */
 import type { CSSProperties } from 'react';
 import { colors } from './styles';
+import { MAP_EDGE_ALPHA, MAP_INK, MAP_TEXT } from '../../core/runtime/brand-palette';
 
 /** Glyph ink: the dark brown every icon and unplated label is drawn in. */
-export const INK = '#574935';
+export const INK = MAP_INK;
 /** The light plate a control sits on. */
 export const PLATE = '#FDFBE0';
 /** Label ink ON a plate, a shade darker than `INK` so text reads at small sizes. */
@@ -59,6 +60,9 @@ const VIGNETTE_INK = 'rgba(52, 43, 31, 0.42)';
  *  it off screen entirely. */
 export const VIGNETTE_DEPTH = 220;
 export const EDGE_VIGNETTE = `linear-gradient(to top, ${VIGNETTE_INK}, transparent ${VIGNETTE_DEPTH}px)`;
+/** The same ink as a wash from a picture's top-left corner, behind a map label laid over the picture
+ *  (a planet preview's name), so the light words hold against pale sand. Size the box it fills. */
+export const CORNER_VIGNETTE = `radial-gradient(farthest-side at top left, ${VIGNETTE_INK}, transparent)`;
 
 /** Ink for text that is not yet real: the search field's placeholder. */
 export const MUTED_INK = '#747474';
@@ -87,16 +91,10 @@ export const DARK_GROOVE = '#363432';
 /** The load ring's fill and the figure inside it — the one saturated colour in the document. */
 export const LOAD_FILL = '#80FA00';
 
-/** Text standing on the map: a warm off-white sampled off the game itself. Not `#FFFFFF`, which
- *  reads as a system overlay dropped on the map rather than part of it. */
-export const MAP_TEXT = '#FFFEE3';
-
-/**
- * How much ink an edge on the map carries, for a WORD and a DRAWING alike — they stand in the same
- * row, so they are one treatment or they are two. The map showing through at this alpha is what
- * makes an edge the shape's own shading rather than a line drawn around it.
- */
-export const MAP_EDGE_ALPHA = 0.62;
+/** Text standing on the map, and how much ink an edge on the map carries. A word and a drawing
+ *  stand in the same row, so they wear one treatment; the map showing through the edge at that
+ *  alpha is what makes it the shape's own shading rather than a line drawn around it. */
+export { MAP_TEXT, MAP_EDGE_ALPHA };
 
 const LABEL_EDGE = `${INK}${Math.round(MAP_EDGE_ALPHA * 255).toString(16).padStart(2, '0')}`;
 

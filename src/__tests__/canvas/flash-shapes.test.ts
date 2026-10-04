@@ -6,7 +6,7 @@
  * square while the curve itself came out rounded).
  */
 import { describe, it, expect } from 'vitest';
-import { splitFlashShapes } from '../../canvas/map2d/layers/ghost-geometry';
+import { splitFlashShapes } from '../../canvas/ghost-geometry';
 
 const SQUARE = ['square', 'square', 'square', 'square'];
 const cell = (x: number, y: number, micro = true) => ({ x, y, micro });

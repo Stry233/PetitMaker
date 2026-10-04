@@ -28,8 +28,9 @@ import { beautifyRoads, ensureGateTerminals, gateAlreadyPaved, hubNode, joinRout
 import { routeWorld } from './route-world';
 import type { MacroContext } from './context';
 import type { MacroReport } from './run';
+import { isCoatingItem } from '../../core/model/traits';
 
-export interface RoadLinkInput {
+interface RoadLinkInput {
   seed: number;
   /** Destination. Without `from`, a building target requests a door spur. */
   to: MacroCoord;
@@ -41,7 +42,7 @@ export interface RoadLinkInput {
   trim?: AutoEdgeCut;
 }
 
-export interface RoadLinkResult {
+interface RoadLinkResult {
   laid: number;
   report: MacroReport;
 }
@@ -173,7 +174,7 @@ function layRoute(ctx: MacroContext, input: RoadLinkInput, world: RouteWorld, at
   const before = new Set(state.objects.keys());
   const laidCells = paveCells(ctx, place, roadId, [...plan.cells, ...plan.pads]);
   // Capture the centerline before adding full-width entrances, which must not be dilated again.
-  const freshRoads = [...state.objects.values()].filter((o) => !before.has(o.id) && categoryOf(o) === ItemCategory.Road);
+  const freshRoads = [...state.objects.values()].filter((o) => !before.has(o.id) && isCoatingItem(getCatalogItem(o.catalogId)));
   // THE REALIZED GEOMETRY GETS THE LAST WORD (`joinRoute`): a snapped deck sits where the plan's
   // approach cells are not, and one hole at an entrance is a route in three pieces.
   const join = joinRoute(ctx, place, roadId, {
@@ -212,7 +213,7 @@ function layRoute(ctx: MacroContext, input: RoadLinkInput, world: RouteWorld, at
   }
 
   const allFresh = [...state.objects.values()]
-    .filter((o) => !before.has(o.id) && categoryOf(o) === ItemCategory.Road)
+    .filter((o) => !before.has(o.id) && isCoatingItem(getCatalogItem(o.catalogId)))
     .map((o) => o.position);
   beautifyRoads(ctx, [...laidCells, ...join.paved, ...allFresh], input.trim ?? 'off');
 

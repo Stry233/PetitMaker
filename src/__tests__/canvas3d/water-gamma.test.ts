@@ -4,12 +4,11 @@
  * water it sits in — mirroring 2D, where the None+corners cut draws at the
  * −HALF_TILE terrain offset over the full macro zone floor. Drawn a half-cell off
  * (macro grid) as a skirted islet, it floats detached from the pool instead.
- * Here we pin: the macro grass slab stays (no tiling gap) and the
- * revealed water lands on the micro grid, not the macro grid.
+ * The kept grass and recessed water partition the same trimmed footprint.
  */
 import { describe, it, expect } from 'vitest';
 import { buildChunkTerrain } from '../../canvas/map3d/build/terrain-geometry';
-import { cellCornerWorld, GROUND_SLAB_Y, layerToY } from '../../canvas/map3d/core/coords';
+import { cellCornerWorld, GROUND_SLAB_Y, layerToY, waterSurfaceY } from '../../canvas/map3d/core/coords';
 import { TerrainType } from '../../core/model/types';
 import type { GridState } from '../../core/model/types';
 import { makeState, setTerrain } from '../rules/_helpers';
@@ -163,7 +162,7 @@ describe('elevated trimmed water backing (round pool on a plateau)', () => {
     const c = cellCornerWorld(2, 2, 5, 5);
     const x0 = c.x - 0.5, z0 = c.z - 0.5;
     const m = buildChunkTerrain(s, 0, 0);
-    const waterY = Math.max(layerToY(2) + 0.05, 0.1);
+    const waterY = waterSurfaceY(2);
     const waterAtCentre = (() => {
       for (let i = 0; i < m.water.positions.length; i += 3) {
         if (Math.abs(m.water.positions[i]! - (x0 + 0.5)) < 1e-4 && Math.abs(m.water.positions[i + 1]! - waterY) < 0.02 && Math.abs(m.water.positions[i + 2]! - (z0 + 0.5)) < 1e-4) return true;

@@ -1,10 +1,11 @@
-// ModelScope (魔搭) over its own `images/generations`: a JSON call carrying an `images` array in
+// ModelScope over its own `images/generations`: a JSON call carrying an `images` array in
 // role order (style, then source last), no custom headers beyond Authorization/Content-Type since
 // the endpoint's CORS allow-list is closed and an extra header would fail preflight.
 import type { AspectOption } from '../normalize';
 import { classify, scrub } from './errors';
-import { fetchProviderImage } from './fetch-image';
+import { fetchProviderImage, type ImageDataReply } from './fetch-image';
 import { StylizeError, type StylizeDialect, type StylizeImage } from './types';
+import { roleOf } from './request';
 
 const ASPECTS: readonly AspectOption[] = [
   { id: '1:1', ratio: 1 },
@@ -14,12 +15,7 @@ const ASPECTS: readonly AspectOption[] = [
   { id: '9:16', ratio: 9 / 16 },
 ];
 
-function roleOf(images: readonly StylizeImage[], role: StylizeImage['role']): StylizeImage | undefined {
-  return images.find((i) => i.role === role);
-}
-
-interface GenerationsResponse {
-  data?: Array<{ b64_json?: string; url?: string }>;
+interface GenerationsResponse extends ImageDataReply {
   images?: Array<{ url?: string }>;
   output?: { images?: Array<{ url?: string }> };
 }

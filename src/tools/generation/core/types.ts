@@ -1,5 +1,8 @@
-// generation/types.ts — the contracts the generation layer shares.
+// The contracts the generation layer shares.
 export type { MacroCoord, MapTemplate } from '../../../core/model/types';
+
+/** The scenery richness a recipe that names none generates at, and the generate shelf's starting value. */
+export const DEFAULT_RICHNESS = 0.7;
 
 /** The final, certified-valid terrain plan handed to commit. */
 export interface TerrainPlan {

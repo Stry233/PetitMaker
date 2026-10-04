@@ -1,6 +1,5 @@
-import { viewportRect } from '../../../../../../core/runtime/viewport-space';
 /*
- * frame-overview.tsx — the interface at a glance IS the interface.
+ * The interface at a glance IS the interface.
  *
  * The figure mounts the REAL `Shell` inside a pictured subtree (`ui-preview.tsx`: chrome renders,
  * nothing acts — no windows, no tour, no fuses, no global listeners), sized to the window the live
@@ -11,6 +10,7 @@ import { viewportRect } from '../../../../../../core/runtime/viewport-space';
  * the mounted tree — so the spotlight ring bounds exactly what the shell drew, and a section CUT
  * crops the same mount to one cluster's measured box.
  */
+import { viewportRect } from '../../../../../../core/runtime/viewport-space';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type HTMLAttributes, type ReactNode } from 'react';
 import { Shell } from '../../../../../shell/Shell';
 import { tourTargetSelector } from '../../../../tour/steps';
@@ -21,20 +21,20 @@ import { UiPreviewProvider, type UiPreviewPose } from '../../../../../primitives
 import { FIT_REF } from '../../../../../design/scale';
 import { useEditorStore } from '../../../../../../state/store';
 import { renderThumbnail } from '../../../../../../canvas/thumbnail';
-import { createGrid } from '../../../../../../core/model/grid-model';
 import { DEFAULT_MAP } from '../../../../../../config/maps';
 import type { GridState } from '../../../../../../core/model/types';
-import { isMotionReduced } from '../../../../../../canvas/map2d/motion-state';
+import { isMotionReduced } from '../../../../../../core/runtime/motion-state';
 import { useT } from '../../../../../../i18n/context';
 import { withAlpha } from '../../../../../design/styles';
 import { FOCUS_RING } from '../../../../../design/tokens';
 import { radii, shadows, z } from '../../../../../design/styles';
 import { spotlightRx } from '../../../../tour/TourOverlay';
 import { figureCaption, PressPulse } from '../caption';
+import { bareGridState } from '../../../../../../core/model/planet';
 
 const INERT = { inert: '' } as unknown as HTMLAttributes<HTMLDivElement>;
 
-export type FrameCorner = 'modes' | 'agent' | 'topright' | 'rail' | 'bar';
+type FrameCorner = 'modes' | 'agent' | 'topright' | 'rail' | 'bar';
 
 const CORNER_TITLE: Record<FrameCorner, string> = {
   modes: 'help.frame.modes_t',
@@ -68,7 +68,7 @@ function useMapBackdrop(aspect: number): string | null {
   const [png, setPng] = useState<string | null>(null);
   useEffect(() => {
     let dropped = false;
-    const subject: GridState = grid ?? { template: DEFAULT_MAP, cells: createGrid(DEFAULT_MAP), objects: new Map(), lockedLayers: new Set() };
+    const subject: GridState = grid ?? bareGridState(DEFAULT_MAP);
     void renderThumbnail(subject, 1024, aspect).then((p) => { if (!dropped && p) setPng(p); });
     return () => { dropped = true; };
   }, [grid, aspect]);
@@ -443,7 +443,7 @@ function TapMark({ x, y }: { x: number; y: number }) {
       <PressPulse x={x} y={y} repeat />
       <span
         style={{
-          position: 'absolute', left: x - 6, top: y - 6, width: 12, height: 12, borderRadius: 999,
+          position: 'absolute', left: x - 6, top: y - 6, width: 12, height: 12, borderRadius: radii.pill,
           pointerEvents: 'none', zIndex: z.unmissable, background: FOCUS_RING, boxShadow: shadows.s1,
         }}
       />

@@ -1,5 +1,5 @@
 /*
- * stencil.ts — a picture to build from, and the two things a generator does with one.
+ * A picture to build from, and the two things a generator does with one.
  *
  * A STENCIL IS AN INPUT, NOT SOMETHING A GENERATOR DRAWS. Turning a letter, an emoji or a photograph
  * into pixels needs a canvas, and the candidate/preview pipeline runs in a worker that is
@@ -14,17 +14,19 @@
  */
 import { ELEVATION_COLORS, WATER_COLOR } from '../../../core/model/constants';
 import { hexStringToNumber } from '../../../core/model/colors';
-import { ItemCategory, TerrainType, type CatalogItem, type Stencil } from '../../../core/model/types';
+import { TerrainType, type CatalogItem, type Stencil } from '../../../core/model/types';
 import { isEmojiGrapheme, textGraphemes } from './stencil-text-segments';
+import { isCoating, isCrossing } from '../../../core/model/traits';
+import { BASE_SUPPORT } from '../../../core/model/game-profile';
+import { NEIGHBORS4_NESW } from '../../../core/model/grid-model';
 
 export type { Stencil };
 
 /**
  * Whether an item can TILE a shape, which is the only thing the letter mode does with one.
  *
- * A letter needs the same item many times over, so anything the rules cap is unusable here: every
- * unique cabin carries `maxCount: 1`, and offering one means a letter whose second cell onward is
- * refused. A bridge or a ramp SPANS terrain it is placed against rather than standing on it, so
+ * A letter needs the same item many times over, so anything the rules cap is unusable here: an
+ * item with `maxCount` makes a letter whose cells past that count are refused. A bridge or a ramp SPANS terrain it is placed against rather than standing on it, so
  * neither tiles either, whatever its count.
  *
  * Read from the item, never from a list of ids: a catalog addition is then offered or excluded on
@@ -32,8 +34,8 @@ export type { Stencil };
  */
 export function tilesAShape(item: CatalogItem): boolean {
   if (item.maxCount !== undefined) return false;
-  if (item.category === ItemCategory.Bridge || item.category === ItemCategory.Ramp) return false;
-  if (item.category === ItemCategory.Road) return false;   // a coating, laid by the road tools
+  if (isCrossing(item)) return false;
+  if (isCoating(item)) return false;   // laid by the road tools
   return true;
 }
 
@@ -125,15 +127,13 @@ export function bridgesDaylight(s: Stencil, x: number, y: number): boolean {
   const ink = (cx: number, cy: number): boolean => covered(s, cx, cy);
   // A cell with ink on all four sides is a pinhole in a stroke, whatever the walls are like: there is
   // no daylight there to close, since nothing reaches it in the first place.
-  if (EDGE_STEPS.every(([dx, dy]) => ink(x + dx, y + dy))) return false;
+  if (NEIGHBORS4_NESW.every(([dx, dy]) => ink(x + dx, y + dy))) return false;
   for (const [dx, dy] of [[0, 1], [1, 0]] as const) {
     if (!ink(x - dx, y - dy) || !ink(x + dx, y + dy)) continue;
     if (!ink(x - 2 * dx, y - 2 * dy) && !ink(x + 2 * dx, y + 2 * dy)) return true;
   }
   return false;
 }
-
-const EDGE_STEPS: readonly (readonly [number, number])[] = [[0, -1], [1, 0], [0, 1], [-1, 0]];
 
 /**
  * Ink RUNS along one row or column: how many separate pieces of the shape it crosses.
@@ -226,7 +226,7 @@ export function piecesOf(s: Stencil): number {
     while (stack.length) {
       const i = stack.pop()!;
       const x = i % s.width, y = (i / s.width) | 0;
-      for (const [dx, dy] of EDGE_STEPS) {
+      for (const [dx, dy] of NEIGHBORS4_NESW) {
         const nx = x + dx, ny = y + dy;
         if (!covered(s, nx, ny)) continue;
         const n = ny * s.width + nx;
@@ -288,8 +288,8 @@ export function covered(s: Stencil, x: number, y: number): boolean {
   return (s.coverage[y * s.width + x] ?? 0) >= COVERAGE_ON;
 }
 
-/** The tallest a cell may stand with no 3x3 base under it: layers 1-3 are exempt from V-MTN-03. */
-export const FLAT_SAFE_ELEVATION = 3;
+/** The tallest a cell may stand with no base under it: the layers V-MTN-03 exempts. */
+export const FLAT_SAFE_ELEVATION = BASE_SUPPORT.fromLayer - 1;
 
 /**
  * Lower whatever cannot stand, until everything can.
@@ -340,7 +340,7 @@ export function relaxHeights(target: Int16Array, width: number, height: number):
  * ELEVATION is chosen for the colour it draws in, not for the height it means. The result reads as a
  * mosaic of the picture and is a real, buildable map underneath.
  */
-export interface PaletteEntry {
+interface PaletteEntry {
   type: TerrainType;
   elevation: number;
   /** Packed 0xRRGGBB, as the renderers draw it. */

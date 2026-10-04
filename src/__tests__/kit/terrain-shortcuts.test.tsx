@@ -6,6 +6,7 @@ import { designModeToEditInputs } from '../../core/model/edit-mode';
 import { useEditorStore } from '../../state/store';
 import { I18nProvider } from '../../i18n/context';
 import { TerrainBar } from '../../ui/shell/bars/TerrainBar';
+import { AnnotationBar } from '../../ui/shell/bars/AnnotationBar';
 import { useEditorShortcuts } from '../../ui/shell/use-editor-shortcuts';
 import type { CommandContext } from '../../kit/commands';
 
@@ -15,7 +16,10 @@ const context: CommandContext = {
 };
 function Editor() {
   useEditorShortcuts(context);
-  return <MotionConfig reducedMotion="always"><I18nProvider><TerrainBar surface="mountain"/></I18nProvider></MotionConfig>;
+  const mode = useEditorStore(s => s.editMode.mode);
+  return <MotionConfig reducedMotion="always"><I18nProvider>
+    {mode === 'annotate' ? <AnnotationBar/> : <TerrainBar surface={mode === 'water' || mode === 'road' ? mode : 'mountain'}/>}
+  </I18nProvider></MotionConfig>;
 }
 const key = (value: string) => fireEvent.keyDown(window, { key: value });
 const state = () => useEditorStore.getState();
@@ -92,6 +96,37 @@ describe('terrain keyboard controls', () => {
     expect(effectiveCombo(saved, 'tool.brush')).toBe('5');
     expect(effectiveCombo(saved, 'tool.measure')).toBeNull();
     expect(bindingIndex(saved).get('5')).toBe('tool.brush');
+  });
+
+  it.each(['terrain', 'notes-zone'] as const)('shares Brush rebinding, clearing and reset from %s across editing modes', toolbar => {
+    act(() => { useKeybinds.getState().rebind('tool.brush', 'j', toolbar); });
+    for (const mode of ['mountain', 'water', 'road', 'annotate'] as const) {
+      act(() => {
+        state().setEditMode({ mode, tool: 'none', shape: 'free' });
+        state().setAnnotationTool('none');
+      });
+      const brush = screen.getByRole('button', { name: 'Brush' });
+      expect(brush.title).toBe('Brush (J)');
+      expect(brush.parentElement?.textContent).toContain('J');
+      key('1'); expect(brush.getAttribute('aria-pressed')).toBe('false');
+      key('j'); expect(brush.getAttribute('aria-pressed')).toBe('true');
+      key('j'); expect(brush.getAttribute('aria-pressed')).toBe('false');
+    }
+    act(() => { useKeybinds.getState().clear('tool.brush'); });
+    for (const mode of ['mountain', 'annotate'] as const) {
+      act(() => state().setEditMode({ mode, tool: 'none' }));
+      const brush = screen.getByRole('button', { name: 'Brush' });
+      expect(brush.title).toBe('Brush');
+      key('j'); expect(brush.getAttribute('aria-pressed')).toBe('false');
+    }
+    act(() => { useKeybinds.getState().rebind('tool.brush', '1', toolbar); });
+    for (const mode of ['mountain', 'annotate'] as const) {
+      act(() => state().setEditMode({ mode, tool: 'none' }));
+      const brush = screen.getByRole('button', { name: 'Brush' });
+      expect(brush.title).toBe('Brush (1)');
+      key('1'); expect(brush.getAttribute('aria-pressed')).toBe('true');
+      key('1'); expect(brush.getAttribute('aria-pressed')).toBe('false');
+    }
   });
   it('adapts numbers and the final options key when switching to annotations', () => {
     act(() => state().setEditMode({ mode: 'annotate' }));

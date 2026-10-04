@@ -5,3 +5,5 @@ export function PanelColumn(_props: ComponentProps<typeof import('../agent/Panel
 export { GenerateShelf } from '../shell/bars/GenerateShelf';
 export function useAssistantConnected(): boolean { return false; }
 export function clearAssistantSession(): void {}
+export function assistantJobRunning(): boolean { return false; }
+export function useAssistantJobRunning(): boolean { return false; }

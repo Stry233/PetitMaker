@@ -21,7 +21,7 @@ import { makeToolCtx } from '../_tool-ctx';
 import type { ToolContext } from '../../../tools/runtime/types';
 import {
   CellZone, ItemCategory, TerrainType,
-  type Command, type EditorEvents, type GenerateConfig, type GridState, type MacroCoord, type PlacedObject,
+  type Command, type EditorEvents, type GenerateConfig, type GridState, type MacroCoord, type PlacedObject, type Rotation,
 } from '../../../core/model/types';
 
 const SIZE = 45;
@@ -60,7 +60,7 @@ function generatedIsland(seed: number): Kit {
       // about relief. What stands on it is the case's own subject, planted or laid below.
       clearAllObjects(state, (c: Command) => exec.execute(c));
     });
-    exec.commitStrokeGroup(exec.getUndoStackSize());
+    exec.commitStroke(exec.getUndoStackSize());
     islands.set(seed, base);
   }
   const state = cloneGridState(base);
@@ -86,7 +86,7 @@ function terrace(kit: Kit): void {
   }
 }
 
-function place(kit: Kit, catalogId: string, x: number, y: number, rotation: 0 | 90 | 180 | 270 = 0, elevation = 0): PlacedObject {
+function place(kit: Kit, catalogId: string, x: number, y: number, rotation: Rotation = 0, elevation = 0): PlacedObject {
   const obj: PlacedObject = { id: generateObjectId(), catalogId, position: { x, y }, rotation, elevation };
   const r = kit.executor.execute(objectPlacementCommand(obj));
   expect(r.success, `place ${catalogId}@${x},${y}: ${r.errors?.[0]?.message ?? ''}`).toBe(true);

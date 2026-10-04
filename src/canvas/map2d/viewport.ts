@@ -16,6 +16,8 @@ export class Viewport {
   /** Map world size in unscaled px (0 until fitToMap runs) — the pan bounds. */
   private worldWidth = 0;
   private worldHeight = 0;
+  private worldX = 0;
+  private worldY = 0;
 
   constructor(canvasWidth: number, canvasHeight: number) {
     this.canvasWidth = canvasWidth;
@@ -115,8 +117,9 @@ export class Viewport {
     const mapH = this.worldHeight * this.zoom;
     const keepX = Math.min(PAN_KEEP_PX, mapW / 2);
     const keepY = Math.min(PAN_KEEP_PX, mapH / 2);
-    this.offsetX = Math.min(mapW - keepX, Math.max(keepX - this.canvasWidth, this.offsetX));
-    this.offsetY = Math.min(mapH - keepY, Math.max(keepY - this.canvasHeight, this.offsetY));
+    const left = this.worldX * this.zoom, top = this.worldY * this.zoom;
+    this.offsetX = Math.min(left + mapW - keepX, Math.max(left + keepX - this.canvasWidth, this.offsetX));
+    this.offsetY = Math.min(top + mapH - keepY, Math.max(top + keepY - this.canvasHeight, this.offsetY));
   }
 
   /**
@@ -151,11 +154,13 @@ export class Viewport {
    * Auto-zoom and center so the full map (mapWidth x mapHeight macro cells)
    * fits within the canvas.
    */
-  fitToMap(mapWidth: number, mapHeight: number): void {
+  fitToMap(mapWidth: number, mapHeight: number, originX = 0, originY = 0): void {
     const worldWidth = mapWidth * TILE_SIZE;
     const worldHeight = mapHeight * TILE_SIZE;
     this.worldWidth = worldWidth;
     this.worldHeight = worldHeight;
+    this.worldX = originX * TILE_SIZE;
+    this.worldY = originY * TILE_SIZE;
     const scaleX = this.canvasWidth / worldWidth;
     const scaleY = this.canvasHeight / worldHeight;
     const idealZoom = Math.min(scaleX, scaleY);
@@ -163,8 +168,8 @@ export class Viewport {
 
     const renderedWidth = worldWidth * this.zoom;
     const renderedHeight = worldHeight * this.zoom;
-    this.offsetX = -(this.canvasWidth - renderedWidth) / 2;
-    this.offsetY = -(this.canvasHeight - renderedHeight) / 2;
+    this.offsetX = this.worldX * this.zoom - (this.canvasWidth - renderedWidth) / 2;
+    this.offsetY = this.worldY * this.zoom - (this.canvasHeight - renderedHeight) / 2;
   }
 
   screenToWorld(sx: number, sy: number): { x: number; y: number } {

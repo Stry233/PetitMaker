@@ -1,5 +1,5 @@
 /*
- * bridge-span.ts — shared bridge span detection for the placement rule
+ * Shared bridge span detection for the placement rule
  * (V-PLACE-TRAIT waterSpan) and the placement ghost (object-placer).
  *
  * Policy: a bridge is an overpass between two flat ends of EQUAL height, across

@@ -1,5 +1,5 @@
 /*
- * neural.ts — the packs drawn by an on-device model: the map's real render goes in, the model's
+ * The packs drawn by an on-device model: the map's real render goes in, the model's
  * redraw comes out, scaled onto the pack's canvas. The take's seed varies the framing the model
  * sees, so a re-roll is a different painting of the same layout. Without a render to work from (a headless
  * surface) the pack falls back to the shared fields base, which is also its synchronous face.

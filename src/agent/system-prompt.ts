@@ -18,7 +18,8 @@ import type { RuleDispatcher } from '../core/model/rule-dispatcher';
 import { RULE_HINTS } from '../rules';
 import { getAllItems } from '../state/catalog';
 import type { CatalogItem, PlacementTrait } from '../core/model/types';
-import { ELEVATION_MAX } from '../core/model/constants';
+import { TILE_SIZE } from '../core/model/constants';
+import { HALF_TILE } from '../core/model/grid-model';
 import { APP_NAME } from '../version';
 
 import identity from './prompts/01-identity.md?raw';
@@ -30,6 +31,7 @@ import workflow from './prompts/06-workflow.md?raw';
 import recipes from './prompts/07-recipes.md?raw';
 import trust from './prompts/08-trust.md?raw';
 import contentPolicy from './prompts/10-content-policy.md?raw';
+import { ELEVATION_MAX } from '../core/model/game-profile';
 
 /** Replace all occurrences of {key} in template with the corresponding value. */
 function inject(template: string, vars: Record<string, string>): string {
@@ -52,7 +54,7 @@ function itemLine(i: CatalogItem): string {
   const traits = i.traits.map(traitStr).join('+') || 'none';
   const max = i.maxCount !== undefined ? ` max=${i.maxCount}` : '';
   const rot = i.rotatable ? ' rotatable' : '';
-  return `  ${i.id} (${i.width}x${i.height}, ${traits}${max}${rot})`;
+  return `  ${i.id} (${i.width}x${i.height}, ${traits}${max}${rot}, load=${i.loadUnknown ? 'unknown (counted as 0)' : i.loadValue})`;
 }
 
 /** Human names for the editor's display locales ({uiLanguage} fallback hint). */
@@ -64,7 +66,6 @@ const LOCALE_NAMES: Record<string, string> = {
 export function buildSystemPrompt(registry: RuleDispatcher, opts?: { uiLocale?: string }): string {
   const byCat = new Map<string, CatalogItem[]>();
   for (const item of getAllItems()) {
-    if (item.id.startsWith('__')) continue; // synthetic (the plaza)
     const list = byCat.get(item.category) ?? [];
     list.push(item);
     byCat.set(item.category, list);
@@ -81,13 +82,13 @@ export function buildSystemPrompt(registry: RuleDispatcher, opts?: { uiLocale?: 
   const sections = [
     inject(identity, { elevMax: String(ELEVATION_MAX), app: APP_NAME, uiLanguage: LOCALE_NAMES[opts?.uiLocale ?? 'en'] ?? 'English' }),
     inject(rulesSection, { rules }),
-    traitsSection,
+    inject(traitsSection, { rampUpperRun: String(HALF_TILE / TILE_SIZE) }),
     inject(catalogSection, { catalog }),
     designPrinciples,
-    workflow,
     recipes,
     trust,
     contentPolicy,
+    workflow,
   ];
 
   return sections.join('\n\n');

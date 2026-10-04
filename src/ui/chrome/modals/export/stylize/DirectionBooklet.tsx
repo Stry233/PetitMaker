@@ -14,10 +14,10 @@ import {
 import { packSampleUrl } from './sample-assets';
 import { useScrollFade } from '../../../../primitives/scroll-fade';
 import { SampleTile, entering } from './atoms';
-import { cssMotion } from './motion';
+import { cssMotion } from '../../../../design/motion';
 import type { SampleArt } from './sample-art';
 
-export interface DirectionRow {
+interface DirectionRow {
   id: StylizeDirection;
   nameKey: string;
   /** `model` rows use a connected provider; `proc` rows draw locally and may name a neural pack. */
@@ -40,7 +40,7 @@ const CUSTOM_ART: SampleArt = {
   palette: STYLE_PACKS.map((p) => p.palette[0]!),
 };
 
-export const DIRECTIONS: readonly DirectionRow[] = [
+const DIRECTIONS: readonly DirectionRow[] = [
   ...PROC_PACK_META.map((proc): DirectionRow => ({
     id: proc.id,
     nameKey: proc.nameKey,

@@ -7,7 +7,7 @@
 /**
  * Project name (working/temporary — the ONE place to rebrand).
  *
- * Change APP_NAME (and any per-locale override below) and the new name flows
+ * Change BASE_APP_NAME (and any per-locale name below) and the new name flows
  * everywhere automatically: it is injected as the `{app}` token into every UI
  * string via translateFor (see i18n/context) and into the agent system prompt
  * (see agent/system-prompt). Runtime copy uses `{app}`.
@@ -18,22 +18,24 @@
 import { IS_LITE } from './core/runtime/edition';
 
 export const BASE_APP_NAME = 'PetitMaker';
-export const APP_NAME = IS_LITE ? `${BASE_APP_NAME} (Lite)` : BASE_APP_NAME;
 
-/** Per-locale display-name overrides; locales absent here render APP_NAME as-is. */
-export const APP_NAME_OVERRIDES: Record<string, string> = {
-  zh: IS_LITE ? '谷地工坊 (Lite)' : '谷地工坊',
+/** Per-locale names without the edition badge; locales absent here use BASE_APP_NAME. */
+const LOCALE_BASE_NAMES: Record<string, string> = {
+  zh: '谷地工坊',
 };
-
-/** The brand name to display for a locale — the single resolver behind `{app}`. */
-export function brandName(locale: string): string {
-  return APP_NAME_OVERRIDES[locale] ?? APP_NAME;
-}
 
 /** The wordmark's name; edition badges are rendered separately. */
 export function baseBrandName(locale: string): string {
-  return locale === 'zh' ? '谷地工坊' : BASE_APP_NAME;
+  return LOCALE_BASE_NAMES[locale] ?? BASE_APP_NAME;
 }
+
+/** The brand name to display for a locale, edition included: the single resolver behind `{app}`. */
+export function brandName(locale: string): string {
+  const base = baseBrandName(locale);
+  return IS_LITE ? `${base} (Lite)` : base;
+}
+
+export const APP_NAME = brandName('en');
 
 /*
  * Vite injects build identity exclusively from the committed `build-info.json` stamp.

@@ -8,7 +8,8 @@ import { render, screen, cleanup } from '@testing-library/react';
 import { I18nProvider, translate } from '../../../i18n/context';
 import { ExportPreview } from '../../../ui/chrome/modals/export/ExportPreview';
 import { shareCodeIssueKey } from '../../../ui/chrome/modals/export/use-share-code';
-import { createBlankGridState } from '../../../io/share/codec/blank-grid';
+import { createGridState } from '../../../core/model/planet';
+import { getMapTemplate } from '../../../config/maps';
 import { DEFAULT_FOOTER } from '../../../io/export/footer-template';
 import type { ExportOptions } from '../../../io/export/types';
 import type { GridState } from '../../../core/model/types';
@@ -20,7 +21,7 @@ const opts: ExportOptions = {
 
 /** A map with `n` dirt roads stacked on one cell. */
 function stacked(n: number): GridState {
-  const s = createBlankGridState('hexia');
+  const s = createGridState(getMapTemplate('hexia'));
   for (let i = 0; i < n; i++) {
     s.objects.set(`r${i}`, { id: `r${i}`, catalogId: 'path-overgrown-dirt', position: { x: 29, y: 108 }, rotation: 0, elevation: 0 });
   }

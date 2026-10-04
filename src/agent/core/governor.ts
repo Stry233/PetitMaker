@@ -1,5 +1,6 @@
-import type { Part, SessionEvent } from './types';
+import type { Part, SessionEvent, ToolResultDetail } from './types';
 import { eventsOf, type SessionLog } from './log';
+import { OccurrenceScan, occurrenceKey } from './occurrence';
 
 /** Ordinary jobs run to this many assistant turns before the cap message ends them. */
 export const MAX_TURNS_DEFAULT = 40;
@@ -39,14 +40,6 @@ export function jobEvents(log: SessionLog): readonly SessionEvent[] {
   return lastOrder < 0 ? events : events.slice(lastOrder + 1);
 }
 
-/** A callId alone is not a stable key: a provider can reuse one across turns (a synthesized id
- *  colliding, or a real one a buggy gateway repeats), so a lookup keyed on the bare id can bind a
- *  result to the WRONG occurrence's call and misjudge whether that occurrence has ever failed
- *  before. Matches project-messages.ts's own occurrence key. */
-function occurrenceKey(callId: string, assistantSeq: number): string {
-  return `${callId}#${assistantSeq}`;
-}
-
 /** One `toolResult` joined back to the call it answers via the assistant `tool` part that minted
  *  its OCCURRENCE, plus the facts the dampers below read off it. */
 interface ResultFact {
@@ -54,35 +47,39 @@ interface ResultFact {
   sig: string | undefined;
   /** isError or a post-stroke rollback, including a partially retained stroke. */
   failed: boolean;
-  /** A successful write: the map changed under everything logged before this. */
+  /** Retained edits change the basis for earlier failures, even after a partial rollback. */
   wroteMap: boolean;
   content: string;
   /** The loop answered this call itself as a repeat refusal: not an executed attempt. */
   refused: boolean;
 }
 
-/** Every `toolResult` in the job as a `ResultFact`, in log order. One forward pass:
- *  `currentOccurrenceSeq` tracks, per callId, the seq of the nearest preceding assistant event
- *  carrying it, so a `toolResult` right after binds to that occurrence and a later reissue of the
- *  same callId rebinds every following lookup to the new one. */
+/** A rejected command can leave other commands from the same stroke committed. */
+export function retainedWrite(result: { write?: boolean; isError: boolean; detail?: ToolResultDetail }): boolean {
+  if (!result.write || (result.detail?.reverted && !result.detail.partialRevert)) return false;
+  const { cells, objects, partialRevert } = result.detail ?? {};
+  if (cells !== undefined || objects !== undefined) return (cells ?? 0) + (objects ?? 0) > 0;
+  return partialRevert === true || !result.isError;
+}
+
+/** Every `toolResult` in the job as a `ResultFact`, in log order, each bound to the call occurrence
+ *  it answers in one forward pass. */
 function resultFacts(events: readonly SessionEvent[]): ResultFact[] {
-  const currentOccurrenceSeq = new Map<string, number>();
+  const scan = new OccurrenceScan();
   const sigByOccurrence = new Map<string, string>();
   const facts: ResultFact[] = [];
   for (const ev of events) {
     if (ev.kind === 'assistant') {
+      scan.see(ev);
       for (const part of ev.parts as Part[]) {
-        if (part.kind !== 'tool') continue;
-        currentOccurrenceSeq.set(part.callId, ev.seq);
-        sigByOccurrence.set(occurrenceKey(part.callId, ev.seq), callSignature(part.name, part.input));
+        if (part.kind === 'tool') sigByOccurrence.set(occurrenceKey(part.callId, ev.seq), callSignature(part.name, part.input));
       }
     } else if (ev.kind === 'toolResult') {
-      const occurrenceSeq = currentOccurrenceSeq.get(ev.callId) ?? ev.seq;
       const failed = ev.isError || ev.detail?.reverted === true;
       facts.push({
-        sig: sigByOccurrence.get(occurrenceKey(ev.callId, occurrenceSeq)),
+        sig: sigByOccurrence.get(scan.keyOf(ev.callId, ev.seq)),
         failed,
-        wroteMap: !failed && ev.write === true,
+        wroteMap: retainedWrite(ev),
         content: ev.content,
         refused: ev.detail?.repeatRefused === true,
       });
@@ -142,17 +139,25 @@ export function repeatRefusal(streak: { error: string; repeats: number }): strin
     + 'technique, and build from what the map actually shows.';
 }
 
-/** How many writes in this job have LANDED: successful, unreverted write results. Zero means the
- *  job only talked (the delivery nudge's ground); at `REVIEW_MIN_WRITES` and above it built enough
- *  to review against the order (the review beat's). */
+/** Counts write results with retained work, including partially rejected strokes. */
 export function landedWriteCount(log: SessionLog): number {
   return resultFacts(jobEvents(log)).filter((f) => f.wroteMap).length;
 }
 
-/** Whether any write in this job has LANDED: a successful, unreverted write result. What separates
- *  a job that built something from one that only talked, which is the delivery nudge's question. */
+/** A partial edit is enough to make the zero-edit delivery nudge inappropriate. */
 export function hasLandedWrite(log: SessionLog): boolean {
   return landedWriteCount(log) > 0;
+}
+
+/** A successful map read after the latest retained edit already provides a verification opportunity. */
+export function hasRecentVerification(log: SessionLog): boolean {
+  let verified = false;
+  for (const event of jobEvents(log)) {
+    if (event.kind !== 'toolResult') continue;
+    if (retainedWrite(event)) verified = false;
+    else if (!event.isError && ['view_map', 'inspect_region', 'get_objects', 'get_annotations'].includes(event.name)) verified = true;
+  }
+  return verified;
 }
 
 /** How many landed writes make a build worth a review pass. Below this the job placed a bench or
@@ -167,17 +172,14 @@ export const REVIEW_MIN_WRITES = 3;
  *  warning can never both be standing instructions on the same job. */
 export const REVIEW_MIN_TURNS_LEFT = 6;
 
-/** The answer a job's first zero-write closing turn gets INSTEAD of settling (`loop.ts:runJob`):
- *  deliver the order's intent on the map as it is, an imperfect premise included, or state plainly
- *  that it cannot be done. Sent once per job; the close after it is final whatever it says. */
+/** Sent once at a zero-edit close; an impossible or unspecified request may correctly leave no edits. */
 export function deliveryNudge(): string {
-  return '(system) You are closing this job with no edit landed on the map. If the order asked for '
-    + 'something to be built or repaired, deliver it now: where the map differs from what the order '
-    + 'assumes, name the difference plainly and build the order\'s intent on the ground as it is. '
-    + 'If it truly cannot be done, say so plainly and why. If instead you were ASKING the user '
-    + 'something (an empty order, a choice only they can make), you owe no edit and this is not a '
-    + 'criticism: restate your question in one short sentence ending with a question mark, and stop. '
-    + 'Your next message stands as the final outcome either way.';
+  return '(system) No edit has landed. Check whether that is appropriate for this request. '
+    + 'If the user asked for advice, gave no buildable subject, needs to choose an alternative, '
+    + 'or requested something that cannot be done, make no substitute edits. Give the answer, '
+    + 'explain the constraint, or ask one short question ending in a question mark. Otherwise, '
+    + 'if the requested edit is feasible and already authorized, deliver that edit. Do not '
+    + 'invent a different task to satisfy this check. Your next close is final.';
 }
 
 /** The answer a landed build's first closing turn gets INSTEAD of settling (`loop.ts:runJob`): one
@@ -186,20 +188,16 @@ export function deliveryNudge(): string {
  *  evaluate_map, whose whole-map scorecard grades dimensions the order never asked for and invites
  *  edits beyond its scope. Sent once per job; the close after it is final whatever it says. */
 export function reviewNudge(): string {
-  return '(system) Before this close stands, re-read the order and judge the map against its own '
-    + 'words, nothing else. Look with view_map at the ground the order names, and name the one '
-    + 'thing the order asked for that is weakest or missing. Fix that one thing with a few aimed '
-    + 'edits. Then run find_speckle and evaluate_map ONCE each and act on what they name: clear or '
-    + 'replant every patch the sweep lists, and fix the hints (a four-way crossing, a stamped pool '
-    + 'pair, a building with no road) before closing: a finding left standing is the first thing '
-    + 'the user sees. Do not add anything the order did not ask for: on an order with exact counts '
-    + 'or a repair order, verify its constraints hold and mend only what fails them. Then close; if '
-    + 'your close was asking the user something, restate that question at its end. Your '
-    + 'next close is final whatever it says.';
+  return '(system) Verify the result against the user request and preserved work. Use the existing '
+    + 'tool results; use a focused view_map or read only if something is uncertain. If all requested '
+    + 'outcomes are satisfied, close now. Otherwise make only the smallest necessary correction '
+    + 'and verify it once. Do not add features, clear and rebuild completed work, or chase '
+    + 'whole-map scores. Intentional planting is not an error. State any unmet constraint '
+    + 'honestly; ask the user only when their decision is needed. Your next close is final.';
 }
 
 /** Where the job's filed plan stands: how many stages it names and which one is current.
- *  `undefined` where no plan was filed. The fold mirrors `loop.ts:advanceStageAtBoundary`. */
+ *  `undefined` where no plan was filed. The index also accepts the stage count when all stages are complete. */
 export function planProgress(log: SessionLog): { stageCount: number; current: number; nextLabel: string } | undefined {
   let stages: { label: string }[] | null = null;
   let current = 0;
@@ -211,34 +209,17 @@ export function planProgress(log: SessionLog): { stageCount: number; current: nu
   return { stageCount: stages.length, current, nextLabel: stages[Math.min(current, stages.length - 1)]!.label };
 }
 
-/** How many writes a build may land before the loop asks for a plan: below this the job may still
- *  be a one-burst small request; past it the work is multi-stage in fact, planned or not. */
-export const PLAN_OWED_AT = 6;
-/** Where the nagging stops: a model that has been asked across this many further writes and still
- *  files no plan is answered by the close-time guard instead. */
-const PLAN_OWED_UNTIL = 12;
-
-/** Asks a build that has grown past a small request to file its stages, while none stand. Fires on
- *  every turn inside the write window until a plan lands, then never again. */
-export function planOwedNudge(log: SessionLog): string | undefined {
-  if (planProgress(log) !== undefined) return undefined;
-  const writes = landedWriteCount(log);
-  if (writes < PLAN_OWED_AT || writes > PLAN_OWED_UNTIL) return undefined;
-  return `(system) ${writes} edits have landed with no plan filed. This is multi-stage work in fact: `
-    + 'call update_plan now with the remaining stages (3-6 short noun phrases) — the stage list is '
-    + 'what the user follows, and what keeps the build finishing everything it started.';
-}
-
 /** The answer a close with plan stages still standing gets INSTEAD of settling: finish them, or say
  *  plainly which stage cannot be done and why. Sent once per job; the close after it is final. */
 export function unfinishedPlanNudge(log: SessionLog): string | undefined {
   const plan = planProgress(log);
-  if (!plan || plan.current >= plan.stageCount - 1) return undefined;
+  if (!plan || plan.current >= plan.stageCount) return undefined;
   const remaining = plan.stageCount - plan.current;
-  return `(system) The filed plan has ${remaining} of ${plan.stageCount} stages not finished (current: `
-    + `"${plan.nextLabel}"). A close with stages standing is an unfinished job: keep building them in `
-    + 'order (evaluate_map at each boundary marks the stage done), or state plainly which stage cannot '
-    + 'be done and why. Your next close is final whatever it says.';
+  return `(system) The plan records ${remaining} of ${plan.stageCount} stages as unfinished (current: `
+    + `"${plan.nextLabel}"). Check their requested outcomes against the work already present. `
+    + 'Report completed stages with update_plan completedStages; do not rebuild them or run '
+    + 'evaluate_map to move the plan. Finish only missing requested work, or explain what is '
+    + 'blocked and why. Your next close is final.';
 }
 
 /** Escalates once a call has already failed with these exact arguments once before in this job

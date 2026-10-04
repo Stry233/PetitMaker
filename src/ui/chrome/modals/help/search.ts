@@ -1,5 +1,5 @@
 /*
- * search.ts — the Help Center's index, built from the descriptors' RESOLVED strings.
+ * The Help Center's index, built from the descriptors' RESOLVED strings.
  *
  * Indexing the same keys the pages render (title, headings, bodies, Q&A) in the active locale AND
  * English is what makes the search a view of the docs rather than a second copy of them, and it is

@@ -1,5 +1,5 @@
 /*
- * maze-endpoints.ts — a way in and a destination, and the walk between them.
+ * A way in and a destination, and the walk between them.
  *
  * TWO KINDS OF END, AND NOBODY PICKS WHICH. A WAY IN is a hole in the maze's outer wall: you pass
  * through it. A DESTINATION is a place inside that the maze must lead to — the plaza, or any cell
@@ -23,9 +23,10 @@
  * and the carve's spanning tree makes that route unique for free.
  */
 import type { MacroCoord } from '../../../core/model/types';
+import { NEIGHBORS4 } from '../../../core/model/grid-model';
 
 /** What an end turned out to be. */
-export type EndKind = 'hole' | 'target';
+type EndKind = 'hole' | 'target';
 
 export interface MazeEnd {
   cell: MacroCoord;
@@ -39,8 +40,6 @@ export interface MazeField {
   /** Map coordinates, so a caller with a lattice converts and a caller with a map does not. */
   walkable(x: number, y: number): boolean;
 }
-
-const STEPS: readonly (readonly [number, number])[] = [[1, 0], [-1, 0], [0, 1], [0, -1]];
 
 /** Inside the maze's rectangle at all. */
 export function inField(field: MazeField, x: number, y: number): boolean {
@@ -64,7 +63,7 @@ export function onRing(field: MazeField, x: number, y: number): boolean {
  * measure a walk from the wrong place. That is worth a cell or two, which is the whole margin
  * between the longest walk and the second longest.
  */
-export function insideOf(field: MazeField, gate: MacroCoord): MacroCoord | null {
+function insideOf(field: MazeField, gate: MacroCoord): MacroCoord | null {
   const { origin: o, dims: d } = field;
   const inward: MacroCoord[] = [];
   if (gate.x === o.x) inward.push({ x: gate.x + 1, y: gate.y });
@@ -111,7 +110,7 @@ function sweep(field: MazeField, from: MacroCoord): Int32Array {
   for (let head = 0; head < queue.length; head++) {
     const here = queue[head]!;
     const step = dist[at(here.x, here.y)]! + 1;
-    for (const [dx, dy] of STEPS) {
+    for (const [dx, dy] of NEIGHBORS4) {
       const x = here.x + dx!;
       const y = here.y + dy!;
       if (!inField(field, x, y) || dist[at(x, y)] !== -1 || !field.walkable(x, y)) continue;
@@ -181,7 +180,7 @@ export function routeBetween(field: MazeField, a: MazeEnd, b: MazeEnd): MacroCoo
   while (dist[at(here)]! > 1) {
     const want = dist[at(here)]! - 1;
     let next: MacroCoord | null = null;
-    for (const [dx, dy] of STEPS) {
+    for (const [dx, dy] of NEIGHBORS4) {
       const x = here.x + dx!;
       const y = here.y + dy!;
       if (!inField(field, x, y) || !field.walkable(x, y)) continue;
@@ -234,7 +233,7 @@ export function mainland(field: MazeField): (cell: MacroCoord) => boolean {
       const queue: MacroCoord[] = [{ x, y }];
       for (let head = 0; head < queue.length; head++) {
         const here = queue[head]!;
-        for (const [dx, dy] of STEPS) {
+        for (const [dx, dy] of NEIGHBORS4) {
           const nx = here.x + dx!, ny = here.y + dy!;
           if (!inField(field, nx, ny) || !field.walkable(nx, ny)) continue;
           const s = slot(field, { x: nx, y: ny });

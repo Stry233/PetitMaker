@@ -1,4 +1,5 @@
-import { IS_LITE } from '../../../core/runtime/edition';
+import { useEditorStore } from '../../../state/store';
+import { SUPPORTS_WORKERS } from '../../../core/runtime/edition';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { focusFrame, renderThumbnail } from '../../../canvas/thumbnail';
 import type { GridState, MacroCoord, StencilPlan } from '../../../core/model/types';
@@ -41,6 +42,7 @@ export function useGeneratePreviews({
   gridState, region, selectingRegion, settings, base, customSeed, hand, ownSample,
   fontsReady, ownFontsReady, planInputs, wordFits, fits, recipeKey, forgetApplied, clearFailed,
 }: PreviewOptions) {
+  const loadPolicyEpoch = useEditorStore((s) => s.loadPolicyEpoch);
   const [shots, setShots] = useState<(string | null | undefined)[]>(() => Array(CANDIDATES).fill(undefined));
   const [customShot, setCustomShot] = useState<string | null | undefined>(null);
   const [customPending, setCustomPending] = useState(false);
@@ -52,7 +54,7 @@ export function useGeneratePreviews({
   const stencil = isStencilKind(settings.kind);
   const scope = region.length > 0 ? region : null;
   const seeds = batchSeeds(base);
-  const previewKey = `${recipeKey}|${base}`;
+  const previewKey = `${recipeKey}|${base}|${loadPolicyEpoch}`;
   const ownKey = ownSample ? ownSample.text ?? ownSample.src ?? null : null;
   const shotFrame = useMemo(
     () => focusFrame(regionBox(region), gridState?.template ?? null, SHOT_ASPECT),
@@ -190,8 +192,8 @@ export function useGeneratePreviews({
         if (dropped) return;
         setShots((prev) => prev.map((s, j) => (j === i ? shot : s)));
       };
-      // The offline container has no workers; finish one candidate before allocating the next.
-      if (IS_LITE) {
+      // Without workers, finish one candidate before allocating the next.
+      if (!SUPPORTS_WORKERS) {
         for (let i = 0; i < dealt.length && !dropped; i++) await preview(dealt[i]!, i);
       } else {
         await Promise.all(dealt.map(preview));
@@ -303,7 +305,7 @@ export function useGeneratePreviews({
     };
     // `ownKey` and not `ownSample`: the sample is rebuilt each render, and an object identity in the
     // deps would re-photograph the card on every keystroke anywhere in the shelf.
-  }, [recipeKey, customSeed, ownKey, gridState, region, selectingRegion, ownFontsReady]);
+  }, [recipeKey, loadPolicyEpoch, customSeed, ownKey, gridState, region, selectingRegion, ownFontsReady]);
 
   return {
     shots, customShot, customPending, previewing, previewKey,

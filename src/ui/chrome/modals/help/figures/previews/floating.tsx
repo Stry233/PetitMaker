@@ -1,5 +1,5 @@
 /*
- * floating.tsx — the Help Center's figures for the two surfaces the MAP raises: the right-click
+ * The Help Center's figures for the two surfaces the MAP raises: the right-click
  * menu and the delete confirmation.
  *
  * Both are store-driven in the app (the menu reads which block was clicked, the card which block is
@@ -54,7 +54,7 @@ export function DeleteConfirmPreview() {
   const locale = useEditorStore((s) => s.locale);
   const item = getCatalogItem(PIECE);
   return (
-    <PreviewFrame height={165}>
+    <PreviewFrame height={240}>
       <DeleteConfirmFace
         title={objectDeleteTitle(t, item ? localizedName(item.name, locale) : PIECE)}
         onCancel={noop}

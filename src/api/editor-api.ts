@@ -8,7 +8,7 @@ import {
   type PaintTerrainCommand,
   type PlacedObject,
   type TerrainType,
-  type ValidationResult,
+  type ValidationResult, type Rotation,
 } from '../core/model/types';
 import { chunkKey, getCell } from '../core/model/grid-model';
 import { surfaceElevation } from '../core/edge-cut/terrain-silhouette';
@@ -79,18 +79,14 @@ export class EditorAPI {
    */
   private write(tool: string, run: (executor: CommandExecutor) => ValidationResult): ValidationResult {
     const executor = this.getExecutor();
-    const watermark = executor.getUndoStackSize();
-    executor.pushSource({ source: ProvSource.Procedural, tool });
-    try {
+    return executor.transaction({ source: { source: ProvSource.Procedural, tool } }, (tx) => {
       const res = run(executor);
       if (!res.success) return res;
-      const violations = executor.commitStroke(watermark);
+      const violations = tx.commit();
       // A post-stroke violation reverts the write, so success here would name a change the map
       // does not hold.
       return violations.length > 0 ? { success: false, errors: violations } : res;
-    } finally {
-      executor.popSource();
-    }
+    });
   }
 
   paintTerrain(cells: MacroCoord[], type: TerrainType, elevation: number): ValidationResult {
@@ -113,7 +109,7 @@ export class EditorAPI {
     return this.write('api.eraseTerrain', (executor) => executor.execute(cmd));
   }
 
-  placeObject(catalogId: string, x: number, y: number, rotation: 0 | 90 | 180 | 270 = 0): ValidationResult {
+  placeObject(catalogId: string, x: number, y: number, rotation: Rotation = 0): ValidationResult {
     const id = generateObjectId();
     const obj: PlacedObject = {
       id,

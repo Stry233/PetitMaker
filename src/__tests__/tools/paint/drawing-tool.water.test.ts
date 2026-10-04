@@ -80,7 +80,6 @@ function occupiedPlateau(ex: CommandExecutor, state: any, at: MacroCoord): void 
     type: CommandType.PlaceObject,
     timestamp: Date.now(),
     object: { id: 'fixture-stall', catalogId: item.id, position: at, rotation: 0, elevation: 3 },
-    loadValue: item.loadValue,
   });
 }
 

@@ -1,5 +1,5 @@
 /*
- * tour.tsx — the figure for the first-launch tour: the REAL shell, pictured, under the tour's own
+ * The figure for the first-launch tour: the REAL shell, pictured, under the tour's own
  * dim. The spotlight geometry is the overlay's (`spotlightRx`, `LIT_INSET`, the same overlay fill
  * and accent ring), cut around the box the 'modes' step measures on the pictured shell, and the
  * card is the real `TourBubble` in the overlay's own card chrome. `TourOverlay` itself is not

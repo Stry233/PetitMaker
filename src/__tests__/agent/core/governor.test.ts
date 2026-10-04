@@ -9,11 +9,11 @@ import {
   deliveryNudge,
   emptyTurnNudge,
   hasLandedWrite,
+  hasRecentVerification,
+  retainedWrite,
   landedWriteCount,
   lengthStopNudge,
-  planOwedNudge,
   planProgress,
-  PLAN_OWED_AT,
   reasoningOnlyNudge,
   repeatedFailure,
   repeatRefusal,
@@ -159,13 +159,6 @@ describe('plan nudges', () => {
   const seedPlan = (log: ReturnType<typeof createLog>, n: number) => {
     append(log, { kind: 'plan', stages: Array.from({ length: n }, (_, i) => ({ label: `stage ${i + 1}` })), revision: 0 });
   };
-  const seedWrites = (log: ReturnType<typeof createLog>, n: number) => {
-    for (let i = 0; i < n; i++) {
-      seedCall(log, `w${i}`, 'place_object', { x: i });
-      seedResult(log, `w${i}`, 'place_object', { write: true });
-    }
-  };
-
   it('planProgress reads the filed stages and the current index', () => {
     const log = createLog();
     seedOrder(log);
@@ -176,26 +169,17 @@ describe('plan nudges', () => {
     expect(planProgress(log)).toEqual({ stageCount: 4, current: 2, nextLabel: 'stage 3' });
   });
 
-  it('planOwedNudge fires only in the write window while no plan stands', () => {
-    const log = createLog();
-    seedOrder(log);
-    seedWrites(log, PLAN_OWED_AT - 1);
-    expect(planOwedNudge(log)).toBeUndefined();
-    seedWrites(log, 1);
-    expect(planOwedNudge(log)).toMatch(/update_plan now/);
-    seedPlan(log, 3);
-    expect(planOwedNudge(log)).toBeUndefined();
-  });
-
-  it('unfinishedPlanNudge stands while stages remain and rests on the last one', () => {
+  it('unfinishedPlanNudge stops after all stages are explicitly complete', () => {
     const log = createLog();
     seedOrder(log);
     expect(unfinishedPlanNudge(log)).toBeUndefined();
     seedPlan(log, 3);
-    expect(unfinishedPlanNudge(log)).toMatch(/3 of 3 stages not finished/);
+    expect(unfinishedPlanNudge(log)).toMatch(/3 of 3 stages as unfinished/);
     append(log, { kind: 'stage', index: 1 });
-    expect(unfinishedPlanNudge(log)).toMatch(/2 of 3 stages not finished \(current: "stage 2"\)/);
+    expect(unfinishedPlanNudge(log)).toMatch(/2 of 3 stages as unfinished \(current: "stage 2"\)/);
     append(log, { kind: 'stage', index: 2 });
+    expect(unfinishedPlanNudge(log)).toContain('1 of 3 stages as unfinished');
+    append(log, { kind: 'stage', index: 3 });
     expect(unfinishedPlanNudge(log)).toBeUndefined();
   });
 });
@@ -612,31 +596,13 @@ describe('landedWriteCount', () => {
 });
 
 describe('reviewNudge', () => {
-  it('sends the model back to the order: re-read it, judge only what it asked for, name the weakest thing, next close final', () => {
+  it('accepts a verified result without demanding more edits or whole-map scoring', () => {
     const msg = reviewNudge();
-    expect(msg).toMatch(/^\(system\)/);
-    expect(msg.toLowerCase()).toContain('re-read the order');
-    expect(msg.toLowerCase()).toContain('weakest');
-    expect(msg.toLowerCase()).toContain('final');
-  });
-
-  it('forbids growing the scope, and makes a constrained or repair order a verification pass', () => {
-    const msg = reviewNudge().toLowerCase();
-    expect(msg).toContain('do not add anything the order did not ask for');
-    expect(msg).toContain('exact counts');
-    expect(msg).toContain('repair');
-    expect(msg).toContain('verify');
-  });
-
-  it('demands the close sweep pair beside the order-scoped look, with the scope constraint standing', () => {
-    const msg = reviewNudge();
-    expect(msg).toContain('view_map');
-    // Live rounds showed detector findings going stale because nothing re-ran them at close, so
-    // the pass now names the sweep pair explicitly; the scope sentence is what keeps the whole-map
-    // scorecard from inviting edits a constrained order never asked for.
-    expect(msg).toContain('find_speckle');
-    expect(msg).toContain('evaluate_map');
-    expect(msg).toContain('Do not add anything the order did not ask for');
+    expect(msg).toContain('If all requested outcomes are satisfied, close now');
+    expect(msg).toContain('smallest necessary correction');
+    expect(msg).toContain('Intentional planting is not an error');
+    expect(msg).not.toContain('find_speckle');
+    expect(msg).not.toContain('evaluate_map');
   });
 
   it('contains no em dash', () => {
@@ -645,5 +611,34 @@ describe('reviewNudge', () => {
 
   it('needs more headroom than the budget warning leaves, so a job never holds both notes\' instructions at once', () => {
     expect(REVIEW_MIN_TURNS_LEFT).toBeGreaterThan(BUDGET_WARN_AT);
+  });
+});
+
+
+describe('retained progress and verification', () => {
+  it('counts retained parts of rejected strokes and ignores explicit no-ops', () => {
+    expect(retainedWrite({ write: true, isError: true, detail: { cells: 3 } })).toBe(true);
+    expect(retainedWrite({ write: true, isError: true, detail: { reverted: true, partialRevert: true, cells: 2 } })).toBe(true);
+    expect(retainedWrite({ write: true, isError: true, detail: { reverted: true, cells: 2 } })).toBe(false);
+    expect(retainedWrite({ write: true, isError: false, detail: { cells: 0, objects: 0 } })).toBe(false);
+    expect(retainedWrite({ write: false, isError: false, detail: { objects: 3 } })).toBe(false);
+  });
+
+  it('requires a successful map read after the last retained write, scoped to the current order', () => {
+    const log = createLog();
+    seedOrder(log);
+    seedResult(log, 'w1', 'paint_terrain', { write: true });
+    seedResult(log, 'bad-read', 'view_map', { isError: true });
+    expect(hasRecentVerification(log)).toBe(false);
+    seedResult(log, 'read', 'view_map');
+    expect(hasRecentVerification(log)).toBe(true);
+    seedResult(log, 'skill', 'load_skill');
+    expect(hasRecentVerification(log)).toBe(true);
+    append(log, { kind: 'toolResult', name: 'paint_terrain', callId: 'partial', isError: true, write: true, content: 'Partially applied', detail: { cells: 1 } });
+    expect(hasRecentVerification(log)).toBe(false);
+    seedResult(log, 'read-2', 'get_objects');
+    expect(hasRecentVerification(log)).toBe(true);
+    seedOrder(log);
+    expect(hasRecentVerification(log)).toBe(false);
   });
 });

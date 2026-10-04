@@ -29,7 +29,6 @@ import type {
   EditorEvents, GenerateConfig, GridState, MacroCoord, MapTemplate, PlacedObject, Stencil,
 } from '../../../core/model/types';
 import { roadLookup } from '../../../state/object-index';
-import { catalogLoadValue } from '../../../state/catalog';
 import {
   __resetCandidateCache, clearGenerated, forgetGenerationScope, generateCandidate, generateMap,
 } from '../../../kit/operations/generate';
@@ -48,7 +47,7 @@ function realState(): GridState {
 
 function ctxOf(state: GridState): KitContext {
   const executor = new CommandExecutor(
-    state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state), catalogLoadValue,
+    state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state),
   );
   return { state, executor, registry: executor.getRegistry() };
 }
@@ -341,14 +340,14 @@ describe('repairRegionSeam', () => {
   /** A run's clearing, as the operations do it: erase the terrain in scope. */
   function clearRegion(state: GridState, region: MacroCoord[]): void {
     const exec = new CommandExecutor(
-      state, new EventBus<EditorEvents>(), reg, roadLookup(state), catalogLoadValue,
+      state, new EventBus<EditorEvents>(), reg, roadLookup(state),
     );
     clearAllTerrain(state, (cmd) => exec.execute(cmd), region);
   }
 
   function executorOf(state: GridState): CommandExecutor {
     return new CommandExecutor(
-      state, new EventBus<EditorEvents>(), reg, roadLookup(state), catalogLoadValue,
+      state, new EventBus<EditorEvents>(), reg, roadLookup(state),
     );
   }
 

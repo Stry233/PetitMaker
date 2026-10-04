@@ -13,6 +13,7 @@ import {
   PREVIEW_CELL_ART, PREVIEW_ICON_ART, PREVIEW_PALETTES,
   type PreviewIcon, type PreviewIconArt, type PreviewPalette,
 } from './preview-cell-art';
+import type { Rect } from '../model/types';
 
 export { PREVIEW_CELL_ART, PREVIEW_ICON_ART, PREVIEW_PALETTES };
 export type { PreviewIcon, PreviewIconArt, PreviewPalette };
@@ -34,6 +35,10 @@ export interface PreviewCell {
 export type GhostPaint = number | PreviewCell;
 
 export const CURVE_FOOTPRINT = { color: 0xffd75e, alpha: 0.3 } as const;
+/** The yellow a route and a valid route ghost wear in both views: the curve footprint's hue. */
+export const ROUTE_TINT = CURVE_FOOTPRINT.color;
+/** The blue of the Ctrl+drag rubber band, distinct from the cream selection marks and the grey hover wash, in both views. */
+export const BAND_COLOR = 0x4da6ff;
 
 export function isPreviewCell(paint: GhostPaint): paint is PreviewCell {
   return typeof paint !== 'number';
@@ -43,23 +48,8 @@ export function previewPalette(cell: PreviewCell): PreviewPalette {
   return cell.valid ? PREVIEW_PALETTES.valid : PREVIEW_PALETTES.invalid;
 }
 
-/** A footprint's extent in CELLS (the card's frame). */
-export interface CellBounds { x: number; y: number; w: number; h: number }
-
-export function boundsOfCells(cells: readonly { x: number; y: number }[]): CellBounds | null {
-  if (cells.length === 0) return null;
-  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
-  for (const c of cells) {
-    if (c.x < x0) x0 = c.x;
-    if (c.y < y0) y0 = c.y;
-    if (c.x > x1) x1 = c.x;
-    if (c.y > y1) y1 = c.y;
-  }
-  return { x: x0, y: y0, w: x1 - x0 + 1, h: y1 - y0 + 1 };
-}
-
-/** Same, for the span form an analytic drag shape previews as (structurally a `RowSpan`). */
-export function boundsOfSpans(spans: readonly { x: number; y: number; w: number }[]): CellBounds | null {
+/** A footprint's extent in cells, for the span form an analytic drag shape previews as (structurally a `RowSpan`). */
+export function boundsOfSpans(spans: readonly { x: number; y: number; w: number }[]): Rect | null {
   if (spans.length === 0) return null;
   let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
   for (const s of spans) {
@@ -73,7 +63,7 @@ export function boundsOfSpans(spans: readonly { x: number; y: number; w: number 
 
 /** Whether the footprint FILLS its bounds, so the card's background is one rounded rectangle
  *  (a brush dab, a rect drag, a single cell) rather than an irregular silhouette. */
-export function isSolidRect(cellCount: number, bounds: CellBounds | null): boolean {
+export function isSolidRect(cellCount: number, bounds: Rect | null): boolean {
   return !!bounds && cellCount === bounds.w * bounds.h;
 }
 
@@ -85,7 +75,7 @@ export interface PreviewDot { x: number; y: number; r: number }
  * footprint measures — the dots mark where the card's corners ARE, so scaling them with the
  * footprint would put them in the middle of a big preview.
  */
-export function previewDots(bounds: CellBounds): PreviewDot[] {
+export function previewDots(bounds: Rect): PreviewDot[] {
   const { dotInset: inset, dotRadius: r } = PREVIEW_CELL_ART;
   const left = bounds.x + inset, right = bounds.x + bounds.w - inset;
   const top = bounds.y + inset, bottom = bounds.y + bounds.h - inset;
@@ -110,7 +100,7 @@ export const HATCH_BAR = PREVIEW_CELL_ART.hatchWidth * Math.SQRT2;
  * wash alone.
  */
 export function hatchBars(
-  rects: readonly CellBounds[], maxArea = 400,
+  rects: readonly Rect[], maxArea = 400,
 ): number[][] {
   const area = rects.reduce((sum, r) => sum + r.w * r.h, 0);
   if (area > maxArea) return [];
@@ -149,7 +139,7 @@ function clipToBand(poly: number[], lo: number, hi: number): number[] {
 }
 
 /** The icon's rect, in cell units: its authored size, centred on the footprint. */
-export function previewIconRect(bounds: CellBounds, icon: PreviewIcon): CellBounds {
+export function previewIconRect(bounds: Rect, icon: PreviewIcon): Rect {
   const art = PREVIEW_ICON_ART[icon];
   return {
     x: bounds.x + bounds.w / 2 - art.w / 2,

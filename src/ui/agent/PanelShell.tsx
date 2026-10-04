@@ -1,10 +1,11 @@
+import { Pill } from '../primitives/Pill';
 /*
  * Assembles the assistant panel's desk, record, steering and composer zones from PanelView.
  * Character-seat ancestors remain untransformed because the fixed character uses their measured rectangles.
  */
 import {
-  useEffect, useLayoutEffect, useMemo, useRef, useState,
-  type CSSProperties, type KeyboardEvent, type ReactNode, type RefObject,
+  useEffect, useMemo, useRef, useState,
+  type CSSProperties, type KeyboardEvent, type ReactNode,
 } from 'react';
 import {
   motion, useMotionValue, useReducedMotionConfig, useTransform, type Variants,
@@ -18,7 +19,7 @@ import { PLATE, PLATE_INK } from '../design/tokens';
 import { radii } from '../design/styles';
 import { useFollowNewest } from './use-follow-newest';
 import { AnswerPaper, isAnswerJob } from './AnswerPaper';
-import { IconButton, PIN_KNOB, PIN_KNOB_OUT, PinKnob, Pill, RESUME_PRIMARY } from './atoms';
+import { IconButton, PIN_KNOB, PIN_KNOB_OUT, PinKnob, RESUME_PRIMARY, zoneEnter } from './atoms';
 import { Banner, type BannerActionId, type BannerClass } from './Banner';
 import { ArchiveCard, FlipTicket, IncidentCard, StopCard, type Checkpoint } from './FlipTicket';
 import { Composer, COMPOSER_HEIGHT } from './Composer';
@@ -38,7 +39,7 @@ import type { RegionBounds } from '../../state/region-bounds';
 import { edge, PANEL_MIN_HEIGHT, PANEL_PAD, PANEL_WIDTH } from './tokens';
 import { DOCK_CHROME, DOCK_CHROME_FILE_H, DOCK_CHROME_W, type DockSide } from '../shell/panel-frame';
 import { fmtClock, useSecondClock } from './dock-face';
-import { easingCss, framerMotion, seconds } from './motion';
+import { framerMotion } from '../design/motion';
 import { SetupScreen } from './SetupScreen';
 import { DreamOffice } from './DreamOffice';
 import { getCharacterHandle } from './character/Character';
@@ -48,8 +49,11 @@ import { ManageScreen } from './ManageScreen';
 import type { LiveConnection } from '../../agent/exec/runner';
 import type { SetupEntry, SetupFace } from './setup-parts';
 import { windowPill } from '../design/window-skin';
-import { useScrollFade } from '../primitives/scroll-fade';
+import { ScrollArea } from '../primitives/ScrollArea';
+import { ScrollIntent } from '../primitives/scroll-intent';
+import { CONTROL_CLEARANCE } from '../primitives/use-scroll-row';
 import { useViewportEpoch } from '../hooks/use-viewport-epoch';
+import { useHeightTransition } from '../hooks/use-height-transition';
 import { useCelebrateEdge } from './character/use-celebrate-edge';
 
 /**
@@ -78,7 +82,7 @@ export function knobCarry(clip: string): { x: number; y: number; scale: number }
 }
 
 /** The holder owns opacity while the plate owns the matching clip-path wipe. */
-export const panelVariants: Variants = {
+const panelVariants: Variants = {
   hidden: { opacity: 0 },
   shown: { opacity: 1 },
   ground: { opacity: 1 },
@@ -111,39 +115,6 @@ const HELD: ReadonlySet<SessionPhase> = new Set<SessionPhase>([
 /** Phases with landed pause controls. */
 const ON_HOLD: ReadonlySet<SessionPhase> = new Set<SessionPhase>(['paused']);
 
-/**
- * Animates committed CSS heights without transforming the fixed character's containing block.
- * First paint, reduced motion and viewport changes establish a new baseline immediately.
- */
-function useHeightTween(
-  ref: RefObject<HTMLElement | null>, shape: unknown, reduced: boolean, viewport: string,
-): void {
-  const painted = useRef<number | null>(null);
-  const running = useRef<Animation | null>(null);
-  const room = useRef(viewport);
-  useLayoutEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    const reroomed = room.current !== viewport;
-    room.current = viewport;
-    // Only a running animation still owns the displayed height.
-    const live = running.current;
-    const held = live !== null && live.playState === 'running';
-    const from = held ? el.offsetHeight : painted.current;
-    live?.cancel();
-    running.current = null;
-    const to = el.offsetHeight;
-    painted.current = to;
-    if (from === null || reduced || reroomed || Math.abs(to - from) < 1) return;
-    if (typeof el.animate !== 'function') return; // jsdom, and any engine without Web Animations
-    running.current = el.animate(
-      [{ height: `${from}px` }, { height: `${to}px` }],
-      { duration: seconds('panel.height') * 1000, easing: easingCss('panel.height') },
-    );
-  }, [ref, shape, reduced, viewport]);
-  useLayoutEffect(() => () => { running.current?.cancel(); }, []);
-}
-
 /** Gap between panel zones in frame pixels. */
 const ZONE_GAP = 10;
 
@@ -153,18 +124,6 @@ const ZONE_GAPS = 3;
 /** Height reserved for the fixed desk, composer, gaps and plate padding. */
 export const PINNED_HEIGHT = PANEL_PAD * 2 + DOCK_HEIGHT + COMPOSER_HEIGHT + ZONE_GAP * ZONE_GAPS;
 
-
-/** Returns the height occupied by the first ticket heading currently stuck to the zone's top edge. */
-function stickyBand(zone: HTMLElement): number {
-  const top = zone.getBoundingClientRect().top;
-  for (const order of zone.querySelectorAll('[data-testid="ticket-order"]')) {
-    const box = order.getBoundingClientRect();
-    // Ignore headings that have not reached the edge or have already scrolled past it.
-    if (box.bottom <= top || box.top > top + 1) continue;
-    return Math.max(0, box.bottom - top);
-  }
-  return 0;
-}
 
 /** Unpainted positioning box shared by the plate and its external dock tab. */
 const PLATE_HOLDER: CSSProperties = { position: 'relative', display: 'flex' };
@@ -215,21 +174,7 @@ function panelStyle(cap: string | undefined, hug: boolean): CSSProperties {
   return { ...PANEL_STYLE, maxHeight: cap, minHeight: `min(${PANEL_MIN_HEIGHT}px, ${cap})` };
 }
 
-/** The record is the only scrolling zone; side gutters contain scaled hover feedback inside its clip. */
-const JOB_ZONE_STYLE: CSSProperties = {
-  // Grow as well as shrink so unused panel height keeps the composer on the bottom edge.
-  flex: '1 1 auto',
-  overflowY: 'auto',
-  overflowX: 'hidden',
-  display: 'flex',
-  flexDirection: 'column',
-  gap: 10,
-  padding: '1px 6px',
-  margin: '0 -5px',
-  // Stable gutters create permanent asymmetric padding on classic scrollbars. Native scroll
-  // anchoring also conflicts with useFollowNewest's explicit ownership of the scroll position.
-  overflowAnchor: 'none',
-};
+const JOB_ZONE_STYLE: CSSProperties = { flex: '1 1 auto', display: 'flex', flexDirection: 'column', minHeight: 0 };
 
 /** Shared empty deck state preserves referential stability across mounts. */
 const NO_DECKS: ReadonlySet<string> = new Set();
@@ -533,8 +478,8 @@ export function PanelShell({
   const notReady = formOwnsZone || managing;
   /** Setup step mirrored into the desk status. */
   const [setupFace, setSetupFace] = useState<SetupFace | null>(null);
-  /** Locally dismissed suggestion text; the suggestion itself is a log projection. */
-  const [droppedGhost, setDroppedGhost] = useState<string | null>(null);
+  /** Dismissal belongs to one order, even when a later question suggests the same words. */
+  const [droppedGhost, setDroppedGhost] = useState<{ orderSeq: number | undefined; text: string | null } | null>(null);
   /** Whether the composer contains user text, used to demote gate actions. */
   const [drafting, setDrafting] = useState(false);
   /** Lifted above HistoryStrip so opening and closing a record preserves the expanded list. */
@@ -546,7 +491,6 @@ export function PanelShell({
   // Height animations rebaseline when either viewport geometry or UI scale changes.
   const viewport = useViewportEpoch();
 
-  const [readingThoughts, setReadingThoughts] = useState(false);
 
   /** Open ask decks participate in panel height and reset for each order. */
   const [openDecks, setOpenDecks] = useState<ReadonlySet<string>>(NO_DECKS);
@@ -558,10 +502,10 @@ export function PanelShell({
 
   const focusComposer = useRef<(() => void) | null>(null);
 
-  // Forms and expanded reasoning are read in place; record and deck changes follow only when pinned.
-  useFollowNewest(
+  // Forms are read in place; explicit reading actions suspend record following.
+  const preserveReading = useFollowNewest(
     jobZoneRef, view, `${viewport}|${[...openDecks].sort().join(',')}`,
-    !formOwnsZone && !managing && !readingThoughts,
+    !formOwnsZone && !managing,
   );
 
   const celebrate = useCelebrateEdge(view);
@@ -723,14 +667,7 @@ export function PanelShell({
   /** Row-only and marking states omit the record-height floor. */
   const zoneEmpty = rowOnly || marking;
 
-  /** The live scroll fade begins below the sticky order heading and remeasures throughout height changes. */
-  const fade = useScrollFade(jobZoneRef, 'y', { offsetAt: stickyBand });
-
-  // The tween key includes every state that can reshape the panel without changing record content.
-  const askShape = `${asks.map((ask) => `${ask.gateId}${ask.verdict ?? ''}`).join('|')}~${[...openDecks].sort().join(',')}`;
-  const shape = `${maxHeight ?? ''}:${String(showSetup)}:${String(showWelcome)}:${setupFace?.step ?? ''}:${String(managing)}:${showTrouble}:${askShape}:${view.queuedSteers.length}:${String(zoneEmpty)}:${settled?.job.orderSeq ?? ''}:${opened?.orderSeq ?? ''}:${String(marking)}:${String(dressed)}`;
-  // Docked height follows the viewport and bypasses content-height animation.
-  useHeightTween(rootRef, `${shape}|${String(view.jobs.length)}|${view.phase}`, reduced || pinned, viewport);
+  useHeightTransition(rootRef, { motionId: 'panel.height', disabled: pinned, resetKey: viewport });
 
   // Only the live panel registers as the character host's moving carriage; help figures stay inert.
   useEffect(() => {
@@ -936,240 +873,242 @@ export function PanelShell({
           />
         </div>
 
-        <div
-          ref={jobZoneRef}
-          data-testid="panel-job-zone"
-          style={{ ...JOB_ZONE_STYLE, minHeight: jobZoneFloor(maxHeight, zoneEmpty), ...fade }}
+        <motion.div
+          key={showSetup ? 'setup' : showWelcome ? 'welcome' : managing ? 'manage' : 'session'}
+          {...zoneEnter(reduced)}
+          data-testid="panel-job-frame"
+          style={{ ...JOB_ZONE_STYLE, minHeight: jobZoneFloor(maxHeight, zoneEmpty) }}
         >
-          {marking ? null : showSetup ? (
-            <SetupScreen
-              key={setupEntry}
-              entry={setupEntry}
-              onDone={() => { setInSetup(false); onSetupDone?.(); }}
-              onFace={setSetupFace}
-              // Model selection moves to the management card and can return to incomplete setup.
-              {...(onManage ? { onManage: () => { setInSetup(false); if (!managing) onManage(); } } : {})}
-              onLeave={() => setInSetup(false)}
-            />
-          ) : showWelcome ? (
-            <DreamOffice
-              onConnect={() => {
-                // Help figures never control the live character.
-                if (!pictured) {
-                  const hero = getCharacterHandle();
-                  hero?.acknowledge();
-                  hero?.wake();
-                }
-                setInSetup(true);
-              }}
-              pinned={pinned}
-            />
-          ) : managing ? (
-            <ManageScreen
-              // Count only records still visible to the local clear action.
-              jobCount={jobCount ?? view.jobs.filter((job) => !cleared.has(job.orderSeq)).length}
-              stoppable={isRunning || view.phase === 'retrying' || view.phase === 'gated'}
-              parkable={view.phase === 'retrying'}
-              {...(onManageDone ? { onDone: onManageDone } : {})}
-              onNeedKey={() => { setSetupEntry('key'); setInSetup(true); }}
-              {...(onClearJobs ? { onClearJobs } : {})}
-              onStopJob={onStop}
-              onSetAside={onPause}
-              {...(liveConnection ? { liveConnection } : {})}
-            />
-          ) : opened ? (
-            /* Opened history replaces the zone and preserves each record's paper or archive form. */
-            isAnswerJob(opened) ? (
-              <AnswerPaper
-                job={opened}
-                past
-                {...(closeRecord ? { onBack: closeRecord } : {})}
-                {...(onClearRecord ? { onClear: onClearRecord } : {})}
-              />
-            ) : (
-              <ArchiveCard
-                job={opened}
-                rolledBack={rolledBack.has(opened.orderSeq)}
-                {...(recordStamp ? { stamp: recordStamp(opened) } : {})}
-                {...(closeRecord ? { onBack: closeRecord } : {})}
-                {...(onClearRecord ? { onClear: onClearRecord } : {})}
-              />
-            )
-          ) : (
-            <>
-              {storageCls && (
-                /* Discard clears corrupt bytes; export preserves both the bytes and their notice. */
-                <Banner
-                  cls={storageCls}
-                  standing={standingStorage}
-                  onAction={(action) => {
-                    if (action === 'dismiss') {
-                      if (storageCls === 'storage-corrupt') onDismissStorage?.();
-                      else if (storageNotice === 'lost' || storageNotice === 'pruned') setDismissedStorage(storageNotice);
-                    } else onBannerAction?.(action);
+          <ScrollIntent.Provider value={preserveReading}>
+            <ScrollArea ref={jobZoneRef} data-testid="panel-job-zone" gutter="stable both-edges" fade={view.current ? 'end' : 'both'}
+              style={{ flex: '1 1 auto', margin: `0 calc(0px - ${CONTROL_CLEARANCE})` }}
+              contentStyle={{ display: 'flex', flexDirection: 'column', gap: 10, padding: CONTROL_CLEARANCE, minHeight: '100%', boxSizing: 'border-box' }}>
+              {marking ? null : showSetup ? (
+                <SetupScreen
+                  key={setupEntry}
+                  entry={setupEntry}
+                  onDone={() => { setInSetup(false); onSetupDone?.(); }}
+                  onFace={setSetupFace}
+                  // Model selection moves to the management card and can return to incomplete setup.
+                  {...(onManage ? { onManage: () => { setInSetup(false); if (!managing) onManage(); } } : {})}
+                  onLeave={() => setInSetup(false)}
+                />
+              ) : showWelcome ? (
+                <DreamOffice
+                  onConnect={() => {
+                    // Help figures never control the live character.
+                    if (!pictured) {
+                      const hero = getCharacterHandle();
+                      hero?.acknowledge();
+                      hero?.wake();
+                    }
+                    setInSetup(true);
                   }}
+                  pinned={pinned}
                 />
-              )}
-              {noticeCls && (
-                <Banner cls={noticeCls} onAction={() => { /* Map-identity notices remain with their records. */ }} />
-              )}
-              {/* A key-cleared notice precedes the blocked resume card it explains. */}
-              {keyCleared && (
-                <Banner
-                  cls={AT_REST.has(view.phase) ? 'key-cleared' : 'key-clearing'}
-                  standing={standingTrouble}
-                  onAction={bannerAction}
+              ) : managing ? (
+                <ManageScreen
+                  // Count only records still visible to the local clear action.
+                  jobCount={jobCount ?? view.jobs.filter((job) => !cleared.has(job.orderSeq)).length}
+                  stoppable={isRunning || view.phase === 'retrying' || view.phase === 'gated'}
+                  parkable={view.phase === 'retrying'}
+                  {...(onManageDone ? { onDone: onManageDone } : {})}
+                  onNeedKey={() => { setSetupEntry('key'); setInSetup(true); }}
+                  {...(onClearJobs ? { onClearJobs } : {})}
+                  onStopJob={onStop}
+                  onSetAside={onPause}
+                  {...(liveConnection ? { liveConnection } : {})}
                 />
-              )}
-              {heldOffer && (
-                <ResumeCard
-                  order={heldOffer.job.orderText}
-                  pausemark={pausedWhere(heldOffer.job, t)}
-                  {...(heldOffer.note ? { note: heldOffer.note } : {})}
-                  {...(heldOffer.blocked ? { blocked: t('agent3.ticket_key_returns') } : {})}
-                  {...(heldOffer.blocked
-                    ? { onFixKey: () => bannerAction('fix-key') }
-                    : onResume ? { onResume } : {})}
-                  {...(setAside ? { onSetAside: () => setAside(heldOffer.job.orderSeq) } : {})}
-                />
-              )}
-              <HistoryStrip
-                jobs={past}
-                rolledBack={rolledBack}
-                open={historyOpen}
-                onOpenChange={setHistoryOpen}
-                {...(otherMap ? { otherMap } : {})}
-                {...(unknownMap ? { unknownMap } : {})}
-                {...(undoDepth !== undefined ? { undoDepth } : {})}
-                busy={isRunning}
-                {...(onOpenTicket ? { onOpen: onOpenTicket } : {})}
-                {...(onRollBack ? { onRollBack } : {})}
-              />
-              {/* A resume offer replaces the live ticket for the same job. */}
-              {view.current && !heldOffer && (
-                <JobTicket
-                  job={view.current}
-                  live
-                  held={HELD.has(view.phase)}
-                  streaming={view.current.saysStreaming === true}
-                  paused={ON_HOLD.has(view.phase)}
-                  {...(lane ? { lane } : {})}
-                  {...(view.current.region && regionShot
-                    ? { regionVignette: regionShot(view.current.region, TICKET_VIGNETTE.width, TICKET_VIGNETTE.height) }
-                    : {})}
-                  busy={isRunning}
-                  {...(onRewind ? { onRewind } : {})}
-                  // Hold actions move below any ask card that produced the hold.
-                  {...(onResume && !holdAfterAsk ? { onResume } : {})}
-                  {...(holdAfterAsk ? {} : { onStop })}
-                  onThoughtsOpenChange={setReadingThoughts}
-                />
-              )}
-              {/* Settled jobs retain their answer, stop, stalled or receipt form. */}
-              {settled?.shape === 'paper' && (
-                <AnswerPaper
-                  key={settled.job.orderSeq}
-                  job={settled.job}
-                  {...(onFileAway ? { onFileAway } : {})}
-                />
-              )}
-              {settled?.shape === 'stop' && (
-                <StopCard
-                  /* Record identity resets card-local confirmation state between jobs. */
-                  key={settled.job.orderSeq}
-                  job={settled.job}
-                  rolledBack={rolledBack.has(settled.job.orderSeq)}
-                  {...(undoDepth !== undefined ? { undoDepth } : {})}
-                  // Unanswered asks remain attached to a job that settles mid-question.
-                  unanswered={settled.job.asks.some((ask) => ask.verdict === 'unanswered')}
-                  {...(clockOf(view, settled.job) !== null ? { clock: clockOf(view, settled.job)! } : {})}
-                  {...(onRewindAll && !settledBlocked ? { onRewindAll: () => onRewindAll(settled.job) } : {})}
-                  {...(onFileAway ? { onFileAway } : {})}
-                />
-              )}
-              {/* Stalled jobs leave repair actions to the adjacent incident banner. */}
-              {settled?.shape === 'stalled' && (
-                <IncidentCard
-                  key={settled.job.orderSeq}
-                  job={settled.job}
-                  stamps={jobStamps(settled.job, t)}
-                />
-              )}
-              {settled?.shape === 'receipt' && (
-                <FlipTicket
-                  key={settled.job.orderSeq}
-                  job={settled.job}
-                  compact={settled.job.question === true}
-                  rolledBack={rolledBack.has(settled.job.orderSeq)}
-                  {...(undoDepth !== undefined ? { undoDepth } : {})}
-                  {...(recordShot && settled.job.question !== true ? { postcard: recordShot(settled.job) } : {})}
-                  {...(recordStamp ? { archiveStamp: recordStamp(settled.job) } : {})}
-                  {...(onRewind && !settledBlocked ? { onRewind } : {})}
-                  {...(onRewindAll && !settledBlocked ? { onRewindAll: () => onRewindAll(settled.job) } : {})}
-                  {...(onKeepGoing ? { onKeepGoing: () => onKeepGoing(settled.job) } : {})}
-                  // Answering or replacing a standing question files its compact receipt.
-                  {...(onFileAway && settled.job.question !== true ? { onFileAway } : {})}
-                />
-              )}
-              {askCards}
-              {(view.phase === 'gated' || (settled?.job.question === true && onFileAway)) && (
-                <div style={HOLD_ACTIONS_STYLE}>
-                  <Pill
-                    data-testid="question-cancel-task"
-                    onClick={() => {
-                      if (view.phase === 'gated') setStopAsks((n) => n + 1);
-                      else if (settled) onFileAway?.(settled.job.orderSeq);
-                    }}
-                  >
-                    {t('agent3.action_cancel_task')}
-                  </Pill>
-                </div>
-              )}
-              {holdAfterAsk && (onResume !== undefined || onStop !== undefined) && (
-                <div data-testid="hold-actions" style={HOLD_ACTIONS_STYLE}>
-                  {onResume !== undefined && (
-                    <button
-                      type="button"
-                      data-testid="hold-resume"
-                      onClick={onResume}
-                      style={RESUME_PRIMARY}
-                    >
-                      {t('agent3.action_resume')}
-                    </button>
+              ) : opened ? (
+                /* Opened history replaces the zone and preserves each record's paper or archive form. */
+                isAnswerJob(opened) ? (
+                  <AnswerPaper
+                    job={opened}
+                    past
+                    {...(closeRecord ? { onBack: closeRecord } : {})}
+                    {...(onClearRecord ? { onClear: onClearRecord } : {})}
+                  />
+                ) : (
+                  <ArchiveCard
+                    job={opened}
+                    rolledBack={rolledBack.has(opened.orderSeq)}
+                    {...(recordStamp ? { stamp: recordStamp(opened) } : {})}
+                    {...(closeRecord ? { onBack: closeRecord } : {})}
+                    {...(onClearRecord ? { onClear: onClearRecord } : {})}
+                  />
+                )
+              ) : (
+                <>
+                  {storageCls && (
+                    /* Discard clears corrupt bytes; export preserves both the bytes and their notice. */
+                    <Banner
+                      cls={storageCls}
+                      standing={standingStorage}
+                      onAction={(action) => {
+                        if (action === 'dismiss') {
+                          if (storageCls === 'storage-corrupt') onDismissStorage?.();
+                          else if (storageNotice === 'lost' || storageNotice === 'pruned') setDismissedStorage(storageNotice);
+                        } else onBannerAction?.(action);
+                      }}
+                    />
                   )}
-                  <button
-                    type="button"
-                    data-testid="hold-stop"
-                    onClick={onStop}
-                    style={{ ...windowPill('danger', false, 'plate'), boxShadow: 'none' }}
-                  >
-                    {t('agent3.action_stop')}
-                  </button>
-                </div>
+                  {noticeCls && (
+                    <Banner cls={noticeCls} onAction={() => { /* Map-identity notices remain with their records. */ }} />
+                  )}
+                  {/* A key-cleared notice precedes the blocked resume card it explains. */}
+                  {keyCleared && (
+                    <Banner
+                      cls={AT_REST.has(view.phase) ? 'key-cleared' : 'key-clearing'}
+                      standing={standingTrouble}
+                      onAction={bannerAction}
+                    />
+                  )}
+                  {heldOffer && (
+                    <ResumeCard
+                      order={heldOffer.job.orderText}
+                      pausemark={pausedWhere(heldOffer.job, t)}
+                      {...(heldOffer.note ? { note: heldOffer.note } : {})}
+                      {...(heldOffer.blocked ? { blocked: t('agent3.ticket_key_returns') } : {})}
+                      {...(heldOffer.blocked
+                        ? { onFixKey: () => bannerAction('fix-key') }
+                        : onResume ? { onResume } : {})}
+                      {...(setAside ? { onSetAside: () => setAside(heldOffer.job.orderSeq) } : {})}
+                    />
+                  )}
+                  <HistoryStrip
+                    jobs={past}
+                    rolledBack={rolledBack}
+                    open={historyOpen}
+                    onOpenChange={setHistoryOpen}
+                    {...(otherMap ? { otherMap } : {})}
+                    {...(unknownMap ? { unknownMap } : {})}
+                    {...(undoDepth !== undefined ? { undoDepth } : {})}
+                    busy={isRunning}
+                    {...(onOpenTicket ? { onOpen: onOpenTicket } : {})}
+                    {...(onRollBack ? { onRollBack } : {})}
+                  />
+                  {/* A resume offer replaces the live ticket for the same job. */}
+                  {view.current && !heldOffer && (
+                    <JobTicket
+                      job={view.current}
+                      live
+                      held={HELD.has(view.phase)}
+                      streaming={view.current.saysStreaming === true}
+                      paused={ON_HOLD.has(view.phase)}
+                      {...(lane ? { lane } : {})}
+                      {...(view.current.region && regionShot
+                        ? { regionVignette: regionShot(view.current.region, TICKET_VIGNETTE.width, TICKET_VIGNETTE.height) }
+                        : {})}
+                      busy={isRunning}
+                      {...(onRewind ? { onRewind } : {})}
+                      // Hold actions move below any ask card that produced the hold.
+                      {...(onResume && !holdAfterAsk ? { onResume } : {})}
+                      {...(holdAfterAsk ? {} : { onStop })}
+                    />
+                  )}
+                  {/* Settled jobs retain their answer, stop, stalled or receipt form. */}
+                  {settled?.shape === 'paper' && (
+                    <AnswerPaper
+                      key={settled.job.orderSeq}
+                      job={settled.job}
+                      {...(onFileAway ? { onFileAway } : {})}
+                    />
+                  )}
+                  {settled?.shape === 'stop' && (
+                    <StopCard
+                      /* Record identity resets card-local confirmation state between jobs. */
+                      key={settled.job.orderSeq}
+                      job={settled.job}
+                      rolledBack={rolledBack.has(settled.job.orderSeq)}
+                      {...(undoDepth !== undefined ? { undoDepth } : {})}
+                      // Unanswered asks remain attached to a job that settles mid-question.
+                      unanswered={settled.job.asks.some((ask) => ask.verdict === 'unanswered')}
+                      {...(clockOf(view, settled.job) !== null ? { clock: clockOf(view, settled.job)! } : {})}
+                      {...(onRewindAll && !settledBlocked ? { onRewindAll: () => onRewindAll(settled.job) } : {})}
+                      {...(onFileAway ? { onFileAway } : {})}
+                    />
+                  )}
+                  {/* Stalled jobs leave repair actions to the adjacent incident banner. */}
+                  {settled?.shape === 'stalled' && (
+                    <IncidentCard
+                      key={settled.job.orderSeq}
+                      job={settled.job}
+                      stamps={jobStamps(settled.job, t)}
+                    />
+                  )}
+                  {settled?.shape === 'receipt' && (
+                    <FlipTicket
+                      key={settled.job.orderSeq}
+                      job={settled.job}
+                      compact={settled.job.question === true}
+                      rolledBack={rolledBack.has(settled.job.orderSeq)}
+                      {...(undoDepth !== undefined ? { undoDepth } : {})}
+                      {...(recordShot && settled.job.question !== true ? { postcard: recordShot(settled.job) } : {})}
+                      {...(recordStamp ? { archiveStamp: recordStamp(settled.job) } : {})}
+                      {...(onRewind && !settledBlocked ? { onRewind } : {})}
+                      {...(onRewindAll && !settledBlocked ? { onRewindAll: () => onRewindAll(settled.job) } : {})}
+                      {...(onKeepGoing ? { onKeepGoing: () => onKeepGoing(settled.job) } : {})}
+                      {...(onFileAway ? { onFileAway } : {})}
+                    />
+                  )}
+                  {askCards}
+                  {view.phase === 'gated' && (
+                    <div style={HOLD_ACTIONS_STYLE}>
+                      <Pill
+                        data-testid="question-cancel-task"
+                        onClick={() => setStopAsks((n) => n + 1)}
+                      >
+                        {t('agent3.action_cancel_task')}
+                      </Pill>
+                    </div>
+                  )}
+                  {holdAfterAsk && (onResume !== undefined || onStop !== undefined) && (
+                    <div data-testid="hold-actions" style={HOLD_ACTIONS_STYLE}>
+                      {onResume !== undefined && (
+                        <button
+                          type="button"
+                          data-testid="hold-resume"
+                          onClick={onResume}
+                          style={RESUME_PRIMARY}
+                        >
+                          {t('agent3.action_resume')}
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        data-testid="hold-stop"
+                        onClick={onStop}
+                        style={{ ...windowPill('danger', false, 'plate'), boxShadow: 'none' }}
+                      >
+                        {t('agent3.action_stop')}
+                      </button>
+                    </div>
+                  )}
+                  {showTrouble && !keyCleared && (
+                    <Banner
+                      cls={incident.cls}
+                      {...(modelName !== undefined ? { model: modelName } : {})}
+                      standing={standingTrouble}
+                      onAction={bannerAction}
+                    />
+                  )}
+                  {/* The idle sketch seat remains nearest the composer, including in a tall docked zone. */}
+                  {dressed && (
+                    <div
+                      data-testid="sketch-seat"
+                      style={{
+                        flex: '0 0 auto', display: 'flex', flexDirection: 'column',
+                        marginTop: pinned ? 'auto' : 0,
+                      }}
+                    >
+                      {sketchbook}
+                    </div>
+                  )}
+                </>
               )}
-              {showTrouble && !keyCleared && (
-                <Banner
-                  cls={incident.cls}
-                  {...(modelName !== undefined ? { model: modelName } : {})}
-                  standing={standingTrouble}
-                  onAction={bannerAction}
-                />
-              )}
-              {/* The idle sketch seat remains nearest the composer, including in a tall docked zone. */}
-              {dressed && (
-                <div
-                  data-testid="sketch-seat"
-                  style={{
-                    flex: '0 0 auto', display: 'flex', flexDirection: 'column',
-                    marginTop: pinned ? 'auto' : 0,
-                  }}
-                >
-                  {sketchbook}
-                </div>
-              )}
-            </>
-          )}
-        </div>
+            </ScrollArea>
+          </ScrollIntent.Provider>
+        </motion.div>
 
         {/* The stable queue zone prevents notes from resizing the record under the pointer. */}
         <SteerQueue steers={view.queuedSteers} {...(onRecallSteer ? { onRecall: onRecallSteer } : {})} />
@@ -1186,13 +1125,13 @@ export function PanelShell({
           answering={settled?.job.question === true}
           // A loud unresolved incident can replace the composer with its repair instruction.
           {...(blockedComposer ? { blocked: blockedComposer } : {})}
-          suggestion={view.suggestion === droppedGhost ? null : view.suggestion}
+          suggestion={filed.has(owedJob?.orderSeq ?? -1) || (droppedGhost?.orderSeq === owedJob?.orderSeq && droppedGhost?.text === view.suggestion) ? null : view.suggestion}
           onSend={onSend}
           // Stop opens the shared confirmation in DeskHeader.
           onStop={() => setStopAsks((n) => n + 1)}
           {...(onResume ? { onResume } : {})}
           onDropSuggestion={() => {
-            setDroppedGhost(view.suggestion);
+            setDroppedGhost({ orderSeq: owedJob?.orderSeq, text: view.suggestion });
             onDropSuggestion?.();
           }}
           onDraftChange={setDrafting}

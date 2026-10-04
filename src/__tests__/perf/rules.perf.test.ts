@@ -1,5 +1,5 @@
 /*
- * rules.perf.test.ts — the two-phase validation system's operation costs.
+ * The two-phase validation system's operation costs.
  *
  * Post-stroke rules validate the WHOLE state after a stroke commits, so
  * they are the expensive half by construction; pre-command rules gate one command at a time, but a
@@ -64,7 +64,6 @@ function placeCmd(catalogId: string, position: MacroCoord): PlaceObjectCommand {
   return {
     type: CommandType.PlaceObject, timestamp: 0,
     object: { id: generateObjectId(), catalogId, position, rotation: 0, elevation: 0 },
-    loadValue: 0,
   };
 }
 

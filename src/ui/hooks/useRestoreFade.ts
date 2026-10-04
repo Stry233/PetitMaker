@@ -4,14 +4,14 @@
  * that never report paint. Reduced motion skips the fade and its transparent frame entirely.
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { isMotionReduced } from '../../canvas/map2d/motion-state';
+import { isMotionReduced } from '../../core/runtime/motion-state';
 import { whenActiveViewPainted } from '../../canvas/view-settled';
 import type { GridState } from '../../core/model/types';
 
 /** Upper bound on the hide when no renderer reports a completed paint. */
 const RELEASE_SAFETY_MS = 4000;
 
-export interface RestoreFade {
+interface RestoreFade {
   /** True while the view is hidden: from the commit that applies the restore until it is painted. */
   hidden: boolean;
   /** Call alongside the restore itself. A no-op under reduced motion. */

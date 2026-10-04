@@ -18,6 +18,7 @@
  * the pan-drag key, which turns a left drag into a camera pan in any tool mode.
  */
 import { eventKeyToken } from './key-token';
+import { createSignal } from './signal';
 
 let shiftHeld = false;
 let ctrlHeld = false;
@@ -35,8 +36,8 @@ let panDragKey = 'space';
 /** Currently-held non-modifier key tokens (for a rebound constrain/multi-select key). */
 const heldTokens = new Set<string>();
 /** Notified when the multi-select key goes down or up — see `onMultiSelectChange`. */
-const multiSelectListeners = new Set<() => void>();
-const panDragListeners = new Set<() => void>();
+const multiSelectChanged = createSignal();
+const panDragChanged = createSignal();
 
 /**
  * Subscribe to the multi-select key changing. Returns an unsubscribe.
@@ -46,14 +47,12 @@ const panDragListeners = new Set<() => void>();
  * re-sample in place, the way it does for a camera move under a still cursor.
  */
 export function onMultiSelectChange(fn: () => void): () => void {
-  multiSelectListeners.add(fn);
-  return () => { multiSelectListeners.delete(fn); };
+  return multiSelectChanged.subscribe(fn);
 }
 
 /** Notify cursor consumers when the held pan key changes, including rebinding and window blur. */
 export function onPanDragChange(fn: () => void): () => void {
-  panDragListeners.add(fn);
-  return () => { panDragListeners.delete(fn); };
+  return panDragChanged.subscribe(fn);
 }
 
 /** Install the window keydown/keyup listeners once (idempotent, browser-only). */
@@ -62,8 +61,8 @@ export function installModifierTracking(): void {
   installed = true;
   // Key repeats leave the held state unchanged and need no cursor update.
   const announceIfChanged = (was: boolean, wasPan: boolean) => {
-    if (isMultiSelectHeld() !== was) for (const fn of multiSelectListeners) fn();
-    if (isPanDragHeld() !== wasPan) for (const fn of panDragListeners) fn();
+    if (isMultiSelectHeld() !== was) multiSelectChanged.emit();
+    if (isPanDragHeld() !== wasPan) panDragChanged.emit();
   };
   const sync = (e: KeyboardEvent) => {
     const was = isMultiSelectHeld();
@@ -91,10 +90,6 @@ export function installModifierTracking(): void {
   }, { passive: true });
 }
 
-export function isShiftHeld(): boolean {
-  return shiftHeld;
-}
-
 /** Set which key breaks a curve handle (from the keybind store; 'alt' = default, '' = disabled). */
 export function setBreakHandleKey(token: string): void {
   breakHandleKey = token;
@@ -111,8 +106,8 @@ export function setConstrainKey(token: string): void {
   constrainKey = token;
 }
 
-/** Whether the (possibly rebound) constrain key is currently held. The shape tools read THIS, not
- *  isShiftHeld, so a user-remapped constrain key takes effect. */
+/** Whether the (possibly rebound) constrain key is currently held. The shape tools read this
+ *  rather than Shift itself, so a user-remapped constrain key takes effect. */
 export function isConstrainHeld(): boolean {
   return constrainKey === 'shift' ? shiftHeld : heldTokens.has(constrainKey);
 }
@@ -122,7 +117,7 @@ export function isConstrainHeld(): boolean {
 export function setPanDragKey(token: string): void {
   const was = isPanDragHeld();
   panDragKey = token;
-  if (isPanDragHeld() !== was) for (const fn of panDragListeners) fn();
+  if (isPanDragHeld() !== was) panDragChanged.emit();
 }
 
 /** Whether the (possibly rebound) pan-drag key is held. The pointer machine turns a left drag into

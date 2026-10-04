@@ -8,17 +8,17 @@ import { viewportRect } from '../../../../../core/runtime/viewport-space';
 import { useEffect, useRef, useState } from 'react';
 import type { MapRenderer } from '../../../../../canvas/map2d/map-renderer';
 import { TILE_SIZE } from '../../../../../core/model/constants';
-import { HALF_TILE } from '../../../../../core/model/grid-model';
+import { HALF_TILE, snapHalf } from '../../../../../core/model/grid-model';
 import { annotationInkScale } from '../../../../../core/model/annotations';
-import { isMotionReduced } from '../../../../../canvas/map2d/motion-state';
+import { isMotionReduced } from '../../../../../core/runtime/motion-state';
 import { getCatalogItem } from '../../../../../state/catalog';
 import { footprintCells, getRotatedSize } from '../../../../../state/object-geometry';
 import { GHOST_VALID, GHOST_INVALID } from '../../../../../tools/objects/object-placer';
 import { useKeybinds } from '../../../../../core/runtime/keybindings';
-import type { MacroCoord, PlacementTrait } from '../../../../../core/model/types';
+import type { MacroCoord, PlacementTrait, Rotation, Translate } from '../../../../../core/model/types';
 import { detectBridgeSpan } from '../../../../../core/model/bridge-span';
 import { useEditorStore } from '../../../../../state/store';
-import { localizedName, useT } from '../../../../../i18n/context';
+import { localizedName, quantityParams, useT } from '../../../../../i18n/context';
 import { tagLabel } from '../../../../../i18n/annotation-tags';
 import { resolveTokenSpecs, type TokenSpec } from '../../../../hints/catalogue';
 import { HintTokens } from '../../../../hints/tokens';
@@ -41,8 +41,7 @@ import { queueStandup } from './standup-queue';
 import { glQuality } from '../../../../../core/runtime/device-quality';
 import { TerrainToolsStrip, ShelfStrip } from './previews/strips';
 import type { DemoCtx, DemoView, HelpScene, SceneStep, Stage } from './scenes';
-
-type Resolver = (key: string, params?: Record<string, string | number>) => string;
+import { ruleToast } from '../../../../../i18n/rule-copy';
 
 interface Cam { dx: number; dy: number; z: number }
 type Toast =
@@ -73,7 +72,7 @@ const FURNITURE_REST: Furniture = {
   stripSize: null, toolsActive: null, shelfCounts: null, checklist: null, curveHandles: null,
 };
 
-function footprint(catalogId: string, x: number, y: number, rotation: 0 | 90 | 180 | 270): MacroCoord[] {
+function footprint(catalogId: string, x: number, y: number, rotation: Rotation): MacroCoord[] {
   const item = getCatalogItem(catalogId);
   const { w, h } = getRotatedSize(item ?? { width: 1, height: 1 }, rotation);
   return footprintCells(Math.floor(x), Math.floor(y), w, h);
@@ -94,7 +93,7 @@ class Player {
   private cur: { x: number; y: number };
   private cam: Cam = { dx: 0, dy: 0, z: 1 };
   private press = false;
-  private follow: { catalogId: string; rotation: 0 | 90 | 180 | 270 } | null = null;
+  private follow: { catalogId: string; rotation: Rotation } | null = null;
   private followAnchor: string | null = null;
   private ghostHeld = false;
   private hoverCell: string | null = null;
@@ -106,7 +105,7 @@ class Player {
     private r: MapRenderer,
     private world: DemoWorld,
     private scene: HelpScene,
-    private t: Resolver,
+    private t: Translate,
     private W: number,
     private H: number,
     private cursorEl: HTMLElement,
@@ -416,7 +415,7 @@ class Player {
         const item = getCatalogItem(this.follow.catalogId);
         const span = item?.traits?.find((t): t is Extract<PlacementTrait, { type: 'waterSpan' }> => t.type === 'waterSpan');
         if (item && span) {
-          const anchor = { x: Math.round(cell.x * 2) / 2, y: Math.round(cell.y * 2) / 2 };
+          const anchor = { x: snapHalf(cell.x), y: snapHalf(cell.y) };
           const key = `span:${anchor.x},${anchor.y}`;
           if (this.followAnchor !== key) {
             this.followAnchor = key;
@@ -622,7 +621,7 @@ export function HelpDemo({ scene }: { scene: HelpScene }) {
   const toastText = furniture.toast
     ? furniture.toast.kind === 'key'
       ? t(furniture.toast.key, { ...facts, ...furniture.toast.params })
-      : t(furniture.toast.message, { ...facts, ...furniture.toast.params })
+      : ruleToast(t, furniture.toast.message, { ...facts, ...quantityParams(locale, furniture.toast.params) })
     : null;
   const keyTokens = furniture.keys ? resolveTokenSpecs(furniture.keys, overrides) : null;
   const stagePx = (x: number, y: number) => ({

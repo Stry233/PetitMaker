@@ -24,7 +24,6 @@ function place(executor: CommandExecutor, state: GridState, catalogId: string, x
   const res = executor.execute({
     type: CommandType.PlaceObject, timestamp: 0,
     object: { id: `t-${catalogId}`, catalogId, position: { x, y }, rotation: 0, elevation: 0 },
-    loadValue: 0,
   });
   expect(res.success, `${catalogId} placed`).toBe(true);
   return state.objects.get(`t-${catalogId}`)!;
@@ -56,7 +55,7 @@ describe('dragging a snapping object re-snaps its orientation at the drop', () =
     const moved = state.objects.get(ramp.id);
     expect(moved, 'the ramp survived the drop').toBeTruthy();
     expect(moved!.rotation, 'orientation re-detected at the destination').toBe(180);
-    expect(moved!.position).toEqual({ x: 8, y: 15 });
+    expect(moved!.position).toEqual({ x: 8, y: 17 });
   });
 
   it('a bridge dragged from a vertical gorge to a horizontal one turns with it', () => {

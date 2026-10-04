@@ -42,7 +42,7 @@ const EXPOSURE_TIER_SPAN = 4;
 const EDGE_REACH = 4;
 
 /** One cell's habitat, all three axes on 0..1. */
-export interface Habitat {
+interface Habitat {
   /** 1 at the waterline, 0 beyond `MOISTURE_REACH`. */
   moisture: number;
   /** 1 on a high, cliff-edged tier, 0 in a sheltered low. */

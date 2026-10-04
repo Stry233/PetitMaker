@@ -1,5 +1,5 @@
 /*
- * assistant.tsx — the Help Center's figures for the assistant panel: the key field's detection beat,
+ * The Help Center's figures for the assistant panel: the key field's detection beat,
  * the oversight control, and the REAL `PanelShell` posed at four moments (a plan awaiting approval,
  * a job mid-run with a steer note queued, the composer's region chip, the past-jobs list open). The
  * panel figures mount `PanelShell` itself with fixture projections rather than `PanelColumn`, whose
@@ -24,6 +24,7 @@ import { useT } from '../../../../../../i18n/context';
 import { SegmentedControl } from '../../../../../primitives/SegmentedControl';
 import { PLATE_INK } from '../../../../../design/tokens';
 import { roleFont } from '../../../../../design/text-weight';
+import { ruleToast } from '../../../../../../i18n/rule-copy';
 
 const noop = () => {};
 
@@ -263,7 +264,7 @@ export function AgentTrailPreview() {
       fixtureOp({ callId: 'help-fig-trail-write', name: 'build_road', stageIndex: 1, detail: { cells: 26 } }),
       fixtureOp({
         callId: 'help-fig-trail-revert', name: 'place_object', status: 'revert', stageIndex: 1,
-        summary: t('error.placement_not_flat'), detail: { reverted: true },
+        summary: ruleToast(t, 'error.placement_not_flat'), detail: { reverted: true },
       }),
     ],
   });

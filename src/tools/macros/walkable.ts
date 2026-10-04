@@ -7,10 +7,11 @@
  */
 import { NEIGHBORS4 } from '../../core/model/grid-model';
 import { objectRect } from '../../state/object-geometry';
-import { categoryOf } from '../../state/catalog';
-import { ItemCategory, type GridState } from '../../core/model/types';
+import { getCatalogItem } from '../../state/catalog';
+import { type GridState } from '../../core/model/types';
+import { isCoatingItem, isCrossing } from '../../core/model/traits';
 
-export interface NetworkCells {
+interface NetworkCells {
   /** Every cell the network occupies: pavement and decks, plus each deck's apron when asked for. */
   cells: Set<number>;
   /** The deck cells alone. A deck is walkable but is not a surface a tile may be laid on: it is
@@ -34,9 +35,9 @@ export function networkCells(
   const decks = new Set<number>();
   const aprons: number[] = [];
   for (const o of state.objects.values()) {
-    const cat = categoryOf(o);
-    const deck = cat === ItemCategory.Bridge || cat === ItemCategory.Ramp;
-    if (cat !== ItemCategory.Road && !deck) continue;
+    const item = getCatalogItem(o.catalogId);
+    const deck = isCrossing(item);
+    if (!isCoatingItem(item) && !deck) continue;
     const r = objectRect(o);
     // Floor the origin: a halfStep deck anchors on the half grid and still occupies whole cells.
     for (let y = Math.floor(r.y); y < r.y + r.h; y++) {

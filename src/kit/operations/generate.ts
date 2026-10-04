@@ -5,7 +5,6 @@
  * Landing re-clears the live scope, verifies the fingerprint, and replays those commands through the
  * live executor instead of regenerating.
  */
-import { CommandExecutor } from '../../core/commands/command-executor';
 import { applyCommand } from '../../core/commands/command-apply';
 import { EventBus } from '../../core/commands/event-bus';
 import { cloneGridState } from '../../core/model/grid-model';
@@ -15,13 +14,11 @@ import type {
   Command, EditorEvents, GenerateConfig, GridState, MacroCoord, ValidationResult,
 } from '../../core/model/types';
 import { createDefaultRegistry } from '../../rules';
-import { roadLookup } from '../../state/object-index';
-import { catalogLoadValue } from '../../state/catalog';
 import { poolAvailable, runCandidateInPool } from './candidate-pool';
 import { clearAllObjects, clearAllTerrain, generateTerrain } from '../../tools/generation/terrain-generator';
 import { readRegionBase, regionUnbuilt, repairRegionSeam } from '../../tools/generation/core';
 import type { KitContext } from '../context';
-import { detachCommand as detach, mapFingerprint } from '../../tools/macros';
+import { detachCommand as detach, detachedContext, mapFingerprint } from '../../tools/macros';
 import type { Outcome } from './outcome';
 
 /** A cooperative cancel flag: the caller flips `cancelled` (e.g. when the user closes the shelf) and
@@ -30,7 +27,7 @@ export interface GenSignal { cancelled: boolean }
 
 /** Yield to the event loop so the browser can paint (the busy state) and process input (a cancel)
  *  between a run's heavy stages — a macrotask, not a microtask, so rendering actually happens. */
-export const yieldFrame = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0));
+const yieldFrame = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0));
 
 /** The scope of the last generation. A finished run drops the painted region, so without this
  *  Clear straight after a scoped generate would wipe the rest of the map. */
@@ -68,7 +65,7 @@ function normalizeRegion(region: MacroCoord[] | null): MacroCoord[] | null {
 }
 
 /** The run and the commands that were it. */
-interface Run {
+export interface Run {
   outcome: Outcome;
   commands: Command[];
   /** The map the commands were validated against: this copy after its own clearing. */
@@ -114,17 +111,13 @@ async function runGeneration(
   const region = normalizeRegion(opts.region);
   const config: GenerateConfig = { ...opts.config, region };
   const seed = typeof config.seed === 'number' ? config.seed : 0;
-  const watermark = executor.getUndoStackSize();
 
   /**
    * The run, as the commands that were it.
    *
    * Each one is kept AS THE GENERATOR BUILT IT, before the executor saw it, and only if the
-   * executor accepted it. Validation SNAPS a bridge or a ramp onto the map by writing position,
-   * rotation, span and elevation back onto the command, so the command left in the history is a
-   * post-snap one, and validating THAT again snaps it a second time from an anchor that has already
-   * moved: a four-cell bridge at (138,111) came back a six-cell bridge at (137,111), and six later
-   * placements were refused around it. The pre-image is the command that replays to the same map.
+   * executor accepted it: validation snaps bridges and ramps in place, so only the pre-image replays
+   * to the same map (see `tools/macros/scratch.ts:RecordingExecutor`).
    */
   const commands: Command[] = [];
   const apply = (cmd: Command): ValidationResult => {
@@ -134,13 +127,7 @@ async function runGeneration(
     return result;
   };
 
-  executor.pushSource({
-    source: ProvSource.Procedural,
-    tool: 'generate',
-    procedural: { seed, algorithm: config.algorithm, configHash: hashJSON(config) },
-  });
-
-  try {
+  return executor.transactionAsync({ source: procSource(config, seed) }, async (tx): Promise<Run> => {
     await yieldFrame();   // let a caller's spinner paint before the first synchronous chunk
     // The ground the region is about to lose, read BEFORE the clearing: the map as it stands is
     // legal, so what a cell holds now is what the ground outside the region can be given back if it
@@ -154,11 +141,16 @@ async function runGeneration(
     const result = await executor.runSilentlyAsync(async () =>
       generateTerrain(config, state, apply, executor.getRegistry()));
 
+    if (result.stencilBudget === 'blocked') {
+      tx.rollback();
+      return { outcome: { ...CANCELLED, cancelled: false, stencilBudget: 'blocked' }, commands: [], bare };
+    }
+
     if (signal.cancelled) {
-      executor.commitStrokeGroup(watermark);
-      if (executor.getUndoStackSize() > watermark) executor.undo();
+      tx.commit();
+      if (executor.getUndoStackSize() > tx.start) executor.undo();
       return {
-        outcome: { cells: [], placed: 0, removedCells: 0, removedObjects: 0, violations: [], cancelled: true },
+        outcome: CANCELLED,
         commands: [],
         bare,
       };
@@ -177,9 +169,8 @@ async function runGeneration(
     // The commit's own auto-reverts and edge-cut repairs are not in `commands` and do not need to
     // be: replaying it and committing again puts the same state in front of the same post-stroke
     // rules, which revert and repair it the same way.
-    const violations = executor.commitStrokeGroup(watermark);
-    // Only a FULL run is reproducible from (seed, config); a scoped one depends on prior state.
-    state.generation = region ? undefined : config;
+    const violations = tx.commit();
+    state.generation = recipeOf(config, region);
 
     const cells: MacroCoord[] = region ? [...region] : [];
     if (cells.length === 0) {
@@ -203,17 +194,28 @@ async function runGeneration(
         ...(result.mazeGates ? { mazeGates: result.mazeGates } : {}),
         ...(result.mazeWalk ? { mazeWalk: result.mazeWalk } : {}),
         ...(result.stencil ? { stencil: result.stencil } : {}),
+        ...(result.stencilBudget ? { stencilBudget: result.stencilBudget } : {}),
         ...(scopeEmpty ? { scopeEmpty } : {}),
       },
       commands,
       bare,
     };
-  } catch (err) {
-    executor.rollbackTo(watermark);
-    throw err;
-  } finally {
-    executor.popSource();
-  }
+  });
+}
+
+/** The authorship a generation run records. */
+function procSource(config: GenerateConfig, seed: number) {
+  return {
+    source: ProvSource.Procedural,
+    tool: 'generate',
+    procedural: { seed, algorithm: config.algorithm, configHash: hashJSON(config) },
+  };
+}
+
+/** The recipe a map records after a run: only a full run is reproducible from (seed, config); a
+ *  scoped one depends on the state around it. */
+function recipeOf(config: GenerateConfig, region: readonly MacroCoord[] | null): GenerateConfig | undefined {
+  return region ? undefined : config;
 }
 
 /** Commands replayed between yields. A candidate's list is thousands of placements long, so
@@ -269,29 +271,24 @@ export async function generateMap(
   const known = offered !== null && offered.base === predicted
     ? offered
     : candidateCache.get(recipeKey(predicted, config)) ?? null;
-  let candidate = known ?? await buildCandidate(ctx, build);
-  if (!candidate || signal.cancelled) return CANCELLED;
+  const found = known ?? await buildCandidate(ctx, build);
+  if (!found || signal.cancelled) return CANCELLED;
+  if (found.outcome.stencilBudget === 'blocked') return found.outcome;
 
-  const watermark = executor.getUndoStackSize();
-  executor.pushSource({
-    source: ProvSource.Procedural,
-    tool: 'generate',
-    procedural: { seed, algorithm: config.algorithm, configHash: hashJSON(config) },
-  });
-
-  try {
+  return executor.transactionAsync({ source: procSource(config, seed) }, async (tx): Promise<Outcome> => {
     // Silenced for the reason the run itself is: the generator's rejected commands are not in this
     // list, but a replay that hit one would be reporting the same non-event to the user.
     executor.runSilently(() => clearScope(state, (cmd) => executor.execute(cmd), region));
     // The prediction applies the clearing without the rules; a locked layer refuses an erase on the
     // real map and leaves ground the build was never validated against. The build this falls back
     // to is cached under the true ground for the next press.
-    if (mapFingerprint(state) !== candidate.base) {
+    let landing = found;
+    if (mapFingerprint(state) !== landing.base) {
       const real = await buildCandidate(ctx, build);
-      if (!real) { executor.rollbackTo(watermark); return CANCELLED; }
-      candidate = real;
+      if (!real) { tx.rollback(); return CANCELLED; }
+      landing = real;
     }
-    const landing = candidate;
+    if (landing.outcome.stencilBudget === 'blocked') { tx.rollback(); return landing.outcome; }
     await executor.runSilentlyAsync(async () => {
       let n = 0;
       for (const cmd of landing.commands) {
@@ -299,17 +296,11 @@ export async function generateMap(
         if (++n % REPLAY_CHUNK === 0) await yieldFrame();
       }
     });
-    const violations = executor.commitStrokeGroup(watermark);
-    // Only a FULL run is reproducible from (seed, config); a scoped one depends on prior state.
-    state.generation = region ? undefined : config;
+    const violations = tx.commit();
+    state.generation = recipeOf(config, region);
     lastRunRegion = region ? [...region] : null;
     return { ...landing.outcome, cells: [...landing.outcome.cells], violations };
-  } catch (err) {
-    executor.rollbackTo(watermark);
-    throw err;
-  } finally {
-    executor.popSource();
-  }
+  });
 }
 
 /** The run a worker performs on the grid it was handed: a fresh executor, the default rules (the
@@ -319,8 +310,7 @@ export async function runCandidateOn(
   state: GridState,
   opts: { config: GenerateConfig; region: MacroCoord[] | null; signal?: GenSignal },
 ): Promise<Run> {
-  const executor = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state), catalogLoadValue);
-  return runGeneration({ state, executor, registry: executor.getRegistry() }, opts);
+  return runGeneration(detachedContext(state, createDefaultRegistry()), opts);
 }
 
 /**
@@ -363,15 +353,15 @@ function recipeKey(fingerprint: string, config: GenerateConfig): string {
  * The version counters move on every mutation, so a matching pair is proof the content is the one
  * measured — the same discipline `state/object-index` and `state/map-stats` cache under.
  */
-const fingerprints = new WeakMap<GridState, { cells: number; objects: number; fp: string }>();
+const fingerprints = new WeakMap<GridState, { cells: number; objects: number; ignoreLoad: boolean; fp: string }>();
 
 function fingerprintOf(state: GridState): string {
   const cells = state.cellsVersion ?? 0;
   const objects = state.objectsVersion ?? 0;
   const seen = fingerprints.get(state);
-  if (seen && seen.cells === cells && seen.objects === objects) return seen.fp;
+  if (seen && seen.cells === cells && seen.objects === objects && seen.ignoreLoad === !!state.ignoreChunkLoad) return seen.fp;
   const fp = mapFingerprint(state);
-  fingerprints.set(state, { cells, objects, fp });
+  fingerprints.set(state, { cells, objects, ignoreLoad: !!state.ignoreChunkLoad, fp });
   return fp;
 }
 
@@ -452,9 +442,9 @@ async function buildCandidate(
     }
   }
   if (!built) {
-    const state = cloneGridState(ctx.state);
-    const executor = new CommandExecutor(state, new EventBus<EditorEvents>(), ctx.registry, roadLookup(state), catalogLoadValue);
-    const run = await runGeneration({ state, executor, registry: ctx.registry }, opts);
+    const copy = detachedContext(cloneGridState(ctx.state), ctx.registry);
+    const { state } = copy;
+    const run = await runGeneration(copy, opts);
     built = { state, outcome: run.outcome, commands: run.commands, bare: run.bare };
   }
   if (built.outcome.cancelled) return null;
@@ -476,13 +466,11 @@ async function buildCandidate(
 
 export function clearGenerated(ctx: KitContext, opts: { region: MacroCoord[] | null }): Outcome {
   const { state, executor } = ctx;
-  const watermark = executor.getUndoStackSize();
   const region = normalizeRegion(opts.region) ?? lastRunRegion ?? undefined;
   const prov = executor.getProvenanceTracker();
 
   // Seam repairs belong to procedural cleanup so a later clear can remove them with the run.
-  executor.pushSource({ source: ProvSource.Procedural, tool: 'clear-generated' });
-  try {
+  return executor.transaction({ source: { source: ProvSource.Procedural, tool: 'clear-generated' } }, (tx): Outcome => {
     // A BOUNDED CLEAR OWES THE SAME SEAM A GENERATION DOES: erasing terrain inside the scope can take
     // the 3x3 base or the cap that ground outside it stands on, and that violation reverts the whole
     // Clear at commit time. Read before anything is taken, so the repair has ground to give back.
@@ -500,12 +488,7 @@ export function clearGenerated(ctx: KitContext, opts: { region: MacroCoord[] | n
       ));
     }
     state.generation = undefined;
-    const violations = executor.commitStrokeGroup(watermark);
+    const violations = tx.commit();
     return { cells: region ? [...region] : [], placed: 0, removedCells, removedObjects, violations, cancelled: false };
-  } catch (err) {
-    executor.rollbackTo(watermark);
-    throw err;
-  } finally {
-    executor.popSource();
-  }
+  });
 }

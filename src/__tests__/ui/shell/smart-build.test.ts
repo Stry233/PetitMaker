@@ -9,7 +9,7 @@ import {
 } from '../../../core/model/types';
 import { getMapTemplate } from '../../../config/maps';
 import { createDefaultRegistry } from '../../../rules';
-import { categoryOf } from '../../../state/catalog';
+import { categoryOf, getCatalogItem } from '../../../state/catalog';
 import { getObjectIndex, roadLookup } from '../../../state/object-index';
 import { clearAllObjects, generateTerrain } from '../../../tools/generation/terrain-generator';
 import { analyzeTerrain } from '../../../tools/placement/analysis';
@@ -115,13 +115,14 @@ describe('smart construction', () => {
     const W = a.width;
     const hubRegion = a.rankedRegions[0]!;
     const spots: MacroCoord[] = [];
+    const house = getCatalogItem('building-boat-cabin')!;
     for (let y = 4; y < template.height - 8; y += 6) {
       for (let x = 4; x < template.width - 8; x += 6) {
         if ((a.region[y * W + x] ?? -1) !== hubRegion) continue;
         let open = true;
-        // A 5x4 house plus the flat trait's own +1 right/bottom margin, and GROUND level: the house
-        // is placed at elevation 0, and the trait refuses a footprint whose cells step.
-        for (let dy = 0; dy < 6; dy++) for (let dx = 0; dx < 7; dx++) {
+        // The house plus the flat trait's own +1 right/bottom margin and a cell to spare, and GROUND
+        // level: the house is placed at elevation 0, and the trait refuses a footprint whose cells step.
+        for (let dy = 0; dy < house.height + 2; dy++) for (let dx = 0; dx < house.width + 2; dx++) {
           if (a.open[(y + dy) * W + (x + dx)] !== 1 || state.cells[y + dy]![x + dx]!.terrain) open = false;
         }
         if (open) spots.push({ x, y });
@@ -132,7 +133,7 @@ describe('smart construction', () => {
     for (const [i, s] of [spots[0]!, spots[spots.length - 1]!].entries()) {
       const catalogId = ['building-boat-cabin', 'building-forest-cabin'][i]!;
       const obj = { id: generateObjectId(), catalogId, position: s, rotation: 0 as const, elevation: 0 };
-      const r = exec.execute({ type: CommandType.PlaceObject, timestamp: 1, object: obj, loadValue: 0 });
+      const r = exec.execute({ type: CommandType.PlaceObject, timestamp: 1, object: obj });
       expect(r.success, `house@${s.x},${s.y}: ${r.errors?.[0]?.message ?? ''}`).toBe(true);
     }
 

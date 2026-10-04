@@ -1,6 +1,6 @@
 /**
  * `deleteSelection` is the SINGLE call path behind every "delete this selection" (the keyboard
- * shortcut, SelectionHandles' group button, ContextMenu, DeletePopover): `deleteGroup` with the
+ * shortcut, SelectionCard's group button, ContextMenu, DeletePopover): `deleteGroup` with the
  * poof bound in, re-deriving the surviving selection, and `reportDeleteGroup`. Before this, four
  * call sites threaded `poofRemoved` by hand as an OPTIONAL argument — a caller that forgot it lost
  * the removal animation with no type error.

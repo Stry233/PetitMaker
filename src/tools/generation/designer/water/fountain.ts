@@ -9,7 +9,7 @@ import { flatIndex } from '../../../../core/model/grid-model';
 import type { MacroCoord, Rect } from '../../../../core/model/types';
 import type { TerrainPlan } from '../../core/types';
 import type { DesignPlan, RegionPlan } from '../types';
-import { cellsFit, floodCells, freeAt } from './water-cut';
+import { cellsFit, floodCells, freeAt, boundsOfCells } from './water-cut';
 
 // --- tunables -----------------------------------------------------------------------------------
 
@@ -31,8 +31,8 @@ const DEPTH_MAX = 3;
  */
 const MOAT_MIN = 2;
 const PLATFORM_MIN = 1;
-/** How far a court looks for the pavement it is composed against. The supplement wants a fountain
- *  RELATED to the space around it, and an unreachable one is only an ornament. */
+/** How far a court looks for the pavement it is composed against. A fountain is RELATED to the space
+ *  around it, and an unreachable one is only an ornament. */
 const ARRIVAL_REACH = 6;
 /** How many courts one planet carries at richness 0 and 1, the large one included. Three is the style
  *  target's own count, and it is also what the eval can tell apart: a fourth court is one more chance
@@ -41,18 +41,13 @@ const COUNT = { min: 1, max: 3 } as const;
 /** How far from the plaza the LARGE court may stand: it is the hub's own set piece. */
 const PLAZA_REACH = 34;
 /**
- * How far apart two courts stand. 一个区域有明确的主喷泉即可，不要同时有多个: one clear main fountain per
- * region, and a reader draws the region boundary by eye, so two courts a few cells apart read as several
+ * How far apart two courts stand. One clear main fountain per region, and a reader draws the region boundary by eye, so two courts a few cells apart read as several
  * in one place however the plan divided the ground.
  *
- * The number is the MEASUREMENT rather than a guess at what a region is. The eval segments the finished
- * map and a terraced planet segments coarsely, so two courts the plan put in two places can land in one
- * region: at 30 cells four of twenty runs read two main courts in one region, at 42 two still do, and at
- * 55 none of the twenty do. Courts per map fall to 1 to 3 for it, which is the style target's own count.
- *
- * IT IS A FUNCTION OF THE PLACE SCALE, so the spacing moves with the places: the runs the evaluator
- * segments have a median of 49 to 79 cells, one region covers ground enough for two courts, and at 55
- * `hexia/31337` reads two main courts in one region.
+ * The eval segments the finished map, and a terraced planet segments coarsely, so two courts the plan put
+ * in two places can land in one region. The spacing is set from the region sizes the evaluator segments
+ * (a median of 49 to 79 cells) rather than from the plan, and keeps courts per map at 1 to 3, the style
+ * target's own count. It is a function of the place scale and moves with the places.
  */
 const COURT_SPACING = 72;
 
@@ -62,7 +57,7 @@ export type FountainOutline = 'square' | 'octagon' | 'ring' | 'cross';
 
 /** One band of the composition, outside in. The first is always water: a court reads as a fountain
  *  because it is ringed by its moat. */
-export interface FountainBand {
+interface FountainBand {
   width: number;
   water: boolean;
 }
@@ -98,7 +93,7 @@ export interface FountainCourt {
   arrival: MacroCoord;
 }
 
-export interface FountainInput {
+interface FountainInput {
   t: TerrainPlan;
   grass: Uint8Array;
   flat: Uint8Array;
@@ -167,7 +162,7 @@ export function fountainSpec(seed: number, k: number, radius: number): FountainS
 /**
  * The metric a court's outline is a level set of. Chebyshev draws a square, Euclidean a ring, the two
  * averaged an octagon, and the fourth penalises the SHORTER of the two offsets so the level set keeps
- * four arms — a cruciform basin, the outline the supplement's own 街角 fountains take.
+ * four arms: a cruciform basin, the outline a street-corner fountain takes.
  *
  * The cross is the one that needs an argument. `max(ax, ay)` alone reaches `radius` in every
  * direction; adding `CROSS_FLARE` per cell of the shorter offset past the arm's own half-width costs
@@ -245,10 +240,9 @@ function bandAt(spec: FountainSpec, d: number): FountainBand {
  * The reason is what else the planet has. A full-richness map carries a figure, a cascade and several
  * composed bodies, so a court can be absent and the walk still arrives somewhere — and absence is what
  * keeps a form the user meets on every planet from reading as a template. A quiet map is a flat garden
- * town whose court is the ONLY thing on it built to be arrived at: rolled at the rich end's rate down
- * there, `tafa/1024` at richness 0.2 came back with 4 of its 14 street ends arriving at nothing, which
- * is a hard-ledger failure. The ground still has the last word — an offer the planet cannot hold comes
- * to nothing.
+ * town whose court is the ONLY thing on it built to be arrived at, so rolling it at the rich end's rate
+ * leaves street ends arriving at nothing, a hard-ledger failure. The ground still has the last word: an
+ * offer the planet cannot hold comes to nothing.
  */
 const LARGE_COURT_CHANCE = { low: 0.9, high: 0.6 } as const;
 
@@ -281,7 +275,7 @@ export function carveFountains(input: FountainInput): FountainCourt[] {
   // One MAIN fountain per region, never several: the places that asked for water take a small court
   // each, nearest the hub first, so the ones a visitor meets are the ones that get built. Where none
   // of them could carry one — and where the plaza could not either — every other place is offered
-  // it, because a planet with no fountain at all is the one outcome the supplement rules out.
+  // it, because a planet with no fountain at all is ruled out.
   for (const region of candidates) {
     if (out.length >= budget) break;
     const court = regionCourt(input, region, out.length);
@@ -352,7 +346,7 @@ function largeCourt(
 /**
  * A garden fountain at a place's STREET CORNER, composed against the pavement that reaches it.
  *
- * 小喷泉则可以放在花园、街角: the supplement puts a small one at a corner, and the geometry agrees.
+ * Small fountains may stand in gardens and at street corners.
  * A court at the middle of a lot is a hole through the axis its kit mirrors about, and the symmetry
  * reading falls by the whole difference; at the entry side it stands where a visitor meets the place
  * and the composition behind it is left whole.
@@ -435,7 +429,7 @@ function fits(
   // means — and the court margin is up to `court` cells wider on every side, so a site satisfied
   // from the rect could stand that much further from a street than the reading allows. Three seeds
   // of ten on the flat template came back with a court nothing was near.
-  const arrival = nearestPaved(input, boundsOfWater(water));
+  const arrival = nearestPaved(input, boundsOfCells(water));
   if (!arrival) return null;
   return { centre, tier, rect, water, figure, frame: frameCells(spec, centre, court), arrival };
 }
@@ -459,18 +453,6 @@ function frameCells(spec: FountainSpec, centre: MacroCoord, court: number): Macr
     }
   }
   return out;
-}
-
-/** The box the court's own water stands in. */
-function boundsOfWater(water: readonly MacroCoord[]): Rect {
-  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
-  for (const c of water) {
-    if (c.x < x0) x0 = c.x;
-    if (c.x > x1) x1 = c.x;
-    if (c.y < y0) y0 = c.y;
-    if (c.y > y1) y1 = c.y;
-  }
-  return { x: x0, y: y0, w: x1 - x0 + 1, h: y1 - y0 + 1 };
 }
 
 /** The paved cell nearest the court's own water, or null where no street reaches it. */

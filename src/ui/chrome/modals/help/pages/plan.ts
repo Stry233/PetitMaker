@@ -1,5 +1,5 @@
 /*
- * pages/plan.ts — the 规划 group: notes, layers, load, undo.
+ * The Planning group: notes, layers, load, undo.
  *
  * Descriptor data only: copy uses full i18n key literals and figures name renderable help scenes or
  * surfaces.

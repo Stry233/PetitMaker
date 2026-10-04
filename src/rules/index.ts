@@ -1,6 +1,8 @@
 import type { AnyRule } from '../core/model/types';
 import { RuleRegistry } from './registry';
 import { zoneRestrictionRule } from './zone-restriction';
+import { groundLockRule } from './ground-lock';
+import { planetGroundRule } from './planet-ground';
 import { layerLockRule } from './layer-lock';
 import { lockedObjectRule } from './locked-object';
 import { elevationRangeRule } from './elevation-range';
@@ -18,7 +20,7 @@ import { objectOnCoatingRule } from './object-on-coating';
 /**
  * Creates a RuleRegistry with all game rules in canonical order.
  *
- * Pre-command order: lock → elevation → floating → block → trait placement → zone → overlap → max-count → chunk
+ * Pre-command order: lock → elevation → floating → block → trait placement → ground lock → zone → overlap → max-count → chunk
  * Post-stroke order: base-support → water-containment → waterfall-adjacent-uniformity → object-on-coating
  *
  * Order matters for pre-command rules: lock check runs first so locked-layer
@@ -39,6 +41,7 @@ const ALL_RULES: AnyRule[] = [
   waterFloatingRule,
   objectBlocksTerrainRule,
   traitPlacementRule,
+  groundLockRule,
   zoneRestrictionRule,
   placementOverlapRule,
   placementMaxCountRule,
@@ -52,6 +55,14 @@ const ALL_RULES: AnyRule[] = [
 export function createDefaultRegistry(): RuleRegistry {
   const registry = new RuleRegistry();
   for (const rule of ALL_RULES) registry.register(rule);
+  return registry;
+}
+
+/** The planet session's rules: layer 0 is editable, and the ground under objects is held. */
+export function createPlanetRegistry(): RuleRegistry {
+  const registry = new RuleRegistry();
+  for (const rule of ALL_RULES) if (rule !== groundLockRule) registry.register(rule);
+  registry.register(planetGroundRule);
   return registry;
 }
 

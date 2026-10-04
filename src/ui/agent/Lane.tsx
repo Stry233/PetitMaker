@@ -10,11 +10,12 @@ import { Icon, type IconId } from './icons';
 import { ResultChip } from './atoms';
 import { iconForTool, verbKeyForTool } from './tool-meta';
 import { INSET, PLATE, PLATE_INK } from '../design/tokens';
-import { colors, font } from '../design/styles';
+import { colors, font, radii } from '../design/styles';
 import { roleFont } from '../design/text-weight';
 import { Spinner } from '../primitives/Spinner';
 import { useT } from '../../i18n/context';
 import type { ToolResultDetail } from '../../agent/core/types';
+import type { Translate } from '../../core/model/types';
 
 export interface LaneView {
   /** The helper's own order: complete, self-contained instructions, which is why it is NOT the
@@ -49,7 +50,7 @@ const LANE_GLYPH = 12;
  */
 export function laneRollup(
   detail: ToolResultDetail | undefined,
-  t: (key: string, params?: Record<string, string | number>) => string,
+  t: Translate,
 ): { text: string; tone?: 'warn' | 'bad' } | undefined {
   if (detail === undefined) return undefined;
   if (detail.childError !== undefined) return { text: t('agent3.lane_stopped'), tone: 'bad' };
@@ -193,7 +194,7 @@ export function Lane({ lane }: { lane: LaneView }) {
           {phrase}
         </span>
         {/* The plate background separates the result chip from the lane's inset paper. */}
-        {erring && <span style={{ marginLeft: 'auto', flex: '0 0 auto', background: PLATE, borderRadius: 999 }}>
+        {erring && <span style={{ marginLeft: 'auto', flex: '0 0 auto', background: PLATE, borderRadius: radii.pill }}>
           <ResultChip tone="bad">{t('agent3.op_detail_failed')}</ResultChip>
         </span>}
       </div>

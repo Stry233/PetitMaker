@@ -1,14 +1,15 @@
-import { ItemCategory, TerrainType, type BlockRef, type GridState } from '../core/model/types';
+import { TerrainType, type BlockRef, type GridState, type Rotation } from '../core/model/types';
 import { getCell } from '../core/model/grid-model';
 import { surfaceElevation } from '../core/edge-cut/terrain-silhouette';
 import { getCatalogByCategory, getCatalogItem } from '../state/catalog';
 import { singleSelection } from '../state/selection';
 import { useEditorStore } from '../state/store';
+import { isCoating } from '../core/model/traits';
 
 type PickedMaterial =
   | { mode: 'mountain' | 'water'; elevation: number }
   | { mode: 'road'; itemId: string }
-  | { mode: 'object'; itemId: string; rotation: 0 | 90 | 180 | 270 };
+  | { mode: 'object'; itemId: string; rotation: Rotation };
 
 /** Sampling chooses a material; it never copies map geometry or bypasses placement limits. */
 export function pickedMaterial(grid: GridState | null, selection: readonly BlockRef[]): PickedMaterial | null {
@@ -24,7 +25,7 @@ export function pickedMaterial(grid: GridState | null, selection: readonly Block
   const item = object && getCatalogItem(object.catalogId);
   if (!object || !item || (item.maxCount ?? Infinity) < 2) return null;
   if (!getCatalogByCategory(item.category).some(entry => entry.id === item.id)) return null;
-  return item.category === ItemCategory.Road
+  return isCoating(item)
     ? { mode: 'road', itemId: item.id }
     : { mode: 'object', itemId: item.id, rotation: item.rotatable ? object.rotation : 0 };
 }

@@ -1,5 +1,5 @@
 /*
- * GlyphIcon.tsx — one of the design source's drawn glyphs, at a chosen APPARENT size.
+ * One of the design source's drawn glyphs, at a chosen APPARENT size.
  *
  * It belongs beside `frame.ts` rather than to either of the two rows that use it: the rail draws
  * its undo, zoom and rotate marks with it and the terrain bar draws its surfaces with it, and the

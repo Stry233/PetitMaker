@@ -1,4 +1,3 @@
-// src/__tests__/io/export/compose.test.ts
 import { describe, it, expect } from 'vitest';
 import { GRID_COLS } from '../../../io/share/glyph/geometry';
 import { computeComposition, fitAspect, RESOLUTION_WIDTHS, BASE_WIDTH, PAD, type ExportOptions, type Rect } from '../../../io/export/compose';

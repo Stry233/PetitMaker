@@ -12,7 +12,7 @@
 import type { MacroCoord } from '../../core/model/types';
 import { planRoute, type RoutePlan, type RouteProfile, type RouteWorld } from './route';
 
-export interface RouteOffer {
+interface RouteOffer {
   plan: RoutePlan;
   profile: RouteProfile;
 }

@@ -23,7 +23,7 @@ import { buildCommunity, buildHabitatField } from './habitat';
 import { objectsChanged } from './measure';
 import { ageable, ageStand, CLIMAX_STAGE } from './succession';
 
-export interface PatchInput {
+interface PatchInput {
   /** The cells the planting is confined to, or null for the whole map. */
   cells: MacroCoord[] | null;
   /** 0..1, the ecology's own `nature` knob. 0 plants nothing. */

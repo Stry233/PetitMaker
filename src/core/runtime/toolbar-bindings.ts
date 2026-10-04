@@ -1,7 +1,7 @@
 import type { BuildMode } from '../model/edit-mode';
 import type { AnnotationTool } from '../model/annotations';
 
-export const TOOLBAR_CONTEXTS = ['terrain', 'notes-zone', 'notes-chip', 'notes-route', 'notes-other'] as const;
+export const TOOLBAR_CONTEXTS = ['terrain', 'region', 'notes-zone', 'notes-chip', 'notes-route', 'notes-other'] as const;
 export type ToolbarContext = typeof TOOLBAR_CONTEXTS[number];
 
 const TERRAIN_TOOLS = ['tool.brush', 'tool.eraser', 'tool.edgecut', 'tool.smart'];
@@ -16,7 +16,8 @@ export function toolbarContext(mode: BuildMode, tool: AnnotationTool): ToolbarCo
 
 /** Main pills and intermediate option groups count from 1; the final option group uses Q. */
 function makeBindings(context: ToolbarContext): ReadonlyMap<string, string> {
-  const numbered = context === 'terrain' ? [...TERRAIN_TOOLS, 'tool.shape_cycle']
+  const numbered = context === 'region' ? ['tool.brush', 'tool.eraser', 'tool.shape_cycle']
+    : context === 'terrain' ? [...TERRAIN_TOOLS, 'tool.shape_cycle']
     : context === 'notes-zone' ? [...NOTE_TOOLS, 'tool.shape_cycle'] : NOTE_TOOLS;
   const bindings = new Map(numbered.slice(0, 9).map((id, index) => [id, String(index + 1)]));
   if (context !== 'notes-other') bindings.set('tool.auto_trim', 'q');
@@ -34,6 +35,7 @@ export function toolbarDefault(context: ToolbarContext, id: string): string | nu
 }
 
 export function toolbarLabel(context: ToolbarContext, id: string): string | undefined {
+  if (context === 'region' && id === 'tool.auto_trim') return 'region.dimensions';
   if (!context.startsWith('notes-')) return undefined;
   if (id === 'tool.auto_trim') return context === 'notes-route' ? 'annot.line_style' : 'annot.size';
   if (id === 'tool.edgecut') return 'annot.chip';

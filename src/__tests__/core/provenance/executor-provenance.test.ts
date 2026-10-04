@@ -53,7 +53,7 @@ describe('executor provenance capture', () => {
 describe('a moved object keeps its author', () => {
   const flora = (id: string, x: number, y: number): PlacedObject =>
     ({ id, catalogId: 'flower-red', position: { x, y }, rotation: 0, elevation: 0 });
-  const place = (o: PlacedObject): Command => ({ type: CommandType.PlaceObject, timestamp: 0, object: o, loadValue: 0 } as Command);
+  const place = (o: PlacedObject): Command => ({ type: CommandType.PlaceObject, timestamp: 0, object: o } as Command);
   const remove = (o: PlacedObject): Command => ({ type: CommandType.RemoveObject, timestamp: 0, objectId: o.id, removedObject: o } as Command);
 
   it('a human drag of an AI planting does not launder it into human work', () => {

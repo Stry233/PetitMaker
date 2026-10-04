@@ -8,6 +8,21 @@ import { createGrid } from '../../core/model/grid-model';
 import { TerrainType, type GridState } from '../../core/model/types';
 
 describe('json-codec', () => {
+  it.each(['hexia', 'tafa'])('loads %s saves at the same coordinates after adding the sea frame', (id) => {
+    const current = getMapTemplate(id);
+    const legacy = { ...current, chunkGrid: undefined };
+    const state: GridState = { template: legacy, cells: createGrid(legacy), objects: new Map(), lockedLayers: new Set() };
+    setTerrain(state, 40, 50, TerrainType.Mountain, 2);
+    state.objects.set('tree', { ...makeObject('tree', 42, 53), catalogId: 'tree-apple' });
+    state.annotations = { visible: true, locked: false, items: [{ id: 'note', kind: 'zone', cells: [{ x: 41, y: 52 }], color: '#2FBF9B', tag: null, num: 1, size: 'm' }] };
+    const before = JSON.parse(serialize(deserialize(serialize(state), legacy)));
+    const restored = deserialize(JSON.stringify(before), current);
+    const after = JSON.parse(serialize(restored));
+    expect({ ...after, metadata: undefined }).toEqual({ ...before, metadata: undefined });
+    expect(restored.cells).toEqual(state.cells);
+    expect(restored.objects.get('tree')!.position).toEqual({ x: 42, y: 53 });
+    expect(restored.annotations).toEqual(state.annotations);
+  });
   it('roundtrips an empty grid', () => {
     const state = makeState(10, 10);
     const json = serialize(state);

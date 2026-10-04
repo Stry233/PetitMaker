@@ -28,7 +28,7 @@ export const TUNING = {
   standEdgeSoft: 3,           // cells over which tree density ramps from a stand edge (sparse) to its core (dense)
   treeDensity: 0.95,          // tree fill at a stand core at nature=1 (exclusionRadius caps realized density)
   treeSpeciesScale: 0.03,     // species-selection noise frequency (a stand reads as mostly one species)
-  highlandTier: 3,            // elevTier >= this → highland conifers (fir/ginkgo) regardless of moisture
+  highlandTier: 3,            // elevTier >= this → the highland tree band regardless of moisture
   moistureNoiseScale: 0.045,  // humidity field frequency (blended with distance-to-water)
   floraEcotoneReach: 3,       // cells from a forest within which ecotone (forest-edge) flora concentrates
   floraEcotone: 0.4,          // flora density at the forest edge at nature=1

@@ -1,13 +1,13 @@
 /**
- * particles.ts — the single shared Pixi particle emitter. One pooled primitive
+ * The single shared Pixi particle emitter. One pooled primitive
  * (`spawnPuff`) is reused by BOTH the placement plop (warm settling dust) and
  * the deletion poof (energetic same-hue radial scatter); callers vary it purely
  * through opts read from `anim-config`. There is one global concurrent-particle
  * cap and one motion gate — no second emitter anywhere.
  */
 import * as PIXI from 'pixi.js-legacy';
-import { animConfig } from '../../../core/runtime/anim-config';
-import { isMotionReduced } from '../motion-state';
+import { animConfig, easeOutCubic } from '../../../core/runtime/anim-config';
+import { isMotionReduced } from '../../../core/runtime/motion-state';
 import { requestRender as broadcastRender } from '../render-scheduler';
 
 /** Concurrent live-particle count across every burst (place + delete). */
@@ -98,7 +98,7 @@ export function spawnPuff(
       // Ease-out distance: shoot out fast, then decelerate (not linear). The
       // angle curls over the particle's life so the path arcs.
       const ang = p.ang + p.curl * pp;
-      const dist = opts.spreadPx * p.distMul * (1 - Math.pow(1 - pp, 3));
+      const dist = opts.spreadPx * p.distMul * easeOutCubic(pp);
       const x = cx + Math.cos(ang) * dist;
       const y = cy + Math.sin(ang) * dist - rise * pp + gravity * pp * pp;
       const pulse = Math.sin(pp * Math.PI);                 // 0 → 1 → 0

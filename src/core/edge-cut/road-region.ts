@@ -1,5 +1,5 @@
 /*
- * road-region.ts — a road SURFACE as one whole: the connected same-material region, its outline
+ * A road SURFACE as one whole: the connected same-material region, its outline
  * traced as one chain of exact elements, feathered as one boundary.
  *
  * The feather is a property of the surface's outline, not of any tile: per-tile fades cannot wrap
@@ -51,6 +51,16 @@ export interface RoadRegion {
    *  regions must key on this: keying on members alone goes stale when a neighbouring cut
    *  changes, which redraws nothing the user can see until their next edit. */
   signature: string;
+  /** The signature's entries with the cell each piece draws in: the entries near an area determine
+   *  the outline there as the whole signature determines the whole outline. */
+  pieces: readonly RoadRegionPiece[];
+}
+
+/** One piece of a region: the cell it draws in and its signature entry. */
+export interface RoadRegionPiece {
+  x: number;
+  y: number;
+  key: string;
 }
 
 type Vec = readonly [number, number];
@@ -461,19 +471,19 @@ export function buildRoadRegions(all: readonly PlacedObject[], roads: RoadLookup
         cells.set(`${piece.road.position.x},${piece.road.position.y}`, { ...piece.road.position });
       }
       const first = pieces[entry.pieceIdx[0]!]!;
-      const signature = `${first.material}@${first.road.elevation}|${entry.pieceIdx
-        .map((i) => {
-          const { road } = pieces[i]!;
-          return `${road.id}:${road.position.x},${road.position.y}:${road.corners?.join('') ?? ''}`;
-        })
-        .sort()
-        .join('|')}`;
+      const regionPieces = entry.pieceIdx.map((i): RoadRegionPiece => {
+        const { road } = pieces[i]!;
+        const { x, y } = road.position;
+        return { x, y, key: `${road.id}:${x},${y}:${road.corners?.join('') ?? ''}` };
+      });
+      const signature = `${first.material}@${first.road.elevation}|${regionPieces.map((p) => p.key).sort().join('|')}`;
       regions.push({
         material: first.material,
         elevation: first.road.elevation,
         members: [...members.values()],
         cells: [...cells.values()],
         signature,
+        pieces: regionPieces,
         rings: stitchRings(entry.els).map((ring) => {
           const junctions = ring.map((el, i) => junctionOf(ring[(i + ring.length - 1) % ring.length]!, el));
           return { points: (t: number) => ringPoints(ring, junctions, t) };

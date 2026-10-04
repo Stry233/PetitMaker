@@ -1,4 +1,3 @@
-// src/io/share/crypto/crc32.ts
 // Standard PNG/zlib CRC-32 (polynomial 0xEDB88320), table-driven.
 const TABLE = (() => {
   const t = new Uint32Array(256);

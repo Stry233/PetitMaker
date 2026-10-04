@@ -1,14 +1,14 @@
 /**
- * Stage 1 of the methodology pipeline (步骤 1 · 定区域清单): WHICH regions this map holds.
+ * Stage 1 of the designer pipeline (the region-list step): WHICH regions this map holds.
  *
  * Two halves:
  *  - FIXED — the building-anchor regions must cover the building set, and the building set must all
- *    be placed (the methodology's first hard rule). Every placeable Building and Facility is assigned
+ *    be placed (the first hard rule). Every placeable Building and Facility is assigned
  *    to exactly one anchor region by IDENTITY, through the `ANCHOR_ROLES` table below; an id the table
  *    does not know falls back by category, so a future catalog item joins a region rather than going
  *    missing.
  *  - RANDOM — the pure theme regions are drawn from the theme library, count and types seeded.
- *    Richness scales the COUNT only, within the methodology's bounds; it never adds a kind of region
+ *    Richness scales the COUNT only, within the region-count bounds; it never adds a kind of region
  *    the library does not hold and never drops an anchor.
  *
  * Nothing here knows where anything goes: `layout.ts` places these specs. Deterministic per
@@ -28,11 +28,10 @@ import type { AffinityTag, AnchorKind, RegionSpec, ThemeFamily, ThemeId } from '
 
 /** Which anchor region each placeable Building/Facility belongs to, one row per catalog item.
  *
- *  The methodology names four anchors (小动物住宅 / 自家住宅 / 博物馆（万象馆）/ 商店). The catalog
- *  carries no museum item, so the row for it says which item stands in and why. Order is the
- *  catalog's. */
+ *  There are four anchors: animal homes, the player's own house, the museum and the
+ *  shop. Order is the catalog's. */
 export const ANCHOR_ROLES: ReadonlyArray<{ id: string; role: AnchorKind; note: string }> = [
-  // The eight animal-home cabins (小动物住宅). They group into residential clusters.
+  // The animal-home cabins. They group into residential clusters.
   { id: 'building-bamboo-cabin', role: 'residential', note: 'animal home' },
   { id: 'building-boat-cabin', role: 'residential', note: 'animal home' },
   { id: 'building-fluorite-cabin', role: 'residential', note: 'animal home' },
@@ -41,15 +40,14 @@ export const ANCHOR_ROLES: ReadonlyArray<{ id: string; role: AnchorKind; note: s
   { id: 'building-starbay-cabin', role: 'residential', note: 'animal home' },
   { id: 'building-sunset-cabin', role: 'residential', note: 'animal home' },
   { id: 'building-wave-cabin', role: 'residential', note: 'animal home' },
-  // The consignment stall is 1x1 street furniture, not a dwelling, but it is a Building the hard
+  // The consignment stall is street furniture, not a dwelling, but it is a Building the hard
   // rule demands on the map; it joins a residential cluster as its shopfront (the target planet
   // stands it in a paved street corner with 37 paved cells within 3).
   { id: 'building-stall', role: 'residential', note: 'street stall, joins a residential cluster' },
-  // The player's own house: its own region (自家住宅).
+  // The player's own house: its own region.
   { id: 'building-myhouse', role: 'own-house', note: "the player's own house" },
-  // No 万象馆 exists in the catalog. The pavilion is the only civic non-commercial building, so it
-  // stands in as the museum anchor: a visited building with a forecourt and a view.
-  { id: 'facility-pavilion', role: 'museum', note: 'museum stand-in (no 万象馆 in the catalog)' },
+  // The game's museum: a visited building with a forecourt and a view.
+  { id: 'facility-pavilion', role: 'museum', note: 'the museum' },
   // The shop, literally.
   { id: 'facility-shop', role: 'shop', note: 'the shop' },
 ];
@@ -63,7 +61,7 @@ export function anchorRoleOf(item: CatalogItem): AnchorKind {
 }
 
 /** Every item a plan must find a home for: the placeable Buildings and Facilities, in catalog
- *  order. Matches `eval/scorecard.ts:anchorCatalogIds`, which is what the hard ledger checks. */
+ *  order. `eval/scorecard.ts:anchorCatalogIds` checks the hard ledger against it. */
 export function anchorCatalogItems(): CatalogItem[] {
   return [
     ...getPlaceableByCategory(ItemCategory.Building),
@@ -71,30 +69,30 @@ export function anchorCatalogItems(): CatalogItem[] {
   ];
 }
 
-// --- the theme library (纯主题区清单) -----------------------------------------------------------
+// --- the theme library (pure theme regions) ---------------------------------------------------
 
-export interface ThemeSpec {
+interface ThemeSpec {
   id: ThemeId;
   family: ThemeFamily;
   /** The coarse lot this theme wants, in macro cells. */
   size: { w: number; h: number };
   tags: readonly AffinityTag[];
-  /** Draw weight. The methodology picks types at random; the weights only say that a park is a
+  /** Draw weight. Types are picked at random; the weights only say that a park is a
    *  commoner sight than a canyon, never that a type is unreachable. */
   weight: number;
   /** Below this richness the theme is not drawn at all. Only the landmark region uses it:
-   *  文字/图案景观 is an occasional set piece, gated on richness and on lot width. */
+   *  the text or pattern landmark is an occasional set piece, gated on richness and on lot width. */
   minRichness?: number;
 }
 
 export const THEME_LIBRARY: readonly ThemeSpec[] = [
-  // 吃喝休闲
+  // Food and leisure
   { id: 'cafe', family: 'food-leisure', size: { w: 11, h: 9 }, tags: ['drink'], weight: 3 },
   { id: 'teahouse', family: 'food-leisure', size: { w: 10, h: 9 }, tags: ['drink', 'quiet'], weight: 2 },
   { id: 'picnic', family: 'food-leisure', size: { w: 11, h: 9 }, tags: ['greenery'], weight: 2 },
   { id: 'banquet', family: 'food-leisure', size: { w: 11, h: 10 }, tags: [], weight: 2 },
   { id: 'seaside-dining', family: 'food-leisure', size: { w: 13, h: 9 }, tags: ['drink', 'seaside', 'waterside'], weight: 2 },
-  // 自然景观
+  // Natural scenery
   { id: 'park', family: 'nature', size: { w: 15, h: 13 }, tags: ['greenery'], weight: 3 },
   { id: 'garden', family: 'nature', size: { w: 11, h: 10 }, tags: ['greenery'], weight: 3 },
   { id: 'flower-field', family: 'nature', size: { w: 13, h: 11 }, tags: ['greenery'], weight: 3 },
@@ -103,17 +101,17 @@ export const THEME_LIBRARY: readonly ThemeSpec[] = [
   { id: 'tree-avenue', family: 'nature', size: { w: 19, h: 7 }, tags: ['greenery'], weight: 2 },
   { id: 'mountain-water', family: 'nature', size: { w: 15, h: 13 }, tags: ['waterside'], weight: 2 },
   { id: 'canyon', family: 'nature', size: { w: 17, h: 9 }, tags: [], weight: 1 },
-  // 观景 / 打卡
+  // Viewing and photo spots
   { id: 'lookout', family: 'viewpoint', size: { w: 9, h: 9 }, tags: [], weight: 2 },
   { id: 'panorama-deck', family: 'viewpoint', size: { w: 11, h: 9 }, tags: [], weight: 2 },
   { id: 'waterside-deck', family: 'viewpoint', size: { w: 13, h: 7 }, tags: ['waterside'], weight: 2 },
   { id: 'landmark-text', family: 'viewpoint', size: { w: 21, h: 15 }, tags: [], weight: 1, minRichness: 0.6 },
-  // 文化 / 活动
+  // Culture and activity
   { id: 'library', family: 'culture', size: { w: 11, h: 10 }, tags: ['library', 'quiet'], weight: 2 },
   { id: 'stage', family: 'culture', size: { w: 13, h: 11 }, tags: ['stage'], weight: 2 },
   { id: 'chess-garden', family: 'culture', size: { w: 9, h: 9 }, tags: ['quiet'], weight: 2 },
   { id: 'music-corner', family: 'culture', size: { w: 9, h: 9 }, tags: ['quiet'], weight: 2 },
-  // 生产 / 生活
+  // Production and daily life
   { id: 'crop-field', family: 'production', size: { w: 15, h: 13 }, tags: [], weight: 2 },
   { id: 'orchard', family: 'production', size: { w: 15, h: 11 }, tags: ['greenery'], weight: 2 },
   { id: 'animal-run', family: 'production', size: { w: 13, h: 11 }, tags: [], weight: 2 },
@@ -150,7 +148,7 @@ const HOME_GARDEN = 2;
  *  themselves need, since placing them is the hard rule.
  *
  *  Rotation is the layout's to choose (the door must face the entry), so a building is budgeted at
- *  its longest side in BOTH axes: a 5x4 cabin turned 90° is 4x5. */
+ *  its longest side in BOTH axes, since a quarter turn swaps its width and depth. */
 function anchorLotSize(
   members: readonly CatalogItem[], extra: number,
 ): { size: { w: number; h: number }; minSize: { w: number; h: number } } {
@@ -164,7 +162,7 @@ function anchorLotSize(
     },
     // The floor is the building plus its gate strip and nothing else. Twelve anchors ask for twelve
     // blocks that can hold a fronted lot, and a terraced seed does not always have twelve
-    // roomy ones; placing every building is the methodology's one hard rule, so the last resort is
+    // roomy ones; placing every building is the hard rule, so the last resort is
     // a lot with no garden rather than a map missing a home.
     minSize: { w: cols * side + LOT_BORDER, h: rows * (side + 1) + LOT_BORDER },
   };
@@ -200,7 +198,7 @@ function anchorRegions(rng: Rng, catalog: readonly CatalogItem[]): RegionSpec[] 
   // EVERY HOME IS ITS OWN REGION. The style target stands its twelve buildings 13 to 70 cells from
   // the plaza, each with its own composition around it and a different neighbourhood at every one, so
   // a region per home is what gives each its own garden and lets the layout spread them across the
-  // planet. Gathering them into clusters of two to four is a fair reading of 住宅区, and it puts most
+  // planet. Gathering them into clusters of two to four is a fair reading of the residential district, and it puts most
   // of a map's houses in one block.
   const homes = shuffled(rng, byRole.get('residential') ?? []);
   byRole.delete('residential');

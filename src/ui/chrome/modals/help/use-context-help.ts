@@ -4,6 +4,7 @@ import { useEditorStore } from '../../../../state/store';
 import { inheritedHelpTarget } from '../../../primitives/help-target';
 import { openHelp } from './targets';
 import type { HelpPageId } from './page-schema';
+import { isTextEntry } from '../../../../core/runtime/text-entry';
 
 /** Context help remains available inside dialogs; picking never executes the underlying control. */
 export function useContextHelp(): void {
@@ -14,7 +15,7 @@ export function useContextHelp(): void {
       if (document.querySelector('[data-shortcut-recording="true"]')) return;
       const combo = effectiveCombo(useKeybinds.getState().overrides, 'app.whats_this');
       const target = event.target instanceof HTMLElement ? event.target : null;
-      const editing = target?.isContentEditable || target?.closest('input, textarea, select');
+      const editing = isTextEntry(target);
       const inputSafe = /^F\d+$/.test(event.key) || ((event.ctrlKey || event.metaKey) && !event.getModifierState('AltGraph'));
       const matches = combo && comboFromEvent(event) === combo && (!editing || inputSafe);
       if (!state.whatsThis && !matches) return;

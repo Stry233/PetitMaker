@@ -1,5 +1,5 @@
 /*
- * oklab.ts — the colour space a procedural pack authors in.
+ * The colour space a procedural pack authors in.
  *
  * Packs declare VALUE first and hue second, because the failure this whole module exists to avoid
  * is a value failure: the shipped map palette holds no lightness below OKLab L 0.49, and its water

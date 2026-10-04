@@ -12,33 +12,22 @@
  * catalog's authored order fixes the order within a category (the same order the item shelf shows),
  * and anything placed that the authored list does not carry is appended rather than dropped.
  */
-import { PLAZA_ID } from '../core/model/constants';
-import { ItemCategory, type GridState, type LocalizedName, type Locale } from '../core/model/types';
+import { ItemCategory, type GridState, type LocalizedName, type Locale, type Translate } from '../core/model/types';
 import { getCatalogByCategory, getCatalogItem } from './catalog';
 import { getMapStats } from './map-stats';
 import { getObjectIndex } from './object-index';
+import { placedCategories } from '../config/catalog/categories';
+import { isLandmarkItem } from '../core/model/grid-model';
 
-/** The categories a player places one by one, in the order the checklist reads them. Roads are the
- *  seventh and are kept apart: they are a surface laid by the brush, not a thing set down. */
-export const CHECKLIST_CATEGORIES: readonly ItemCategory[] = [
-  ItemCategory.Building,
-  ItemCategory.Tree,
-  ItemCategory.Flora,
-  ItemCategory.Facility,
-  ItemCategory.Bridge,
-  ItemCategory.Ramp,
-];
+const CHECKLIST = placedCategories('checklistRank');
 
-/** The i18n key each category's card header reads under. Reuses the item shelf's own tab names,
- *  so a category is called the same thing wherever the app names it. */
-export const CATEGORY_LABEL: Record<string, string> = {
-  [ItemCategory.Building]: 'shelf.tab_building',
-  [ItemCategory.Tree]: 'shelf.tab_tree',
-  [ItemCategory.Flora]: 'shelf.tab_flora',
-  [ItemCategory.Facility]: 'shelf.tab_facility',
-  [ItemCategory.Bridge]: 'shelf.tab_bridge',
-  [ItemCategory.Ramp]: 'shelf.tab_ramp',
-};
+/** The categories a player places one by one, in the order the checklist reads them. Roads are kept
+ *  apart: they are a surface laid by the brush, not a thing set down. */
+export const CHECKLIST_CATEGORIES: readonly ItemCategory[] = CHECKLIST.map((c) => c.id);
+
+/** The i18n key each category's card header reads under: the item shelf's own tab name, so a
+ *  category is called the same thing wherever the app names it. */
+export const CATEGORY_LABEL: Readonly<Record<string, string>> = Object.fromEntries(CHECKLIST.map((c) => [c.id, c.placement.tabKey]));
 
 export interface ChecklistItem {
   catalogId: string;
@@ -73,7 +62,7 @@ export interface BuildChecklist {
   /** The six placeable categories, always present, in `CHECKLIST_CATEGORIES` order. An empty
    *  group is kept so the reader can see that a category has nothing rather than wonder. */
   groups: ChecklistGroup[];
-  /** Road surfaces by material, in catalog order. A road tile is 1x1, so a count is a cell count. */
+  /** Road surfaces by material, in catalog order, each counted in placed tiles. */
   roads: ChecklistItem[];
   roadTotal: number;
   /** Lowest layer first, which is the order the game requires: nothing stands on nothing. Only
@@ -115,7 +104,7 @@ export function buildChecklist(state: GridState): BuildChecklist {
   let unresolved = 0;
   for (const [id, count] of counts) {
     if (consumed.has(id)) continue;
-    if (id === PLAZA_ID) { hasPlaza = true; continue; }
+    if (isLandmarkItem(id)) { hasPlaza = true; continue; }
     const item = getCatalogItem(id);
     const group = item ? groups.find((g) => g.category === item.category) : undefined;
     if (item && item.category === ItemCategory.Road) {
@@ -145,7 +134,6 @@ export function buildChecklist(state: GridState): BuildChecklist {
  *  `__tests__/import-direction.test.ts`), so this module cannot reach for `i18n/context.ts`
  *  itself. The caller (a component holding `useT()`, or a test binding `translateFor` to a fixed
  *  locale) supplies one. */
-export type ChecklistTranslate = (key: string, params?: Record<string, string | number>) => string;
 
 /**
  * The checklist as a flat text sheet, for the "copy as text" button: a header line with the total,
@@ -155,7 +143,7 @@ export type ChecklistTranslate = (key: string, params?: Record<string, string | 
  * Pure: everything it prints comes from `list` + `locale` + `t`, so a fixed `BuildChecklist`
  * fixture reproduces an exact string, which is what pins its shape in tests.
  */
-export function buildChecklistText(list: BuildChecklist, locale: Locale, t: ChecklistTranslate): string {
+export function buildChecklistText(list: BuildChecklist, locale: Locale, t: Translate): string {
   const nameOf = (name: LocalizedName): string => name[locale] ?? name.en;
   const groupsWithItems = list.groups.filter((g) => g.items.length > 0);
   const placedTotal = list.groups.reduce((n, g) => n + g.total, 0);

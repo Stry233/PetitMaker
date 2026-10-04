@@ -1,11 +1,12 @@
-import { IS_LITE } from '../../../../../core/runtime/edition';
+import { EDITION_COPY } from '../../../../../core/runtime/edition';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, useReducedMotionConfig } from 'framer-motion';
 import { useT } from '../../../../../i18n/context';
 import { ModalShell } from '../../../../primitives/ModalShell';
 import { TimedButton } from '../../../../primitives/TimedButton';
-import { useScrollFade } from '../../../../primitives/scroll-fade';
+import { ScrollArea } from '../../../../primitives/ScrollArea';
+import { useScrollGeometry } from '../../../../primitives/scroll-geometry';
 import { buttonMotion, cursors } from '../../../../design/styles';
 import { skin, windowCard, windowFooterGhost, windowFooterPrimary, windowTitle } from '../../../../design/window-skin';
 import { roleFont } from '../../../../design/text-weight';
@@ -20,8 +21,6 @@ export function ExportNotice({ open, onDecision, format = 'image', hasPetitGlyph
   const [readingVisible, setReadingVisible] = useState(!document.hidden);
   const [atEnd, setAtEnd] = useState(false);
   const content = useRef<HTMLDivElement>(null);
-  const words = useRef<HTMLDivElement>(null);
-  const fade = useScrollFade(content, 'y');
   const onEntered = useCallback(() => setEntered(true), []);
   useEffect(() => { if (!open) setEntered(false); }, [open]);
 
@@ -54,12 +53,9 @@ export function ExportNotice({ open, onDecision, format = 'image', hasPetitGlyph
     if (!open || !entered) return;
     if (content.current) content.current.scrollTop = 0;
     checkEnd();
-    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(checkEnd);
-    if (content.current) observer?.observe(content.current);
-    if (words.current) observer?.observe(words.current);
-    window.addEventListener('resize', checkEnd);
-    return () => { observer?.disconnect(); window.removeEventListener('resize', checkEnd); };
   }, [open, entered, t, format, hasPetitGlyph, checkEnd]);
+
+  useScrollGeometry(content, checkEnd);
 
   const seconds = Math.ceil((READING_MS - elapsed) / 1000);
   const ready = open && entered && seconds === 0 && atEnd;
@@ -67,19 +63,19 @@ export function ExportNotice({ open, onDecision, format = 'image', hasPetitGlyph
     <ModalShell helpTarget={{ page: 'share', anchor: 'share-confirm' }} open={open} onClose={() => onDecision(false)} onEntered={onEntered} width={530} maxVwPct={94} maxVh={88}
       cardStyle={{ ...windowCard, padding: '24px 26px 20px', display: 'flex', flexDirection: 'column', minHeight: 0 }} ariaLabel={t('export.notice.title')}>
       <h2 style={{ ...windowTitle, margin: '0 0 16px', flex: '0 0 auto' }}>{t('export.notice.title')}</h2>
-      <div ref={content} onScroll={checkEnd} tabIndex={0} role="region" aria-label={t('export.notice.title')}
-        style={{ overflowY: 'auto', minHeight: 0, ...roleFont('body'), lineHeight: 1.65, color: skin.plateInk, ...fade }}>
-        <div ref={words}>
+      <ScrollArea ref={content} gutter="stable" surface={skin.plate} tabIndex={0} role="region" aria-label={t('export.notice.title')}
+        style={{ minHeight: 0, ...roleFont('body'), lineHeight: 1.65, color: skin.plateInk }}>
+        <div>
           <p style={{ margin: '0 0 14px' }}>{t('export.notice.intro', { app: t('app.name') })}</p>
           <ol style={{ margin: 0, paddingInlineStart: 22, display: 'grid', gap: 12 }}>
             <li>{t('export.notice.honesty')}</li>
             <li>{t('export.notice.respect')}</li>
-            <li>{t(IS_LITE ? 'lite.responsibility' : 'export.notice.responsibility')}</li>
+            <li>{t(EDITION_COPY.exportResponsibility)}</li>
             {format === 'json' ? <li>{t('export.notice.json_attribution')}</li>
               : hasPetitGlyph && <li>{t('export.notice.image_attribution')}</li>}
           </ol>
         </div>
-      </div>
+      </ScrollArea>
       <div style={{ marginTop: 20, display: 'flex', flexWrap: 'wrap', gap: 10, flex: '0 0 auto' }}>
         <TimedButton after={0} disabled={!ready} external={seconds > 0 ? {
           fraction: (reduced ? Math.floor(elapsed / 1000) * 1000 : elapsed) / READING_MS,

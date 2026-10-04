@@ -1,4 +1,4 @@
-import { DEPLOY_TARGETS } from './deploy-targets';
+import { DEPLOY_TARGETS, targetOfOrigin } from './deploy-targets';
 
 /** Static documents share these slugs with the edge router. */
 export const DOC_SLUGS = {
@@ -16,9 +16,9 @@ export const DOC_SLUGS = {
 export const INDEXABLE_SLUGS: readonly string[] = ['about', 'contact', 'changelog'];
 const EN_ONLY: readonly string[] = [DOC_SLUGS.license, DOC_SLUGS['third-party']];
 
-/** ESA serves directory indexes with a slash; Cloudflare serves the unslashed path. */
+/** A document's path on the deployment serving `origin`, slashed where that deployment slashes. */
 export function pagePath(slug: string, lang: 'en' | 'zh', origin: string): string {
-  return `${lang === 'zh' ? '/zh' : ''}/${slug}${origin === DEPLOY_TARGETS.cn.canonicalOrigin ? '/' : ''}`;
+  return `${lang === 'zh' ? '/zh' : ''}/${slug}${targetOfOrigin(origin).trailingSlash ? '/' : ''}`;
 }
 
 /** Only real HTML pages have extension and slash aliases; asset and unknown paths stay intact. */
@@ -39,8 +39,7 @@ export function canonicalPagePath(path: string, origin: string): string | null {
 
 /** Only the deployment's primary-language product pages participate in search. */
 export function isIndexablePage(slug: string, lang: 'en' | 'zh', origin: string): boolean {
-  const nativeLang = origin === DEPLOY_TARGETS.cn.canonicalOrigin ? 'zh' : 'en';
-  return INDEXABLE_SLUGS.includes(slug) && lang === nativeLang;
+  return INDEXABLE_SLUGS.includes(slug) && lang === targetOfOrigin(origin).lang;
 }
 
 export function translatedPageUrls(slug: string): { en: string; zh: string } {

@@ -74,7 +74,7 @@ export function useLastActivity(view: PanelView, now: number): number {
 }
 
 /** What the hero chip says, or null where there is nothing for it to say. */
-export interface HeroChipFace { wordKey: string; clock: string }
+interface HeroChipFace { wordKey: string; clock: string }
 
 /** Returns folded-character status only while a job is actively progressing. */
 export function heroChipFace(view: PanelView, now: number): HeroChipFace | null {

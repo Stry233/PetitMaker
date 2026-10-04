@@ -4,7 +4,7 @@
  * its dry islets and outer rim stay at the water tier or above, so it exposes no uncapped face.
  * Pure planning only: terrain and masks in, cells out.
  */
-import { flatIndex } from '../../../../core/model/grid-model';
+import { flatIndex, NEIGHBORS4 } from '../../../../core/model/grid-model';
 import type { MacroCoord, Rect } from '../../../../core/model/types';
 import type { TerrainPlan } from '../../core/types';
 import type { MovementLine, WaterWant } from '../composition/movement-line';
@@ -24,7 +24,7 @@ const FORMS: readonly WaterForm[] = ['basin', 'cove', 'ring', 'medallion', 'trou
  *
  * The floor is above the widest a FOUNTAIN COURT can be, and that is the reason for the number rather
  * than the size: the eval reads any mirrored body holding an islet and spanning 17 cells or less on
- * BOTH axes as a formal court, and the supplement allows one main court per region, so a figure drawn
+ * BOTH axes as a formal court, and a region holds one main court, so a figure drawn
  * smaller than this would be counted as a second fountain in whatever region it landed in.
  */
 const SPAN = { min: 19, max: 40 } as const;
@@ -83,9 +83,8 @@ const FORM_REPEAT_MAX = 3;
  * How much dry ground stands between two figures, in cells.
  *
  * It is read between their BOXES, not between the sites they were grown from: a site is where a room
- * started growing and can be most of a room away from the figure that ended up in it. On `hexia/31337`
- * two parallel troughs grown from sites twenty cells apart land three rows apart, merge into one
- * 190-cell solid rectangle and read as a tofu lake.
+ * started growing and can be most of a room away from the figure that ended up in it, so two troughs
+ * grown from distant sites can still land rows apart and merge into one solid rectangle.
  */
 const FORM_GAP = 3;
 /** How many sites are tried before the pass gives up. Each grows ONE room, and a site inside a room
@@ -120,7 +119,7 @@ export interface ComposedBody {
   onWalk: boolean;
 }
 
-export interface FormsInput {
+interface FormsInput {
   t: TerrainPlan;
   grass: Uint8Array;
   flat: Uint8Array;
@@ -340,7 +339,7 @@ function troughCells(rect: Rect): MacroCoord[] {
 
 /** A box of `long` by `across` centred at a cell, laid along the given axis. What `fitForm` hands to
  *  the draw, and what a test names a figure's size with. */
-export function formBox(at: MacroCoord, long: number, across: number, alongX = true): Rect {
+function formBox(at: MacroCoord, long: number, across: number, alongX = true): Rect {
   const w = alongX ? long : across, h = alongX ? across : long;
   return { x: at.x - (w >> 1), y: at.y - (h >> 1), w, h };
 }
@@ -398,9 +397,9 @@ export function cutComposedBodies(input: FormsInput): ComposedBody[] {
   //
   // A site inside a room already offered is the same room again, so each is grown once. And the order
   // matters as much as the set: a form may only be drawn a few times and never twice at one box, so
-  // whichever rooms are offered first spend the vocabulary. Ranked by the profile alone, that was a
-  // handful of small rooms near the plaza, and the long terraces further out came back empty; ranked by
-  // room AREA weighted by the profile, the figures land where there is room for a figure.
+  // whichever rooms are offered first spend the vocabulary. Ranking by room AREA weighted by the profile
+  // lands the figures where there is room for one; the profile alone spends the vocabulary on small rooms
+  // near the plaza and leaves the long terraces further out empty.
   const tried = new Uint8Array(t.width * t.height);
   // How near the walk each room stands, so the route threads a figure rather than passing all of them at
   // a distance: compression and release, which a map of uniformly open streets never gives a visitor.
@@ -646,8 +645,7 @@ function sites(input: FormsInput): Site[] {
       const ring = ringPull(Math.max(Math.abs(x - hub.x), Math.abs(y - hub.y)));
       if (ring <= 0) continue;
       // ORDINARY PLACES ARE NOT SITES AT ALL. A kit composes its ground about a mirror axis and a figure
-      // cut through one costs that region the whole reading (on `tafa/4242`, symmetry 0.23 against the
-      // ledger's floor). The reference says the same thing from the other side: a district floored in
+      // cut through one drops that region's symmetry below the ledger's floor. The reference says the same thing from the other side: a district floored in
       // water is a whole small terrace given over to it, not a pool inserted into a place. A
       // place that ASKED for water is the exception, and it is scored up rather than merely allowed.
       if (region[i] === 1) continue;
@@ -677,7 +675,7 @@ function mainComponent(cells: readonly MacroCoord[]): MacroCoord[] {
       const k = stack.pop()!;
       const at = unkey(k);
       part.push(at);
-      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
+      for (const [dx, dy] of NEIGHBORS4) {
         const nk = key(at.x + dx, at.y + dy);
         if (!all.has(nk) || seen.has(nk)) continue;
         seen.add(nk);
@@ -727,7 +725,7 @@ function islandsIn(cells: readonly MacroCoord[], box: Rect): number {
       done.add(k);
       while (fill.length) {
         const at = unkey(fill.pop()!);
-        for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
+        for (const [dx, dy] of NEIGHBORS4) {
           const nx = at.x + dx, ny = at.y + dy;
           if (nx < box.x || ny < box.y || nx >= box.x + box.w || ny >= box.y + box.h) continue;
           const nk = key(nx, ny);

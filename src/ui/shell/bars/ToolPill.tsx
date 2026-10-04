@@ -2,7 +2,7 @@ import { helpAttributes, type HelpTarget } from '../../primitives/help-target';
 import { useToolbarContext } from '../use-toolbar-context';
 import { AnimatePresence, motion } from 'framer-motion';
 import { effectiveCombo, prettyCombo, useKeybinds } from '../../../core/runtime/keybindings';
-import { btnReset, buttonMotion, cursors } from '../../design/styles';
+import { btnReset, buttonMotion, cursors, radii } from '../../design/styles';
 import { ACTIVE, PLATE } from '../../design/tokens';
 import { GlyphIcon } from '../GlyphIcon';
 import type { Glyph } from '../frame';
@@ -12,8 +12,8 @@ import { BarText, ShortcutBadge } from './bar-atoms';
 import { CELL_BOX } from './ToolCell';
 import { PILL_H, PLATE_PAD } from './terrain-cells';
 
-export const TOOL_PILL_WIDTH = 170 * SCALE;
-export const TOOL_PILL_GROWTH = 30 * SCALE;
+const TOOL_PILL_WIDTH = 170 * SCALE;
+const TOOL_PILL_GROWTH = 30 * SCALE;
 
 export const TOOL_PILL_GAP = 8;
 
@@ -38,7 +38,7 @@ export function ToolPill({ helpTarget, glyph, label, commandId, active, centre, 
       title={combo ? `${label} (${prettyCombo(combo)})` : label} onClick={onSelect}
       initial={false} animate={{ backgroundColor: active ? ACTIVE : PLATE }} transition={transition}
       style={{ ...btnReset, position: 'absolute', top: -PLATE_PAD.y, width: '100%', height: PILL_H,
-        borderRadius: 999, display: 'grid', placeItems: 'center', pointerEvents: 'auto', cursor: cursors.clickable }}>
+        borderRadius: radii.pill, display: 'grid', placeItems: 'center', pointerEvents: 'auto', cursor: cursors.clickable }}>
       <GlyphIcon glyph={glyph} size={62 * SCALE}/>
     </motion.button>
     {commandId && <ShortcutBadge commandId={commandId} grown/>}

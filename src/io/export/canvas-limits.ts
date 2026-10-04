@@ -1,4 +1,3 @@
-// src/io/export/canvas-limits.ts
 // What THIS device's 2D canvas can allocate, measured once instead of assumed.
 //
 // `CANVAS_LIMITS` is desktop Chrome's ceiling: 16384 px per side and 16384² pixels of area. WebKit

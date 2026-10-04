@@ -1,8 +1,11 @@
+import { cellEdges, dimensionDrawing } from '../../../core/model/annotation-dimensions';
+import { dimensionBody } from './annotation-layer';
 import * as PIXI from 'pixi.js-legacy';
 import { APP_FONT_FAMILY } from '../../../assets/fonts/family';
-import { TILE_SIZE } from '../../../core/model/constants';
+import { LOSS_COLOR, TILE_SIZE } from '../../../core/model/constants';
+import { hexStringToNumber } from '../../../core/model/colors';
 import { animConfig, easeOutBack } from '../../../core/runtime/anim-config';
-import { isMotionReduced } from '../motion-state';
+import { isMotionReduced } from '../../../core/runtime/motion-state';
 import { requestRender } from '../render-scheduler';
 import { getCatalogItem } from '../../../state/catalog';
 import { getRotatedSize } from '../../../state/object-geometry';
@@ -10,20 +13,24 @@ import { iconUrl } from '../../../assets/icon-urls';
 import { fitSpriteToTexture, footprintFit } from '../draw/sprite-fit';
 import { drawRoadShape, drawTrimmedBlock } from '../draw/trim-shapes';
 import { selectionPopAmplitude } from './object-animations';
-import { HALF_TILE } from '../../../core/model/grid-model';
-import type { Corners, MacroCoord, ValidationError } from '../../../core/model/types';
+import { HALF_TILE, cellsBounds } from '../../../core/model/grid-model';
+import type { Corners, MacroCoord, MapTemplate, ValidationError, Rotation, Rect } from '../../../core/model/types';
 import { shapeOfSpans, type TrimmedCell } from '../../../tools/edge-cut';
 import type { MacroRect } from '../../interaction/marquee';
 import {
   errorFlashSignature, resolveErrorFlashCells, resolveErrorFlashRects, shouldFlashErrors, flashDecay,
   type ErrorFlashCell, type ErrorFlashGate, type ErrorFlashRect,
-} from './error-flash';
-import { boundaryEdges, boundaryEdgesFromSpans, filletOnly, mergeCellSpans, roadTrimmedOutline, spansWithout, splitFlashShapes, trimmedOutline, type CellSpan, type EdgeSegment, type RoadTrimmedGhostCell, type RowSpan } from './ghost-geometry';
+} from '../../error-flash';
+import { boundaryEdges, boundaryEdgesFromSpans, filletOnly, mergeCellSpans, roadTrimmedOutline, spansWithout, splitFlashShapes, trimmedOutline, type CellSpan, type EdgeSegment, type RoadTrimmedGhostCell, type RowSpan } from '../../ghost-geometry';
 import {
-  CURVE_FOOTPRINT, boundsOfCells, boundsOfSpans, hatchBars, isPreviewCell, isSolidRect, previewDots, previewIconRect,
-  previewPalette, PREVIEW_CELL_ART, type CellBounds, type GhostPaint, type PreviewCell, type PreviewIcon, type PreviewPalette,
+  CURVE_FOOTPRINT, boundsOfSpans, hatchBars, isPreviewCell, isSolidRect, previewDots, previewIconRect,
+  previewPalette, PREVIEW_CELL_ART, type GhostPaint, type PreviewCell, type PreviewIcon, type PreviewPalette, ROUTE_TINT, BAND_COLOR,
 } from '../../../core/runtime/preview-cell';
 import { previewIconCanvas } from '../../preview-cell-raster';
+import { CellGrid } from '../draw/cell-grid';
+import { CHUNK_GRID_STYLE, chunkStrokeCells, planetFrameRects } from '../../reference-grid';
+import type { PlanetFrame } from '../../../core/model/planet';
+import { MAP_TEXT, MAP_INK, MAP_EDGE_ALPHA, FRAME_INK } from '../../../core/runtime/brand-palette';
 
 /** "Is this cell inside the span set?" — built once per ghost build, for the outline. */
 function spanMembership(spans: readonly RowSpan[]): (x: number, y: number) => boolean {
@@ -35,21 +42,34 @@ function spanMembership(spans: readonly RowSpan[]): (x: number, y: number) => bo
   return (x, y) => (rows.get(y) ?? []).some((s) => x >= s.x && x < s.x + s.w);
 }
 
-const GRID_LINE_COLOR = 0xffffff;
-const GRID_LINE_ALPHA = 0.12;
-const SUB_GRID_ALPHA = 0.06;
-const SELECTION_COLOR = 0xffb347;
-/** A ghost's `losses` wash: the same warning red an invalid placement ghost wears (see
- *  `map3d/scene/overlay3d.ts`'s `ghostMat.invalid`), so one tint means one thing across both views. */
-const GHOST_LOSS = 0xe2574c;
+/** Selection marks wear the map-label treatment: warm off-white ink with a translucent dark edge. */
+const SELECTION_CREAM = hexStringToNumber(MAP_TEXT);
+const SELECTION_EDGE = hexStringToNumber(MAP_INK);
+const SELECTION_EDGE_ALPHA = MAP_EDGE_ALPHA;
+/** Mark geometry in SCREEN px, divided by the view zoom when drawn. */
+const MARK_STROKE = 2.6;
+const MARK_EDGE = 5;
+const MARK_PAD = 4;
+const MARK_GROUP_PAD = 10;
+const MARK_ARM_MIN = 6;
+const MARK_ARM_MAX = 14;
+
+interface WorldRect { x: number; y: number; w: number; h: number }
+/** A ghost's `losses` wash. */
+const GHOST_LOSS = hexStringToNumber(LOSS_COLOR);
 /** A plain-tint ghost's fill (a placement wash). A preview CARD brings its own alpha. */
 const GHOST_WASH_ALPHA = 0.32;
-// Hover preview: soft white outline over a pure-grey wash. Equal RGB only — a
-// blue-leaning grey reads as water/zone meaning on this map's palette.
-const HOVER_LINE_COLOR = 0xf5f5f5;
-const HOVER_FILL_COLOR = 0x808080;
-// Rubber band: a blue distinct from the orange selection ring and the grey hover wash.
-const BAND_COLOR = 0x4da6ff;
+// Hover preview: a thin translucent edge in the selection marks' ink over a faint light wash, in
+// screen px like the marks.
+const HOVER_EDGE_ALPHA = 0.5;
+const HOVER_STROKE = 1.5;
+const HOVER_FILL = 0xffffff;
+const HOVER_FILL_ALPHA = 0.08;
+const HOVER_RADIUS = 3;
+/** Review marks: the least screen size of a cell, and the ink edge and yellow line widths, in screen px. */
+const REVIEW_MIN_PX = 7;
+const REVIEW_EDGE = 4;
+const REVIEW_LINE = 2;
 const BAND_DASH = 6;
 const BAND_GAP = 4;
 
@@ -109,16 +129,24 @@ function previewIconTexture(icon: PreviewIcon): PIXI.Texture | null {
 
 export class OverlayLayer {
   public readonly container: PIXI.Container;
+  /** Mounted separately so annotations can sit between the reference grid and tool feedback. */
+  public readonly referenceGrid = new PIXI.Container();
   /** Opens the owning renderer's render window; MapRenderer rebinds it to itself right after
    *  construction. Defaults to the module broadcast, for an instance nobody has wired yet. */
   public requestRender: () => void = requestRender;
-  private gridGraphics: PIXI.Graphics;
+  private gridGraphics: CellGrid;
   private errorGraphics: PIXI.Graphics;
   private ghostGraphics: PIXI.Graphics;
   private curveGraphics = new PIXI.Graphics();
   private hoverGraphics: PIXI.Graphics;
   private bandGraphics: PIXI.Graphics;
   private selectionGraphics: PIXI.Graphics;
+  /** The brackets around a whole group, redrawn as members append. */
+  private selectionFrame: PIXI.Graphics;
+  private selectionRects: WorldRect[] = [];
+  private selectionUnion: WorldRect | null = null;
+  private selectionExact = false;
+  private viewZoom = 1;
   /** The preview card's centre glyph — a sprite rather than a path, so both views raster it once
    *  from the same drawing (canvas/preview-cell-raster). */
   private previewIcon: PIXI.Sprite;
@@ -136,12 +164,13 @@ export class OverlayLayer {
   constructor() {
     this.container = new PIXI.Container();
 
-    this.gridGraphics = new PIXI.Graphics();
+    this.gridGraphics = new CellGrid();
     this.errorGraphics = new PIXI.Graphics();
     this.ghostGraphics = new PIXI.Graphics();
     this.hoverGraphics = new PIXI.Graphics();
     this.bandGraphics = new PIXI.Graphics();
     this.selectionGraphics = new PIXI.Graphics();
+    this.selectionFrame = new PIXI.Graphics();
     this.previewIcon = new PIXI.Sprite();
     this.previewIcon.anchor.set(0.5);
     this.previewIcon.visible = false;
@@ -152,10 +181,13 @@ export class OverlayLayer {
     // ghost: at click time the ghost covers exactly the violating cells, and a
     // flash underneath its fill and outline reads as no feedback at all. The
     // hover preview sits under the selection ring so selecting visibly
-    // "commits" the grey box into the orange one. The band sits under the
+    // "commits" the grey box into the selection marks. The band sits under the
     // selection rings too, so members already in the group stay legible while
     // dragging over them.
-    this.container.addChild(this.gridGraphics);
+    this.referenceGrid.addChild(this.gridGraphics);
+    this.container.addChild(this.planetFrameGraphics);
+    this.container.addChild(this.planetFrameFlash);
+    this.planetFrameFlash.alpha = 0;
     this.container.addChild(this.commitGraphics);
     this.container.addChild(this.curveGraphics);
     this.container.addChild(this.ghostGraphics);
@@ -163,55 +195,12 @@ export class OverlayLayer {
     this.container.addChild(this.hoverGraphics);
     this.container.addChild(this.bandGraphics);
     this.container.addChild(this.selectionGraphics);
+    this.container.addChild(this.selectionFrame);
     this.container.addChild(this.errorGraphics);
   }
 
-  /**
-   * Draw cell grid and sub-grid (2x2 inside each cell).
-   * Chunk borders are drawn separately by MapRenderer.drawChunkGrid().
-   */
-  /** Hide every child except the grid lines for a bake that wants the grid alone; the returned
-   *  restore puts each child's own visibility back, so a hidden preview glyph stays hidden. */
-  hideFeedback(): () => void {
-    const children = [...this.container.children];
-    const was = children.map((c) => c.visible);
-    for (const c of children) if (c !== this.gridGraphics) c.visible = false;
-    return () => { children.forEach((c, i) => { c.visible = was[i]!; }); };
-  }
-
-  drawGridLines(mapWidth: number, mapHeight: number, visible: boolean): void {
-    this.gridGraphics.clear();
-    if (!visible) return;
-
-    const totalWidth = mapWidth * TILE_SIZE;
-    const totalHeight = mapHeight * TILE_SIZE;
-
-    // Sub-grid lines (half-cell divisions) — faintest
-    this.gridGraphics.lineStyle(1, GRID_LINE_COLOR, SUB_GRID_ALPHA);
-    for (let x = 0; x <= mapWidth * 2; x++) {
-      const px = x * HALF_TILE;
-      this.gridGraphics.moveTo(px, 0);
-      this.gridGraphics.lineTo(px, totalHeight);
-    }
-    for (let y = 0; y <= mapHeight * 2; y++) {
-      const py = y * HALF_TILE;
-      this.gridGraphics.moveTo(0, py);
-      this.gridGraphics.lineTo(totalWidth, py);
-    }
-
-    // Cell-level grid lines — medium
-    this.gridGraphics.lineStyle(1, GRID_LINE_COLOR, GRID_LINE_ALPHA);
-    for (let x = 0; x <= mapWidth; x++) {
-      const px = x * TILE_SIZE;
-      this.gridGraphics.moveTo(px, 0);
-      this.gridGraphics.lineTo(px, totalHeight);
-    }
-    for (let y = 0; y <= mapHeight; y++) {
-      const py = y * TILE_SIZE;
-      this.gridGraphics.moveTo(0, py);
-      this.gridGraphics.lineTo(totalWidth, py);
-    }
-
+  drawGridLines(template: MapTemplate, visible: boolean, scale: number, chunks: boolean): void {
+    this.gridGraphics.draw(template, visible, scale, chunks);
   }
 
   private errorAnimId: number | null = null;
@@ -390,7 +379,7 @@ export class OverlayLayer {
     if (!item || !url) { g.visible = false; return false; }
     const tex = PIXI.Texture.from(url);
     g.texture = tex;
-    const size = getRotatedSize(item, rotation as 0 | 90 | 180 | 270);
+    const size = getRotatedSize(item, rotation as Rotation);
     g.anchor.set(0.5);
     g.position.set((x + size.w / 2) * TILE_SIZE, (y + size.h / 2) * TILE_SIZE);
     // Every line below matches how ObjectLayer draws the PLACED sprite, so the preview shows the
@@ -511,7 +500,7 @@ export class OverlayLayer {
       // rounded rectangle, however many cells it spans. Anything else (an irregular shape, a stroke
       // whose corners auto-trim will cut) keeps the exact silhouette the click will leave, which is
       // what the ghost is for — at this radius the rounding is a pixel and a half.
-      const bounds = p.kind === 'spans' ? boundsOfSpans(p.spans) : boundsOfCells(p.cells);
+      const bounds = p.kind === 'spans' ? boundsOfSpans(p.spans) : cellsBounds(p.cells);
       const cellCount = p.kind === 'spans' ? p.spans.reduce((n, s) => n + s.w, 0) : p.cells.length;
       const cardRect = palette && trim.length === 0 && isSolidRect(cellCount, bounds) ? bounds : null;
       this.ghostGraphics.beginFill(fillColor, fillAlpha);
@@ -535,7 +524,7 @@ export class OverlayLayer {
 
       // 1b) the refused state's stripes, over the same footprint the fill just covered.
       if (palette?.hatch !== undefined) {
-        const rects: CellBounds[] = cardRect
+        const rects: Rect[] = cardRect
           ? [cardRect]
           : [...spans.map((sp) => ({ x: sp.x, y: sp.y, w: sp.w, h: 1 })),
              ...trim.map((t) => ({ x: t.x, y: t.y, w: 1, h: 1 }))];
@@ -595,7 +584,7 @@ export class OverlayLayer {
   }
 
   /** The card's background outline: the footprint as one rounded rect on its grid. */
-  private roundedCardRect(b: CellBounds, offset: number): void {
+  private roundedCardRect(b: Rect, offset: number): void {
     this.ghostGraphics.drawRoundedRect(
       b.x * TILE_SIZE - offset, b.y * TILE_SIZE - offset,
       b.w * TILE_SIZE, b.h * TILE_SIZE, PREVIEW_CELL_ART.radius * TILE_SIZE,
@@ -604,7 +593,7 @@ export class OverlayLayer {
 
   /** The card's four corner dots and its centre glyph — the two parts that do NOT stretch with the
    *  footprint (see core/runtime/preview-cell). */
-  private paintCardMarks(card: PreviewCell, palette: PreviewPalette, bounds: CellBounds, offset: number): void {
+  private paintCardMarks(card: PreviewCell, palette: PreviewPalette, bounds: Rect, offset: number): void {
     this.ghostGraphics.beginFill(palette.line, 1);
     for (const dot of previewDots(bounds)) {
       this.ghostGraphics.drawCircle(dot.x * TILE_SIZE - offset, dot.y * TILE_SIZE - offset, dot.r * TILE_SIZE);
@@ -655,7 +644,7 @@ export class OverlayLayer {
   private lastHoverKey = '';
 
   /**
-   * The grey hover-preview box: what a click would select right now (the
+   * The hover-preview box: what a click would select right now (the
    * hovered object's footprint, or a 1×1 terrain cell). Same grid semantics as
    * showSelection (terrainMode = micro-grid offset). Keyed so a stationary
    * hover — mousemove fires per pixel — doesn't rebuild or re-render.
@@ -664,50 +653,70 @@ export class OverlayLayer {
     const key = `${x},${y},${w},${h},${terrainMode ? 1 : 0}`;
     if (key === this.lastHoverKey) return;
     this.lastHoverKey = key;
+    const offset = terrainMode ? HALF_TILE : 0;
+    this.hoverRect = { x: x * TILE_SIZE - offset, y: y * TILE_SIZE - offset, w: w * TILE_SIZE, h: h * TILE_SIZE };
+    this.drawHover();
+  }
+
+  private hoverRect: WorldRect | null = null;
+
+  private drawHover(): void {
     this.requestRender();
     try { this.hoverGraphics.clear(); } catch { return; }
-    const offset = terrainMode ? HALF_TILE : 0;
-    this.hoverGraphics.lineStyle(1.5, HOVER_LINE_COLOR, 0.5);
-    this.hoverGraphics.beginFill(HOVER_FILL_COLOR, 0.07);
-    this.hoverGraphics.drawRect(x * TILE_SIZE - offset, y * TILE_SIZE - offset, w * TILE_SIZE, h * TILE_SIZE);
+    const r = this.hoverRect;
+    if (!r) return;
+    const k = 1 / this.viewZoom;
+    this.hoverGraphics.lineStyle(HOVER_STROKE * k, SELECTION_EDGE, HOVER_EDGE_ALPHA);
+    this.hoverGraphics.beginFill(HOVER_FILL, HOVER_FILL_ALPHA);
+    this.hoverGraphics.drawRoundedRect(r.x, r.y, r.w, r.h, HOVER_RADIUS * k);
     this.hoverGraphics.endFill();
   }
 
   clearHover(): void {
     if (!this.lastHoverKey) return;
     this.lastHoverKey = '';
+    this.hoverRect = null;
     this.requestRender();
     try { this.hoverGraphics.clear(); } catch { /* torn down mid-frame */ }
   }
 
   /**
-   * Draw an orange selection rectangle at (x, y) with optional width and height.
-   * If elevation is provided, a bold number label is drawn at the bottom-left corner.
-   * Terrain blocks render on the micro-grid (offset by -HALF_TILE), so pass
-   * terrainMode=true to match their pixel position; objects use the macro-grid (no offset).
+   * Mark a selection at (x, y) with optional width and height: corner brackets around one member,
+   * a ring per member plus brackets around the whole of a group. A terrain cell or a lone road
+   * (`exact`) is regular, so it gets its exact outline instead. If elevation is provided, a label
+   * is drawn at the bottom-left corner. Terrain blocks render on the micro-grid (offset by
+   * -HALF_TILE), so pass terrainMode=true to match their pixel position; objects use the macro-grid.
    *
-   * `append` draws this rect into the SAME Graphics as whatever the caller already drew this
-   * paint, instead of clearing first: a GROUP selection is one `clearSelection()` up front, then
-   * one `append` call per member. An appended ring also skips the entrance pop and the elevation
-   * label.
+   * `append` adds a member to the marks already drawn this paint instead of starting over: a GROUP
+   * selection is one `clearSelection()` up front, then one `append` call per member. Each append
+   * costs one ring and one redraw of the group brackets. An appended member skips the entrance pop
+   * and the elevation label.
    */
-  showSelection(x: number, y: number, w = 1, h = 1, elevation?: number, terrainMode = false, append = false): void {
+  showSelection(x: number, y: number, w = 1, h = 1, elevation?: number, terrainMode = false, append = false, exact = false): void {
     this.requestRender();
-    if (!append) { try { this.selectionGraphics.clear(); } catch { /* ignore */ } }
     const offset = terrainMode ? HALF_TILE : 0;
-    this.selectionGraphics.lineStyle(2, SELECTION_COLOR, 1);
-    this.selectionGraphics.drawRect(x * TILE_SIZE - offset, y * TILE_SIZE - offset, w * TILE_SIZE, h * TILE_SIZE);
-    if (append) return;
+    const rect = { x: x * TILE_SIZE - offset, y: y * TILE_SIZE - offset, w: w * TILE_SIZE, h: h * TILE_SIZE };
+    if (!append) {
+      this.selectionRects = [rect];
+      this.selectionUnion = rect;
+      this.selectionExact = terrainMode || exact;
+      this.drawSelectionMarks();
+    } else {
+      const u = this.selectionUnion ?? rect;
+      const x0 = Math.min(u.x, rect.x), y0 = Math.min(u.y, rect.y);
+      this.selectionUnion = { x: x0, y: y0, w: Math.max(u.x + u.w, rect.x + rect.w) - x0, h: Math.max(u.y + u.h, rect.y + rect.h) - y0 };
+      this.selectionRects.push(rect);
+      // The second member turns the first one's brackets into a ring; after that each append adds one.
+      if (this.selectionRects.length === 2) this.drawSelectionMarks();
+      else { this.drawRing(rect); this.drawGroupFrame(); }
+      return;
+    }
     // Pop only when a NEW selection appears (not on a re-paint of the same one,
     // e.g. after rotating the selected object).
     const selKey = `${x},${y},${w},${h},${offset}`;
     if (selKey !== this.lastSelKey) {
       this.lastSelKey = selKey;
-      this.popSelection(
-        x * TILE_SIZE - offset + (w * TILE_SIZE) / 2,
-        y * TILE_SIZE - offset + (h * TILE_SIZE) / 2,
-        Math.max(w, h) * TILE_SIZE,
-      );
+      this.popSelection(rect.x + rect.w / 2, rect.y + rect.h / 2, Math.max(w, h) * TILE_SIZE);
     }
 
     if (this.selectionLabel) {
@@ -718,7 +727,7 @@ export class OverlayLayer {
     if (elevation !== undefined) {
       const label = new PIXI.Text(String(elevation), {
         fontSize: 16, fontWeight: 'bold', fontFamily: APP_FONT_FAMILY,
-        fill: 0xffffff, stroke: 0x000000, strokeThickness: 3,
+        fill: SELECTION_CREAM, stroke: SELECTION_EDGE, strokeThickness: 3,
       });
       label.x = x * TILE_SIZE + 3 - offset;
       label.y = (y + h) * TILE_SIZE - 3 - offset;
@@ -728,12 +737,71 @@ export class OverlayLayer {
     }
   }
 
+  /** The view's zoom (screen px per world px). Marks keep their screen size, so a real change redraws them. */
+  setViewZoom(zoom: number): void {
+    if (!(zoom > 0) || Math.abs(zoom - this.viewZoom) / this.viewZoom < 0.03) return;
+    this.viewZoom = zoom;
+    if (this.planetFrame) this.drawPlanetFrame();
+    if (this.review) this.drawReview();
+    if (this.selectionRects.length) { this.drawSelectionMarks(); this.requestRender(); }
+    if (this.hoverRect) this.drawHover();
+  }
+
+  private drawSelectionMarks(): void {
+    try { this.selectionGraphics.clear(); this.selectionFrame.clear(); } catch { return; }
+    if (this.selectionRects.length === 1) {
+      if (this.selectionExact) this.drawOutline(this.selectionRects[0]!);
+      else this.drawBrackets(this.selectionGraphics, this.selectionRects[0]!, MARK_PAD);
+      return;
+    }
+    for (const r of this.selectionRects) this.drawRing(r);
+    this.drawGroupFrame();
+  }
+
+  private drawGroupFrame(): void {
+    try { this.selectionFrame.clear(); } catch { return; }
+    if (this.selectionUnion) this.drawBrackets(this.selectionFrame, this.selectionUnion, MARK_GROUP_PAD);
+  }
+
+  private drawBrackets(g: PIXI.Graphics, r: WorldRect, padPx: number): void {
+    const k = 1 / this.viewZoom, pad = padPx * k;
+    const x = r.x - pad, y = r.y - pad, w = r.w + 2 * pad, h = r.h + 2 * pad;
+    const arm = Math.max(MARK_ARM_MIN * k, Math.min(MARK_ARM_MAX * k, Math.min(w, h) / 3));
+    const corners: [number, number, number, number][] = [[x, y, 1, 1], [x + w, y, -1, 1], [x + w, y + h, -1, -1], [x, y + h, 1, -1]];
+    for (const [width, color, alpha] of [[MARK_EDGE * k, SELECTION_EDGE, SELECTION_EDGE_ALPHA], [MARK_STROKE * k, SELECTION_CREAM, 1]] as const) {
+      g.lineStyle({ width, color, alpha, cap: PIXI.LINE_CAP.ROUND, join: PIXI.LINE_JOIN.ROUND });
+      for (const [cx, cy, sx, sy] of corners) {
+        g.moveTo(cx, cy + sy * arm); g.lineTo(cx, cy); g.lineTo(cx + sx * arm, cy);
+      }
+    }
+  }
+
+  /** The exact outline of a regular cell, in the marks' treatment. */
+  private drawOutline(r: WorldRect): void {
+    const k = 1 / this.viewZoom, g = this.selectionGraphics;
+    for (const [width, color, alpha] of [[MARK_EDGE * k, SELECTION_EDGE, SELECTION_EDGE_ALPHA], [MARK_STROKE * k, SELECTION_CREAM, 1]] as const) {
+      g.lineStyle({ width, color, alpha, join: PIXI.LINE_JOIN.ROUND });
+      g.drawRect(r.x, r.y, r.w, r.h);
+    }
+  }
+
+  private drawRing(r: WorldRect): void {
+    const k = 1 / this.viewZoom, g = this.selectionGraphics;
+    const radius = Math.max(4 * k, Math.min(r.w, r.h) / 2 + k);
+    g.lineStyle({ width: 4 * k, color: SELECTION_EDGE, alpha: SELECTION_EDGE_ALPHA });
+    g.drawCircle(r.x + r.w / 2, r.y + r.h / 2, radius);
+    g.lineStyle({ width: 2 * k, color: SELECTION_CREAM, alpha: 1 });
+    g.drawCircle(r.x + r.w / 2, r.y + r.h / 2, radius);
+  }
+
   /**
    * Clear the selection rectangle and any elevation label.
    */
   clearSelection(): void {
     this.requestRender();
-    try { this.selectionGraphics.clear(); } catch { /* ignore */ }
+    this.selectionRects = [];
+    this.selectionUnion = null;
+    try { this.selectionGraphics.clear(); this.selectionFrame.clear(); } catch { /* ignore */ }
     this.lastSelKey = '';
     if (this.selectionLabel) {
       this.selectionLabel.parent?.removeChild(this.selectionLabel);
@@ -744,8 +812,17 @@ export class OverlayLayer {
 
   private buildableGraphics = new PIXI.Graphics();
   private buildableAdded = false;
+  private regionDimensions: PIXI.Container | null = null;
 
-  showBuildableRegion(cells: MacroCoord[], terrainMode: boolean): void {
+  showBuildableRegion(cells: MacroCoord[], terrainMode: boolean, dimensionScale?: number): void {
+    this.regionDimensions?.destroy({ children: true });
+    this.regionDimensions = null;
+    const bounds = dimensionScale === undefined ? null : cellEdges(cells);
+    if (bounds && dimensionScale !== undefined) {
+      this.regionDimensions = dimensionBody(dimensionDrawing(bounds, dimensionScale), '#ffffff', dimensionScale);
+      if (!terrainMode) this.regionDimensions.position.set(HALF_TILE, HALF_TILE);
+      this.container.addChild(this.regionDimensions);
+    }
     this.requestRender();
     if (!this.buildableAdded) {
       this.container.addChildAt(this.buildableGraphics, 0);
@@ -760,7 +837,7 @@ export class OverlayLayer {
     this.buildableGraphics.endFill();
     const offset = terrainMode ? HALF_TILE : 0;
     const edges = boundaryEdges(cells);
-    for (const [width, color, alpha] of [[4, 0x43413f, 0.55], [1.75, 0xffffff, 0.95]] as const) {
+    for (const [width, color, alpha] of [[4, hexStringToNumber(FRAME_INK), 0.55], [1.75, 0xffffff, 0.95]] as const) {
       this.buildableGraphics.lineStyle(width, color, alpha);
       for (const edge of edges) {
         this.buildableGraphics.moveTo(edge.ax * TILE_SIZE - offset, edge.ay * TILE_SIZE - offset);
@@ -771,6 +848,8 @@ export class OverlayLayer {
   }
 
   clearBuildableRegion(): void {
+    this.regionDimensions?.destroy({ children: true });
+    this.regionDimensions = null;
     this.requestRender();
     this.endRegionPulse();
     try { this.buildableGraphics.clear(); } catch { /* ignore */ }
@@ -810,6 +889,92 @@ export class OverlayLayer {
     this.buildableGraphics.alpha = 1;
   }
 
+  private planetFrame: PlanetFrame | null = null;
+  private planetFrameGraphics = new PIXI.Graphics();
+  /** The same dashes in the warning tint, faded in and out over the ink by a flash. */
+  private planetFrameFlash = new PIXI.Graphics();
+  private planetFlashAnim: number | null = null;
+
+  showPlanetFrame(frame: PlanetFrame | null): void {
+    this.planetFrame = frame;
+    this.drawPlanetFrame();
+  }
+
+  /** Dash widths are screen px, so the frame redraws as the zoom moves. */
+  private drawPlanetFrame(): void {
+    this.requestRender();
+    const ink = this.planetFrameGraphics, flash = this.planetFrameFlash;
+    try { ink.clear(); flash.clear(); } catch { return; }
+    if (!this.planetFrame) { this.endPlanetFlash(); return; }
+    const rects = planetFrameRects(this.planetFrame, chunkStrokeCells(this.viewZoom * TILE_SIZE));
+    for (const [g, color, alpha] of [[ink, CHUNK_GRID_STYLE.planetFrame.ink, CHUNK_GRID_STYLE.planetFrame.opacity], [flash, GHOST_LOSS, 1]] as const) {
+      g.beginFill(color, alpha);
+      for (const r of rects) g.drawRect(r.x * TILE_SIZE, r.y * TILE_SIZE, r.width * TILE_SIZE, r.height * TILE_SIZE);
+      g.endFill();
+    }
+  }
+
+  /**
+   * The warning tint rising over the frame and falling away once (`sin`, so both ends are at rest).
+   * Under reduced motion nothing runs: the frame itself still shows where the planet ends.
+   */
+  flashPlanetFrame(durationMs: number): void {
+    if (!this.planetFrame || this.planetFlashAnim !== null || isMotionReduced()) return;
+    const start = performance.now();
+    const step = () => {
+      this.requestRender();
+      const t = Math.min((performance.now() - start) / durationMs, 1);
+      this.planetFrameFlash.alpha = Math.sin(Math.PI * t);
+      if (t < 1) { this.planetFlashAnim = requestAnimationFrame(step); return; }
+      this.endPlanetFlash();
+    };
+    this.planetFlashAnim = requestAnimationFrame(step);
+  }
+
+  /** Ends a running frame flash; the renderer calls it on teardown so no frame outlives it. */
+  endPlanetFlash(): void {
+    if (this.planetFlashAnim !== null) cancelAnimationFrame(this.planetFlashAnim);
+    this.planetFlashAnim = null;
+    this.planetFrameFlash.alpha = 0;
+  }
+
+  private reviewGraphics = new PIXI.Graphics();
+  private reviewAdded = false;
+  private review: { cells: readonly MacroCoord[]; landmark: Rect | null } | null = null;
+
+  /** The cells to check in the route's yellow with an ink edge, and the landmark's footprint
+   *  outlined alone. Strokes keep their screen width, and a cell drawn smaller than
+   *  `REVIEW_MIN_PX` on screen grows about its centre to it, so a lone cell can be found on a
+   *  whole-planet view. Ground cells and the landmark both stand on the macro grid. */
+  showReviewCells(cells: readonly MacroCoord[] | null, landmark: Rect | null): void {
+    this.review = cells ? { cells, landmark } : null;
+    this.drawReview();
+  }
+
+  private drawReview(): void {
+    this.requestRender();
+    if (!this.reviewAdded) {
+      this.container.addChildAt(this.reviewGraphics, this.container.getChildIndex(this.planetFrameGraphics));
+      this.reviewAdded = true;
+    }
+    const g = this.reviewGraphics;
+    try { g.clear(); } catch { return; }
+    if (!this.review) return;
+    const { cells, landmark } = this.review;
+    const k = 1 / this.viewZoom;
+    const side = Math.max(TILE_SIZE, REVIEW_MIN_PX * k);
+    const inset = (TILE_SIZE - side) / 2;
+    for (const [width, color, alpha] of [[REVIEW_EDGE * k, hexStringToNumber(FRAME_INK), 0.7], [REVIEW_LINE * k, ROUTE_TINT, 1]] as const) {
+      g.lineStyle(width, color, alpha);
+      if (landmark) g.drawRect(landmark.x * TILE_SIZE, landmark.y * TILE_SIZE, landmark.w * TILE_SIZE, landmark.h * TILE_SIZE);
+    }
+    g.lineStyle(REVIEW_LINE * k, hexStringToNumber(FRAME_INK), 0.7);
+    g.beginFill(ROUTE_TINT, 0.55);
+    for (const { x, y } of cells) g.drawRect(x * TILE_SIZE + inset, y * TILE_SIZE + inset, side, side);
+    g.endFill();
+    g.lineStyle();
+  }
+
   private routeGraphics = new PIXI.Graphics();
   private routeAdded = false;
 
@@ -838,7 +1003,7 @@ export class OverlayLayer {
     }
     try { this.routeGraphics.clear(); } catch { /* ignore */ }
     if (cells.length === 0) return;
-    this.routeGraphics.beginFill(0xffd75e, 0.55);
+    this.routeGraphics.beginFill(ROUTE_TINT, 0.55);
     for (const { x, y } of cells) cellRect(this.routeGraphics, x, y, true);
     this.routeGraphics.endFill();
   }

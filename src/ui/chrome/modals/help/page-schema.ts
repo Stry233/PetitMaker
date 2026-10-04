@@ -1,5 +1,5 @@
 /*
- * page-schema.ts — the shape of one Help Center page, as data.
+ * The shape of one Help Center page, as data.
  *
  * Prose is i18n keys (always full literals, so the key scan sees them); facts the source already
  * declares arrive as `{token}` params supplied at render (`facts.ts`), never retyped; key rows
@@ -22,13 +22,13 @@ export type HelpPageId =
   | 'settings' | 'shortcuts' | 'faq';
 
 /** One row of a key table: what it does, and the tokens that do it (command ids where possible). */
-export interface HelpKeyRow {
+interface HelpKeyRow {
   doKey: string;
   tokens: readonly TokenSpec[];
 }
 
 /** One provider's bulleted walkthrough; its name and console links are read from `PROVIDER_META`. */
-export interface HelpStepGroup {
+interface HelpStepGroup {
   provider: ProviderId;
   stepKeys: readonly string[];
 }
@@ -43,21 +43,21 @@ export type HelpSection =
   /** A yellow aside between sections. */
   | { kind: 'callout'; bodyKey: string };
 
-export interface HelpQA {
+interface HelpQA {
   qKey: string;
   aKey: string;
 }
 
 /** A demo narrates itself (the animated caption inside the canvas), so only a surface figure
  *  carries a static caption — a second line under a demo said the same thing twice. */
-export type HelpFigure =
+type HelpFigure =
   | { kind: 'demo'; scene: string }
   /** Several small demos side by side, each with its own label line. */
   | { kind: 'demos'; scenes: readonly { scene: string; labelKey: string }[] }
   | { kind: 'surface'; surface: string; captionKey: string };
 
 /** A page-level verb: the one live door a page offers beside its prose. */
-export interface HelpAction {
+interface HelpAction {
   labelKey: string;
   kind: 'open-keyboard' | 'replay-tour';
 }
@@ -78,4 +78,7 @@ export interface HelpPage {
   sections: readonly HelpSection[];
   qa: readonly HelpQA[];
   seeAlso: readonly HelpPageId[];
+  /** False where the offline edition does not ship the page; an object replaces those fields there
+   *  (`core/runtime/edition.ts:forEdition`). */
+  lite?: false | Partial<Omit<HelpPage, 'id' | 'lite'>>;
 }

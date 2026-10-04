@@ -13,10 +13,18 @@
  * not on whether a handler is registered here — this channel only carries the cells once that gate
  * is already open.
  */
-import type { MacroCoord } from '../model/types';
+import type { MacroCoord, RegionTool } from '../model/types';
+
+export const REGION_TOOLS: readonly RegionTool[] = ['brush', 'eraser', 'line', 'curve', 'rect', 'circle'];
+let allowedTools = REGION_TOOLS;
+export function setRegionTools(tools: readonly RegionTool[] = REGION_TOOLS): void { allowedTools = tools; }
+export function regionTools(): readonly RegionTool[] { return allowedTools; }
 
 export interface RegionBrushHandler {
   paint(coord: MacroCoord): void;
+  /** Hover never changes the selection or its history. */
+  preview?(coord: MacroCoord): void;
+  cancel?(): void;
   done(): void;
   /** Empty the region, as one entry on its own undo stack. */
   clear(): void;
@@ -32,6 +40,8 @@ export function setRegionBrushHandler(next: RegionBrushHandler | null): () => vo
 }
 
 export function paintRegionCell(coord: MacroCoord): void { handler?.paint(coord); }
+export function previewRegionCell(coord: MacroCoord): void { handler?.preview?.(coord); }
+export function cancelRegionStroke(): void { handler?.cancel?.(); }
 export function finishRegionStroke(): void { handler?.done(); }
 export function clearRegionSelection(): void { handler?.clear(); }
 

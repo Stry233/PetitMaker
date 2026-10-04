@@ -1,7 +1,7 @@
 import { useT } from '../../i18n/context';
 import { useEditorStore } from '../../state/store';
 import { sendXhsImage, xhsImageActionAvailable, type XhsImageAction } from '../../io/xhs';
-import { ModalShell } from '../primitives/ModalShell';
+import { ModalShell, useModalEntered } from '../primitives/ModalShell';
 import { windowCard, windowTitle } from '../design/window-skin';
 import { ExportPanel } from '../chrome/modals/export/ExportModal';
 
@@ -25,10 +25,11 @@ export function LiteShareWindow() {
     available: xhsImageActionAvailable(action),
     send: (image: Blob) => deliverImage(image, action),
   }));
-  return <ModalShell helpTarget={{ page: 'share' }} open={open} onClose={close} width={980} height={848} maxVwPct={94} maxVhPct={92}
+  const { entered, onEntered } = useModalEntered(open);
+  return <ModalShell helpTarget={{ page: 'share' }} open={open} onClose={close} onEntered={onEntered} width={980} height={848} maxVwPct={94} maxVhPct={92}
     cardStyle={{ ...windowCard, padding: '24px 26px 20px', display: 'flex', flexDirection: 'column', overflow: 'hidden' }} ariaLabel={t('share.title')}>
     <h2 style={{ ...windowTitle, margin: '0 0 10px' }}>{t('share.title')}</h2>
     {!deliveries.some(delivery => delivery.available) && <p role="status">{t('lite.preview_only')}</p>}
-    <ExportPanel open={open} onDone={close} deliveries={deliveries} />
+    <ExportPanel open={open} entered={entered} onDone={close} deliveries={deliveries} />
   </ModalShell>;
 }

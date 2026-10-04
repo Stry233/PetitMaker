@@ -13,9 +13,10 @@
  * We reproduce it via TERRAIN_OFFSET so 3D terrain sits exactly where 2D does.
  */
 
-/** Height of one elevation layer, in cell units. < 1 so stacked steps read as a
- *  pleasant diorama rather than skyscrapers. Tunable. */
-export const LAYER_HEIGHT = 0.55;
+import { CellZone } from '../../../core/model/types';
+
+/** Shared visual height of one terrain level, in ground-plane cell units. */
+export const LAYER_HEIGHT = 0.9;
 
 /** Half-a-macro-cell shift applied to TERRAIN blocks only (mountains + water),
  *  mirroring the 2D renderer's −HALF_TILE micro-grid offset. Zones + objects stay
@@ -35,14 +36,34 @@ export function layerToY(layer: number): number {
 /** Top of the land slab that renders under every ground cell (cell units). */
 export const GROUND_SLAB_Y = 0.08;
 
-/** How far a water surface floats above the layer it fills — the sea's own waterline over the void. */
-export const SEA_Y = 0.05;
+/** Road coating separation above the visible supporting surface, in cell units. */
+export const ROAD_DECAL_LIFT = 0.02;
 
-/** The world Y of a water surface at `tier`. A ground-level pool lies ON the land slab rather than
- *  inside it, so the surface is floored just above the slab; everything that has to meet water at
- *  its own height — the mesher, the pointer's heightfield, a surface drape — reads it here. */
+/** Span landings clear terrain and its road coating by a distinct depth interval. */
+export const SPAN_DECK_CLEARANCE = ROAD_DECAL_LIFT + 0.01;
+
+/** Water sits a quarter of a ground-plane cell below its same-tier bank. */
+export const WATER_RECESS = 0.25;
+
+/** The ocean meets ground-level rivers at the same waterline. */
+export const SEA_Y = GROUND_SLAB_Y - WATER_RECESS;
+
+/** The height of the ground a cell of `zone` shows: the sea over a void cell, the land slab otherwise. */
+export function groundYForZone(zone: CellZone): number {
+  return zone === CellZone.Void ? SEA_Y : GROUND_SLAB_Y;
+}
+
+/** Outer sea chunks fade over at most this many cells, entirely inside the reference grid. */
+export const SEA_FADE_CELLS = 16;
+
+/** Shared waterline for terrain, picking and surface draping, in cell units. */
 export function waterSurfaceY(tier: number): number {
-  return Math.max(layerToY(tier) + SEA_Y, GROUND_SLAB_Y + 0.02);
+  return surfaceY(tier) - WATER_RECESS;
+}
+
+/** Bridge landings stand on their banks, above the recessed water. */
+export function bridgeDeckY(tier: number): number {
+  return surfaceY(tier) + SPAN_DECK_CLEARANCE;
 }
 
 /** The VISIBLE standable surface of a layer: elevated terrain tops out exactly at

@@ -1,3 +1,4 @@
+import type { Translate } from '../../core/model/types';
 /**
  * What a floor of the stack is CALLED, in one place.
  *
@@ -13,7 +14,6 @@
  */
 
 /** The translator, as `i18n/context:useT` returns it. */
-type Translate = (key: string, params?: Record<string, string | number>) => string;
 
 export function layerName(t: Translate, elevation: number): string {
   return elevation === 0 ? t('layer.ground') : t('layer.name', { n: elevation });

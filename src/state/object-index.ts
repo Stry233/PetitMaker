@@ -1,7 +1,6 @@
 /**
  * Memoized spatial index over GridState.objects, shared by every consumer that
- * asks "which objects are here?" — the placement rules and the road/coating
- * lookups. Without it each question is a full scan of the objects Map (with a
+ * asks "which objects are here?". Without it each question is a full scan of the objects Map (with a
  * catalog lookup per entry), and generation/agent strokes ask it millions of
  * times on a decorated map.
  *
@@ -11,26 +10,25 @@
  *
  * Incremental: a rebuild costs one catalog lookup + rect + chunk bucketing PER
  * OBJECT, so rebuilding after each of a stroke's placements is quadratic in the
- * map's object count — ~1s of rebuilds alone for a 40x40 road fill on a
- * decorated map. When the mutation left an `objectsDelta` describing exactly what
+ * map's object count. When the mutation left an `objectsDelta` describing exactly what
  * changed and this cache is one version behind it, the changed entries are
  * patched in instead. Anything unexpected — no delta, a skipped version, an
  * entry the delta claims to remove that is not indexed, a post-patch count that
  * disagrees with `state.objects` — falls back to a full rebuild, so the index
  * can be slow but never stale.
  *
- * Determinism: entries carry their insertion order (`ord`); every query sorts
- * candidates by it, so consumers see the same object order a full insertion-
+ * Determinism: entries carry their insertion order (`ord`); every query returns
+ * candidates in that order, so consumers see the same object order a full insertion-
  * order scan produced.
  */
-import { CHUNK_SIZE } from '../core/model/constants';
-import { chunkKey, cellKey, rectsOverlap, type Rect } from '../core/model/grid-model';
+import { cellOverlapsRect, chunkKey, cellKey, rectsOverlap, type Rect } from '../core/model/grid-model';
 import type { GridState, MacroCoord, PlacedObject } from '../core/model/types';
 import type { RoadLookup } from '../core/model/road-lookup';
 import { getCatalogItem } from './catalog';
 import { isCoating } from '../core/model/traits';
 import { objectRect } from './object-geometry';
 import type { CatalogItem } from '../core/model/types';
+import { CHUNK_SIZE } from '../core/model/game-profile';
 
 export interface ObjectIndexEntry {
   obj: PlacedObject;
@@ -248,8 +246,7 @@ export function roadLookup(state: GridState): RoadLookup {
 export function objectAt(index: ObjectIndex, coord: MacroCoord): PlacedObject | null {
   for (const e of entriesCovering(index, { x: coord.x, y: coord.y, w: 1, h: 1 })) {
     if (!e.item) continue;
-    const { x, y, w, h } = e.rect;
-    if (coord.x + 1 > x && coord.x < x + w && coord.y + 1 > y && coord.y < y + h) return e.obj;
+    if (cellOverlapsRect(e.rect, coord.x, coord.y, 0)) return e.obj;
   }
   return null;
 }
@@ -283,18 +280,6 @@ export function entriesCovering(index: ObjectIndex, rect: Rect): ObjectIndexEntr
   return out;
 }
 
-/**
- * Entries whose padded chunk range overlaps `rect`, deduped, in insertion order.
- *
- * THE BUCKETS ARE ALREADY IN ORDER, so this MERGES them rather than sorting what it collected. The
- * distinction is the whole cost of the query on a dense map: a chunk of a fully paved region holds
- * CHUNK_SIZE² entries, a 1x1 rect touches up to four chunks through the half-cell padding, and
- * sorting a thousand candidates per cell makes a picture paved in roads quadratic in its own density
- * — 330 of 485 ms of a 14,400-cell run, all of it inside one rule asking this question once per
- * placement. A merge over at most four already-sorted runs is linear in what it returns.
- *
- * An entry spanning two of the buckets appears in both, so equal ords are consumed together.
- */
 /** Surface-coating objects (roads/paths) whose footprint overlaps `rect`. The
  *  overlap rule exempts coatings so an object CAN be placed over a road; the
  *  intended editor behavior is to strip the covered road and place. Interactive
@@ -308,6 +293,17 @@ export function coatingsUnder(state: GridState, rect: Rect): PlacedObject[] {
   return hit;
 }
 
+/**
+ * Entries whose padded chunk range overlaps `rect`, deduped, in insertion order.
+ *
+ * THE BUCKETS ARE ALREADY IN ORDER, so this MERGES them rather than sorting what it collected. The
+ * distinction is the whole cost of the query on a dense map: a chunk of a fully paved region holds
+ * CHUNK_SIZE² entries, a 1x1 rect touches up to four chunks through the half-cell padding, and
+ * sorting a thousand candidates per cell makes a picture paved in roads quadratic in its own density.
+ * A merge over at most four already-sorted runs is linear in what it returns.
+ *
+ * An entry spanning two of the buckets appears in both, so equal ords are consumed together.
+ */
 export function entriesNear(index: ObjectIndex, rect: Rect): ObjectIndexEntry[] {
   const buckets: ObjectIndexEntry[][] = [];
   forEachChunk(rect, k => {

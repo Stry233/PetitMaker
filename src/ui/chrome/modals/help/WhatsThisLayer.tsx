@@ -9,8 +9,8 @@ import { useT } from '../../../../i18n/context';
 import { ensureHelpStrings } from '../../../../i18n/locales/help';
 import { pushCursorSurface } from '../../../../canvas/interaction/cursor-controller';
 import { roleFont, weightVars } from '../../../design/text-weight';
-import { INK, PLATE } from '../../../design/tokens';
-import { buttonMotion, cursors, exitTransition, font, springs, z } from '../../../design/styles';
+import { INK, MAP_EDGE_ALPHA, MAP_TEXT, PLATE } from '../../../design/tokens';
+import { buttonMotion, cursors, exitTransition, font, springs, withAlpha, z, radii } from '../../../design/styles';
 import { useDenseScript, useDevicePixelRatio } from '../../../design/scale';
 import { HELP_PAGES } from './catalog';
 import type { HelpPageId } from './page-schema';
@@ -168,8 +168,8 @@ export function WhatsThisLayer() {
                     overflow: 'hidden',
                     textOverflow: 'ellipsis',
                     background: PLATE,
-                    border: '1px solid rgba(87,73,53,0.62)',
-                    borderRadius: 99,
+                    border: `1px solid ${withAlpha(INK, MAP_EDGE_ALPHA)}`,
+                    borderRadius: radii.pill,
                     padding: '5px 12px',
                     ...roleFont('small'),
                     fontFamily: font.family,
@@ -195,8 +195,8 @@ export function WhatsThisLayer() {
               pointerEvents: nearBanner ? 'none' : undefined,
               left: '50%',
               background: INK,
-              color: '#FFFEE3',
-              borderRadius: 99,
+              color: MAP_TEXT,
+              borderRadius: radii.pill,
               padding: '10px 20px',
               ...roleFont('label'),
               fontFamily: font.family,
@@ -207,16 +207,16 @@ export function WhatsThisLayer() {
               boxShadow: '0 6px 18px rgba(67,65,62,0.32)',
             }}
           >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#FFFEE3" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={MAP_TEXT} strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
               <path d="M8.6 9a3.6 3.6 0 1 1 5.2 3.2c-1.2.6-1.8 1.3-1.8 2.6" />
-              <circle cx="12" cy="18.6" r="1.1" fill="#FFFEE3" stroke="none" />
+              <circle cx="12" cy="18.6" r="1.1" fill={MAP_TEXT} stroke="none" />
             </svg>
             {t('help.whats_this_banner')}
             <motion.button
               type="button"
               {...buttonMotion}
               onClick={(e) => { e.stopPropagation(); setWhatsThis(false); }}
-              style={{ background: 'rgba(255,255,255,0.16)', border: 'none', borderRadius: 99, padding: '4px 12px', ...roleFont('small'), fontFamily: font.family, color: '#FFFEE3', cursor: cursors.clickable }}
+              style={{ background: 'rgba(255,255,255,0.16)', border: 'none', borderRadius: radii.pill, padding: '4px 12px', ...roleFont('small'), fontFamily: font.family, color: MAP_TEXT, cursor: cursors.clickable }}
             >
               {t('help.whats_this_exit')}
             </motion.button>

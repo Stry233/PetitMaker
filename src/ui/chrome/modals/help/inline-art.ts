@@ -1,5 +1,5 @@
 /*
- * inline-art.ts — what a `[[name]]` in help prose resolves to.
+ * What a `[[name]]` in help prose resolves to.
  *
  * ONE POINTER PER CONTROL: every entry reads the art off the record the OWNING module already
  * exports and draws from (`shell/frame.ts`'s MODES / TOP_RIGHT / GLYPHS / ASSISTANT_BLOCK,

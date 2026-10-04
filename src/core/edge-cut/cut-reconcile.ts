@@ -1,14 +1,15 @@
-import { CommandType, TerrainType } from '../model/types';
+import { CommandType, TerrainType, type Rotation, ROTATIONS } from '../model/types';
 import type { Command, Corners, GridState, MacroCoord, PlacedObject, TrimCornersCommand } from '../model/types';
 import { getCell, cellKey } from '../model/grid-model';
 import { computeLockedCorners } from './trim-lock';
-import { cornerWrappedAt, groundConvexCornerInWater } from './terrain-silhouette';
+import { cornerWrappedAt, groundConvexCornerInWater, patchSupport } from './terrain-silhouette';
 import { validateCut, isInnerCorner } from './cut-validator';
 import type { RoadLookup } from '../model/road-lookup';
 import {
   CANONICAL_ROAD_STATES, ROTATION_TO_CONN,
-  canonicalToActual, classifyRoadKind, countRoadNeighbors, detectRoadConn,
+  canonicalToActual, classifyRoadKind, countRoadNeighbors, detectRoadConn, type RoadConnSide,
 } from './road-cut-states';
+import { SQUARE_CORNERS, EMPTY_CORNERS, isSquareCorners } from './corner-index';
 
 /** Minimal sink for repair commands plus the paved-cell lookup the road repairs
  *  need — satisfied by CommandExecutor. */
@@ -40,7 +41,7 @@ function reconcileTerrainCell(state: GridState, target: CutReconcileTarget, x: n
   const cell = getCell(state.cells, x, y);
   if (!cell?.terrain || cell.terrain.type === TerrainType.None || cell.terrain.patchOnly) return false;
   const corners = cell.terrain.corners;
-  if (!corners || corners.every(c => c === 'square')) return false;
+  if (!corners || isSquareCorners(corners)) return false;
 
   const locked = computeLockedCorners(state, target.roadAt, x, y, 'terrain');
   const next = [...corners] as Corners;
@@ -80,16 +81,14 @@ function reconcileGroundIsland(state: GridState, target: CutReconcileTarget, x: 
   return true;
 }
 
-const SQUARE_CORNERS: Corners = ['square', 'square', 'square', 'square'];
-
 interface RoadReplacement {
   corners: Corners;
-  rotation?: 0 | 90 | 180 | 270;
+  rotation?: Rotation;
 }
 
 /** Find a same-kind canonical state whose actual form is valid in the current context. */
 function findSameKindRoadState(
-  state: GridState, roads: RoadLookup, road: PlacedObject, conn: string, kind: 'round' | 'direct',
+  state: GridState, roads: RoadLookup, road: PlacedObject, conn: RoadConnSide, kind: 'round' | 'direct',
 ): RoadReplacement | null {
   const isolated = countRoadNeighbors(roads, road) === 0;
   const { x, y } = road.position;
@@ -97,8 +96,8 @@ function findSameKindRoadState(
     const canonical = CANONICAL_ROAD_STATES[i]!;
     if (!canonical || classifyRoadKind(canonical) !== kind) continue;
     if (isolated) {
-      for (const rot of [0, 90, 180, 270] as const) {
-        const actual = canonicalToActual(canonical, ROTATION_TO_CONN[rot]!);
+      for (const rot of ROTATIONS) {
+        const actual = canonicalToActual(canonical, ROTATION_TO_CONN[rot]);
         if (validateCut(state, roads, x, y, 'road', actual)) return { corners: [...canonical], rotation: rot };
       }
     } else {
@@ -113,7 +112,7 @@ function findSameKindRoadState(
 function reconcileRoadAt(state: GridState, target: CutReconcileTarget, x: number, y: number): boolean {
   const roads = target.roadAt;
   const road = roads(x, y);
-  if (!road?.corners || road.corners.every(c => c === 'square')) return false;
+  if (!road?.corners || isSquareCorners(road.corners)) return false;
 
   const conn = detectRoadConn(roads, road);
   const actual = canonicalToActual(road.corners, conn);
@@ -183,7 +182,7 @@ function reconcilePatchTerrain(state: GridState, target: CutReconcileTarget, x: 
 
   // No fillet's context holds → drop the gamma. CYCLE-OFF-KEEPS-BASE: a real base (patchBase >= 1)
   // drops to its square block; a from-empty gamma (patchBase 0) clears to nothing.
-  const baseElev = terrain.patchBase ?? (terrain.elevation - 1);
+  const baseElev = patchSupport(terrain);
   if (terrain.type === TerrainType.Mountain && baseElev >= 1) {
     const res = target.execute({
       type: CommandType.PaintTerrain, timestamp: Date.now(),
@@ -197,7 +196,7 @@ function reconcilePatchTerrain(state: GridState, target: CutReconcileTarget, x: 
       if (kept.some(c => c !== 'square')) {
         target.execute({
           type: CommandType.TrimCorners, timestamp: Date.now(),
-          x, y, layer: 'terrain', beforeCorners: SQUARE_CORNERS, afterCorners: kept,
+          x, y, layer: 'terrain', beforeCorners: [...SQUARE_CORNERS], afterCorners: kept,
         } as TrimCornersCommand);
       }
       return true; // fall through to empty only if the paint was rejected
@@ -207,7 +206,7 @@ function reconcilePatchTerrain(state: GridState, target: CutReconcileTarget, x: 
     type: CommandType.TrimCorners,
     timestamp: Date.now(),
     x, y, layer: 'terrain',
-    beforeCorners: corners, afterCorners: ['empty', 'empty', 'empty', 'empty'],
+    beforeCorners: corners, afterCorners: [...EMPTY_CORNERS],
   } as TrimCornersCommand);
   return true;
 }

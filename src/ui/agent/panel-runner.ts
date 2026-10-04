@@ -10,7 +10,7 @@ import { callApproved } from '../../agent/core/gates';
 import { jobUndoFloor } from '../../agent/core/loop';
 import type { RunnerConfig } from '../../agent/exec/runner';
 import { takeMapRegionSnapshot, takeMapSnapshot } from '../../agent/snapshot';
-import type { AgentToolDeps } from '../../agent/tools/tools';
+import type { AgentToolDeps } from '../../agent/tools';
 import type { RuleDispatcher } from '../../core/model/rule-dispatcher';
 import { host } from '../../kit/host';
 import { singleSelection } from '../../state/selection';
@@ -88,6 +88,15 @@ export function makePanelToolDeps(opts: { vision: boolean }): AgentToolDeps {
     },
     getState: () => gridState,
     getExecutor: () => commandExecutor,
+    editAnnotations: (edit) => {
+      const s = useEditorStore.getState();
+      if (s.gridState !== gridState || gridState.annotations?.locked || gridState.annotations?.visible === false) return false;
+      s.beginAnnotationStroke();
+      s.applyAnnotationEdit(data => { data.items = edit(data.items); });
+      const ids = new Set(gridState.annotations?.items.map(n => n.id));
+      s.setAnnotationSelection(s.annotationSelection.filter(id => ids.has(id)));
+      return true;
+    },
     // The painted region, read from the store: a job's scope is whatever the user has painted when
     // it starts, not what a render happened to hand the panel.
     getRegion: () => region,

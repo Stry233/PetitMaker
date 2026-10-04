@@ -1,5 +1,5 @@
 /*
- * choreography.ts — a multi-element move, as data.
+ * A multi-element move, as data.
  *
  * A mode switch is not one motion. The outgoing bar leaves, the incoming one arrives, the plate
  * moves, the name changes. Writing that as a score rather than as four independent transitions is
@@ -19,7 +19,7 @@ export interface Beat {
   at: number;
 }
 
-export interface Choreography {
+interface Choreography {
   beats: readonly Beat[];
 }
 

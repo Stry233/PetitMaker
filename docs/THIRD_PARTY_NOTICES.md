@@ -93,6 +93,7 @@ This project includes the following third-party open-source packages, resolved f
 | call-bind-apply-helpers | 1.0.2 | MIT | Jordan Harband <ljharb@gmail.com> | https://github.com/ljharb/call-bind-apply-helpers#readme |
 | call-bound | 1.0.4 | MIT | Jordan Harband <ljharb@gmail.com> | https://github.com/ljharb/call-bound#readme |
 | chalk | 4.1.2 | MIT | — | — |
+| clipper-lib | 6.4.2 | BSL-1.0 AND LicenseRef-JSBN | Angus Johnson, Timo, Tom Wu | https://github.com/junmer/clipper-lib |
 | cliui | 7.0.4 | ISC | Ben Coe <ben@npmjs.com> | — |
 | color-convert | 2.0.1 | MIT | Heather Arthur <fayearthur@gmail.com> | — |
 | color-name | 1.1.4 | MIT | DY <dfcreative@gmail.com> | https://github.com/colorjs/color-name |

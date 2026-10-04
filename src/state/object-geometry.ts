@@ -1,5 +1,6 @@
-import type { CatalogItem, GridState, MacroCoord, PlacedObject } from '../core/model/types';
-import { cellOverlapsRect, cellKey, getCell, straddledCells } from '../core/model/grid-model';
+import type { CatalogItem, GridState, MacroCoord, PlacedObject, Rotation } from '../core/model/types';
+import { cellOverlapsRect, cellKey, getCell, HALF_TILE, straddledCells, snapHalf } from '../core/model/grid-model';
+import { TILE_SIZE } from '../core/model/constants';
 import { surfaceElevation } from '../core/edge-cut/terrain-silhouette';
 import { hasTrait } from '../core/model/traits';
 import { getCatalogItem } from './catalog';
@@ -8,6 +9,13 @@ import { getCatalogItem } from './catalog';
  *  exception to macro-only placement (see the `halfStep` trait). */
 export function hasHalfStep(item: CatalogItem): boolean {
   return hasTrait(item, 'halfStep');
+}
+
+/** Crossings follow their rotation even when the reserved footprint is square. */
+export function crossingRunsAlongX(obj: PlacedObject): boolean {
+  const item = getCatalogItem(obj.catalogId);
+  const quarterTurn = obj.rotation === 90 || obj.rotation === 270;
+  return !!item && hasTrait(item, 'heightDrop') ? quarterTurn : !quarterTurn;
 }
 
 /**
@@ -77,11 +85,27 @@ export function coveredCells(pos: number, size: number): number[] {
   return cells;
 }
 
-/** Where a click/drop anchor snaps to: the half-cell grid (`round(p*2)/2`) for a
- *  halfStep item, the whole-cell grid otherwise. */
+/** The terrain cells a footprint's span [pos, pos + size) rests on, as an inclusive
+ *  range. Terrain renders at −HALF_TILE, so a whole-coordinate span bleeds half a cell
+ *  past each end (size + 1 cells) while a half-coordinate one lands exactly on `size`. */
+export function terrainSpan(pos: number, size: number): { lo: number; hi: number } {
+  const offset = HALF_TILE / TILE_SIZE;
+  return { lo: Math.floor(pos + offset), hi: Math.ceil(pos + size - offset) };
+}
+
+/** The terrain cells an (x, y, w, h) footprint rests on, by `terrainSpan` on both axes. */
+export function terrainCellsUnder(x: number, y: number, w: number, h: number): MacroCoord[] {
+  const xs = terrainSpan(x, w), ys = terrainSpan(y, h);
+  const cells: MacroCoord[] = [];
+  for (let cy = ys.lo; cy <= ys.hi; cy++) for (let cx = xs.lo; cx <= xs.hi; cx++) cells.push({ x: cx, y: cy });
+  return cells;
+}
+
+/** Where a click/drop anchor snaps to: the half-cell grid for a halfStep item, the whole-cell
+ *  grid otherwise. */
 export function snapAnchor(item: CatalogItem, x: number, y: number): MacroCoord {
   return hasHalfStep(item)
-    ? { x: Math.round(x * 2) / 2, y: Math.round(y * 2) / 2 }
+    ? { x: snapHalf(x), y: snapHalf(y) }
     : { x: Math.round(x), y: Math.round(y) };
 }
 
@@ -123,15 +147,26 @@ export function footprintCells(x: number, y: number, w: number, h: number): Macr
   return cells;
 }
 
-export function getRotatedSize(item: { width: number; height: number }, rotation: 0 | 90 | 180 | 270): { w: number; h: number } {
+export function getRotatedSize(item: { width: number; height: number }, rotation: Rotation): { w: number; h: number } {
   return (rotation === 90 || rotation === 270)
     ? { w: item.height, h: item.width }
     : { w: item.width, h: item.height };
 }
 
+/** Whether the object carries its own footprint (an off-catalog object such as the plaza). */
+export function isSelfSized(obj: PlacedObject): obj is PlacedObject & { width: number; height: number } {
+  return obj.width !== undefined && obj.height !== undefined;
+}
+
+/** How a ramp at `rotation` lies: the axis its span runs along, and whether its high end is at
+ *  the low-coordinate end of that axis. */
+export function rampOrientation(rotation: Rotation): { spanAxis: 'x' | 'y'; highAtStart: boolean } {
+  return { spanAxis: rotation === 0 || rotation === 180 ? 'y' : 'x', highAtStart: rotation === 0 || rotation === 90 };
+}
+
 export function getPlacedObjectSize(obj: import('../core/model/types').PlacedObject, item = getCatalogItem(obj.catalogId)): { w: number; h: number } {
   // Self-described off-catalog objects (the plaza) carry their own footprint — honor it (matches objectRect).
-  if (obj.width !== undefined && obj.height !== undefined) return { w: obj.width, h: obj.height };
+  if (isSelfSized(obj)) return { w: obj.width, h: obj.height };
   if (!item) return { w: 1, h: 1 };
   if (obj.spanLength) {
     const perpW = item.width;
@@ -147,7 +182,7 @@ export function getPlacedObjectSize(obj: import('../core/model/types').PlacedObj
  *  the catalog/rotation-derived size. Used by the overlap rules so a fractional
  *  footprint and a normal integer one share one geometry path. */
 export function objectRect(obj: PlacedObject, item?: CatalogItem): { x: number; y: number; w: number; h: number } {
-  if (obj.width !== undefined && obj.height !== undefined) {
+  if (isSelfSized(obj)) {
     return { x: obj.position.x, y: obj.position.y, w: obj.width, h: obj.height };
   }
   const { w, h } = item ? getPlacedObjectSize(obj, item) : getPlacedObjectSize(obj);

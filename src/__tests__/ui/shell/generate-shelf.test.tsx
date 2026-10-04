@@ -63,7 +63,6 @@ import { setMapRenderer } from '../../../canvas/map2d/renderer-registry';
 import type { MapRenderer } from '../../../canvas/map2d/map-renderer';
 import type { ActiveView } from '../../../canvas/view-projection';
 import { CommandExecutor } from '../../../core/commands/command-executor';
-import { ELEVATION_MAX } from '../../../core/model/constants';
 import {
   CommandType, ItemCategory, TerrainType,
   type GenerateConfig, type GridState, type MacroCoord,
@@ -95,6 +94,7 @@ import { APP_NAME, brandName } from '../../../version';
 import { ROW, SCROLL, SEARCH, SHELF_BOX, tabRowGap } from '../../../ui/shell/bars/object-shelf';
 import { SHELF_SCALE, SHELF_TABS, standsInNameRow } from '../../../ui/shell/units';
 import { makeState, placeCmd } from '../../rules/_helpers';
+import { ELEVATION_MAX } from '../../../core/model/game-profile';
 
 /** Small enough that a batch of real generations is cheap, large enough that they build something. */
 const SIZE = 40;
@@ -1698,6 +1698,22 @@ describe('the outcome of a letter', () => {
       await act(async () => { fireEvent.click(screen.getAllByRole('button', { name: /^[A-Za-z&@?★☀❤♪]/ })[0]!); });
       await waitFor(() => expect(heard.length).toBe(1));
       expect(heard[0]).toMatch(/None of that word fit the region as painted/);
+    } finally { stop(); }
+  }, 30_000);
+
+  it('reports a sparser run alongside the cells it left out', async () => {
+    installKit();
+    vi.mocked(barrelGenerateMap).mockResolvedValue({ ...outcome({ offBase: 6, unsupported: 0, atCeiling: 0 }, 20), stencilBudget: 'adapted' });
+    const heard: string[] = [];
+    const stop = setToastPresenter((text) => heard.push(text));
+    try {
+      mount();
+      fireEvent.click(screen.getByRole('tab', { name: 'Letter' }));
+      await settle();
+      await act(async () => { fireEvent.click(screen.getAllByRole('button', { name: /^[A-Za-z&@?★☀❤♪]/ })[0]!); });
+      await waitFor(() => expect(heard.length).toBe(2));
+      expect(heard[0]).toMatch(/6 cells were left out/);
+      expect(heard[1]).toBe(translateFor('en', 'gen.budget_adapted'));
     } finally { stop(); }
   }, 30_000);
 

@@ -1,10 +1,8 @@
-import { helpTargetAttr } from '../modals/help/targets';
-import { clientPoint } from '../../../core/runtime/viewport-space';
 /*
- * CurveHandles.tsx — the anchors of a just-drawn curve, still adjustable.
+ * The anchors of a just-drawn curve, still adjustable.
  *
  * The curve is painted terrain; these are HTML controls anchored to the same screen points, in the
- * shape `SelectionHandles` established: project each anchor through the ACTIVE view, re-track
+ * shape `SelectionCard` established: project each anchor through the ACTIVE view, re-track
  * imperatively on viewport-changed / resize / an active-view swap (React gets no per-frame signal),
  * and divide the chrome zoom back out of the rect-derived coordinates.
  *
@@ -18,9 +16,13 @@ import { clientPoint } from '../../../core/runtime/viewport-space';
  * way of the next click, and there is nothing to tune until there is a curve. They arrive one after
  * another when it finishes, and fade out together when it is dismissed.
  */
+import { interactionProfiles, colors, cursors, shadows, springs, z } from '../../design/styles';
+import { framerMotion, NO_MOTION, staggerDelay } from '../../design/motion';
+import { helpTargetAttr } from '../modals/help/targets';
+import { clientPoint } from '../../../core/runtime/viewport-space';
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
 import { AnimatePresence, motion, useReducedMotionConfig } from 'framer-motion';
-import { getActiveView, onActiveViewChange } from '../../../canvas/active-view';
+import { getActiveView, onActiveViewChange, onProjectionChange } from '../../../canvas/active-view';
 import {
   anchorHandles, splineCells, endCurveSession, getCurveSession, moveCurveAnchor, setCurveHandle, subscribeCurveSession,
 } from '../../../tools/paint';
@@ -30,7 +32,6 @@ import { useChromeScale } from '../../design/scale';
 import { useT } from '../../../i18n/context';
 import { TILE_SIZE } from '../../../core/model/constants';
 import { microToTerrain } from '../../../core/model/grid-model';
-import { colors, cursors, shadows, springs, z } from '../../design/styles';
 
 /**
  * Anchor grab and tangent knob at full map zoom, in css px — around the size of the selection's
@@ -49,8 +50,6 @@ const MIN_SCALE = 0.45;
  *  The extra is transparent padding around the face, so precision does not cost visual weight. */
 const MIN_HIT = 30;
 const HIT_PAD = 12;
-/** Each anchor's grab lands this long after the one before it. */
-const STAGGER_MS = 45;
 
 /** How much to shrink the controls: 1 at full map zoom, floored so they stay usable. */
 function handleScale(cellPx: number): number {
@@ -183,16 +182,7 @@ export function CurveHandles() {
 
   useEffect(() => {
     if (anchorCount === 0) { setScreen([]); return; }
-    eventBus.on('viewport-changed', reproject);
-    eventBus.on('cells-changed', reproject);
-    window.addEventListener('resize', reproject);
-    const offView = onActiveViewChange(reproject);
-    return () => {
-      eventBus.off('viewport-changed', reproject);
-      eventBus.off('cells-changed', reproject);
-      window.removeEventListener('resize', reproject);
-      offView();
-    };
+    return onProjectionChange(eventBus, reproject);
   }, [anchorCount, eventBus, reproject]);
 
   // One window-level drag: the pointer routinely leaves a 18px target, and a capture on the button
@@ -268,7 +258,7 @@ export function CurveHandles() {
           animate={{ opacity: 1 }}
           // Dismissing is a quiet exit: the curve is already on the map, and the handles going is
           // the only thing that happens.
-          exit={reduced ? { opacity: 0, transition: { duration: 0 } } : { opacity: 0, transition: { duration: 0.18 } }}
+          exit={reduced ? { opacity: 0, transition: NO_MOTION } : { opacity: 0, transition: framerMotion('curve.fade') }}
           style={{
             position: 'fixed', inset: 0, zIndex: z.canvasControls,
             pointerEvents: 'none', zoom: chrome,
@@ -290,7 +280,7 @@ export function CurveHandles() {
                 strokeLinejoin="round"
                 initial={reduced ? false : { strokeOpacity: 0 }}
                 animate={{ strokeOpacity: 0.35 }}
-                transition={reduced ? { duration: 0 } : { delay: (i * STAGGER_MS) / 1000, duration: 0.18 }}
+                transition={reduced ? NO_MOTION : { ...framerMotion('curve.fade'), delay: staggerDelay('curve.fade', i) }}
               />
             ))}
           </svg>
@@ -301,14 +291,14 @@ export function CurveHandles() {
             const grabPx = GRAB * zoomK;
             const knobPx = KNOB * zoomK;
             const pop = (extra: number) => (reduced
-              ? { duration: 0 }
-              : { ...springs.bouncy, delay: (i * STAGGER_MS + extra) / 1000 });
+              ? NO_MOTION
+              : { ...springs.bouncy, delay: staggerDelay('curve.fade', i) + extra / 1000 });
             return (
               <div key={i}>
                 <motion.button
                   type="button" aria-label={t('a11y.curve_anchor', { n: i + 1 })}
                   onPointerDown={start(i, 'anchor')}
-                  whileHover={{ scale: 1.12 }}
+                  whileHover={interactionProfiles.curveVertex.whileHover}
                   initial={reduced ? false : { scale: 0 }} animate={{ scale: 1 }} transition={pop(0)}
                   style={{ ...hitBox(grabPx), left: s.x, top: s.y }}
                 >
@@ -317,7 +307,7 @@ export function CurveHandles() {
                 {session?.tangents && <><motion.button
                   type="button" aria-label={t('a11y.curve_out', { n: i + 1 })}
                   onPointerDown={start(i, 'out')}
-                  whileHover={{ scale: 1.15 }}
+                  whileHover={interactionProfiles.curveHandle.whileHover}
                   initial={reduced ? false : { scale: 0 }} animate={{ scale: 1 }} transition={pop(40)}
                   style={{ ...hitBox(knobPx), left: s.out.x, top: s.out.y }}
                 >
@@ -326,7 +316,7 @@ export function CurveHandles() {
                 <motion.button
                   type="button" aria-label={t('a11y.curve_in', { n: i + 1 })}
                   onPointerDown={start(i, 'into')}
-                  whileHover={{ scale: 1.15 }}
+                  whileHover={interactionProfiles.curveHandle.whileHover}
                   initial={reduced ? false : { scale: 0 }} animate={{ scale: 1 }} transition={pop(40)}
                   style={{ ...hitBox(knobPx), left: s.into.x, top: s.into.y }}
                 >

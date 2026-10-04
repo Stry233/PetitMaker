@@ -1,5 +1,5 @@
 /*
- * demo-cursor.ts — the Help figures' pointer is the app's own cursor art, as a DOM image.
+ * The Help figures' pointer is the app's own cursor art, as a DOM image.
  *
  * Resolution mirrors the live seam: the classic set when the build ships it (with the classic
  * hotspots — the two sets' hotspots are not interchangeable), the painted set otherwise, at the
@@ -11,7 +11,7 @@ import { cursorArt } from '../../../../../assets/cursors/cursor-art';
 import { classicCursorArt, CLASSIC_CURSOR_SIZE } from '../../../../../assets/cursors/cursor-art-classic';
 import { USE_CLASSIC_CURSORS } from '../../../../../assets/cursors/cursor-set';
 
-export const DEMO_CURSOR_PX = USE_CLASSIC_CURSORS ? 22 : 24;
+const DEMO_CURSOR_PX = USE_CLASSIC_CURSORS ? 22 : 24;
 
 interface CursorFace {
   url: string;

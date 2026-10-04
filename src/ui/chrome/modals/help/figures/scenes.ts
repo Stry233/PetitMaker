@@ -1,5 +1,5 @@
 /*
- * scenes.ts — the Help Center's demo timelines, written against a real editor world on a real
+ * The Help Center's demo timelines, written against a real editor world on a real
  * planet template.
  *
  * A scene names a CROP of Hexia (`stage`, template cell coords) and a `run(ctx, t)` factory: it
@@ -14,14 +14,15 @@
  * Step timings sit beside each other the way a beat sheet does: they are only meaningful as a
  * sequence.
  */
-import { TerrainType, type MacroCoord } from '../../../../../core/model/types';
+import { helpFacts } from '../facts';
+import { TerrainType, type MacroCoord, type Rotation } from '../../../../../core/model/types';
 import type { CursorId } from '../../../../../core/runtime/cursor-spec';
 import { getMapStats } from '../../../../../state/map-stats';
-import { chunkKey, isBuildableZone } from '../../../../../core/model/grid-model';
-import { CHUNK_LOAD_LIMIT, CHUNK_SIZE, PLAZA_ID } from '../../../../../core/model/constants';
+import { chunkKey, isBuildableZone, templateLandmark } from '../../../../../core/model/grid-model';
+import { mapChunkAt } from '../../../../../core/model/map-chunks';
 import { CommandType, type Command, type TrimCornersCommand, type Corners } from '../../../../../core/model/types';
 import { OUTER_TRI, validateCut } from '../../../../../core/edge-cut/cut-validator';
-import { CORNER_INDEX } from '../../../../../core/edge-cut/corner-index';
+import { CORNER_INDEX, SQUARE_CORNERS } from '../../../../../core/edge-cut/corner-index';
 import { CANONICAL_ROAD_STATES, canonicalToActual, cornersMatch, detectRoadConn } from '../../../../../core/edge-cut/road-cut-states';
 import { roadLookup } from '../../../../../state/object-index';
 import { removeObjectCommand } from '../../../../../tools/objects/object-placer';
@@ -34,11 +35,12 @@ import { brushCells } from '../../../../../tools/paint/drawing-tool';
 import { generateDesigned } from '../../../../../tools/generation/designer/pipeline';
 import { applyMacro, detachCommand, previewMacro } from '../../../../../tools/macros';
 import { generateMaze } from '../../../../../tools/generation/maze/maze-generator';
-import { addZoneCells, generateAnnotationId, nextZoneNumber, removeZoneCells, simplifyPath, ANNOTATION_COLORS, type MapAnnotation, type ZoneNote, type RouteNote, type ChipNote } from '../../../../../core/model/annotations';
+import { addZoneCells, generateAnnotationId, nextZoneNumber, removeZoneCells, simplifyPath, ANNOTATION_COLORS, type MapAnnotation, type ZoneNote, type RouteNote, type ChipNote, DEFAULT_TAG } from '../../../../../core/model/annotations';
 import type { TokenSpec } from '../../../../hints/catalogue';
 import { DemoWorld } from './demo-world';
 import { resizeMeasurement } from '../../../../../core/model/annotation-dimensions';
 import type { MeasureNote } from '../../../../../core/model/annotations';
+import { CHUNK_LOAD_LIMIT } from '../../../../../core/model/game-profile';
 
 /** The template rect a scene's view frames, and how many CSS px a cell takes. */
 export interface Stage { x1: number; y1: number; x2: number; y2: number; tile: number }
@@ -51,7 +53,7 @@ export interface Stage { x1: number; y1: number; x2: number; y2: number; tile: n
 export interface DemoView {
   /** The real placement preview: cell wash + translucent sprite, validity from the rules.
    *  `cells` overrides the footprint where the preview is a detected span (a bridge's deck). */
-  ghost(catalogId: string, x: number, y: number, rotation: 0 | 90 | 180 | 270, ok: boolean, cells?: MacroCoord[]): void;
+  ghost(catalogId: string, x: number, y: number, rotation: Rotation, ok: boolean, cells?: MacroCoord[]): void;
   clearGhost(): void;
   /** The real group-drag preview (a lifted set following the pointer). */
   groupGhost(members: Array<{ catalogId: string; x: number; y: number; rotation: number; elevation: number }>): void;
@@ -100,7 +102,7 @@ export interface SceneStep {
   press?: boolean;
   /** Arm or clear the follow-ghost: the real placement preview rides the cursor, validity asked of
    *  the rules at every cell it crosses, exactly as a picked-up card behaves. `null` clears. */
-  follow?: { catalogId: string; rotation?: 0 | 90 | 180 | 270 } | null;
+  follow?: { catalogId: string; rotation?: Rotation } | null;
   /** Which strip card shows as picked up (`null` clears). */
   strip?: number | null;
   /** Re-arm the tools strip on another cell mid-scene (`null` returns to the scene's own). */
@@ -126,7 +128,7 @@ export interface SceneStep {
 type Resolver = (key: string) => string;
 
 /** A slice of real interface standing beside the map (`figures/previews/strips.tsx`). */
-export type StripSpec =
+type StripSpec =
   | { kind: 'tools'; active: string; surface?: 'mountain' | 'water' | 'road' }
   /** `smart: true` stands the category's smart-planting card at the row's start, the way the
    *  live shelf leads its trees and plants tabs; it is strip index 0, and the items follow. */
@@ -222,7 +224,8 @@ function widenPath(path: readonly MacroCoord[], size: number): MacroCoord[] {
 
 /** The real load reading for the chunk under (x, y): the meter's own formula. */
 function chunkFill(world: DemoWorld, x: number, y: number): number {
-  const key = chunkKey(Math.floor(x / CHUNK_SIZE), Math.floor(y / CHUNK_SIZE));
+  const { cx, cy } = mapChunkAt(world.state.template, x, y);
+  const key = chunkKey(cx, cy);
   const load = getMapStats(world.state).chunks.get(key)?.load ?? 0;
   return Math.min(1, load / CHUNK_LOAD_LIMIT);
 }
@@ -786,7 +789,7 @@ const road: HelpScene = {
 function trimCmd(world: DemoWorld, x: number, y: number, cornerIdx: number, digit: 0 | 1 | 2): TrimCornersCommand {
   const cell = world.state.cells[y]?.[x]?.terrain;
   const before = cell?.corners ? [...cell.corners] as Corners : undefined;
-  const next: Corners = before ? [...before] : ['square', 'square', 'square', 'square'];
+  const next: Corners = before ? [...before] : [...SQUARE_CORNERS];
   next[cornerIdx] = digit === 1 ? 'fan' : digit === 2 ? OUTER_TRI[cornerIdx]! : 'square';
   return {
     type: CommandType.TrimCorners, timestamp: Date.now(),
@@ -888,7 +891,7 @@ function roadTrimClick(world: DemoWorld, tile: { x: number; y: number }): void {
   for (let i = 1; i < CANONICAL_ROAD_STATES.length; i++) {
     const nextIdx = (currentIdx + i) % CANONICAL_ROAD_STATES.length;
     const canonical = CANONICAL_ROAD_STATES[nextIdx];
-    const corners: Corners = canonical ? [...canonical] : ['square', 'square', 'square', 'square'];
+    const corners: Corners = canonical ? [...canonical] : [...SQUARE_CORNERS];
     if (!validateCut(world.state, roads, tile.x, tile.y, 'road', canonicalToActual(corners, conn))) continue;
     world.executor.execute({
       type: CommandType.TrimCorners, timestamp: Date.now(),
@@ -1013,10 +1016,9 @@ const ramp: HelpScene = {
   stage: { x1: 64, y1: 94, x2: 81, y2: 105, tile: 20 },
   strip: { kind: 'shelf', items: [RAMP] },
   run: ({ world, view }) => {
-    // A terrace exactly one layer high; the heightDrop rule reads the drop off the lip itself and
-    // snaps the piece's rotation and elevation, so the scene never poses either.
+    // Placement resolves the direction and elevation from the terrace edge.
     world.beginStroke();
-    world.paint(rect(68, 95, 77, 98), TerrainType.Mountain, 1);
+    world.paint(rect(68, 95, 77, 98), TerrainType.Mountain, Number(helpFacts().rampDrop));
     world.commit();
     return [
       { capKey: 'help.fig.ramp_1', move: { strip: 0 }, pointer: 'clickable', dur: 600 },
@@ -1207,7 +1209,7 @@ const grouprotate: HelpScene = {
  *  aimed at it alone comes back with the rule's own words. Both go through the real doors — the
  *  group verb `deleteGroup` and the plain removal command every delete surface issues. */
 const locked: HelpScene = {
-  // The plaza's south-west corner, which is the only part of a 20x27 slab a readable crop can hold.
+  // The plaza's south-west corner, which is the only part of the slab a readable crop can hold.
   stage: PLAZA_EDGE,
   run: ({ world, view }) => {
     world.place(CABIN, 71, 87);
@@ -1217,7 +1219,7 @@ const locked: HelpScene = {
       const id = world.place(TREE, p.x, p.y);
       if (id) ids.push(id);
     }
-    const plaza = world.state.objects.get(PLAZA_ID);
+    const plaza = templateLandmark(world.state);
     const ringPlaza = () => {
       if (plaza) view.selection(plaza.position.x, plaza.position.y, plaza.width ?? 1, plaza.height ?? 1);
     };
@@ -1260,7 +1262,7 @@ const locked: HelpScene = {
       {
         press: true, realToast: true, dur: 240,
         on: ({ world: w }) => {
-          const p = w.state.objects.get(PLAZA_ID);
+          const p = templateLandmark(w.state);
           if (p) w.executor.execute(removeObjectCommand(p));
         },
       },
@@ -1582,7 +1584,6 @@ function replaceNote(world: DemoWorld, id: string, patch: Partial<MapAnnotation>
   const items = world.state.annotations!.items;
   const i = items.findIndex((n) => n.id === id);
   if (i >= 0) items[i] = { ...items[i]!, ...patch } as MapAnnotation;
-  world.touch();
 }
 
 const notes: HelpScene = {
@@ -1593,7 +1594,7 @@ const notes: HelpScene = {
     const zoneCells = rect(56, 96, 69, 103);
     const zone: ZoneNote = {
       kind: 'zone', id: generateAnnotationId(), cells: zoneCells,
-      color: ANNOTATION_COLORS[0]!, tag: 'homes', num: nextZoneNumber([]), size: 's',
+      color: ANNOTATION_COLORS[0]!, tag: DEFAULT_TAG, num: nextZoneNumber([]), size: 's',
     };
     const raw = [...sampled([70, 108], [80, 105]), ...sampled([80, 105], [90, 109]).slice(1)];
     const half = Math.ceil(raw.length / 2);
@@ -1863,7 +1864,7 @@ const notezone: HelpScene = {
     const second = bandCells([57, 98], [57, 108], 1.6);
     const zone: ZoneNote = {
       kind: 'zone', id: generateAnnotationId(), cells: [],
-      color: ANNOTATION_COLORS[0]!, tag: 'homes', num: nextZoneNumber([]), size: 's',
+      color: ANNOTATION_COLORS[0]!, tag: DEFAULT_TAG, num: nextZoneNumber([]), size: 's',
     };
     return [
       { capKey: 'help.fig.notezone_1', move: [57, 97], pointer: 'place', dur: 450 },
@@ -1888,7 +1889,7 @@ const notegrow: HelpScene = {
     const base = rect(58, 96, 67, 101);
     const zone: ZoneNote = {
       kind: 'zone', id: generateAnnotationId(), cells: base,
-      color: ANNOTATION_COLORS[0]!, tag: 'homes', num: nextZoneNumber([]), size: 's',
+      color: ANNOTATION_COLORS[0]!, tag: DEFAULT_TAG, num: nextZoneNumber([]), size: 's',
     };
     world.addNote(zone);
     // A stroke down from inside the zone hangs a leg on it; the eraser then takes the right end
@@ -1967,7 +1968,7 @@ const noteselect: HelpScene = {
   run: ({ world, view }) => {
     const homes: ZoneNote = {
       kind: 'zone', id: generateAnnotationId(), cells: rect(56, 95, 65, 100),
-      color: ANNOTATION_COLORS[0]!, tag: 'homes', num: 1, size: 's',
+      color: ANNOTATION_COLORS[0]!, tag: DEFAULT_TAG, num: 1, size: 's',
     };
     const farm: ZoneNote = {
       kind: 'zone', id: generateAnnotationId(), cells: rect(76, 106, 86, 112),

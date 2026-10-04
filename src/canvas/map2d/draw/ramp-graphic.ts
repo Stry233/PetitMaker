@@ -2,12 +2,13 @@ import * as PIXI from 'pixi.js-legacy';
 import { APP_FONT_FAMILY } from '../../../assets/fonts/family';
 import { TILE_SIZE } from '../../../core/model/constants';
 import type { CatalogItem, PlacedObject } from '../../../core/model/types';
-export { isRampItem } from '../object-sprite-url';
 import { iconUrl } from '../../../assets/icon-urls';
 import { requestRender as broadcastRender } from '../render-scheduler';
 import { getIconTexture } from './icon-color';
 import { fitSpriteToTexture } from './sprite-fit';
-import { lerpColor } from '../layers/object-animations';
+import { lerpColor } from '../../../core/model/colors';
+import { rampDropLayers } from '../../../core/model/traits';
+import { rampOrientation } from '../../../state/object-geometry';
 
 const RAMP_ARROWS: Record<number, string> = { 0: '↑', 90: '←', 180: '↓', 270: '→' };
 
@@ -41,11 +42,6 @@ const RAMP_COLORS: Record<string, number> = {
   'ramp-plank': 0xc79e6e,        // plank — wood brown
 };
 
-function getRampLayers(item: CatalogItem): number {
-  const t = item.traits.find(t => t.type === 'heightDrop');
-  return t?.type === 'heightDrop' ? t.layers : 1;
-}
-
 export function drawRamp(
   wrapper: PIXI.Container, obj: PlacedObject,
   item: CatalogItem, size: { w: number; h: number },
@@ -54,7 +50,7 @@ export function drawRamp(
    *  the module broadcast for one with none. */
   requestRender: () => void = broadcastRender,
 ): void {
-  const layers = getRampLayers(item);
+  const layers = rampDropLayers(item);
   const highElev = obj.elevation;
   const lowElev = highElev - layers;
   // Gradient hue comes from the ramp TYPE; the high→low brightness shows the
@@ -62,8 +58,7 @@ export function drawRamp(
   const base = RAMP_COLORS[obj.catalogId] ?? 0xb0b0a8;
   const highColor = lerpColor(base, 0x000000, 0.20);
   const lowColor = lerpColor(base, 0xffffff, 0.42);
-  const spanAxis = (obj.rotation === 0 || obj.rotation === 180) ? 'y' : 'x';
-  const highAtStart = (obj.rotation === 0 || obj.rotation === 90);
+  const { spanAxis, highAtStart } = rampOrientation(obj.rotation);
   const spanCells = spanAxis === 'y' ? size.h : size.w;
   const perpCells = spanAxis === 'y' ? size.w : size.h;
 

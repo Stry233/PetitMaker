@@ -11,6 +11,7 @@ import { clientPoint } from '../../core/runtime/viewport-space';
 import { useEffect, type RefObject } from 'react';
 import { pushCursorSurface, setCursorDrag } from './cursor-controller';
 import { createCameraGestures } from './camera-gestures';
+import { releaseTextFocus } from './pointer-focus';
 import { noteNavGestureLost } from './nav-gesture-hint';
 import { TouchPinch } from './gestures';
 import { isNavButton, PRIMARY_BUTTON } from '../../core/interaction/pointer-buttons';
@@ -34,6 +35,7 @@ export function useCameraOnly(
     const restoreCursor = pushCursorSurface(host, 'move');
 
     const onPointerDown = (e: PointerEvent) => {
+      releaseTextFocus(host);
       if (e.pointerType === 'touch') {
         const count = touch.down(e.pointerId, clientPoint(e).x, clientPoint(e).y);
         e.preventDefault();

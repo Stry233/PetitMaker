@@ -1,3 +1,4 @@
+import { framerMotion, seconds } from '../../design/motion';
 /**
  * Non-blocking arrival notice with map art, name, and actions. Additional arrival facts rotate one
  * line at a time; reduced motion keeps the information changes but removes cross-fades. The card
@@ -8,7 +9,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
 import { AnimatePresence, motion, useReducedMotionConfig } from 'framer-motion';
 import { iconUrl } from '../../../assets/icon-urls';
-import { useT, localizedName } from '../../../i18n/context';
+import { useT } from '../../../i18n/context';
 import { useEditorStore } from '../../../state/store';
 import type { Arrival, ArrivalLine } from '../../../core/runtime/arrival-bus';
 import { subscribeArrival } from '../../../core/runtime/arrival-bus';
@@ -16,11 +17,12 @@ import { declineRestoreOffer } from '../../../core/runtime/restore-offer';
 import type { MapTemplate } from '../../../core/model/types';
 import { useChromeScale, useWeightVars } from '../../design/scale';
 import { roleFont } from '../../design/text-weight';
-import { btnReset, buttonMotion, colors, exitTransition, font, inkTint, radii, springs, z } from '../../design/styles';
+import { btnReset, buttonMotion, colors, font, inkTint, radii, springs, z } from '../../design/styles';
 import { TimedButton } from '../../primitives/TimedButton';
 import { useSizeGlide } from '../../hooks/use-size-glide';
 import { hasSeenTour } from '../tour/use-tour';
-import { TOAST_BAND_ROW, TOAST_BAND_TOP } from './toast-band';
+import { usePlanetName } from '../modals/planet/use-planet-library';
+import { TOAST_BAND_ROW, TOAST_BAND_TOP, bandTop } from './toast-band';
 import { ARRIVAL_LEAD_KEY, arrivalLines, arrivalOpens } from './arrival-gate';
 
 /** Seconds the final line remains visible. */
@@ -38,8 +40,8 @@ export function arrivalFuseS(lines: number): number {
 /** The crossfade from one eyebrow line to the next: the house's settle curve, at the length a line
  *  needs to change. A tween rather than a spring, since nothing is moving and a spring's tail on an
  *  opacity reads as a line that cannot decide. */
-const CROSSFADE_S = 0.22;
-const CROSSFADE = { duration: CROSSFADE_S, ease: exitTransition.ease };
+const CROSSFADE_S = seconds('notice.crossfade');
+const CROSSFADE = framerMotion('notice.crossfade');
 
 /** The planet's art, in css px. */
 const ART = 48;
@@ -49,7 +51,7 @@ const NO_LINES: readonly ArrivalLine[] = [];
 
 const containerStyle: CSSProperties = {
   position: 'fixed',
-  top: TOAST_BAND_TOP + TOAST_BAND_ROW,
+  top: bandTop(TOAST_BAND_TOP + TOAST_BAND_ROW),
   // The toast band's own centring, and it moves for the same reason (`Toast.tsx`): a docked panel
   // owns a strip at one side of the window, and the band stands over the work.
   left: 'calc(50% + (var(--pin-dock-left, 0px) - var(--pin-dock-right, 0px)) / 2)',
@@ -204,7 +206,7 @@ export function ArrivalCard({ art, eyebrow, name, seq, paused, onOk, onSwitch, m
   measureKey: string;
 }) {
   const t = useT();
-  const row = useSizeGlide<HTMLDivElement>(measureKey, { axis: 'width' });
+  const row = useSizeGlide<HTMLDivElement>(measureKey, { axis: 'width', motionId: 'notice.resize' });
   return (
     <motion.div
       key="arrival"
@@ -214,7 +216,7 @@ export function ArrivalCard({ art, eyebrow, name, seq, paused, onOk, onSwitch, m
       animate={{ opacity: 1, y: 0, scale: 1 }}
       // The sibling toast's own exit: a clean slide out rather than a spring back, so the
       // per-variant transition wins over the bouncy entrance.
-      exit={{ opacity: 0, y: -10, scale: 0.96, transition: { duration: 0.2, ease: [0.4, 0, 1, 1] } }}
+      exit={{ opacity: 0, y: -10, scale: 0.96, transition: framerMotion('notice.leave') }}
       transition={springs.bouncy}
     >
       <div
@@ -264,14 +266,13 @@ export function ArrivalCard({ art, eyebrow, name, seq, paused, onOk, onSwitch, m
   );
 }
 
-export interface ArrivalToastProps {
+interface ArrivalToastProps {
   /** The boot splash still owns the screen. */
   splashActive: boolean;
 }
 
 export function ArrivalToast({ splashActive }: ArrivalToastProps) {
   const t = useT();
-  const locale = useEditorStore((s) => s.locale);
   const setModal = useEditorStore((s) => s.setModal);
   // Subscribed for the RETRY they trigger rather than for their values: the gate below reads the
   // store live, because the check is deferred past the commit these are read in.
@@ -361,6 +362,7 @@ export function ArrivalToast({ splashActive }: ArrivalToastProps) {
   }, [setModal]);
 
   const art = shown ? iconUrl(`planet-${shown.template.id}`) : undefined;
+  const planetName = usePlanetName(shown?.template);
   // Resolved HERE rather than held on the arrival, so the words follow a locale changed while the
   // notice is standing.
   const line = lines[step - 1];
@@ -377,7 +379,7 @@ export function ArrivalToast({ splashActive }: ArrivalToastProps) {
           <ArrivalCard
             art={art}
             eyebrow={eyebrow}
-            name={localizedName(shown.template.name, locale)}
+            name={planetName}
             seq={shown.seq}
             onOk={dismiss}
             onSwitch={switchPlanet}

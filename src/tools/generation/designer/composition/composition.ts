@@ -4,11 +4,12 @@
  * to the low plaza plate; adjacent tiers and coast-facing heights are capped to satisfy the terrain
  * support rules. Pure and deterministic for `(seed, template, richness)` so it can run in a worker.
  */
-import { ELEVATION_MAX } from '../../../../core/model/constants';
-import { distanceField, flatIndex } from '../../../../core/model/grid-model';
+import { distanceField, flatIndex, isBuildableZone, NEIGHBORS4, indexBounds } from '../../../../core/model/grid-model';
 import { makeRng, type Rng } from '../../../../core/model/rng';
-import { CellZone, type MapTemplate, type Rect } from '../../../../core/model/types';
-import { directionOf, RAMP_RUN, STEP, type Direction, type SeedInfo } from '../types';
+import type { MapTemplate, Rect } from '../../../../core/model/types';
+import { MAX_RAMP_RUN } from '../ramps';
+import { directionOf, STEP, type Direction, type SeedInfo } from '../types';
+import { BASE_SUPPORT, ELEVATION_MAX } from '../../../../core/model/game-profile';
 
 /** The template's plaza as whole macro cells: the hub every stage measures from. The plaza
  *  config sits on the half grid, so the rect is the cells it touches. */
@@ -22,7 +23,7 @@ export function plazaRect(template: MapTemplate): Rect {
 
 /** Where a map's mass sits. The four wall sides and the four corners are one archetype each in the
  *  plan's vocabulary; `axis` (and `crossAxis` for a corner) says which side or corner it is. */
-export type CompositionArchetype =
+type CompositionArchetype =
   | 'north-wall' | 'east-wall' | 'south-wall' | 'west-wall'
   | 'corner-highland' | 'rim' | 'distributed-massifs' | 'low-relief';
 
@@ -68,7 +69,7 @@ export interface CompositionPlan {
  * rich one is mostly dramatic, and every archetype keeps a nonzero weight at both ends — a weight of
  * zero is a composition no seed can ever draw.
  */
-export const ARCHETYPE_WEIGHTS: ReadonlyArray<{ archetype: CompositionArchetype; low: number; high: number }> = [
+const ARCHETYPE_WEIGHTS: ReadonlyArray<{ archetype: CompositionArchetype; low: number; high: number }> = [
   { archetype: 'north-wall', low: 0.5, high: 1.0 },
   { archetype: 'east-wall', low: 0.5, high: 1.0 },
   { archetype: 'south-wall', low: 0.5, high: 1.0 },
@@ -84,11 +85,11 @@ const WALL_ARCHETYPE: Readonly<Record<Direction, CompositionArchetype>> = {
   north: 'north-wall', east: 'east-wall', south: 'south-wall', west: 'west-wall',
 };
 
-/** V-MTN-03's window: a mountain at N >= 4 needs a full 3x3 of support at >= N-3, so three tiers is
- *  the most one surface may stand above the surface beside it, and three tiers per cell of distance
- *  from unbuildable ground is the most a plate may claim at all. */
-export const PLATE_STEP_MAX = 3;
-const TIER_PER_CELL = 3;
+/** V-MTN-03's window: a mountain needs a full window of support at most `reach` tiers below it, so
+ *  `reach` tiers is the most one surface may stand above the surface beside it, and `reach` tiers
+ *  per cell of distance from unbuildable ground is the most a plate may claim at all. */
+export const PLATE_STEP_MAX = BASE_SUPPORT.reach;
+const TIER_PER_CELL = BASE_SUPPORT.reach;
 
 /** How many plates a map is cut into, at richness 0 and 1, before disconnected fragments are folded
  *  into their neighbours. The references' coarse partitions run 17-24 blocks; a plate is one step
@@ -126,7 +127,7 @@ const MASSIF_PLATES = 8;
  * for two or three tiers broke it in the way a flat map breaks: terraces the streets could not reach,
  * blocks with no frontage, street ends stopping at a step with nothing beyond it.
  */
-export const MASSIF_PEAK_FROM = 4;
+export const MASSIF_PEAK_FROM = BASE_SUPPORT.fromLayer;
 /** The fewest cells a plate may hold. Below this a fragment is folded into the neighbour it shares
  *  the most boundary with: a terrace nobody can stand a place on is a seam, not a surface. */
 const PLATE_MIN_CELLS = 110;
@@ -150,11 +151,11 @@ const LOW_RELIEF_PEAK = { low: 1, high: 4 } as const;
 const CROWN_INSET_MARGIN = 1;
 const CROWN_MIN_CELLS = 60;
 const CROWN_STEPS_MAX = 4;
-/** How thick the ring stands on the sides the flight does NOT climb: V-MTN-03's own window. */
-const CROWN_RING_MIN = 1;
+/** How thick the ring stands on the sides the flight does NOT climb: V-MTN-03's window's half-width. */
+const CROWN_RING_MIN = (BASE_SUPPORT.window - 1) / 2;
 /** How far in a crown climbing `tiers` tiers stands from the ground it rises out of, ON THE SIDE THE
  *  FLIGHT CLIMBS. */
-const crownInset = (tiers: number): number => RAMP_RUN * tiers + CROWN_INSET_MARGIN;
+const crownInset = (tiers: number): number => MAX_RAMP_RUN * tiers + CROWN_INSET_MARGIN;
 
 /** Maximum base plates plus the additional nested summit terraces. */
 export const PLATE_TOTAL_MAX = PLATE_COUNT_BAND.max + CROWN_STEPS_MAX;
@@ -276,7 +277,7 @@ export function planComposition(
 export function paintableMask(template: MapTemplate): Uint8Array {
   const W = template.width, H = template.height;
   const out = new Uint8Array(W * H);
-  const grass = (x: number, y: number): boolean => template.zones[y]?.[x] === CellZone.Grass;
+  const grass = (x: number, y: number): boolean => isBuildableZone(template.zones[y]?.[x]);
   const clear = (x: number, y: number): boolean =>
     x < 0 || y < 0 || x >= W || y >= H || grass(x, y);
   for (let y = 0; y < H; y++) {
@@ -329,7 +330,7 @@ const CARDINALS: readonly Direction[] = ['north', 'east', 'south', 'west'];
 /** Draws the archetype against the richness-scaled weights, then the side or corner it faces. A
  *  wall's side is its id; every other archetype takes a seeded axis, which `resolveAxis` may replace
  *  with the direction its own mass ended up in. */
-export function chooseArchetype(rng: Rng, richness: number): ArchetypeChoice {
+function chooseArchetype(rng: Rng, richness: number): ArchetypeChoice {
   const r = clamp01(richness);
   const weights = ARCHETYPE_WEIGHTS.map((w) => Math.max(0, lerp(w.low, w.high, r)));
   const total = weights.reduce((a, b) => a + b, 0);
@@ -395,7 +396,7 @@ function cutPlates(
   // A slab's WANT is its land weighted by how high the composition wants it. The town is cut into
   // blocks and the mass into TERRACES, and a terrace is the narrower thing: the massif of a map
   // asked for eight tiers is a staircase of surfaces, so cutting it at a town block's scale spreads
-  // the wedding cake over the whole planet (measured: 85% of it came back as mountain) and leaves
+  // the wedding cake over the whole planet and leaves
   // the walk one step per quarter of the map.
   const pull = massifPlates > 0 ? MASSIF_PULL : 0;
   const want = (slab: Slab): number =>
@@ -493,7 +494,7 @@ function platesFromSlabs(
           const p = stack.pop()!;
           cells.push(p);
           const px = p % W, py = (p / W) | 0;
-          for (const [dx, dy] of NB4) {
+          for (const [dx, dy] of NEIGHBORS4) {
             const nx = px + dx, ny = py + dy;
             if (nx < x || ny < y || nx >= x + w || ny >= y + h) continue;
             const j = flatIndex(nx, ny, W);
@@ -509,7 +510,7 @@ function platesFromSlabs(
   foldFragments(groups, owner, W, H, field);
   const kept = groups.filter((cells) => cells.length > 0);
   kept.sort((a, b) => a[0]! - b[0]!);
-  return kept.map((cells, id) => ({ id, rect: boundsOf(cells, W), cells, tier: 0, relief: 0 }));
+  return kept.map((cells, id) => ({ id, rect: indexBounds(cells, W), cells, tier: 0, relief: 0 }));
 }
 
 /** Folds every piece under `PLATE_MIN_CELLS` into the neighbouring piece it shares the most boundary
@@ -538,7 +539,7 @@ function foldFragments(
     const shared = new Map<number, number>();
     for (const i of groups[pick]!) {
       const x = i % W, y = (i / W) | 0;
-      for (const [dx, dy] of NB4) {
+      for (const [dx, dy] of NEIGHBORS4) {
         const nx = x + dx, ny = y + dy;
         if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
         const other = owner[flatIndex(nx, ny, W)]!;
@@ -571,7 +572,7 @@ interface FieldInput {
 }
 
 /**
- * How high the archetype wants each cell, 0..1, measured from the plaza outward (中心 → 四周). Zero is
+ * How high the archetype wants each cell, 0..1, measured from the plaza outward (centre to rim). Zero is
  * the plaza's own ground and 1 is the composition's peak.
  */
 function potentialField(input: FieldInput): Float32Array {
@@ -800,7 +801,7 @@ function raiseCrown(
     //
     // Two knobs and both are geometry rather than taste: how many tiers the crown lifts, and how far
     // down the ground it stands on may reach. A deeper reach is a wider terrace and a longer flight
-    // to climb it (`RAMP_RUN` cells of run per tier), so the two trade against each other.
+    // to climb it (`MAX_RAMP_RUN` cells of run per tier), so the two trade against each other.
     //
     // ONE TIER AT A TIME WHERE THE GROUND ALLOWS IT. A crown lifting three tiers has to stand thirteen
     // cells in (the flight that climbs it is four cells of run per tier), so it comes out a small cap
@@ -834,12 +835,10 @@ function raiseCrown(
       }
     }
     // A STEP THAT FINDS NO CROWN ENDS THE PASS: nothing about the plates changed, so the next step
-    // would ask the same question of the same ground and be told the same thing. Measured over twenty
-    // seeds on both templates, this is where two `distributed-massifs` seeds on tafa stop a tier short
-    // of eight. With one tier still owed the lift may only be 1, and EVERY floor it could stand on
-    // erodes to exactly zero cells at the inset that lift needs (`tafa/31337`: 1553 cells at tier 5
-    // taking inset 13, 480 at tier 6 taking 9, 100 at tier 7 taking 5; `tafa/60103`: 1067, 737, 86).
-    // The mass is thin rather than short, so what closes it is a WIDER mass and not a taller search.
+    // would ask the same question of the same ground and be told the same thing. A massif can stop a
+    // tier short here: with one tier still owed the lift may only be 1, and every floor it could stand
+    // on can erode to zero cells at the inset that lift needs. The mass is thin rather than short, so
+    // what closes it is a WIDER mass and not a taller search.
     if (!cells.length) break;
     const taken = new Set(cells);
     const id = plates.length;
@@ -847,10 +846,10 @@ function raiseCrown(
       const kept = plate.cells.filter((i) => !taken.has(i));
       if (kept.length === plate.cells.length) continue;
       plate.cells = kept;
-      plate.rect = boundsOf(kept, W);
+      plate.rect = indexBounds(kept, W);
     }
     for (const i of cells) plateOf[i] = id;
-    plates.push({ id, rect: boundsOf(cells, W), cells, tier, relief: 1 });
+    plates.push({ id, rect: indexBounds(cells, W), cells, tier, relief: 1 });
     // A plate the crown cut in two is two surfaces, and a plate is one: the pieces stand as plates
     // of their own at the same tier, which is legal by construction and true to what the ground is.
     hub = splitDonors(plates, plateOf, W, H, hub);
@@ -871,11 +870,11 @@ function splitDonors(
     if (pieces.length < 2) continue;
     pieces.sort((a, b) => b.length - a.length);
     plate.cells = pieces[0]!;
-    plate.rect = boundsOf(plate.cells, W);
+    plate.rect = indexBounds(plate.cells, W);
     for (const piece of pieces.slice(1)) {
       const id = plates.length + added.length;
       for (const i of piece) plateOf[i] = id;
-      added.push({ id, rect: boundsOf(piece, W), cells: piece, tier: plate.tier, relief: plate.relief });
+      added.push({ id, rect: indexBounds(piece, W), cells: piece, tier: plate.tier, relief: plate.relief });
     }
   }
   plates.push(...added);
@@ -916,7 +915,7 @@ function surfacesOf(cells: readonly number[], W: number, H: number): number[][] 
       const p = stack.pop()!;
       piece.push(p);
       const x = p % W, y = (p / W) | 0;
-      for (const [dx, dy] of NB4) {
+      for (const [dx, dy] of NEIGHBORS4) {
         const nx = x + dx, ny = y + dy;
         if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
         const j = flatIndex(nx, ny, W);
@@ -982,7 +981,7 @@ function insetOf(
       const p = stack.pop()!;
       piece.push(p);
       const x = p % W, y = (p / W) | 0;
-      for (const [dx, dy] of NB4) {
+      for (const [dx, dy] of NEIGHBORS4) {
         const nx = x + dx, ny = y + dy;
         if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
         const j = flatIndex(nx, ny, W);
@@ -1073,7 +1072,6 @@ function massCentroidOf(plates: readonly Plate[], W: number, hub: { x: number; y
 
 // --- the planet ----------------------------------------------------------------------------------
 
-const NB4 = [[1, 0], [-1, 0], [0, 1], [0, -1]] as const;
 /** The 3x3 neighbourhood minus the cell: the window V-MTN-03 reads a cell's support over. */
 const NB8 = [
   [1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1],
@@ -1085,7 +1083,7 @@ function landMask(template: MapTemplate): Uint8Array {
   const land = new Uint8Array(W * H);
   for (let y = 0; y < H; y++) {
     for (let x = 0; x < W; x++) {
-      if (template.zones[y]?.[x] === CellZone.Grass) land[flatIndex(x, y, W)] = 1;
+      if (isBuildableZone(template.zones[y]?.[x])) land[flatIndex(x, y, W)] = 1;
     }
   }
   return land;
@@ -1121,19 +1119,6 @@ function landBox(land: Uint8Array, W: number, H: number): Rect {
     }
   }
   return x1 < 0 ? { x: 0, y: 0, w: 0, h: 0 } : { x: x0, y: y0, w: x1 - x0 + 1, h: y1 - y0 + 1 };
-}
-
-function boundsOf(cells: readonly number[], W: number): Rect {
-  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
-  for (const i of cells) {
-    const x = i % W, y = (i / W) | 0;
-    if (x < x0) x0 = x;
-    if (x > x1) x1 = x;
-    if (y < y0) y0 = y;
-    if (y > y1) y1 = y;
-  }
-  if (!Number.isFinite(x0)) return { x: 0, y: 0, w: 0, h: 0 };
-  return { x: x0, y: y0, w: x1 - x0 + 1, h: y1 - y0 + 1 };
 }
 
 /** The plaza's centre in macro cells: the hub every distance here is measured from. */

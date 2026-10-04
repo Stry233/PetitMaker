@@ -22,9 +22,9 @@ export type TokenSpec =
   | { kind: 'mouse'; button: MouseButton; mark?: MouseMark; x2?: boolean }
   | { kind: 'sep'; sep: Sep };
 
-export type CameraRowVerb = 'nav-drag' | 'scroll' | 'horizontal';
+type CameraRowVerb = 'nav-drag' | 'scroll' | 'horizontal';
 
-export interface HintRow {
+interface HintRow {
   tokens: readonly TokenSpec[];
   textKey?: string;
   cameraVerb?: CameraRowVerb;
@@ -38,7 +38,7 @@ export type ResolvedToken =
   | { kind: 'mouse'; button: MouseButton; mark?: MouseMark; x2?: boolean }
   | { kind: 'sep'; sep: Sep };
 
-export interface ResolvedRow { tokens: readonly ResolvedToken[]; textKey: string }
+interface ResolvedRow { tokens: readonly ResolvedToken[]; textKey: string }
 
 const cmd = (id: string, o?: { held?: boolean; x2?: boolean }): TokenSpec => ({ kind: 'cmd', id, ...o });
 const mouse = (button: MouseButton, mark?: MouseMark, x2?: boolean): TokenSpec => ({ kind: 'mouse', button, mark, x2 });

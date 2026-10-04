@@ -3,8 +3,7 @@
  * Labels determine control widths; candidate cards and sliders retain their drawn proportions through `SHELF_SCALE`.
  * Engine constants supply behavioral ranges such as the elevation ceiling and stencil floor.
  */
-import { IS_LITE } from '../../../core/runtime/edition';
-import { ELEVATION_MAX } from '../../../core/model/constants';
+import { forEdition, type EditionVariant } from '../../../core/runtime/edition';
 import { STENCIL_MIN_SIDE, textMinBox, type StencilMaterial } from '../../../tools/generation/stencil';
 import { glyphSurvives, gridTextFits, measuredTextMinimum } from './stencil-raster';
 import type { StencilOutcome } from '../../../kit/operations/outcome';
@@ -13,24 +12,26 @@ import { EDGE, EDGE_RIGHT, RAIL, SHELF_SCALE, SHELF_TABS } from '../units';
 import type { SliderShape } from './BarSlider';
 import { DARK_PLATE } from '../../design/tokens';
 import { IS_DEV_BUILD } from '../../../version';
+import { ELEVATION_MAX } from '../../../core/model/game-profile';
+import { DEFAULT_RICHNESS } from '../../../tools/generation/core/types';
 
 /** User-selectable generation workflows. */
 export type GenerateKind = 'island' | 'maze' | 'text' | 'image';
 
-export interface GenerateTab {
+interface GenerateTab {
   id: GenerateKind;
   labelKey: string;
 }
 
 /** Display order, left to right. */
-const ALL_TABS: readonly GenerateTab[] = [
+const ALL_TABS: readonly (GenerateTab & EditionVariant<GenerateTab>)[] = [
   { id: 'maze', labelKey: 'generate.algo_maze' },
-  { id: 'text', labelKey: 'gen.kind_text' },
-  { id: 'image', labelKey: 'gen.kind_image' },
+  { id: 'text', labelKey: 'gen.kind_text', lite: false },
+  { id: 'image', labelKey: 'gen.kind_image', lite: false },
   { id: 'island', labelKey: 'gen.kind_island' },
 ];
 
-export const TABS: readonly GenerateTab[] = ALL_TABS.filter(tab => !IS_LITE || tab.id === 'island' || tab.id === 'maze');
+export const TABS: readonly GenerateTab[] = forEdition(ALL_TABS);
 
 /** Workflows whose own card ships in released builds. Development builds offer every card. */
 const CUSTOM_CARD_RELEASED: Record<GenerateKind, boolean> = {
@@ -43,7 +44,7 @@ export function hasCustomCard(kind: GenerateKind, devBuild: boolean = IS_DEV_BUI
 }
 
 /** Maps a UI workflow to its engine algorithm. */
-export function algorithmFor(kind: GenerateKind): GenerateAlgorithm {
+function algorithmFor(kind: GenerateKind): GenerateAlgorithm {
   if (kind === 'maze') return 'maze';
   if (kind === 'text' || kind === 'image') return 'stencil';
   return 'designed';
@@ -72,7 +73,7 @@ export function fillKindsFor(kind: GenerateKind): readonly StencilFillKind[] {
 }
 
 /** Explicit keys keep every material visible to translation checks. */
-export const FILL_KEY: Record<StencilFillKind, string> = {
+const FILL_KEY: Record<StencilFillKind, string> = {
   mountain: 'gen.fill_mountain',
   water: 'gen.fill_water',
   object: 'gen.fill_object',
@@ -90,7 +91,7 @@ export function fillLabelKey(kind: GenerateKind, fill: StencilFillKind): string 
  * `tiles` selects a per-cell catalog palette, `decor` adds sparse anchor objects, and `water` defines water's terrain role.
  * Mixed uses terrain with palette water plus sparse non-tree objects; Water builds the figure itself from water.
  */
-export interface PictureRecipe {
+interface PictureRecipe {
   tiles: StencilMaterial | null;
   decor: StencilMaterial | null;
   water: StencilWaterRole;
@@ -261,7 +262,7 @@ export const SLIDERS = {
 } as const;
 
 /** Scenery richness as a UI percentage; the engine receives a 0..1 fraction. */
-export const RICHNESS = { min: 0, max: 100, default: 70 } as const;
+export const RICHNESS = { min: 0, max: 100, default: Math.round(DEFAULT_RICHNESS * 100) } as const;
 
 /** Corridor width, the maze's own knob. The generator clamps to this range itself. */
 export const CORRIDOR = { min: 1, max: 3 } as const;

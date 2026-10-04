@@ -1,16 +1,9 @@
 import type { GridState, MacroCoord, PlacedObject, ValidationError } from '../../core/model/types';
 import { cellKey } from '../../core/model/grid-model';
-import { getCatalogItem } from '../../state/catalog';
 import { placementBlockers } from '../../rules/placement-overlap';
 import { removeOverlappingCoatings } from '../objects/object-placer';
 import { planPaint } from './paint-plan';
 import type { ToolContext } from '../runtime/types';
-
-/** Ghost/preview color (0xRRGGBB) for the given tile material. */
-export function tileGhostColor(material: string): number {
-  const item = getCatalogItem(material);
-  return item?.color ? parseInt(item.color.slice(1), 16) : 0xd2b48c;
-}
 
 /**
  * Execute the tile click on one cell. What to place is `planPaint`'s call — off-grid, water and

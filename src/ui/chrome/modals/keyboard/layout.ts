@@ -10,7 +10,7 @@ import { normalizeCombo, type CommandCategory } from '../../../../core/runtime/k
 /** A modifier layer: any combination of the three chord modifiers (base = all false). */
 export interface Layer { ctrl: boolean; alt: boolean; shift: boolean }
 
-export type ModId = 'ctrl' | 'alt' | 'shift';
+type ModId = 'ctrl' | 'alt' | 'shift';
 
 export interface KeyDef {
   /** Combo char at rest (lowercase), e.g. 'b', '1', '['. Also the engine key name for specials. */

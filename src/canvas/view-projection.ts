@@ -7,14 +7,15 @@
  * 2D: `Viewport` satisfies ViewProjection, `OverlayLayer` satisfies ToolOverlay.
  * 3D: the projection raycasts the visible surface to a cell; the overlay draws
  * surface decals. Both views convert cells to screen coordinates for the
- * screen-anchored React chrome (SelectionHandles / ContextMenu / popovers).
+ * screen-anchored React chrome (SelectionCard / ContextMenu / popovers).
  */
-import type { GridState, MacroCoord, PlacedObject } from '../core/model/types';
+import type { GridState, MacroCoord, PlacedObject, Rect } from '../core/model/types';
 import type { GhostPaint } from '../core/runtime/preview-cell';
 import type { TrimmedCell } from '../tools/edge-cut';
-import type { RowSpan } from './map2d/layers/ghost-geometry';
+import type { RowSpan } from './ghost-geometry';
 import type { MacroRect } from './interaction/marquee';
 import type { GroupRotation } from './group-arc';
+import type { PlanetFrame } from '../core/model/planet';
 
 export interface ViewProjection {
   /** Macro cell under a screen point (2D: inverse camera transform; 3D: visible-surface pick). */
@@ -63,8 +64,9 @@ export interface ToolOverlay {
   showCurveFootprint(cells: MacroCoord[], terrainGrid: boolean): void;
   clearCurveFootprint(): void;
   /** `append` draws this ring alongside whatever is already on screen instead of replacing it
-   *  (a GROUP selection paints one ring per member). Omit or false replaces. */
-  showSelection(x: number, y: number, w?: number, h?: number, elevation?: number, terrainMode?: boolean, append?: boolean): void;
+   *  (a GROUP selection paints one ring per member). Omit or false replaces. `exact` marks a regular,
+   *  flat body (a road) with its exact box, as terrain always is. */
+  showSelection(x: number, y: number, w?: number, h?: number, elevation?: number, terrainMode?: boolean, append?: boolean, exact?: boolean): void;
   clearSelection(): void;
   showHover(x: number, y: number, w?: number, h?: number, terrainMode?: boolean): void;
   clearHover(): void;
@@ -72,7 +74,7 @@ export interface ToolOverlay {
    *  hold a terrain change and an object change, and the two render half a cell apart. With
    *  neither stated, both views fall back to the TERRAIN grid — a bare cell list names grid cells. */
   flashCommit(cells: readonly (MacroCoord & { micro?: boolean })[], opts?: { color?: number; terrainMode?: boolean }): void;
-  showBuildableRegion(cells: MacroCoord[], terrainMode: boolean): void;
+  showBuildableRegion(cells: MacroCoord[], terrainMode: boolean, dimensionScale?: number): void;
   clearBuildableRegion(): void;
   /**
    * The standing region breathing once: it dips to `1 - dip` of its own opacity and comes back,
@@ -83,6 +85,14 @@ export interface ToolOverlay {
    * `kit/host.ts`, which owns the numbers (they are declared in the motion registry).
    */
   pulseBuildableRegion?(durationMs: number, dip: number): void;
+  /** The planet session's live chunk frame; null takes it down. 2D only: the session has no 3D view. */
+  showPlanetFrame?(frame: PlanetFrame | null): void;
+  /** The frame flashing once over `durationMs` (the caller brings the registry's number): the planet
+   *  is at its size limit. A flash already running is left to finish. */
+  flashPlanetFrame?(durationMs: number): void;
+  /** A scanned planet's cells to check and, when its place was inferred, the landmark's footprint;
+   *  null cells take both down. 2D only, as the planet frame. */
+  showReviewCells?(cells: readonly MacroCoord[] | null, landmark: Rect | null): void;
   /** The maze's answer, draped over the corridor floor: its own drape, so it can stand at the same
    *  time as the buildable-region one. Drawn on the TERRAIN grid (−HALF_TILE): walls render
    *  shifted up-left, so the visible corridor between two walls is the corridor cell's

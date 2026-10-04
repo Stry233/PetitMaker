@@ -1,5 +1,5 @@
 /*
- * pages/build.ts — descriptors for this catalog group. See start.ts for the pattern.
+ * Descriptors for this catalog group. See start.ts for the pattern.
  */
 import type { HelpPage } from '../page-schema';
 

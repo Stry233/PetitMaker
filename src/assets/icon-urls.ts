@@ -1,5 +1,5 @@
 /*
- * icon-urls.ts — resolves icon PNG basenames → URLs via a single Vite glob
+ * Resolves icon PNG basenames → URLs via a single Vite glob
  * over src/assets/icons/ (recursive: icons live in `catalog/` item sprites and
  * `ui/` chrome). Shared by the UI (menu/icons.tsx, the placement picker) and the
  * PixiJS renderer (object-layer sprites) so both pull from the one folder.

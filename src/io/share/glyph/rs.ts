@@ -1,4 +1,4 @@
-// src/io/share/glyph/rs.ts — systematic Reed–Solomon over GF(256), FCR=0, generator
+// Systematic Reed–Solomon over GF(256), FCR=0, generator
 // root α^0..α^(nsym-1). Supports combined erasure + error correction (Berlekamp–Massey error
 // locator seeded by the erasure locator, Chien search, Forney magnitudes). Returns the
 // corrected DATA (parity stripped), or null when the codeword is uncorrectable.

@@ -4,14 +4,16 @@
  * (mirrors the probes in design-quality.test.ts). Pure reads — no commands,
  * no mutation. Scores are 0-10 with actionable hints for the LLM.
  */
-import { CellZone, ItemCategory, TerrainType, type GridState } from '../core/model/types';
+import { ItemCategory, TerrainType, type GridState } from '../core/model/types';
 import { objectRect } from '../state/object-geometry';
-import { NEIGHBORS4 } from '../core/model/grid-model';
-import { categoryOf, getPlaceableByCategory, isDecoration } from '../state/catalog';
+import { NEIGHBORS4, isBuildableZone } from '../core/model/grid-model';
+import { categoryOf, getPlaceableByCategory, isDecoration, getCatalogItem } from '../state/catalog';
 import { surfaceElevation } from '../core/edge-cut/terrain-silhouette';
 import { computeLockedCorners } from '../core/edge-cut/trim-lock';
 import { roadLookup } from '../state/object-index';
 import { detectWaterfalls } from '../core/model/waterfall-geometry';
+import { isCoatingItem, isCrossing } from '../core/model/traits';
+import { SQUARE_CORNERS } from '../core/edge-cut/corner-index';
 
 interface QualityDimension { score: number; hints: string[] }
 export interface QualityReport {
@@ -26,7 +28,7 @@ export interface QualityReport {
 
 const clamp10 = (n: number) => Math.max(0, Math.min(10, Math.round(n)));
 
-export interface SpeckleFinding { rect: string; n: number; why: string }
+interface SpeckleFinding { rect: string; n: number; why: string }
 
 /**
  * The planting clusters that read as NOISE — scattered (no row, grid or solid fill),
@@ -95,7 +97,7 @@ export function speckleFindings(state: GridState): { findings: SpeckleFinding[];
     // they are wide count.
     const allFlora = members.every((i) => categoryOf(plants[i]!) === ItemCategory.Flora);
     if (solid && allFlora && members.length >= 9) solidFloraBlocks.push({ w, h, at: `(${x1},${y1})-(${x2},${y2})` });
-    const wideBed = solid && allFlora && Math.min(w, h) >= 3 && Math.max(w, h) >= 12 && Math.max(w, h) >= 3 * Math.min(w, h);
+    const wideBed = solid && allFlora && isBroadBand(w, h);
     // A lattice the size of a district is wallpaper, not an orchard: the reference bounds an
     // orchard to one court (~6x8) beside the homes it belongs to.
     const wallpaper = onGrid && !allFlora && area >= 300;
@@ -121,6 +123,12 @@ export function speckleFindings(state: GridState): { findings: SpeckleFinding[];
   }
   findings.sort((a, b) => b.n - a.n);
   return { findings, plantCount: plants.length };
+}
+
+/** A planting rectangle at least three cells thick, twelve long and three times as long as it is
+ *  wide: a band that reads as a painted fill rather than edging or a broad bed. */
+export function isBroadBand(w: number, h: number): boolean {
+  return Math.min(w, h) >= 3 && Math.max(w, h) >= 12 && Math.max(w, h) >= 3 * Math.min(w, h);
 }
 
 /** Connected terrain-water bodies (4-neighbor), each as bbox + cell count. */
@@ -157,8 +165,7 @@ function connectivity(state: GridState): QualityDimension {
   const cross = new Set<number>();
   for (const o of state.objects.values()) {
     if (o.locked) continue;
-    const cat = categoryOf(o);
-    if (cat !== ItemCategory.Bridge && cat !== ItemCategory.Ramp) continue;
+    if (!isCrossing(getCatalogItem(o.catalogId))) continue;
     const r = objectRect(o);
     for (let y = Math.floor(r.y) - 1; y <= r.y + r.h; y++)
       for (let x = Math.floor(r.x) - 1; x <= r.x + r.w; x++)
@@ -166,7 +173,7 @@ function connectivity(state: GridState): QualityDimension {
   }
   const walk = (x: number, y: number): { ok: boolean; e: number } => {
     const c = state.cells[y]?.[x];
-    if (!c || c.zone !== CellZone.Grass) return { ok: false, e: -1 };
+    if (!c || !isBuildableZone(c.zone)) return { ok: false, e: -1 };
     if (c.terrain?.type === TerrainType.Water) return { ok: cross.has(y * width + x), e: 0 };
     return { ok: true, e: c.terrain?.elevation ?? 0 };
   };
@@ -231,7 +238,7 @@ function terrainInterest(state: GridState): QualityDimension {
   const tiers = new Set<number>();
   for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
     const c = state.cells[y]![x]!;
-    if (c.zone !== CellZone.Grass) continue;
+    if (!isBuildableZone(c.zone)) continue;
     land++;
     if (c.terrain?.type === TerrainType.Mountain) tiers.add(c.terrain.elevation);
     const i = y * width + x;
@@ -250,7 +257,7 @@ function terrainInterest(state: GridState): QualityDimension {
         if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue;
         const k = ny * width + nx;
         const n = state.cells[ny]![nx]!;
-        if (seen.has(k) || n.zone !== CellZone.Grass) continue;
+        if (seen.has(k) || !isBuildableZone(n.zone)) continue;
         if (n.terrain?.type === TerrainType.Water) continue;
         if ((n.terrain?.elevation ?? 0) !== e) continue;
         seen.add(k);
@@ -338,7 +345,7 @@ function silhouette(state: GridState): QualityDimension {
       if (!isCliff) continue;
       // convex corner census (both edge neighbours strictly lower), minus locked corners
       let locked: readonly boolean[] | null = null;
-      const corners = t.corners ?? (['square', 'square', 'square', 'square'] as const);
+      const corners = t.corners ?? SQUARE_CORNERS;
       for (let k = 0; k < 4; k++) {
         const [ax, ay, bx, by] = CORNER_EDGES[k]!;
         if (surf(x + ax, y + ay) >= e || surf(x + bx, y + by) >= e) continue;
@@ -428,8 +435,8 @@ function decoration(state: GridState): QualityDimension {
     let flush = 0;
     for (const o of state.objects.values()) {
       if (o.locked) continue;
-      const cat = categoryOf(o);
-      if (cat === ItemCategory.Road || cat === ItemCategory.Bridge || cat === ItemCategory.Ramp) continue;
+      const item = getCatalogItem(o.catalogId);
+      if (isCoatingItem(item) || isCrossing(item)) continue;
       const or = objectRect(o);
       const gapX = Math.max(r.x - (or.x + or.w), or.x - (r.x + r.w));
       const gapY = Math.max(r.y - (or.y + or.h), or.y - (r.y + r.h));
@@ -448,7 +455,7 @@ function roads(state: GridState): QualityDimension {
     (o) => !o.locked && categoryOf(o) === ItemCategory.Building,
   );
   for (const o of state.objects.values()) {
-    if (categoryOf(o) === ItemCategory.Road) roadCells.add(`${o.position.x},${o.position.y}`);
+    if (isCoatingItem(getCatalogItem(o.catalogId))) roadCells.add(`${o.position.x},${o.position.y}`);
   }
   if (buildingsArr.length === 0) return { score: 0, hints: ['No buildings yet, so no road network to judge.'] };
   let connected = 0;
@@ -518,5 +525,5 @@ export function renderScorecard(r: QualityReport, prev?: QualityReport): string 
   const overall = overallScore(r);
   const prevOverall = prev ? overallScore(prev) : undefined;
   const overallLine = `OVERALL: ${overall}/10${prevOverall !== undefined && prevOverall !== overall ? ` (was ${prevOverall})` : ''}`;
-  return `MAP QUALITY SCORECARD\n${overallLine}\n${lines.join('\n')}\nAddress the lowest-scoring dimension first.`;
+  return `MAP QUALITY SCORECARD\n${overallLine}\n${lines.join('\n')}\nWhole-map aesthetic heuristics, not task requirements. Investigate only findings relevant to the requested work; preserve intentional design choices.`;
 }

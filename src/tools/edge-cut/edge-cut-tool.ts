@@ -1,10 +1,10 @@
-import { CommandType, TerrainType, ToolType } from '../../core/model/types';
+import { CommandType, TerrainType, ToolType, type Rotation, ROTATIONS } from '../../core/model/types';
 import type { Corners, CornerTrim, GridState, MacroCoord, MicroCoord, PlacedObject, TrimCornersCommand } from '../../core/model/types';
 import type { Tool, ToolContext } from '../runtime/types';
 import type { CursorId } from '../../core/runtime/cursor-spec';
 import { getCell } from '../../core/model/grid-model';
 import { computeLockedCorners } from '../../core/edge-cut/trim-lock';
-import { cornerWrappedAt, highestNeighborTerrain, groundConvexCornerInWater } from '../../core/edge-cut/terrain-silhouette';
+import { cornerWrappedAt, highestNeighborTerrain, groundConvexCornerInWater, patchSupport } from '../../core/edge-cut/terrain-silhouette';
 import { validateCut, isInnerCorner, OUTER_TRI, INNER_TRI } from '../../core/edge-cut/cut-validator';
 import {
   CANONICAL_ROAD_STATES, CONN_SIDES, ROTATION_TO_CONN,
@@ -12,8 +12,9 @@ import {
 } from '../../core/edge-cut/road-cut-states';
 import type { RoadLookup } from '../../core/model/road-lookup';
 import { roadLookup } from '../../state/object-index';
+import { SQUARE_CORNERS, EMPTY_CORNERS, isSquareCorners } from '../../core/edge-cut/corner-index';
 
-export interface TerrainSlot {
+interface TerrainSlot {
   kind: 'terrain';
   cellX: number;
   cellY: number;
@@ -48,7 +49,7 @@ interface CutSite {
 
 interface RoadCutResult {
   corners: Corners;
-  rotation?: 0 | 90 | 180 | 270;
+  rotation?: Rotation;
 }
 
 function nextValidRoadState(state: GridState, roads: RoadLookup, road: PlacedObject): RoadCutResult | null {
@@ -61,8 +62,8 @@ function nextValidRoadState(state: GridState, roads: RoadLookup, road: PlacedObj
     // cannot drift from CANONICAL_ROAD_STATES. An isolated road has zero road
     // neighbours, so the seam-contact validation is vacuous here: every slot is
     // legal by construction, which is why validateCut is not consulted.
-    const slots: RoadCutResult[] = [{ corners: ['square', 'square', 'square', 'square'], rotation: 0 }];
-    for (const rot of [0, 90, 180, 270] as const) {
+    const slots: RoadCutResult[] = [{ corners: [...SQUARE_CORNERS], rotation: 0 }];
+    for (const rot of ROTATIONS) {
       for (let sIdx = 1; sIdx < CANONICAL_ROAD_STATES.length; sIdx++) {
         slots.push({ corners: [...CANONICAL_ROAD_STATES[sIdx]!], rotation: rot });
       }
@@ -85,7 +86,7 @@ function nextValidRoadState(state: GridState, roads: RoadLookup, road: PlacedObj
   for (let i = 1; i < CANONICAL_ROAD_STATES.length; i++) {
     const nextIdx = (currentIdx + i) % CANONICAL_ROAD_STATES.length;
     const canonical = CANONICAL_ROAD_STATES[nextIdx];
-    const corners: Corners = canonical ? [...canonical] : ['square', 'square', 'square', 'square'];
+    const corners: Corners = canonical ? [...canonical] : [...SQUARE_CORNERS];
     const actual = canonicalToActual(corners, conn);
     if (validateCut(state, roads, road.position.x, road.position.y, 'road', actual)) {
       return { corners };
@@ -226,13 +227,13 @@ export class EdgeCutTool implements Tool {
   private applyOuter(ctx: ToolContext, slot: TerrainSlot, digit: number): boolean {
     const want = digitShape(digit, slot.cornerIdx);
     const terr = getCell(ctx.gridState.cells, slot.cellX, slot.cellY)?.terrain;
-    const before: Corners = terr?.corners ? [...terr.corners] : ['square', 'square', 'square', 'square'];
+    const before: Corners = terr?.corners ? [...terr.corners] : [...SQUARE_CORNERS];
     if (before[slot.cornerIdx] === want) return false;
     const after: Corners = [...before];
     after[slot.cornerIdx] = want;
     ctx.executeCommand({
       type: CommandType.TrimCorners, timestamp: Date.now(), x: slot.cellX, y: slot.cellY, layer: 'terrain',
-      beforeCorners: before.every(c => c === 'square') ? undefined : before, afterCorners: after,
+      beforeCorners: isSquareCorners(before) ? undefined : before, afterCorners: after,
     } as TrimCornersCommand);
     return true;
   }
@@ -248,11 +249,11 @@ export class EdgeCutTool implements Tool {
     const cell = getCell(ctx.gridState.cells, slot.cellX, slot.cellY);
     const cellTerr = cell?.terrain && cell.terrain.type !== TerrainType.None ? cell.terrain : null;
     if (cellTerr?.patchOnly) {
-      const currentCorners: Corners = cellTerr.corners ? [...cellTerr.corners] : ['empty', 'empty', 'empty', 'empty'];
+      const currentCorners: Corners = cellTerr.corners ? [...cellTerr.corners] : [...EMPTY_CORNERS];
       if (currentCorners[idx] === shape) return false;
       const afterCorners: Corners = [...currentCorners];
       afterCorners[idx] = shape;
-      const base = cellTerr.patchBase ?? (cellTerr.elevation - 1);
+      const base = patchSupport(cellTerr);
       // a WRAPPED corner still holding a fillet keeps this a patch; otherwise drop to the real base (keeping
       // any unwrapped outer bevel), or — with no base — clear back to bare ground.
       const keepsFillet = afterCorners.some((c, i) => c !== 'empty' && c !== 'square'
@@ -261,7 +262,7 @@ export class EdgeCutTool implements Tool {
         ctx.executeCommand({ type: CommandType.PaintTerrain, timestamp: Date.now(), cells: [{ x: slot.cellX, y: slot.cellY }], terrainType: cellTerr.type, elevation: base });
         const kept: Corners = afterCorners.map((c) => (c === 'empty' ? 'square' : c)) as Corners;
         if (kept.some((c) => c !== 'square')) {
-          ctx.executeCommand({ type: CommandType.TrimCorners, timestamp: Date.now(), x: slot.cellX, y: slot.cellY, layer: 'terrain', beforeCorners: ['square', 'square', 'square', 'square'], afterCorners: kept } as TrimCornersCommand);
+          ctx.executeCommand({ type: CommandType.TrimCorners, timestamp: Date.now(), x: slot.cellX, y: slot.cellY, layer: 'terrain', beforeCorners: [...SQUARE_CORNERS], afterCorners: kept } as TrimCornersCommand);
         }
       } else {
         ctx.executeCommand({ type: CommandType.TrimCorners, timestamp: Date.now(), x: slot.cellX, y: slot.cellY, layer: 'terrain', beforeCorners: currentCorners, afterCorners } as TrimCornersCommand);
@@ -273,7 +274,7 @@ export class EdgeCutTool implements Tool {
     // adds ONLY its corner: a real block keeps its outer cuts (square = full base), an empty notch starts empty.
     const patchBase = cellTerr ? cellTerr.elevation : 0;
     const afterCorners: Corners = cellTerr?.corners ? [...cellTerr.corners]
-      : (cellTerr ? ['square', 'square', 'square', 'square'] : ['empty', 'empty', 'empty', 'empty']);
+      : (cellTerr ? [...SQUARE_CORNERS] : [...EMPTY_CORNERS]);
     afterCorners[idx] = shape;
     ctx.executeCommand({ type: CommandType.TrimCorners, timestamp: Date.now(), x: slot.cellX, y: slot.cellY, layer: 'terrain', beforeCorners: undefined, afterCorners, patchOnly: true, terrainType: s.gamma!.type, elevation: s.gamma!.elev, patchBase } as TrimCornersCommand);
     return true;

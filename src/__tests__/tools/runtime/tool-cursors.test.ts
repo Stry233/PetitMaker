@@ -1,7 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { CURSOR_IDS, FORBIDDABLE, type CursorId } from '../../../core/runtime/cursor-spec';
 import { CommandType, ToolType, TerrainType, type EditorEvents } from '../../../core/model/types';
-import { ELEVATION_MAX } from '../../../core/model/constants';
 import { ToolManager } from '../../../tools/runtime/tool-manager';
 import { DrawingTool } from '../../../tools/paint/drawing-tool';
 import { EraserTool } from '../../../tools/paint/eraser';
@@ -13,9 +12,10 @@ import { createDefaultRegistry } from '../../../rules/index';
 import { getCatalogItem } from '../../../state/catalog';
 import { makeState, setTerrain } from '../../rules/_helpers';
 import { makeToolCtx } from '../_tool-ctx';
-import { makeStubRenderer } from '../_tool-manager';
+import { makeStubView } from '../_tool-manager';
 import { setStoreState } from '../../_store';
 import { roadLookup } from '../../../state/object-index';
+import { ELEVATION_MAX } from '../../../core/model/game-profile';
 
 // registerDefaultTools() (tool-manager.ts) wires up exactly these 6; Scatter/RoadBrush are
 // ToolType members with no tool class anywhere in src/ — setActiveTool no-ops for them, so
@@ -30,7 +30,7 @@ describe('every registered tool names a cursor from the catalogue', () => {
   it('covers every REGISTERED ToolType, so a new tool cannot silently skip one', () => {
     const state = makeState(10, 10);
     const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
-    const manager = new ToolManager(makeStubRenderer(), exec, state);
+    const manager = new ToolManager(makeStubView(), exec, state);
     for (const type of REGISTERED_TOOL_TYPES) {
       manager.setActiveTool(type);
       const id = manager.getActiveTool().cursor;
@@ -85,7 +85,6 @@ describe('the build brush names its material', () => {
         id: 'road-1', catalogId: roadItem.id, position: { x: 4, y: 4 },
         rotation: 0, elevation: 0,
       },
-      loadValue: roadItem.loadValue,
     });
     const ctx = { ...makeToolCtx(state, exec), terrainType: TerrainType.Mountain, elevation: 1 };
 
@@ -172,7 +171,6 @@ describe('the build brush names its material', () => {
         id: 'road-1', catalogId: roadItem.id, position: { x: 6, y: 6 },
         rotation: 0, elevation: 0,
       },
-      loadValue: roadItem.loadValue,
     });
     const ctx = { ...makeToolCtx(state, exec), terrainType: TerrainType.Mountain, elevation: 1 };
     const tool = new DrawingTool();
@@ -230,7 +228,6 @@ describe('the eraser answers for what its click removes', () => {
         id: 'road-1', catalogId: roadItem.id, position: { x: 3, y: 3 },
         rotation: 0, elevation: 0,
       },
-      loadValue: roadItem.loadValue,
     });
     const ctx = makeToolCtx(state, exec, 1, 1, { contentType: 'tile' });
     const tool = new EraserTool();
@@ -285,7 +282,6 @@ describe('the placer names what the click will do', () => {
         id: 'stall-1', catalogId: stall.id, position: { x: 4, y: 4 },
         rotation: 0, elevation: 0,
       },
-      loadValue: stall.loadValue,
     });
 
     let lastColor = 0;
@@ -360,7 +356,7 @@ describe('ToolContext carries the arming', () => {
   it('the manager mirrors the store into the live context', () => {
     const state = makeState(10, 10);
     const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
-    const manager = new ToolManager(makeStubRenderer(), exec, state);
+    const manager = new ToolManager(makeStubView(), exec, state);
     // brushSize is NOT a store read inside refreshCtx — PixiCanvas syncs it onto the manager's own
     // field (`tm.brushSize = brushSize`), so mirroring it here means setting the manager's field.
     manager.brushSize = 4;
@@ -399,7 +395,7 @@ describe('ToolContext carries the arming', () => {
     // `getContext()` that would paper over a plain getter.
     const state = makeState(10, 10);
     const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
-    const manager = new ToolManager(makeStubRenderer(), exec, state);
+    const manager = new ToolManager(makeStubView(), exec, state);
     manager.setActiveTool(ToolType.ObjectPlacer);
     setStoreState({ selectedItemId: 'tree-apple', placementRotation: 90 });
     expect(manager.getContext().armedItem).toBe('tree-apple');
@@ -412,7 +408,7 @@ describe('FORBIDDABLE declares exactly the badges the tools can produce', () => 
   it('every badgeable id is shown by a registered tool that implements canActAt', () => {
     const state = makeState(10, 10);
     const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
-    const manager = new ToolManager(makeStubRenderer(), exec, state);
+    const manager = new ToolManager(makeStubView(), exec, state);
     const withProbe = new Set<CursorId>();
     const withoutProbe = new Set<CursorId>();
     for (const type of REGISTERED_TOOL_TYPES) {

@@ -98,7 +98,7 @@ npm install
 npm run hooks:install   # once per clone: the pre-commit hook that stamps build-info.json
 npm run dev             # Vite dev server
 npm run test:run        # run the test suite (Vitest)
-npm run lint            # TypeScript type-check (tsc --noEmit)
+npm run lint            # TypeScript type-check (app and scripts)
 npm run build           # production build
 ```
 

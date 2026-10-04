@@ -12,7 +12,7 @@
  *
  * Pure over a `TerrainPlan`: data in, data mutated in place, no state and no rules consulted.
  */
-import { flatIndex } from '../../../../core/model/grid-model';
+import { flatIndex, rectContains, cellsBounds } from '../../../../core/model/grid-model';
 import type { MacroCoord, Rect } from '../../../../core/model/types';
 import type { TerrainPlan } from '../../core/types';
 
@@ -85,7 +85,7 @@ export function poolFits(
   if (rect.x < 1 || rect.y < 1 || rect.x + rect.w + 1 > t.width || rect.y + rect.h + 1 > t.height) return false;
   for (let y = rect.y - 1; y <= rect.y + rect.h; y++) {
     for (let x = rect.x - 1; x <= rect.x + rect.w; x++) {
-      const inside = x >= rect.x && x < rect.x + rect.w && y >= rect.y && y < rect.y + rect.h;
+      const inside = rectContains(rect, x, y);
       // KEEPING THE INSIDE OFF THE RESERVATION IS THE WHOLE OF THE COATING'S CLAIM. A road at
       // (x, y) validates (x, y), (x+1, y), (x, y+1) and (x+1, y+1), and `flatReservation` holds all
       // four, so a bed that takes none of them cannot refuse a street however closely it runs beside
@@ -137,11 +137,5 @@ function floodCell(t: TerrainPlan, x: number, y: number, tier: number): void {
 
 /** The bounding box of a set of cells; an empty set answers a zero rect. */
 export function boundsOfCells(cells: readonly MacroCoord[]): Rect {
-  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
-  for (const c of cells) {
-    x0 = Math.min(x0, c.x); y0 = Math.min(y0, c.y);
-    x1 = Math.max(x1, c.x); y1 = Math.max(y1, c.y);
-  }
-  if (!Number.isFinite(x0)) return { x: 0, y: 0, w: 0, h: 0 };
-  return { x: x0, y: y0, w: x1 - x0 + 1, h: y1 - y0 + 1 };
+  return cellsBounds(cells) ?? { x: 0, y: 0, w: 0, h: 0 };
 }

@@ -10,6 +10,7 @@ import { readMatch } from '../../core/runtime/portrait-signals';
 import { useUiPreviewPose } from '../primitives/ui-preview';
 import { useAnimatedUiZoom, useUiZooming } from './ui-zoom-anim';
 import { isDenseScript, readableWeight, weightVars } from './text-weight';
+import { UI_ZOOM_MIN, UI_ZOOM_MAX } from '../../core/runtime/prefs';
 
 /** The design canvas, in design pixels: the surface every coordinate here is measured against. */
 export const CANVAS = { w: 3754, h: 1918 } as const;
@@ -58,9 +59,7 @@ export function frameFit(vw: number, vh: number, refWiden = 0, floor = FIT_FLOOR
 /** Minimum workspace in chrome pixels, after the shell folds its controls and scrolls its rows. */
 export const MIN_UI_ROOM = { w: 700, h: 525 } as const;
 
-/** The UI scale preference's range; `core/runtime/prefs.ts` clamps the persisted value to the same bounds. */
-export const UI_ZOOM_MIN = 0.6;
-export const UI_ZOOM_MAX = 1.8;
+export { UI_ZOOM_MIN, UI_ZOOM_MAX };
 
 /** Fit the requested size without changing the saved preference, including the dock's own width. */
 export function fittedUiScale(vw: number, vh: number, uiZoom: number, refWiden = 0, floor = FIT_FLOOR): number {
@@ -123,6 +122,15 @@ export function useViewportSize(): { w: number; h: number } {
 }
 
 const COARSE_POINTER = '(pointer: coarse)';
+
+/** A fingertip needs this many visual px per control, whatever the chrome scale. */
+export const TOUCH_TARGET = 44;
+
+/** The zoom a transient surface of `control`-px controls draws at: the chrome's, raised on a
+ *  touch-primary device until each control reaches `TOUCH_TARGET` on screen. */
+export function touchFloorZoom(chrome: number, touch: boolean, control: number): number {
+  return touch ? Math.max(chrome, TOUCH_TARGET / control) : chrome;
+}
 
 /** Whether the primary pointer is a fingertip, live as a mouse is attached or removed. */
 export function useTouchPrimary(): boolean {
@@ -223,7 +231,7 @@ const ScaleContext = createContext<number>(0.56);
 
 export const ScaleProvider = ScaleContext.Provider;
 
-export function useScale(): number {
+function useScale(): number {
   return useContext(ScaleContext);
 }
 

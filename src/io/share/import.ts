@@ -4,7 +4,7 @@ import { clampNotes } from '../../core/model/notes';
 import type { GridState } from '../../core/model/types';
 import { migrateToCurrent, type RawSave } from '../save-format';
 import { deserialize } from '../json-codec';
-import { getMapTemplate } from '../../config/maps';
+import { resolveTemplate } from '../../config/maps/resolve';
 import { ShareError, DEFAULT_LIMITS, type ShareLimits } from './errors';
 import { decodeGlyphAsync, type PixelOwnership } from './glyph/decode-async';
 import { decodeMapPayload, type ProvenanceInfo } from './codec/payload';
@@ -24,7 +24,7 @@ export async function importFromRaster(rgba: Uint8Array, width: number, height: 
     const dec = await decodeMapPayload(payload); // throws corrupt / future-version / decode-failed
     const saveJson = toSaveJSON(dec.canonical, dec.annotations);
     migrateToCurrent(JSON.parse(saveJson) as RawSave);
-    const state = deserialize(saveJson, getMapTemplate(dec.canonical.templateId));
+    const state = deserialize(saveJson, resolveTemplate(dec.canonical.templateId, dec.template));
     if (isGenerationConfig(dec.generation)) state.generation = dec.generation;
     state.notes = dec.notes ?? clampNotes({ title: dec.provenance.title });
     if (!dec.provenance.aiUsed && !dec.provenance.proceduralUsed) {
@@ -37,7 +37,10 @@ export async function importFromRaster(rgba: Uint8Array, width: number, height: 
       if (dec.provenance.proceduralUsed) state.provenance.session.proceduralRuns = Math.max(1, state.provenance.session.proceduralRuns);
       state.provenance.summary = null;
     }
-    const { warnings } = validateImportedState(state, { templateId: dec.canonical.templateId, templateHash: dec.templateHash, catalogHash: dec.catalogHash });
+    const { warnings } = validateImportedState(state, {
+      templateId: dec.canonical.templateId, templateHash: dec.templateHash, catalogHash: dec.catalogHash,
+      ...(dec.template ? { template: dec.template } : {}),
+    });
     return { ok: true, state, warnings, provenance: dec.provenance };
   } catch (e) {
     if (e instanceof ShareError) return { ok: false, error: e };

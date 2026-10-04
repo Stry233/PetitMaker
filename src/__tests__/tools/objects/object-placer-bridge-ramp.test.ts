@@ -34,15 +34,15 @@ describe('ObjectPlacerTool bridge and ramp placement', () => {
       const S = 20; const state = makeState(S, S);
       for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) { setZone(state, x, y, CellZone.Grass); if (s.hi(x, y)) setTerrain(state, x, y, TerrainType.Mountain, 1); }
       const ex = exec(state);
-      new ObjectPlacerTool().onPointerDown(s.at, s.at, makeToolCtx(state, ex, 1, 1, { armedItem: 'ramp-teak-stair' })); // width 2, height 4, heightDrop 1
+      new ObjectPlacerTool().onPointerDown(s.at, s.at, makeToolCtx(state, ex, 1, 1, { armedItem: 'ramp-teak-stair' })); // width 2, height 2, heightDrop 1
       expect(objectsByCatalog(state, 'ramp-teak-stair').length, `ramp placed (${s.name})`).toBe(1);
     }
   });
 
-  // Edge case: the ramp's bottom support is 3.5 macro blocks. A lower terrace of only 3
+  // Edge case: the ramp's bottom support is 1.5 macro blocks. A lower terrace of only 1
   // blocks is too short — the ramp must be rejected, AND the ghost must read red (not green), because the
-  // ghost now validates through the same rule. A 5-block terrace fits and places.
-  it('rejects a ramp on a too-short (3-block) lower terrace — incl. the ghost; accepts a 5-block one', () => {
+  // ghost now validates through the same rule. A 2-block terrace fits and places.
+  it('rejects a ramp on a too-short (1-block) lower terrace — incl. the ghost; accepts a 2-block one', () => {
     const build = (lowLen: number) => {
       const S = 24; const state = makeState(S, S);
       for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
@@ -55,25 +55,25 @@ describe('ObjectPlacerTool bridge and ramp placement', () => {
     };
     const ghostColor = (state: any): unknown => {
       let captured: unknown;
-      const ctx = makeToolCtx(state, exec(state), 1, 1, { armedItem: 'ramp-teak-stair' }); // width 2, spanLen 4
+      const ctx = makeToolCtx(state, exec(state), 1, 1, { armedItem: 'ramp-teak-stair' }); // width 2, spanLen 2
       ctx.overlay = { showGhost: (_cells: MacroCoord[], color: unknown) => { captured = color; }, clearGhost() {}, flashCommit() {} } as any;
-      new ObjectPlacerTool().onPointerMove(m(10, 10), m(10, 10), ctx);
+      new ObjectPlacerTool().onPointerMove(m(9, 10), m(9, 10), ctx);
       return captured;
     };
 
-    // 3-block terrace: too short → rule rejects + nothing places + ghost red
-    const tooShort = build(3);
+    // 1-block terrace: too short → rule rejects + nothing places + ghost red
+    const tooShort = build(1);
     const exS = exec(tooShort);
-    new ObjectPlacerTool().onPointerDown(m(10, 10), m(10, 10), makeToolCtx(tooShort, exS, 1, 1, { armedItem: 'ramp-teak-stair' }));
-    expect(objectsByCatalog(tooShort, 'ramp-teak-stair').length, 'no ramp on a 3-block terrace').toBe(0);
-    const shortColor = ghostColor(build(3));
+    new ObjectPlacerTool().onPointerDown(m(9, 10), m(9, 10), makeToolCtx(tooShort, exS, 1, 1, { armedItem: 'ramp-teak-stair' }));
+    expect(objectsByCatalog(tooShort, 'ramp-teak-stair').length, 'no ramp on a 1-block terrace').toBe(0);
+    const shortColor = ghostColor(build(1));
 
-    // 5-block terrace: fits → places + ghost green
-    const ok = build(5);
+    // 2-block terrace: fits → places + ghost green
+    const ok = build(2);
     const exOk = exec(ok);
-    new ObjectPlacerTool().onPointerDown(m(10, 10), m(10, 10), makeToolCtx(ok, exOk, 1, 1, { armedItem: 'ramp-teak-stair' }));
-    expect(objectsByCatalog(ok, 'ramp-teak-stair').length, 'ramp placed on a 5-block terrace').toBe(1);
-    const okColor = ghostColor(build(5));
+    new ObjectPlacerTool().onPointerDown(m(9, 10), m(9, 10), makeToolCtx(ok, exOk, 1, 1, { armedItem: 'ramp-teak-stair' }));
+    expect(objectsByCatalog(ok, 'ramp-teak-stair').length, 'ramp placed on a 2-block terrace').toBe(1);
+    const okColor = ghostColor(build(2));
 
     expect(shortColor, 'ghost RED on the too-short terrace, GREEN on the good one').not.toBe(okColor);
   });

@@ -13,8 +13,9 @@
  * drawn at those anchors — same stacking, same reconcile, same auto edge-cut.
  */
 import { anchorHandles, type CurveAnchor } from '../../core/model/spline';
+import { createSignal } from '../../core/runtime/signal';
 
-export interface CurveSession {
+interface CurveSession {
   /** The anchors, in the order they were placed. */
   anchors: CurveAnchor[];
   /** Brush width the curve was painted at — the handles scale with it. */
@@ -34,7 +35,7 @@ export interface CurveSession {
 }
 
 /** What the session needs from whoever owns the curve. */
-export interface CurveSessionHost {
+interface CurveSessionHost {
   /** Show where the curve WOULD go, without touching the map — every frame of a drag. */
   preview(anchors: CurveAnchor[]): void;
   /** Re-lay the curve at these anchors, as one undoable step. */
@@ -45,15 +46,14 @@ export interface CurveSessionHost {
 
 let session: CurveSession | null = null;
 let host: CurveSessionHost | null = null;
-const listeners = new Set<() => void>();
+const changed = createSignal();
 
 function emit(): void {
-  for (const l of listeners) l();
+  changed.emit();
 }
 
 export function subscribeCurveSession(listener: () => void): () => void {
-  listeners.add(listener);
-  return () => { listeners.delete(listener); };
+  return changed.subscribe(listener);
 }
 
 export function getCurveSession(): CurveSession | null {

@@ -24,7 +24,7 @@ describe('placement/object', () => {
     const cells = JSON.stringify(state.cells), versions = [state.cellsVersion, state.objectsVersion];
     const id = getCatalogByCategory(kind)[0]!.id, x = bridge ? 8 : 9;
     const probe = probePlacement(ctx, id, x, 8.5);
-    expect(probe).toMatchObject({ position: { x: 6, y: 8.5 }, elevation: bridge ? 0 : 1, rotation: bridge ? 0 : 270 });
+    expect(probe).toMatchObject({ position: { x: bridge ? 6 : 8, y: 8.5 }, elevation: bridge ? 0 : 1, rotation: bridge ? 0 : 270 });
     expect(state.objects.size).toBe(0);
     expect(JSON.stringify(state.cells)).toBe(cells);
     expect([state.cellsVersion, state.objectsVersion]).toEqual(versions);

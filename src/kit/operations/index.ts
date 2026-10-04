@@ -9,5 +9,14 @@ export type { Outcome } from './outcome';
 export { newMap, loadMap } from './map';
 export { generateMap, generateCandidate, peekCandidate, clearGenerated } from './generate';
 export type { Candidate } from './generate';
-export { transferMap, plazaOffset, hasCarriableContent } from './transfer';
-export type { TransferOutcome, TransferOptions, TransferCounts } from './transfer';
+export { plazaOffset, hasCarriableContent } from './transfer';
+export { transferMap } from './transfer-map';
+export type { TransferCounts } from './transfer';
+export type { TransferOutcome, TransferOptions } from './transfer-map';
+export { previewTransfer, requestTransferPreview } from './planet-preview';
+export type { TransferPreview, TransferPreviewRequest } from './planet-preview';
+export {
+  enterPlanetSession, leavePlanetSession, finishPlanetSession, sessionTemplate,
+  placeSessionPlaza, rotateSessionPlaza, removeSessionPlaza,
+} from './planet-session';
+export type { SessionPlazaResult } from './planet-session';

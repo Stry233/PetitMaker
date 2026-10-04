@@ -1,5 +1,5 @@
 /*
- * pages/start.ts — the 上手 group: welcome, the frame, the camera, the tour.
+ * The Getting started group: welcome, the frame, the camera, the tour.
  *
  * Descriptor data only: copy uses full i18n key literals, key tables name command ids and figures
  * name renderable help scenes or surfaces.
@@ -10,6 +10,7 @@ export const START_PAGES: readonly HelpPage[] = [
   {
     id: 'welcome',
     group: 'start',
+    lite: { figure: { kind: 'surface', surface: 'frame-overview', captionKey: 'help.frame.figcap' } },
     hero: true,
     titleKey: 'help.welcome.title',
     navKey: 'help.welcome.nav',

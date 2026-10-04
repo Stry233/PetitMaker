@@ -9,10 +9,11 @@ import { useEffect, useLayoutEffect, useSyncExternalStore } from 'react';
 import { animate, motionValue, useReducedMotionConfig, type MotionValue, type Transition } from 'framer-motion';
 import type { DockSide } from '../../core/runtime/prefs';
 import { useEditorStore } from '../../state/store';
-import { framerMotion, outMotion, outSeconds, seconds } from '../agent/motion';
+import { framerMotion, outMotion, outSeconds, seconds } from '../design/motion';
 import { useViewportSize } from '../design/scale';
 import type { MotionId } from './motion/registry';
 import { hasPinRoom } from './panel-frame';
+import { createSignal } from '../../core/runtime/signal';
 
 /** Whether the settled UI zoom leaves enough width for the dock. */
 export function usePinRoom(): boolean {
@@ -29,12 +30,12 @@ export function useAssistantDocked(): boolean {
 }
 
 /** Saved dock side, retained while the panel is floating. */
-export function useDockSide(): DockSide {
+function useDockSide(): DockSide {
   return useEditorStore((s) => s.assistantDockSide);
 }
 
 /** Current dock sequence state. Panel visibility remains the caller's concern. */
-export interface DockStage {
+interface DockStage {
   /** `leaving` is visible; `folded` is hidden while the sheet covers the dock ground. */
   place: 'free' | 'ground' | 'leaving' | 'folded';
   /** Target sheet position. */
@@ -64,7 +65,7 @@ let reached: DockWant | null = null;
 let done: { want: DockWant; beats: number } | null = null;
 let slide: number | null = null;
 let slideEnd: 0 | 1 | 'between' | null = null;
-const watchers = new Set<() => void>();
+const watchers = createSignal();
 
 /**
  * THE ONE FRACTION, 0 lying flat on the desk to 1 fully off it, as the live value the per-frame
@@ -74,12 +75,11 @@ const watchers = new Set<() => void>();
 export const dockAside: MotionValue<number> = motionValue(0);
 
 function tellWatchers(): void {
-  watchers.forEach((tell) => tell());
+  watchers.emit();
 }
 
 function subscribe(tell: () => void): () => void {
-  watchers.add(tell);
-  return () => { watchers.delete(tell); };
+  return watchers.subscribe(tell);
 }
 
 /** One snapshot object per (reached, done, slideEnd) triple, so `useSyncExternalStore` is not handed
@@ -133,7 +133,7 @@ function beatSeconds(beat: DockBeat): number {
 
 /** The Framer transition the SHEET runs on for a beat, which is the same half of the same declaration
  *  the timer above is reading. */
-export function beatTravel(motion: MotionId, half: 'out' | 'in'): Transition {
+function beatTravel(motion: MotionId, half: 'out' | 'in'): Transition {
   return half === 'out' ? outMotion(motion) : framerMotion(motion);
 }
 

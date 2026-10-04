@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
-vi.mock('../../../core/runtime/edition', () => ({ IS_LITE: true }));
+// The build defines the edition flag; unset under test, so it is set before the edition module loads.
+vi.hoisted(() => { (globalThis as { __PETIT_LITE__?: boolean }).__PETIT_LITE__ = true; });
 import { APP_NAME, APP_VERSION, IS_DEV_BUILD, baseBrandName, brandName } from '../../../version';
 
 describe('Lite brand identity', () => {

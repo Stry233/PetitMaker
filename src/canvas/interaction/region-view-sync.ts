@@ -13,11 +13,11 @@ import type { ActiveView } from '../view-projection';
 import type { MacroCoord } from '../../core/model/types';
 
 /** The cells last asked for, or null after a clear. An empty show is a clear. */
-let shown: MacroCoord[] | null = null;
+let shown: { cells: MacroCoord[]; dimensionScale?: number } | null = null;
 
-export function showBuildableRegion(cells: MacroCoord[]): void {
-  shown = cells.length > 0 ? [...cells] : null;
-  getActiveView()?.overlay.showBuildableRegion(cells, true);
+export function showBuildableRegion(cells: MacroCoord[], dimensionScale?: number): void {
+  shown = cells.length > 0 ? { cells: [...cells], dimensionScale } : null;
+  getActiveView()?.overlay.showBuildableRegion(cells, true, dimensionScale);
 }
 
 export function clearBuildableRegion(): void {
@@ -25,10 +25,10 @@ export function clearBuildableRegion(): void {
   getActiveView()?.overlay.clearBuildableRegion();
 }
 
-/** The active-view signal's handler, exported so the behavior is testable without a canvas. */
-export function syncRegionToView(view: ActiveView | null, previous: ActiveView | null): void {
+/** The active-view signal's handler. */
+function syncRegionToView(view: ActiveView | null, previous: ActiveView | null): void {
   if (previous && previous.overlay !== view?.overlay) previous.overlay.clearBuildableRegion();
-  if (view && shown) view.overlay.showBuildableRegion(shown, true);
+  if (view && shown) view.overlay.showBuildableRegion(shown.cells, true, shown.dimensionScale);
 }
 
 /** Subscribe the highlight to the active-view signal. Returns the unsubscribe. */

@@ -1,5 +1,5 @@
 /*
- * fields.ts — the map becomes typed arrays a pack can draw from.
+ * The map becomes typed arrays a pack can draw from.
  *
  * This is the bake every procedural pack shares, and it is the reason the procedural path can draw
  * pictures the image path cannot: a model restyling a screenshot has pixels, while a pack has the
@@ -12,8 +12,7 @@ import type { GridState, PlacedObject, CatalogItem } from '../../../core/model/t
 import { getCell } from '../../../core/model/grid-model';
 import { getCatalogItem } from '../../../state/catalog';
 import { objectRect } from '../../../state/object-geometry';
-import { distanceField, signedDistanceField } from './geom';
-import { hexToRgb, oklabToRgb, rgbToHex, rgbToOklab } from './oklab';
+import { signedDistanceField } from './geom';
 
 /** One placed object, resolved against its catalog entry and reduced to what a pack draws. */
 export interface ProcObject {
@@ -208,130 +207,4 @@ export function buildProcFields(state: GridState, seed: number, locale = 'en'): 
       return (name as Record<string, string | undefined>)[locale] ?? name.en ?? catalogId;
     },
   };
-}
-
-/** The solid mask at one elevation tier: every cell standing at or above `tier`. Tier 0 is the
- *  planet itself. On a flat map only tier 0 is non-empty, which is what makes an elevation-driven
- *  pack draw nothing there. */
-export function elevationMask(f: ProcFields, tier: number): Uint8Array {
-  const m = new Uint8Array(f.width * f.height);
-  if (tier <= 0) return Uint8Array.from(f.land);
-  for (let i = 0; i < m.length; i++) m[i] = f.elevation[i]! >= tier ? 1 : 0;
-  return m;
-}
-
-/** A planting drift: one 8-connected run of the same genus.
- *
- *  Grouped by GENUS rather than by catalog id, because cultivars of one flower are one bed to a
- *  reader and separate ids to the catalog. Beds are a bonus and never the backbone: on a dense map
- *  most planting is single stamps in rows, and the rows are the plan. */
-export interface PlantDrift {
-  /** Position in the drift list, stable for a given map: a seed ingredient, never an identity. */
-  id: number;
-  genus: string;
-  mask: Uint8Array;
-  cells: number;
-  centroidX: number;
-  centroidY: number;
-}
-
-export const genusOf = (catalogId: string): string => catalogId.split('-').slice(0, 2).join('-');
-
-export function plantDrifts(f: ProcFields, minCells = 4): PlantDrift[] {
-  const { width: w, height: h } = f;
-  const owner = new Int32Array(w * h).fill(-1);
-  const genera: string[] = [];
-  for (const o of f.plants) {
-    const g = genusOf(o.catalogId);
-    let gi = genera.indexOf(g);
-    if (gi < 0) {
-      gi = genera.length;
-      genera.push(g);
-    }
-    const x0 = Math.max(0, Math.floor(o.x));
-    const y0 = Math.max(0, Math.floor(o.y));
-    const x1 = Math.min(w, Math.ceil(o.x + o.w));
-    const y1 = Math.min(h, Math.ceil(o.y + o.h));
-    for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) owner[y * w + x] = gi;
-  }
-  const seen = new Uint8Array(w * h);
-  const out: PlantDrift[] = [];
-  const stack: number[] = [];
-  for (let start = 0; start < owner.length; start++) {
-    if (owner[start]! < 0 || seen[start] === 1) continue;
-    const g = owner[start]!;
-    stack.length = 0;
-    stack.push(start);
-    seen[start] = 1;
-    const cells: number[] = [];
-    while (stack.length > 0) {
-      const p = stack.pop()!;
-      cells.push(p);
-      const px = p % w;
-      const py = (p / w) | 0;
-      for (let dy = -1; dy <= 1; dy++) {
-        for (let dx = -1; dx <= 1; dx++) {
-          const nx = px + dx;
-          const ny = py + dy;
-          if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
-          const q = ny * w + nx;
-          if (seen[q] === 0 && owner[q] === g) {
-            seen[q] = 1;
-            stack.push(q);
-          }
-        }
-      }
-    }
-    if (cells.length < minCells) continue;
-    const mask = new Uint8Array(w * h);
-    let sx = 0;
-    let sy = 0;
-    for (const c of cells) {
-      mask[c] = 1;
-      sx += c % w;
-      sy += (c / w) | 0;
-    }
-    out.push({
-      id: out.length, genus: genera[g]!, mask, cells: cells.length,
-      centroidX: sx / cells.length, centroidY: sy / cells.length,
-    });
-  }
-  return out.sort((a, b) => b.cells - a.cells);
-}
-
-/** Planting density, smoothed over about a cell and a half. Drives anything that wants "how much
- *  planting is here" rather than "is there a plant in this cell". */
-export function plantingDensity(f: ProcFields): Float32Array {
-  const d = distanceField(f.plant, f.width, f.height);
-  const out = new Float32Array(d.length);
-  for (let i = 0; i < d.length; i++) out[i] = Math.exp(-(d[i]! * d[i]!) / 4.5);
-  return out;
-}
-
-/** A genus's own colour: the mean of its members' authored top colours, in OKLab. A hash of the
- *  genus name would be arbitrary, and arbitrary colour is the fastest way to look generated. */
-const genusColorCache = new WeakMap<ProcFields, Map<string, string>>();
-export function genusColor(fields: ProcFields, genus: string): string {
-  let cache = genusColorCache.get(fields);
-  if (!cache) {
-    cache = new Map();
-    genusColorCache.set(fields, cache);
-  }
-  const hit = cache.get(genus);
-  if (hit) return hit;
-  let L = 0;
-  let a = 0;
-  let b = 0;
-  let count = 0;
-  for (const o of fields.plants) {
-    if (genusOf(o.catalogId) !== genus) continue;
-    const lab = rgbToOklab(hexToRgb(o.topColor));
-    L += lab[0];
-    a += lab[1];
-    b += lab[2];
-    count += 1;
-  }
-  const hex = count === 0 ? '#6f8a4e' : rgbToHex(oklabToRgb([L / count, a / count, b / count]));
-  cache.set(genus, hex);
-  return hex;
 }

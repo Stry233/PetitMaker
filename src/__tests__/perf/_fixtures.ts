@@ -1,5 +1,5 @@
 /*
- * _fixtures.ts — the maps the perf suites measure against.
+ * The maps the perf suites measure against.
  *
  * A perf number is only comparable to itself on the same input, so every fixture here is
  * deterministic: real planet templates, the real generator at a fixed (seed, config), the plaza
@@ -13,7 +13,6 @@ import { createGrid, createPlazaObject } from '../../core/model/grid-model';
 import { getMapTemplate } from '../../config/maps';
 import { generateTerrain } from '../../tools/generation/terrain-generator';
 import { roadLookup } from '../../state/object-index';
-import { catalogLoadValue } from '../../state/catalog';
 import type { EditorEvents, GenerateConfig, GridState } from '../../core/model/types';
 
 export interface World {
@@ -25,7 +24,7 @@ export interface World {
 /** A live world over `state`: full rule registry, road lookup, load values — the app's own wiring. */
 export function makeWorld(state: GridState): World {
   const bus = new EventBus<EditorEvents>();
-  const executor = new CommandExecutor(state, bus, createDefaultRegistry(), roadLookup(state), catalogLoadValue);
+  const executor = new CommandExecutor(state, bus, createDefaultRegistry(), roadLookup(state));
   return { state, bus, executor };
 }
 
@@ -65,7 +64,7 @@ export function denseIsland(seed = ISLAND_SEED, templateId = 'hexia'): World {
   const world = templateWorld(templateId);
   const start = world.executor.getUndoStackSize();
   generateTerrain(islandConfig(seed), world.state, (c) => world.executor.execute(c), world.executor.getRegistry());
-  world.executor.commitStrokeGroup(start);
+  world.executor.commitStroke(start);
   cache.set(key, world);
   return world;
 }

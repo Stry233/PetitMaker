@@ -2,16 +2,11 @@ import { describe, it, expect } from 'vitest';
 import * as THREE from 'three';
 import type { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { introStartOffset, reportedCameraAngle } from '../../canvas/map3d/capture';
-import { frameBounds, makeCamera } from '../../canvas/map3d/scene/camera-controls';
+import { frameBounds, islandBounds, makeCamera } from '../../canvas/map3d/scene/camera-controls';
+import { getMapTemplate } from '../../config/maps';
 
-// The ThreeScene constructor needs WebGL, so these cover the two facts the scene composes: how far
-// out the intro fly-in starts, and which pose a camera read reports while it is in flight.
-//
-// The resting pose is frameBounds' hero framing: camera at (0, 0.46d + centerY, 0.72√2 d) looking
-// at (0, centerY, 0), for a frame distance d. Square on, the way the 2D view opens: the horizontal
-// reach is spent on one axis instead of split across two, which leaves the radius and the tilt these
-// numbers exercise equal to a 45° corner pose at the same frame distance.
-const D = 163;              // ~a real map's frame distance
+// A resting pose at the default elevation, in world units.
+const D = 163;
 const CENTER_Y = 2;
 const restTarget = { x: 0, y: CENTER_Y, z: 0 };
 const restCam = { x: 0, y: 0.46 * D + CENTER_Y, z: 0.72 * Math.SQRT2 * D };
@@ -45,27 +40,11 @@ describe('introStartOffset', () => {
   });
 });
 
-/**
- * THE TWO VIEWS OPEN ON THE SAME PICTURE.
- *
- * The 2D renderer letters the rows down the LEFT edge and numbers the columns along the BOTTOM
- * (`map2d/map-renderer.ts:drawLabels`), and the 3D scene draws the same legend in world space, a
- * cell's column being world X and its row world Z (`map3d/core/coords.ts`). So "the same picture"
- * is two facts about where those axes land on the screen, and they are asserted as such rather than
- * as a position, since a position says nothing about which way a person sees it.
- *
- * A 45° corner frame arrives at neither: it turns the map a quarter of the way round as the views
- * swap, and a person has to find their place again.
- *
- * The framing distance and the tilt are pinned here too, since the fly-in starts at a multiple of
- * the resting offset and every export shot's `dist` is a multiple of the resting radius: a yaw that
- * quietly moved the camera closer would move the shipped pictures.
- */
 describe('the 3D view opens where the 2D view does', () => {
   /** `frameBounds` reads the orbit target and writes the two dolly clamps; nothing else here needs
    *  OrbitControls, and the real one wants a DOM element to bind. */
-  function framed(b: { halfX: number; halfZ: number; maxY: number }) {
-    const camera = makeCamera(16 / 9);
+  function framed(b: { halfX: number; halfZ: number; maxY: number }, aspect = 16 / 9) {
+    const camera = makeCamera(aspect);
     const controls = {
       target: new THREE.Vector3(), minDistance: 0, maxDistance: 0, update: () => {},
     } as unknown as OrbitControls;
@@ -80,27 +59,47 @@ describe('the 3D view opens where the 2D view does', () => {
 
   it('puts the columns left to right and the rows top to bottom, as the 2D legend does', () => {
     const { camera } = framed({ halfX: 84, halfZ: 70, maxY: 8 });
-    // Column 1 is at low X and column 11 at high X: the numbers must read left to right.
     expect(screen(camera, -60, 0, 0).x).toBeLessThan(screen(camera, 60, 0, 0).x);
-    // Row A is at low Z and row I at high Z: the letters must read top to bottom.
     expect(screen(camera, 0, 0, -60).y).toBeGreaterThan(screen(camera, 0, 0, 60).y);
-    // And square on rather than merely on the correct side: the two axes are not skewed, so a
-    // straight row of cells runs straight across the screen.
     expect(screen(camera, -60, 0, 0).y).toBeCloseTo(screen(camera, 60, 0, 0).y, 6);
   });
 
-  it('is a yaw and nothing else: the framing distance and the tilt are the ones it always had', () => {
+  it('retains a low, square-on viewing angle', () => {
     const { camera, controls } = framed({ halfX: 84, halfZ: 70, maxY: 8 });
     const off = camera.position.clone().sub(controls.target);
-    // The pose this replaced, for the same bounds: the whole horizontal reach split across X and Z.
     const reach = Math.hypot(off.x, off.z);
-    expect(off.length()).toBeCloseTo(Math.hypot(reach / Math.SQRT2, off.y, reach / Math.SQRT2), 6);
-    // Still the low hero angle rather than a top-down one.
     const el = (Math.atan2(off.y, reach) * 180) / Math.PI;
     expect(el).toBeGreaterThan(20);
     expect(el).toBeLessThan(30);
-    // Square on, in the azimuth convention the scene and every stored shot are written in.
     expect((Math.atan2(off.x, off.z) * 180) / Math.PI).toBeCloseTo(0, 9);
+  });
+
+  it.each([9 / 16, 1, 4 / 3, 16 / 9, 2.4])('fits the whole island tightly at viewport aspect %s', (aspect) => {
+    const { camera } = framed({ halfX: 84.5, halfZ: 70, maxY: 8 }, aspect);
+    const extents: number[] = [];
+    for (const x of [-84.5, 84.5]) for (const y of [0, 8]) for (const z of [-70, 70]) {
+      const point = screen(camera, x, y, z);
+      expect(Math.abs(point.x)).toBeLessThanOrEqual(0.92001);
+      expect(Math.abs(point.y)).toBeLessThanOrEqual(0.92001);
+      extents.push(Math.abs(point.x), Math.abs(point.y));
+    }
+    expect(Math.max(...extents)).toBeCloseTo(0.92, 5);
+  });
+
+  it.each(['hexia', 'tafa'])('frames %s main land closer than the surrounding beach', (id) => {
+    const template = getMapTemplate(id), b = islandBounds(template, 8);
+    expect(b.halfX).toBeLessThan(template.width / 2);
+    expect(b.halfZ).toBeLessThan(template.height / 2);
+    for (const aspect of [9 / 16, 1, 16 / 9]) {
+      const { camera, controls } = framed(b, aspect);
+      const full = framed({ halfX: template.width / 2, halfZ: template.height / 2, maxY: 8 }, aspect);
+      expect(camera.position.distanceTo(controls.target)).toBeLessThan(full.camera.position.distanceTo(full.controls.target));
+      for (const x of [-b.halfX, b.halfX]) for (const y of [0, 8]) for (const z of [-b.halfZ, b.halfZ]) {
+        const point = screen(camera, x + b.centerX!, y, z + b.centerZ!);
+        expect(Math.abs(point.x)).toBeLessThanOrEqual(0.92001);
+        expect(Math.abs(point.y)).toBeLessThanOrEqual(0.92001);
+      }
+    }
   });
 });
 
@@ -116,7 +115,7 @@ describe('reportedCameraAngle', () => {
     expect(got.tz).toBeCloseTo(0, 6);
   });
 
-  it('would report the far fly-in start unguarded (the pose an unguarded read persisted)', () => {
+  it('reports the fly-in start when intro reporting is disabled', () => {
     const unguarded = reportedCameraAngle(introPose(), restTarget, restCam, restTarget, false);
     expect(unguarded.dist).toBeCloseTo(2.393, 3);
   });

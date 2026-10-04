@@ -1,19 +1,15 @@
-/** A `sleep` whose wait can be ended by hand: the runner's retry ladder is the ONE caller
+import { abortError } from './errors';
+
+/** A `sleep` whose wait can be ended by hand: the runner's retry ladder is the one caller that skips
  *  (`loop.ts`'s `deps.sleep`, only at the backoff between adapter attempts — never the idle-stream
  *  bound or the summary bound, which are their own separate timers), and the panel's retry
- *  countdown press needs to resolve that wait immediately without touching the clock. `skip()` is
+ *  countdown press needs to resolve that wait immediately without touching the clock. A job with no
+ *  sleep of its own waits on one nothing skips. `skip()` is
  *  not latched: it only ever resolves sleeps already pending at the moment it runs, so a sleep
  *  started afterward (the NEXT attempt's own backoff) waits out its full delay. */
-export interface SkippableSleeper {
+interface SkippableSleeper {
   sleep(ms: number, signal: AbortSignal): Promise<void>;
   skip(): void;
-}
-
-function abortError(): Error {
-  if (typeof DOMException !== 'undefined') return new DOMException('The wait was aborted.', 'AbortError');
-  const err = new Error('The wait was aborted.');
-  err.name = 'AbortError';
-  return err;
 }
 
 export function createSkippableSleeper(): SkippableSleeper {

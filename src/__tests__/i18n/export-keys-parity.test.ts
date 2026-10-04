@@ -1,4 +1,3 @@
-// src/__tests__/i18n/export-keys-parity.test.ts
 import { describe, it, expect } from 'vitest';
 import { translations } from '../../i18n/translations';
 const KEYS = [

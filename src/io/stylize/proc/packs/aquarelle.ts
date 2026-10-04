@@ -1,5 +1,5 @@
 /*
- * aquarelle.ts — the one built-in style: the map's own picture, watercolourised.
+ * The one built-in style: the map's own picture, watercolourised.
  *
  * The style is a structure-blind image pass (`../watercolorize`): in the app the pass paints over
  * the REAL 2D capture (see `render.ts`'s `sourceImage`), so every sprite the renderer drew

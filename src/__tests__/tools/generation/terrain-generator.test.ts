@@ -91,7 +91,7 @@ describe('clearAllObjects', () => {
     const start = executor.getUndoStackSize();
     clearAllObjects(state, (cmd) => executor.execute(cmd)); // objects first
     clearAllTerrain(state, (cmd) => executor.execute(cmd));
-    executor.commitStrokeGroup(start);
+    executor.commitStroke(start);
 
     expect(state.objects.size).toBe(0);
     expect(getCell(state.cells, 5, 5)?.terrain).toBeNull();

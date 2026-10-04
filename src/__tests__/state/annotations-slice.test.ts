@@ -186,3 +186,90 @@ describe('the selection set and its batch verbs', () => {
     expect(s().annotationUndoLane.length).toBe(lanes);
   });
 });
+
+
+describe('unfinished annotation transitions', () => {
+  const s = () => useEditorStore.getState();
+  beforeEach(() => {
+    s().initMap(makeTemplate(20, 20), createDefaultRegistry());
+    s().setEditMode({ mode: 'annotate' }); s().setAnnotationTool('zone');
+  });
+
+  it('keeps a draft through brush and eraser switches and asks before leaving Notes', () => {
+    s().setAnnotationDraft(zone('draft'));
+    s().setAnnotationTool('erase'); s().setAnnotationTool('zone');
+    expect(s().annotationDiscardAction).toBeNull();
+    s().setEditMode({ mode: 'mountain' });
+    expect(s().editMode.mode).toBe('annotate');
+    expect(s().annotationDraft).toEqual(zone('draft'));
+    s().cancelAnnotationDiscard();
+    expect(s().editMode.mode).toBe('annotate');
+    s().setEditMode({ mode: 'mountain' }); s().confirmAnnotationDiscard();
+    expect(s().editMode.mode).toBe('mountain');
+    expect(s().annotationDraft).toBeNull();
+  });
+
+  it('discards draft history while retaining reversible edits to finished notes', () => {
+    s().addAnnotation(zone('kept'));
+    s().beginAnnotationStroke(); s().setAnnotationDraft(zone('draft'));
+    s().setAnnotationTag(null);
+    expect(s().annotationDraft).toMatchObject({ tag: null });
+    s().discardAnnotationDraft();
+    expect(s().annotationUndoLane).toHaveLength(1);
+    s().undoAnnotation(); expect(s().gridState!.annotations!.items).toEqual([]);
+    s().redoAnnotation(); expect(s().gridState!.annotations!.items).toEqual([zone('kept')]);
+    expect(s().annotationDraft).toBeNull();
+  });
+
+  it('saves an untagged draft before switching tools and preserves undo and redo', () => {
+    const draft = { ...zone('draft'), tag: null };
+    s().addAnnotation(zone('kept'));
+    s().beginAnnotationStroke(); s().setAnnotationDraft(draft);
+    s().setAnnotationTool('route');
+    s().confirmAnnotationSave();
+    expect(s().annotationTool).toBe('route');
+    expect(s().annotationDiscardAction).toBeNull();
+    expect(s().annotationDraft).toBeNull();
+    expect(s().gridState!.annotations!.items).toEqual([zone('kept'), draft]);
+    s().confirmAnnotationSave();
+    expect(s().gridState!.annotations!.items).toHaveLength(2);
+    expect(s().undoAnnotation()).toBe(true);
+    expect(s().annotationDraft).toEqual(draft);
+    expect(s().gridState!.annotations!.items).toEqual([zone('kept')]);
+    expect(s().redoAnnotation()).toBe(true);
+    expect(s().annotationDraft).toBeNull();
+    expect(s().gridState!.annotations!.items).toEqual([zone('kept'), draft]);
+  });
+
+  it('saves an unfinished route before leaving Notes', () => {
+    s().setAnnotationTool('route');
+    const draft = { kind: 'route' as const, id: 'route', points: [{ x: 2, y: 2 }, { x: 5, y: 4 }], color: '#FF8A7A', dashed: true };
+    s().setAnnotationDraft(draft);
+    s().setEditMode({ mode: 'mountain' });
+    s().confirmAnnotationSave();
+    expect(s().editMode.mode).toBe('mountain');
+    expect(s().annotationDiscardAction).toBeNull();
+    expect(s().annotationDraft).toBeNull();
+    expect(s().gridState!.annotations!.items).toEqual([draft]);
+  });
+
+  it('continues without creating an annotation when the draft has no cells', () => {
+    s().setAnnotationDraft({ ...zone('empty'), cells: [] });
+    s().setAnnotationTool('route');
+    s().confirmAnnotationSave();
+    expect(s().annotationTool).toBe('route');
+    expect(s().annotationDiscardAction).toBeNull();
+    expect(s().annotationDraft).toBeNull();
+    expect(s().gridState!.annotations!.items).toEqual([]);
+  });
+
+  it('cancels a pending transition when a new map is installed', () => {
+    s().setAnnotationDraft(zone('draft')); s().setAnnotationTool('route');
+    s().initMap(makeTemplate(10, 10), createDefaultRegistry());
+    s().confirmAnnotationDiscard();
+    s().confirmAnnotationSave();
+    expect(s().annotationTool).toBe('zone');
+    expect(s().annotationDiscardAction).toBeNull();
+    expect(s().gridState?.annotations?.items ?? []).toEqual([]);
+  });
+});

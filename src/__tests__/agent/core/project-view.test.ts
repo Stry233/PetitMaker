@@ -4,6 +4,38 @@ import { deriveView, type JobView, type PanelView } from '../../../agent/core/pr
 import type { Part, PlanStage } from '../../../agent/core/types';
 
 describe('deriveView', () => {
+  it('keeps complete arguments and associates batched results with their actual checkpoints', () => {
+    const log = createLog();
+    append(log, { kind: 'order', text: 'Build and plant', mapContext: '' });
+    append(log, { kind: 'assistant', stop: 'tool-calls', parts: [
+      { kind: 'tool', callId: 'ground', name: 'paint_terrain', argsDone: true, input: { terrain: 'mountain', elevation: 1, x1: 2, y1: 3, x2: 4, y2: 5 } },
+      { kind: 'tool', callId: 'tree', name: 'place_object', argsDone: true, input: { catalogId: 'tree-ginkgo', x: 3, y: 4 } },
+    ] });
+    append(log, { kind: 'checkpoint', label: 'job', undoIndex: 0 });
+    append(log, { kind: 'toolResult', name: 'paint_terrain', callId: 'ground', content: 'Built', isError: false, write: true, detail: { cells: 9 } });
+    append(log, { kind: 'checkpoint', label: 'stage', stageIndex: 1, undoIndex: 1 });
+    append(log, { kind: 'toolResult', name: 'place_object', callId: 'tree', content: 'Placed', isError: false, write: true, detail: { objects: 1 } });
+    append(log, { kind: 'jobEnd', outcome: 'done' });
+    expect(deriveView(log).jobs[0]!.ops).toMatchObject([
+      { input: { terrain: 'mountain', elevation: 1 }, checkpointIndex: 0, detail: { cells: 9 } },
+      { input: { catalogId: 'tree-ginkgo', x: 3, y: 4 }, checkpointIndex: 1, detail: { objects: 1 } },
+    ]);
+  });
+
+  it('offers a supplemental reply only for its own settled question', () => {
+    const log = createLog();
+    const first = append(log, { kind: 'order', text: 'Build a pond', mapContext: '' });
+    append(log, { kind: 'jobEnd', outcome: 'done', question: true, summary: 'Add flowers?' });
+    append(log, { kind: 'replySuggested', orderSeq: first.seq, reply: 'Add flowers' });
+    expect(deriveView(log).suggestion).toBe('Add flowers');
+    append(log, { kind: 'order', text: 'A new task', mapContext: '' });
+    append(log, { kind: 'replySuggested', orderSeq: first.seq, reply: 'Stale reply' });
+    expect(deriveView(log).suggestion).toBeNull();
+    append(log, { kind: 'jobEnd', outcome: 'done', question: true, summary: 'What next?' });
+    append(log, { kind: 'replySuggested', orderSeq: first.seq, reply: 'Still stale' });
+    expect(deriveView(log).suggestion).toBeNull();
+  });
+
   it('1. empty log: phase idle, no jobs, no current', () => {
     const log = createLog(() => 0);
     const view = deriveView(log);
@@ -470,14 +502,14 @@ describe('deriveView', () => {
   });
 
   describe('stage.index is clamped to the filed plan', () => {
-    it('a stage index past the last stage clamps currentIndex/doneCount to the last stage', () => {
+    it('a completed plan keeps the current index on its last stage and counts every stage done', () => {
       const log = createLog(() => 0);
       append(log, { kind: 'order', text: 'go', mapContext: '' });
       const stages: PlanStage[] = [{ label: 'clear land' }, { label: 'lay roads' }, { label: 'plant trees' }];
       append(log, { kind: 'plan', stages, revision: 1 });
       append(log, { kind: 'stage', index: 99 });
 
-      expect(deriveView(log).current?.plan).toEqual({ stages, currentIndex: 2, doneCount: 2, revision: 1 });
+      expect(deriveView(log).current?.plan).toEqual({ stages, currentIndex: 2, doneCount: 3, revision: 1 });
     });
   });
 

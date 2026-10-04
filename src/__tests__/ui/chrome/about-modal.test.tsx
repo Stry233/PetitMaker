@@ -221,7 +221,7 @@ describe('AboutModal — drill-in to the doc view', () => {
     expect(await screen.findByRole('heading', { level: 1, name: 'Privacy Policy' })).toBeTruthy();
   });
 
-  it('toggles the document language to 中文, swapping the body and the container lang', async () => {
+  it('toggles the document language to Chinese, swapping the body and the container lang', async () => {
     renderModal();
     fireEvent.click(screen.getByTestId('legal-row-privacy'));
     await screen.findByRole('heading', { level: 1, name: 'Privacy Policy' });

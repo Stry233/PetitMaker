@@ -1,5 +1,5 @@
 /*
- * use-region-brush.ts — the region-selection brush state machine for Generate.
+ * The region-selection brush state machine for Generate.
  * While `selectingRegion` is on, it registers on the region-brush channel
  * (core/runtime/region-brush) the pointer machine reports painted cells
  * through, accumulating buildable cells (brush/eraser/rect/circle/line/curve
@@ -22,10 +22,12 @@ import { useCallback, useEffect, useRef } from 'react';
 import { useEditorStore } from '../../state/store';
 import { getCell, isBuildableZone } from '../../core/model/grid-model';
 import { type GridState, type MacroCoord } from '../../core/model/types';
-import { rectCells, circleCells, lineCells, curveCells, snapShapeEnd } from '../../tools/paint';
+import { regionShapeCells } from '../../tools/paint';
+import { getActiveView } from '../../canvas/active-view';
+import { annotationInkScale } from '../../core/model/annotations';
 import { isConstrainHeld } from '../../core/runtime/modifier-state';
 import { host } from '../../kit/host';
-import { clampCentre, isRegionSingle, regionMinSide, setRegionBrushHandler, slideOnMap } from '../../core/runtime/region-brush';
+import { isRegionSingle, regionMinSide, setRegionBrushHandler } from '../../core/runtime/region-brush';
 
 /** Whether a cell may be part of a region: buildable ground, placements included — a scoped
  *  generation replaces what stands in its region, so a cell under an object is as scopeable as a
@@ -34,6 +36,12 @@ import { clampCentre, isRegionSingle, regionMinSide, setRegionBrushHandler, slid
 function holdsRegion(gs: GridState, x: number, y: number): boolean {
   const cell = getCell(gs.cells, x, y);
   return !!cell && isBuildableZone(cell.zone);
+}
+
+function showRegion(cells: MacroCoord[]): void {
+  const s = useEditorStore.getState();
+  host.buildableRegion.show(cells, s.selectingRegion && s.regionDimensions && s.gridState
+    ? annotationInkScale(s.gridState.template) : undefined);
 }
 
 export function useRegionBrush(selectingRegion: boolean) {
@@ -83,6 +91,7 @@ export function useRegionBrush(selectingRegion: boolean) {
     regionCurvePointsRef.current = [];
     regionMoveRef.current = null;
     strokeActiveRef.current = false;
+    getActiveView()?.overlay.clearGhost();
   }, []);
 
   /** Empty the selection, from the scope screen's own Clear. A clear is itself an undoable region
@@ -113,10 +122,35 @@ export function useRegionBrush(selectingRegion: boolean) {
     brushCoordsRef.current = [...region];
     brushSeenRef.current = new Set(region.map(c => `${c.x},${c.y}`));
 
+    const footprint = (coord: MacroCoord): MacroCoord[] => {
+      const s = useEditorStore.getState();
+      const gs = s.gridState;
+      return regionShapeCells(s.regionTool, coord, s.regionBrushSize, {
+        anchor: regionAnchorRef.current, curve: regionCurvePointsRef.current,
+        constrain: isConstrainHeld(), minSide: regionMinSide(),
+        map: gs ? { w: gs.template.width, h: gs.template.height } : null,
+      }).filter(c => !gs || holdsRegion(gs, c.x, c.y));
+    };
+
+    const preview = (coord: MacroCoord) => {
+      const s = useEditorStore.getState();
+      const cells = footprint(coord);
+      const overlay = getActiveView()?.overlay;
+      if (cells.length) overlay?.showGhost(cells, { icon: s.regionTool === 'eraser' ? 'eraser' : null, valid: true }, true);
+      else overlay?.clearGhost();
+    };
+
+    const cancel = () => {
+      if (strokeActiveRef.current) regionUndoStackRef.current.pop();
+      brushCoordsRef.current = [...region];
+      brushSeenRef.current = new Set(region.map(c => `${c.x},${c.y}`));
+      resetInFlightGesture();
+      showRegion(region);
+    };
+
     const paint = (coord: MacroCoord) => {
       const store = useEditorStore.getState();
       const tool = store.regionTool;
-      const size = store.regionBrushSize;
 
       /*
        * A SHAPE-TOOL PRESS INSIDE THE STANDING REGION GRABS THE FIGURE UNDER IT — the connected
@@ -175,129 +209,37 @@ export function useRegionBrush(selectingRegion: boolean) {
         }
         brushCoordsRef.current = next;
         brushSeenRef.current = seen;
-        host.buildableRegion.show(next);
+        showRegion(next);
         return;
       }
 
-      const gs = useEditorStore.getState().gridState;
-      const buildable = (cx: number, cy: number): boolean => (
-        gs ? holdsRegion(gs, cx, cy) : true   // no map loaded → don't filter
-      );
-
+      if (tool === 'rect' || tool === 'circle' || tool === 'line') regionAnchorRef.current ??= coord;
+      const cells = footprint(coord);
+      preview(coord);
       if (tool === 'brush' || tool === 'eraser') {
-        const half = Math.floor((size - 1) / 2);
-
         if (tool === 'eraser') {
-          // Gather the dab's keys, drop them from the seen-set, then filter the
-          // coord list ONCE rather than once per erased cell.
-          const toDelete = new Set<string>();
-          for (let dy = 0; dy < size; dy++) {
-            for (let dx = 0; dx < size; dx++) {
-              const key = `${coord.x - half + dx},${coord.y - half + dy}`;
-              if (brushSeenRef.current.delete(key)) toDelete.add(key);
-            }
-          }
-          if (toDelete.size > 0) {
-            brushCoordsRef.current = brushCoordsRef.current.filter(c => !toDelete.has(`${c.x},${c.y}`));
-          }
+          const gone = new Set(cells.map(c => `${c.x},${c.y}`));
+          brushCoordsRef.current = brushCoordsRef.current.filter(c => !gone.has(`${c.x},${c.y}`));
+          for (const key of gone) brushSeenRef.current.delete(key);
         } else {
-          for (let dy = 0; dy < size; dy++) {
-            for (let dx = 0; dx < size; dx++) {
-              const cx = coord.x - half + dx;
-              const cy = coord.y - half + dy;
-              if (!buildable(cx, cy)) continue;
-              const key = `${cx},${cy}`;
-              if (brushSeenRef.current.has(key)) continue;
+          for (const c of cells) {
+            const key = `${c.x},${c.y}`;
+            if (!brushSeenRef.current.has(key)) {
               brushSeenRef.current.add(key);
-              brushCoordsRef.current.push({ x: cx, y: cy });
+              brushCoordsRef.current.push(c);
             }
           }
         }
-        host.buildableRegion.show(brushCoordsRef.current);
-      } else if (tool === 'curve') {
-        // Curve uses 3-click pattern (not click-drag):
-        // Click 1: start point, Click 2: control point, Click 3: end point
-        regionAnchorRef.current = coord;
-        let previewCells: MacroCoord[] = [];
-        const pts = regionCurvePointsRef.current;
-        if (pts.length === 0) {
-          previewCells = [coord];
-        } else if (pts.length === 1) {
-          const e = isConstrainHeld() ? snapShapeEnd(pts[0]!, coord, 'line') : coord;
-          previewCells = lineCells(pts[0]!, e, size);
-        } else if (pts.length >= 2) {
-          previewCells = curveCells(pts[0]!, pts[1]!, coord, size);
-        }
-        if (gs) previewCells = previewCells.filter(c => buildable(c.x, c.y));
-        regionShapeCellsRef.current = previewCells;
-        host.buildableRegion.show([...brushCoordsRef.current, ...previewCells]);
+        showRegion(brushCoordsRef.current);
       } else {
-        // rect/circle/line: anchor on first call, preview on drag
-        if (!regionAnchorRef.current) {
-          regionAnchorRef.current = coord;
-        }
-        let shapeCells: MacroCoord[] = [];
-        let anchor = regionAnchorRef.current;
-        let end = isConstrainHeld() && (tool === 'rect' || tool === 'circle' || tool === 'line')
-          ? snapShapeEnd(anchor, coord, tool)
-          : coord;
-        /*
-         * THE FLOOR IS HARD AT THE DRAG. With a minimum side declared (`setRegionMinSide`, the
-         * picture generators), the extent clamps to it in the drag's own direction, so a figure
-         * below the floor cannot be drawn at all — the preview never shrinks past it, which says
-         * the limit without a refusal to read.
-         *
-         * AND IT GROWS THE OTHER WAY AT A MARGIN. Growing in the drag's own direction alone runs a
-         * figure started near an edge off the map, where the cells are dropped and the region comes
-         * back SHORT of the very floor that pushed it there — a drag that cannot reach the minimum
-         * however far it is pulled. There is only one direction left at an edge, so the whole figure
-         * slides back onto the map instead, keeping the size the floor asked for.
-         */
-        const floor = regionMinSide();
-        if (floor !== null && (tool === 'rect' || tool === 'circle')) {
-          const least = tool === 'rect' ? floor - 1 : Math.ceil((floor - 1) / 2);
-          const grow = (from: number, to: number): number => {
-            const d = to - from;
-            if (Math.abs(d) >= least) return to;
-            return from + (d < 0 ? -least : least);
-          };
-          const grown = { x: grow(anchor.x, end.x), y: grow(anchor.y, end.y) };
-          const limit = gs ? { w: gs.template.width, h: gs.template.height } : null;
-          if (!limit) {
-            end = grown;
-          } else if (tool === 'rect') {
-            const slid = slideOnMap(anchor, grown, limit);
-            anchor = slid.anchor;
-            end = slid.end;
-          } else {
-            // A circle is drawn from its CENTRE, so what moves is the centre: far enough in that a
-            // radius fits on both sides, or as far as the map allows when it cannot.
-            const rx = Math.abs(grown.x - anchor.x), ry = Math.abs(grown.y - anchor.y);
-            anchor = { x: clampCentre(anchor.x, rx, limit.w), y: clampCentre(anchor.y, ry, limit.h) };
-            end = { x: anchor.x + rx, y: anchor.y + ry };
-          }
-        }
-        switch (tool) {
-          case 'rect':
-            shapeCells = rectCells(anchor, end);
-            break;
-          case 'circle': {
-            const rx = Math.abs(end.x - anchor.x);
-            const ry = Math.abs(end.y - anchor.y);
-            shapeCells = circleCells(anchor, rx, ry);
-            break;
-          }
-          case 'line':
-            shapeCells = lineCells(anchor, end, size);
-            break;
-        }
-        if (gs) shapeCells = shapeCells.filter(c => buildable(c.x, c.y));
-        regionShapeCellsRef.current = shapeCells;
-        host.buildableRegion.show([...brushCoordsRef.current, ...shapeCells]);
+        if (tool === 'curve') regionAnchorRef.current = coord;
+        regionShapeCellsRef.current = cells;
+        showRegion([...brushCoordsRef.current, ...cells]);
       }
     };
 
     const done = () => {
+      if (!strokeActiveRef.current) return;
       const store = useEditorStore.getState();
       const tool = store.regionTool;
 
@@ -355,7 +297,24 @@ export function useRegionBrush(selectingRegion: boolean) {
       }
     };
 
-    return setRegionBrushHandler({ paint, done, clear: clearRegion });
+    const unregister = setRegionBrushHandler({ paint, preview, done, cancel, clear: clearRegion });
+    const resample = () => {
+      const s = useEditorStore.getState();
+      s.eventBus.emit('tool-synced', { tool: s.activeTool });
+    };
+    const unsubscribe = useEditorStore.subscribe((next, previous) => {
+      if (next.regionTool !== previous.regionTool) { cancel(); resample(); }
+      else if (next.regionDimensions !== previous.regionDimensions) {
+        showRegion([...brushCoordsRef.current, ...regionShapeCellsRef.current]);
+      }
+    });
+    resample();
+    return () => {
+      unregister();
+      unsubscribe();
+      getActiveView()?.overlay.clearGhost();
+      if (!useEditorStore.getState().selectingRegion) showRegion(useEditorStore.getState().region);
+    };
   }, [selectingRegion, region, setRegion, beginRegionStroke, resetInFlightGesture, clearRegion]);
 
   /**
@@ -370,7 +329,7 @@ export function useRegionBrush(selectingRegion: boolean) {
     const prev = stack.pop()!;
     regionRedoStackRef.current.push([...region]);
     setRegion(prev);
-    host.buildableRegion.show(prev); // the overlay only updates imperatively, never from React state
+    showRegion(prev); // the overlay only updates imperatively, never from React state
     resetInFlightGesture();
     return true;
   }, [region, setRegion, resetInFlightGesture]);
@@ -382,7 +341,7 @@ export function useRegionBrush(selectingRegion: boolean) {
     const next = stack.pop()!;
     regionUndoStackRef.current.push([...region]);
     setRegion(next);
-    host.buildableRegion.show(next);
+    showRegion(next);
     resetInFlightGesture();
     return true;
   }, [region, setRegion, resetInFlightGesture]);

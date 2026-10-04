@@ -18,7 +18,7 @@
  * and accepts at P.
  *
  * Terrain: ground (elev 0) west of x = 12, a mountain wall (elev 1) from x = 12 east. Every ramp
- * on it faces west — rotation 270, `position.x = 8`, cliff cell x = 12.
+ * on it faces west — rotation 270, `position.x = 10`, cliff cell x = 12.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, cleanup } from '@testing-library/react';
@@ -33,14 +33,14 @@ import { useEditorStore } from '../../state/store';
 import { CommandExecutor } from '../../core/commands/command-executor';
 import { createDefaultRegistry } from '../../rules/index';
 import { ToolManager } from '../../tools/runtime/tool-manager';
-import { makeStubRenderer } from '../tools/_tool-manager';
+import { makeStubView } from '../tools/_tool-manager';
 import { makeState, setTerrain } from '../rules/_helpers';
 import { setStoreState } from '../_store';
 import { roadLookup } from '../../state/object-index';
 
 const S = 24;
 const WALL_X = 12;      // the ramp map's mountain, from here east
-const RAMP: PlacedObject = { id: 'r', catalogId: 'ramp-teak-stair', position: { x: 8, y: 10 }, rotation: 270, elevation: 1 };
+const RAMP: PlacedObject = { id: 'r', catalogId: 'ramp-teak-stair', position: { x: 10, y: 10 }, rotation: 270, elevation: 1 };
 const BRIDGE: PlacedObject = {
   id: 'r', catalogId: 'bridge-plank', position: { x: 11, y: 10 }, rotation: 0, spanLength: 5, elevation: 0,
 };
@@ -92,7 +92,7 @@ function arm(obj: PlacedObject, terrain: (g: GridState) => void): ReturnType<typ
   gs.objects.set(obj.id, { ...obj });
   bumpObjectsVersion(gs, { added: [obj] });
   const executor = new CommandExecutor(gs, useEditorStore.getState().eventBus, createDefaultRegistry(), roadLookup(gs));
-  const tm = new ToolManager(makeStubRenderer(), executor, gs);
+  const tm = new ToolManager(makeStubView(), executor, gs);
   const { view, overlay } = makeView();
   setActiveView(view);
   registerToolManager(tm);
@@ -114,7 +114,7 @@ const WALL_Y = WALL_X; // the turned map keeps the wall at the same line, on the
 const wallSouth = (g: GridState): void => {
   for (let y = WALL_Y; y < S; y++) for (let x = 0; x < S; x++) setTerrain(g, x, y, TerrainType.Mountain, 1);
 };
-const RAMP_N: PlacedObject = { id: 'r', catalogId: 'ramp-teak-stair', position: { x: 10, y: 8 }, rotation: 180, elevation: 1 };
+const RAMP_N: PlacedObject = { id: 'r', catalogId: 'ramp-teak-stair', position: { x: 10, y: 10 }, rotation: 180, elevation: 1 };
 /** A ground map cut by a 4-wide water channel — the gap a bridge spans. Held off the map border
  *  on both ends so the water is a contained body and no post-stroke rule reverts the drop. */
 const channel = (g: GridState): void => {
@@ -160,13 +160,13 @@ describe('dragging a snapping item', () => {
   it('lands the ramp on the cliff the POINTER names, not one a span further on', () => {
     armRamp();
     // Pointer on the wall at row 14 — the cliff the user is aiming the ramp at. The ramp's own
-    // anchor is 4 cells west of the wall, so a rigid grab-offset drag reads (10, 13.5) here: flat
+    // anchor is 2 cells west of the wall, so a rigid grab-offset drag reads (10, 13.5) here: flat
     // ground, no cliff, refused.
     pressAndMoveTo(GRAB, { x: 120, y: 140 });
     release({ x: 120, y: 140 });
 
     const moved = gs.objects.get(RAMP.id)!;
-    expect(moved.position).toEqual({ x: 8, y: 14 });
+    expect(moved.position).toEqual({ x: 10, y: 14 });
     expect(moved.rotation).toBe(270);
     expect(moved.elevation).toBe(1);
   });
@@ -194,7 +194,7 @@ describe('dragging a snapping item', () => {
     // It reaches a whole cell onto the plateau, the same depth the east side accepts.
     expect(seen.filter((s) => s.green).map((s) => s.px)).toEqual([110, 115, 120, 125]);
     // and every accepted drop is the same placement, whichever cell of the range named it.
-    expect(new Set(seen.filter((s) => s.green).map((s) => s.ghostX))).toEqual(new Set([8]));
+    expect(new Set(seen.filter((s) => s.green).map((s) => s.ghostX))).toEqual(new Set([10]));
   });
 
   it('lands a north-facing ramp the same way — the other axis that subtracts the span', () => {
@@ -207,7 +207,7 @@ describe('dragging a snapping item', () => {
     release({ x: 140, y: 120 });
 
     const moved = gs.objects.get(RAMP_N.id)!;
-    expect(moved.position).toEqual({ x: 14, y: 8 });
+    expect(moved.position).toEqual({ x: 14, y: 10 });
     expect(moved.rotation).toBe(180);
     expect(moved.elevation).toBe(1);
   });

@@ -30,3 +30,19 @@ it('cancels a stalled worker without allowing its late reply to commit', async (
   expect(terminate).toHaveBeenCalledOnce();
   expect(vi.getTimerCount()).toBe(0);
 });
+it('names a broken worker and a stalled one in its errors', async () => {
+  vi.useFakeTimers();
+  const terminate = vi.fn();
+  let fail = true;
+  vi.stubGlobal('Worker', class {
+    onerror?: () => void;
+    terminate = terminate;
+    postMessage() { if (fail) queueMicrotask(() => this.onerror?.()); }
+  });
+  await expect(encodeAutosaveInWorker('{}', new AbortController().signal)).rejects.toThrow('Autosave worker failed');
+  fail = false;
+  const stalled = expect(encodeAutosaveInWorker('{}', new AbortController().signal)).rejects.toThrow('Autosave compression timed out');
+  await vi.advanceTimersByTimeAsync(15_000);
+  await stalled;
+  expect(terminate).toHaveBeenCalledTimes(2);
+});

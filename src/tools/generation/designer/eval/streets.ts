@@ -8,11 +8,12 @@
  * a 2-wide street each have two paved neighbours, so a stub of street stopping in open grass is
  * invisible to it.
  */
-import { ItemCategory, type GridState } from '../../../../core/model/types';
-import { categoryOf } from '../../../../state/catalog';
+import { type GridState } from '../../../../core/model/types';
+import { getCatalogItem } from '../../../../state/catalog';
 import { objectRect } from '../../../../state/object-geometry';
 import { eachTerminus } from '../streets/street-ends';
 import { readGrid, type EvalGrid } from './grid';
+import { isBridge, isRamp } from '../../../../core/model/traits';
 
 /** Map-level summary: "Bridges / ramps | 5 / 51" on the terraced reference, 9 / 0 on the garden town.
  *  A map may use no ramp at all; using more than the reference's own count is overuse. */
@@ -52,7 +53,7 @@ export interface RampDiscipline {
 export function rampDiscipline(state: GridState, g = readGrid(state)): RampDiscipline {
   let ramps = 0, onPavement = 0, overlapCells = 0;
   for (const o of state.objects.values()) {
-    if (categoryOf(o) !== ItemCategory.Ramp) continue;
+    if (!isRamp(getCatalogItem(o.catalogId))) continue;
     ramps++;
     const r = objectRect(o);
     let hits = 0;
@@ -325,7 +326,7 @@ export function bridgeAlignment(state: GridState, g = readGrid(state)): BridgeAl
   const { W, H } = g;
   const out: BridgeAlignment = { bridges: 0, aligned: 0, crossways: 0, where: [], score: 1 };
   for (const o of state.objects.values()) {
-    if (categoryOf(o) !== ItemCategory.Bridge) continue;
+    if (!isBridge(getCatalogItem(o.catalogId))) continue;
     out.bridges++;
     const r = objectRect(o);
     // The deck's own axis: a bridge is long across the gap it spans.

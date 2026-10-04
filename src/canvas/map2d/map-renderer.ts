@@ -4,15 +4,17 @@ import { APP_FONT_FAMILY } from '../../assets/fonts/family';
 import '@pixi/unsafe-eval'; // self-installs on import (7.1+) — keeps strict-CSP shader builds
 import type { ActiveView } from '../view-projection';
 import type { CellFrame } from '../thumbnail';
+import { CHUNK_GRID_STYLE, chunkGridRects, chunkStrokeCells } from '../reference-grid';
 
 // Snap sprite rendering to whole device pixels: at fractional zooms every icon
 // otherwise samples BETWEEN pixels, a uniform slight blur no texture LOD can fix
 // (the editor is a static scene, so per-frame snapping has no motion cost).
 PIXI.settings.ROUND_PIXELS = true;
 import type { EventBus } from '../../core/commands/event-bus';
-import { CommandType, ItemCategory } from '../../core/model/types';
-import type { EditorEvents, GridState, MacroCoord } from '../../core/model/types';
-import { CHUNK_SIZE, TILE_SIZE, WATER_COLOR } from '../../core/model/constants';
+import { CommandType } from '../../core/model/types';
+import type { EditorEvents, GridState, MacroCoord, MapTemplate } from '../../core/model/types';
+import { TILE_SIZE, WATER_COLOR } from '../../core/model/constants';
+import { mapCaptureFrame, mapChunkAxes, mapFrame } from '../../core/model/map-chunks';
 import { getCell } from '../../core/model/grid-model';
 import { pageZoom } from '../../core/runtime/page-zoom';
 import { hexStringToNumber } from '../../core/model/colors';
@@ -20,9 +22,10 @@ import { maxRenderScale } from '../../core/runtime/device-quality';
 import { getCatalogItem } from '../../state/catalog';
 import { iconUrl } from '../../assets/icon-urls';
 import { roadTileReady } from '../road-tile-texture';
+import { roadMaterialSettled } from '../road-material';
 import { decodeIcons } from './draw/icon-color';
 import { BaseLayer } from './layers/base-layer';
-import { resolveHistoryFlash } from './layers/error-flash';
+import { resolveHistoryFlash } from '../error-flash';
 import { cullRect } from './layers/chunk-grid';
 import { TerrainLayer } from './layers/terrain-layer';
 import { ObjectLayer, objectSpriteUrl } from './layers/object-layer';
@@ -33,6 +36,7 @@ import { useEditorStore } from '../../state/store';
 import { OverlayLayer } from './layers/overlay-layer';
 import { Viewport } from './viewport';
 import { addRenderRequester } from './render-scheduler';
+import { isCoatingItem } from '../../core/model/traits';
 
 
 export class MapRenderer {
@@ -48,6 +52,9 @@ export class MapRenderer {
   private readonly eventBus: EventBus<EditorEvents>;
   private currentState: GridState | null = null;
   private chunkGridContainer = new PIXI.Container();
+  private chunkGridGraphics = new PIXI.Graphics();
+  private chunkGridScale = 0;
+  private cellGridScale = 0;
   private labelsContainer = new PIXI.Container();
 
   // The ticker sleeps between requested frames; a timed heartbeat retains missed-invalidation recovery.
@@ -126,12 +133,19 @@ export class MapRenderer {
     if (!this.presenting && this.paintWaiters.length === 0) { this.restTicker(); return; }
     if (this.renderWindow > 0) {
       this.renderWindow--;
-      if (this.currentState) this.terrainLayer.flushDirty(this.currentState);
+      this.flushDirtyChunks();
       this.app.render();
       this.notifyPainted();
     }
     if (this.renderWindow <= 0) this.restTicker();
   };
+
+  /** Repaint the chunks the edits since the last frame dirtied, zone colours and terrain alike. */
+  private flushDirtyChunks(): void {
+    if (!this.currentState) return;
+    this.baseLayer.flushDirty(this.currentState);
+    this.terrainLayer.flushDirty(this.currentState);
+  }
 
   /** Run `cb` after the next frame this renderer DRAWS. Render-on-demand means a frame boundary
    *  proves nothing on its own, so the request also opens the render window: whoever is waiting
@@ -207,11 +221,13 @@ export class MapRenderer {
 
     this.worldContainer.addChild(this.baseLayer.container);
     this.worldContainer.addChild(this.terrainLayer.container);
-    this.worldContainer.addChild(this.chunkGridContainer);
+    this.overlayLayer.referenceGrid.addChild(this.chunkGridContainer);
+    this.chunkGridContainer.addChild(this.chunkGridGraphics);
     this.worldContainer.addChild(this.objectLayer.container); // includes the plaza (a self-described locked object)
+    this.worldContainer.addChild(this.overlayLayer.referenceGrid);
+    this.worldContainer.addChild(this.labelsContainer);
     this.worldContainer.addChild(this.annotationLayer.container); // plan notes: over the map, under the tool feedback
     this.worldContainer.addChild(this.overlayLayer.container);
-    this.worldContainer.addChild(this.labelsContainer);
 
     this.app.stage.addChild(this.worldContainer);
 
@@ -231,6 +247,7 @@ export class MapRenderer {
     // renderer's handler acting on destroyed Pixi objects throws mid-dispatch.
     this.subscribe('cells-changed', (data) => {
       if (!this.currentState) return;
+      this.baseLayer.redrawCells(data.cells, this.currentState);
       this.terrainLayer.redrawCells(data.cells, this.currentState);
       this.refreshNumbers(data.cells);
       this.requestRender();
@@ -283,13 +300,11 @@ export class MapRenderer {
     this.showGrid = showGrid;
     this.showChunks = showChunks ?? false;
     this.requestRender();
-    const { width, height } = state.template;
-
     this.baseLayer.drawFull(state);
     this.terrainLayer.drawFull(state);
     this.objectLayer.sync(state.objects, state);   // includes the plaza (self-described locked object)
 
-    this.viewport.fitToMap(width, height);
+    this.viewport.fitToMap(state.template.width, state.template.height);
     this.applyViewportTransform();        // first paint: the map (base + terrain + objects incl. plaza)
 
     // Defer the overlays past the first paint, spread across frames so no single
@@ -300,8 +315,8 @@ export class MapRenderer {
     const stale = (): boolean => this.destroyed || this.currentState !== state;
     requestAnimationFrame(() => {
       if (stale()) return;
-      this.drawChunkGrid(width, height, showChunks ?? false);
-      this.overlayLayer.drawGridLines(width, height, showGrid);
+      this.drawChunkGrid(state.template, showChunks ?? false);
+      this.drawCellGrid(state.template, showGrid);
       this.requestRender();
       // A figure-sized view opts out: the labels sit outside the map (never in a crop's frame)
       // and their 400px text rasters are the deferred pass's whole cost.
@@ -314,28 +329,23 @@ export class MapRenderer {
     });
   }
 
-  private drawChunkGrid(mapWidth: number, mapHeight: number, visible: boolean): void {
-    this.chunkGridContainer.removeChildren();
+  private drawChunkGrid(template: MapTemplate, visible: boolean, scale = this.viewport.getZoom()): void {
+    const g = this.chunkGridGraphics;
+    g.clear();
+    this.chunkGridScale = scale;
     if (!visible) return;
 
-    const g = new PIXI.Graphics();
-    g.lineStyle(2, 0x000000, 0.35);
-
-    const totalW = mapWidth * TILE_SIZE;
-    const totalH = mapHeight * TILE_SIZE;
-
-    for (let cx = CHUNK_SIZE; cx < mapWidth; cx += CHUNK_SIZE) {
-      const px = cx * TILE_SIZE;
-      g.moveTo(px, 0);
-      g.lineTo(px, totalH);
+    const strokeCells = chunkStrokeCells(scale * TILE_SIZE);
+    g.beginFill(0x000000, CHUNK_GRID_STYLE.map2d.opacity);
+    for (const rect of chunkGridRects(template, strokeCells)) {
+      g.drawRect(rect.x * TILE_SIZE, rect.y * TILE_SIZE, rect.width * TILE_SIZE, rect.height * TILE_SIZE);
     }
-    for (let cy = CHUNK_SIZE; cy < mapHeight; cy += CHUNK_SIZE) {
-      const py = cy * TILE_SIZE;
-      g.moveTo(0, py);
-      g.lineTo(totalW, py);
-    }
+    g.endFill();
+  }
 
-    this.chunkGridContainer.addChild(g);
+  private drawCellGrid(template: MapTemplate, visible: boolean, scale = this.viewport.getZoom(), chunks = this.showChunks): void {
+    this.cellGridScale = scale;
+    this.overlayLayer.drawGridLines(template, visible, scale, chunks);
   }
 
   /** Reconcile the object layer with state: drop any sprite state no longer has, add any it is
@@ -353,9 +363,8 @@ export class MapRenderer {
     if (!this.currentState) return;
     this.showGrid = showGrid;
     this.showChunks = showChunks;
-    const { width, height } = this.currentState.template;
-    this.overlayLayer.drawGridLines(width, height, showGrid);
-    this.drawChunkGrid(width, height, showChunks);
+    this.drawCellGrid(this.currentState.template, showGrid);
+    this.drawChunkGrid(this.currentState.template, showChunks);
     this.requestRender();
   }
 
@@ -437,6 +446,12 @@ export class MapRenderer {
     const offset = this.viewport.getOffset();
     this.worldContainer.scale.set(zoom);
     this.worldContainer.position.set(-offset.x, -offset.y);
+    if (this.currentState && this.showChunks && zoom !== this.chunkGridScale) {
+      this.drawChunkGrid(this.currentState.template, true, zoom);
+    }
+    if (this.currentState && this.showGrid && zoom !== this.cellGridScale) {
+      this.drawCellGrid(this.currentState.template, true, zoom);
+    }
     const rect = this.cullLayers(zoom, offset);
     // Re-evaluate the layer-number overlay for the new zoom/camera: it hides (and
     // frees its rasters) when zoomed out, builds newly visible chunks when the
@@ -449,6 +464,7 @@ export class MapRenderer {
     this.objectLayer.updateLod(zoom, this.app.renderer.resolution);
     // Object elevation labels honour the same zoom LOD as the terrain numbers (hide when zoomed out).
     this.objectLayer.setNumberZoom(zoom);
+    this.overlayLayer.setViewZoom(zoom);
     // Let screen-anchored React overlays (selection handles) re-track the view.
     this.eventBus.emit('viewport-changed', { zoom });
     this.requestRender();
@@ -511,7 +527,7 @@ export class MapRenderer {
     // Captures render synchronously, outside the render tick — repaint any
     // pending terrain edits first or they'd be missing from the export. Road
     // surfaces rebuild on the same schedule, so flush those too.
-    if (this.currentState) this.terrainLayer.flushDirty(this.currentState);
+    this.flushDirtyChunks();
     this.objectLayer.flushRoadRegions();
     const everything = { left: -Infinity, top: -Infinity, right: Infinity, bottom: Infinity };
     this.terrainLayer.cull(everything);
@@ -524,7 +540,7 @@ export class MapRenderer {
     try {
       // A hidden canvas defers its chunk repaints to the next presented frame, so a capture baked
       // from the live containers settles them itself — same contract as `flushNumbers` below.
-      if (this.currentState) this.terrainLayer.flushDirty(this.currentState);
+      this.flushDirtyChunks();
       this.flushNumbers();
       const world = this.worldContainer;
       const b = world.getLocalBounds();
@@ -542,22 +558,14 @@ export class MapRenderer {
   }
 
   /** Saved maps include hidden layers; their detached capture must include them too. */
-  captureCompleteMapImage(maxPx: number, annotations = true): string | null {
-    try { return this.captureCompleteMapCanvas(maxPx, annotations)?.toDataURL('image/png') ?? null; } catch { return null; }
-  }
-
   captureCompleteMapCanvas(maxPx: number, annotations = true): HTMLCanvasElement | null {
     if (!this.currentState) return null;
     return this.terrainLayer.withAllLayersVisible(this.currentState, () =>
       this.objectLayer.withAllLayersVisible(() => this.captureMapCanvas(maxPx, false, undefined, annotations)));
   }
 
-  /** Export-focused capture: a TIGHTLY-FRAMED PNG of just the map CONTENT (zones /
-   *  terrain / objects) with the editor chrome hidden (no grid, chunk bounds,
-   *  coordinates or chunk labels). Framed to the EXACT template region so the map
-   *  fills the image — unlike captureFullMap, whose world-local bounds can include
-   *  chrome that extends past the map and leaves it tiny in a corner. Long side
-   *  capped at maxPx. Used by the export preview/compose pipeline. */
+  /** Export capture includes the map's sea frame and omits editor chrome. Optional grid lines
+   *  are baked in; the export composition supplies its own labels outside the image. */
   captureMapImage(maxPx = 1024, includeGrid = false, rect?: { x1: number; y1: number; x2: number; y2: number }, annotations?: boolean): string | null {
     try { return this.captureMapCanvas(maxPx, includeGrid, rect, annotations)?.toDataURL('image/png') ?? null; } catch { return null; }
   }
@@ -572,14 +580,11 @@ export class MapRenderer {
     try {
       // The live containers again: a hidden canvas holds its chunk repaints, and this bake must
       // show the map as it IS.
-      this.terrainLayer.flushDirty(this.currentState);
+      this.flushDirtyChunks();
       this.flushNumbers();
       const { width, height } = this.currentState.template;
       const half = TILE_SIZE / 2;
-      // A `rect` narrows the frame to those macro cells (inclusive, clamped to the template), in
-      // the same half-tile-padded framing the whole-template capture uses, so a crop and the full
-      // picture agree about where a cell's terrain bleed ends. The assistant's region'd view_map
-      // is the caller.
+      // Region captures use inclusive saved-cell coordinates and retain terrain's half-cell bleed.
       let region: PIXI.Rectangle;
       if (rect) {
         const x1 = Math.max(0, Math.min(rect.x1, rect.x2));
@@ -589,7 +594,8 @@ export class MapRenderer {
         if (x2 < x1 || y2 < y1) return null;
         region = new PIXI.Rectangle(x1 * TILE_SIZE - half, y1 * TILE_SIZE - half, (x2 - x1 + 1) * TILE_SIZE + half, (y2 - y1 + 1) * TILE_SIZE + half);
       } else {
-        region = new PIXI.Rectangle(-half, -half, width * TILE_SIZE + half, height * TILE_SIZE + half);
+        const frame = mapCaptureFrame(this.currentState.template);
+        region = new PIXI.Rectangle(frame.x * TILE_SIZE, frame.y * TILE_SIZE, frame.width * TILE_SIZE, frame.height * TILE_SIZE);
       }
       if (region.width <= 0 || region.height <= 0) return null;
       // Clamp the request to the GPU limits so a native-resolution ("Original") request never
@@ -604,18 +610,17 @@ export class MapRenderer {
     }
   }
 
-  /** One tile of the map at `resolution`, `region` given in the frame's own pixels (origin at the
-   *  frame's top-left, the half-tile bleed included), for an export painted in parts. */
+  /** Export tiles use pixels relative to the capture frame, including its sea margin or terrain bleed. */
   captureRegionCanvas(region: { x: number; y: number; w: number; h: number }, resolution: number, includeGrid = false, annotations?: boolean): HTMLCanvasElement | null {
     if (!this.currentState) return null;
     const recull = this.uncullForCapture();
     const prevAnnotations = this.annotationLayer.container.visible;
     if (annotations !== undefined) this.annotationLayer.container.visible = annotations && (this.currentState.annotations?.items.length ?? 0) > 0;
     try {
-      this.terrainLayer.flushDirty(this.currentState);
+      this.flushDirtyChunks();
       this.flushNumbers();
-      const half = TILE_SIZE / 2;
-      const world = new PIXI.Rectangle(region.x - half, region.y - half, region.w, region.h);
+      const frame = mapCaptureFrame(this.currentState.template);
+      const world = new PIXI.Rectangle(region.x + frame.x * TILE_SIZE, region.y + frame.y * TILE_SIZE, region.w, region.h);
       if (world.width <= 0 || world.height <= 0) return null;
       return this.bake(world, resolution, includeGrid);
     } catch {
@@ -641,18 +646,17 @@ export class MapRenderer {
    *  reset, its chrome hidden, and the grid forced on when the export bakes it. */
   private bake(region: PIXI.Rectangle, resolution: number, includeGrid: boolean): HTMLCanvasElement | null {
     if (!this.currentState) return null;
-    const { width, height } = this.currentState.template;
     {
       // With grid ON, bake the SAME grid the editor draws (sub + cell + chunk lines) into the
       // capture so the export reuses the real 2D rendering. Chunk LABELS stay hidden — the export
       // composition draws its own legend outside the map. Restored to the editor state afterwards.
       if (includeGrid) {
-        this.overlayLayer.drawGridLines(width, height, true);
-        this.drawChunkGrid(width, height, true);
+        this.drawCellGrid(this.currentState.template, true, resolution, true);
+        this.drawChunkGrid(this.currentState.template, true, resolution);
       }
       const chrome = includeGrid
-        ? [this.labelsContainer]
-        : [this.chunkGridContainer, this.overlayLayer.container, this.labelsContainer];
+        ? [this.overlayLayer.container, this.labelsContainer]
+        : [this.overlayLayer.referenceGrid, this.overlayLayer.container, this.labelsContainer];
       const prevVisible = chrome.map((c) => c.visible);
       // generateTexture bakes the container's CURRENT transform, so the editor's pan/zoom
       // would render the map small and off-corner inside the region. Reset to identity for
@@ -660,7 +664,6 @@ export class MapRenderer {
       const sx = this.worldContainer.scale.x, sy = this.worldContainer.scale.y;
       const px = this.worldContainer.position.x, py = this.worldContainer.position.y;
       chrome.forEach((c) => { c.visible = false; });
-      const restoreFeedback = includeGrid ? this.overlayLayer.hideFeedback() : null;
       this.worldContainer.scale.set(1, 1);
       this.worldContainer.position.set(0, 0);
       this.worldContainer.updateTransform(); // ensure the identity matrix is current before generateTexture bakes it
@@ -674,11 +677,10 @@ export class MapRenderer {
         this.worldContainer.scale.set(sx, sy);
         this.worldContainer.position.set(px, py);
         chrome.forEach((c, i) => { c.visible = prevVisible[i]!; });
-        restoreFeedback?.();
         // Restore the editor's actual grid visibility (the capture may have forced it on).
         if (includeGrid) {
-          this.overlayLayer.drawGridLines(width, height, this.showGrid);
-          this.drawChunkGrid(width, height, this.showChunks);
+          this.drawCellGrid(this.currentState.template, this.showGrid);
+          this.drawChunkGrid(this.currentState.template, this.showChunks);
         }
         this.requestRender();
       }
@@ -707,7 +709,7 @@ export class MapRenderer {
     this.annotationLayer.container.visible = true;
     try {
       this.flushNumbers();
-      return this.bakeLayersCanvas(maxPx, [this.baseLayer.container, this.terrainLayer.container, this.objectLayer.container, this.chunkGridContainer, this.overlayLayer.container, this.labelsContainer]);
+      return this.bakeLayersCanvas(maxPx, [this.baseLayer.container, this.terrainLayer.container, this.objectLayer.container, this.overlayLayer.referenceGrid, this.overlayLayer.container, this.labelsContainer]);
     } finally {
       this.annotationLayer.container.visible = prevAnnotations;
     }
@@ -720,14 +722,12 @@ export class MapRenderer {
    *  its own legend outside the map. */
   captureGridImage(maxPx: number): string | null {
     if (!this.currentState) return null;
-    const { width, height } = this.currentState.template;
-    this.overlayLayer.drawGridLines(width, height, true);
-    this.drawChunkGrid(width, height, true);
+    this.drawCellGrid(this.currentState.template, true);
     try {
-      return this.bakeLayersImage(maxPx, [this.baseLayer.container, this.terrainLayer.container, this.objectLayer.container, this.annotationLayer.container, this.labelsContainer]);
+      return this.bakeLayersImage(maxPx, [this.baseLayer.container, this.terrainLayer.container, this.objectLayer.container, this.annotationLayer.container, this.overlayLayer.container, this.labelsContainer]);
     } finally {
-      this.overlayLayer.drawGridLines(width, height, this.showGrid);
-      this.drawChunkGrid(width, height, this.showChunks);
+      this.drawCellGrid(this.currentState.template, this.showGrid);
+      this.drawChunkGrid(this.currentState.template, this.showChunks);
     }
   }
 
@@ -742,9 +742,8 @@ export class MapRenderer {
     if (!this.currentState) return null;
     const recull = this.uncullForCapture();
     try {
-      const { width, height } = this.currentState.template;
-      const half = TILE_SIZE / 2;
-      const region = new PIXI.Rectangle(-half, -half, width * TILE_SIZE + half, height * TILE_SIZE + half);
+      const frame = mapCaptureFrame(this.currentState.template);
+      const region = new PIXI.Rectangle(frame.x * TILE_SIZE, frame.y * TILE_SIZE, frame.width * TILE_SIZE, frame.height * TILE_SIZE);
       if (region.width <= 0 || region.height <= 0) return null;
       const prevVisible = hidden.map((c) => c.visible);
       const sx = this.worldContainer.scale.x, sy = this.worldContainer.scale.y;
@@ -762,6 +761,10 @@ export class MapRenderer {
         const hardMax = Math.min(...[maxTex, maxRb].filter((v) => v && v > 0));
         const cap = Number.isFinite(hardMax) ? Math.min(maxPx, hardMax) : maxPx;
         const resolution = Math.min(1, cap / Math.max(region.width, region.height));
+        if (!hidden.includes(this.overlayLayer.referenceGrid)) {
+          this.drawCellGrid(this.currentState.template, true, resolution, true);
+          this.drawChunkGrid(this.currentState.template, true, resolution);
+        }
         const rt = this.app.renderer.generateTexture(this.worldContainer, { resolution, region, multisample: PIXI.MSAA_QUALITY.NONE });
         try { captured = this.app.renderer.extract.canvas(rt) as HTMLCanvasElement; }
         finally { rt.destroy(true); }
@@ -779,41 +782,27 @@ export class MapRenderer {
     }
   }
 
-  /**
-   * A PNG-ready canvas of SOME OTHER map, drawn by this renderer.
-   *
-   * The generate shelf shows what a recipe builds before anything is built, and that picture has to
-   * be the map the click produces — a second drawing of one `GridState` grows its own framing and
-   * its own idea of what an object looks like, and the card stops resembling the planet it promises.
-   *
-   * So the candidate is drawn by the real layers, off the stage. Three fresh layers over `state`
-   * build into a detached container, this renderer's GPU context rasterizes it and the container is
-   * thrown away — the live scene is never touched, so the map under the shelf keeps its camera, its
-   * culling and its sprites. Framed to the template exactly, as `captureMapImage` frames an export:
-   * the whole map, no chrome, which is the view the editor itself opens on — or to `frame`'s cells,
-   * which is how a run bounded by a painted region is photographed at the size it was made at
-   * (`canvas/thumbnail.ts:focusFrame` decides the rectangle).
-   *
-   * Asynchronous for one reason: the drawing itself is a single synchronous pass with no next
-   * frame, so every icon on the map has to have decoded before it starts or those sprites are holes.
-   * A path material's art is the same fact one step further along: its icon is cropped into a
-   * repeating tile (`roadTileCanvas`), and a road whose tile has not been cropped yet photographs
-   * as flat colour — a surface the map itself never shows.
-   */
+  /** Detached layers preserve the live camera, culling and sprites while capturing another state.
+   *  Thumbnails frame the saved island or an explicit crop, excluding the surrounding grid sea.
+   *  Icons, road tiles and the road-band clipper must be ready before this single-pass capture. */
   async captureState(state: GridState, maxPx = 640, frame?: CellFrame, opts?: { annotations?: boolean }): Promise<HTMLCanvasElement | null> {
     const icons = new Set<string>();
     const tiles = new Set<string>();
+    let banded = false;
     for (const obj of state.objects.values()) {
       const item = getCatalogItem(obj.catalogId);
+      if (item?.roadMaterial) banded = true;
       const url = objectSpriteUrl(obj, item);
       if (url) icons.add(url);
       // A road carries a colour, so it has no sprite url — its art reaches the map as the fill of
       // its surface instead, one tile per material.
-      const tile = item?.category === ItemCategory.Road ? item.icon : undefined;
+      const tile = isCoatingItem(item) ? item!.icon : undefined;
       const tileUrl = tile ? iconUrl(tile) : undefined;
       if (tileUrl) tiles.add(tileUrl);
     }
-    await Promise.all([decodeIcons(icons), ...[...tiles].map((url) => roadTileReady(url))]);
+    await Promise.all([
+      decodeIcons(icons), ...[...tiles].map((url) => roadTileReady(url)), ...(banded ? [roadMaterialSettled()] : []),
+    ]);
     if (this.destroyed) return null;
 
     const base = new BaseLayer();
@@ -848,17 +837,12 @@ export class MapRenderer {
         }
       }
 
-      const { width, height } = state.template;
       const half = TILE_SIZE / 2;
-      // The frame's own cells, or the template's. A mountain draws at `x * TILE_SIZE - HALF_TILE`,
-      // so a rectangle of cells starts half a tile before its first one on both axes.
-      const box = frame ?? { x: 0, y: 0, width, height };
-      // The whole map keeps a trailing half tile; a frame ends where its last cell does, or the
-      // picture is a half tile off the region it promises.
-      const tail = frame ? 0 : half;
+      // Thumbnail framing excludes the surrounding reference-grid sea and retains terrain bleed.
+      const box = frame ?? { x: 0, y: 0, width: state.template.width + 0.5, height: state.template.height + 0.5 };
       const region = new PIXI.Rectangle(
         box.x * TILE_SIZE - half, box.y * TILE_SIZE - half,
-        box.width * TILE_SIZE + tail, box.height * TILE_SIZE + tail,
+        box.width * TILE_SIZE, box.height * TILE_SIZE,
       );
       if (region.width <= 0 || region.height <= 0) return null;
       const resolution = Math.min(1, maxPx / Math.max(region.width, region.height));
@@ -885,6 +869,7 @@ export class MapRenderer {
     this.busSubscriptions = [];
     cancelAnimationFrame(this.labelBuildRaf);
     cancelAnimationFrame(this.numbersRefreshRaf);
+    this.overlayLayer.endPlanetFlash();
     this.detachRequester();
     const canvas = this.app.view as HTMLCanvasElement;
     this.app.destroy(false, { children: true });
@@ -895,26 +880,25 @@ export class MapRenderer {
     cancelAnimationFrame(this.labelBuildRaf);
     this.labelsContainer.removeChildren();
 
-    const { width, height } = state.template;
-    const chunksX = Math.ceil(width / CHUNK_SIZE);
-    const chunksY = Math.ceil(height / CHUNK_SIZE);
+    const frame = mapFrame(state.template);
+    const { columns, rows } = mapChunkAxes(state.template);
     const fontSize = 400;
     const textStyle = { fontSize, fill: 0x000000, fontFamily: APP_FONT_FAMILY, fontWeight: 'bold' as const };
 
     // Precompute the label specs (cheap); the cost is PIXI.Text rasterization.
     interface Spec { label: string; x: number; y: number; ax: number; ay: number; }
     const specs: Spec[] = [];
-    for (let row = 0; row < chunksY; row++) {                 // row letters A,B,C… (left)
+    for (let row = 0; row < rows.length; row++) {                 // row letters A,B,C… (left)
       specs.push({
-        label: String.fromCharCode(65 + (row % 26)), x: -fontSize * 1.5,
-        y: row * CHUNK_SIZE * TILE_SIZE + (CHUNK_SIZE * TILE_SIZE) / 2 - TILE_SIZE / 2, ax: 0, ay: 0.5,
+        label: String.fromCharCode(65 + (row % 26)), x: frame.x * TILE_SIZE - fontSize * 1.5,
+        y: rows[row]!.center * TILE_SIZE, ax: 0, ay: 0.5,
       });
     }
-    for (let col = 0; col < chunksX; col++) {                 // column numbers 1,2,3… (bottom)
+    for (let col = 0; col < columns.length; col++) {                 // column numbers 1,2,3… (bottom)
       specs.push({
         label: String(col + 1),
-        x: col * CHUNK_SIZE * TILE_SIZE + (CHUNK_SIZE * TILE_SIZE) / 2 - TILE_SIZE / 2,
-        y: height * TILE_SIZE + fontSize * 0.3, ax: 0.5, ay: 0,
+        x: columns[col]!.center * TILE_SIZE,
+        y: (frame.y + frame.height) * TILE_SIZE + fontSize * 0.3, ax: 0.5, ay: 0,
       });
     }
 

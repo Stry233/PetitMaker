@@ -1,6 +1,6 @@
 /** Terminal-card variants and the content each outcome may render. Count-up assertions cover the
  * first and final frames; reduced-motion cases render the total immediately. */
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, fireEvent, waitFor } from '@testing-library/react';
 import { MotionConfig } from 'framer-motion';
 import { I18nProvider } from '../../../i18n/context';
@@ -27,6 +27,14 @@ function renderWithI18n(node: React.ReactElement) {
 /** The same tree with framer told the reader wants no motion. */
 function renderReduced(node: React.ReactElement) {
   return render(<MotionConfig reducedMotion="always">{node}</MotionConfig>, { wrapper: Wrapper });
+}
+
+function expectAvailable(button: HTMLElement) {
+  expect((button as HTMLButtonElement).disabled).toBe(false);
+  for (let el: HTMLElement | null = button; el; el = el.parentElement) {
+    expect(Number(el.style.opacity || '1')).toBe(1);
+    expect(el.style.pointerEvents).not.toBe('none');
+  }
 }
 
 beforeEach(() => {
@@ -82,6 +90,31 @@ const VILLAGE = makeJob({
 /* ── hierarchy 1: done ────────────────────────────────────── */
 
 describe('done: the built thing leads', () => {
+  it('shows actual operations under their undo checkpoints and keeps them in archived records', () => {
+    const job = makeJob({
+      ops: [
+        makeOp({ name: 'update_plan', isRead: true }),
+        makeOp({ name: 'paint_terrain', checkpointIndex: 0, input: { terrain: 'mountain', elevation: 2, x1: 3, y1: 4, x2: 5, y2: 6 }, detail: { cells: 9 } }),
+        makeOp({ name: 'place_object', checkpointIndex: 1, input: { catalogId: 'tree-ginkgo', x: 4, y: 5 }, detail: { objects: 1 } }),
+        makeOp({ name: 'suggest_reply', isRead: true }),
+      ],
+      checkpoints: [{ undoIndex: 0, label: 'job' }, { undoIndex: 1, label: 'stage', stageIndex: 1 }],
+    });
+    const ui = renderReduced(<FlipTicket job={job} onRewind={() => {}} undoDepth={2} />);
+    fireEvent.click(ui.getByTestId('flip-button'));
+    const steps = ui.getAllByTestId('ticket-step');
+    expect(steps[0]!.querySelector('[data-testid="op-target"]')?.textContent).toContain('(3,4)');
+    expect(steps[0]!.textContent).toContain('9 cells');
+    expect(steps[1]!.querySelector('[data-testid="op-target"]')?.textContent).toContain('(4,5)');
+    expect(steps[1]!.textContent).toContain('1 object');
+    expect(ui.getAllByTestId('op-row')).toHaveLength(2);
+    expect(ui.getAllByTestId('ticket-step-rewind')).toHaveLength(2);
+    ui.unmount();
+    const archive = renderReduced(<ArchiveCard job={job} />);
+    expect(archive.getAllByTestId('op-row')).toHaveLength(2);
+    expect(archive.getAllByTestId('archive-step')[0]!.textContent).toContain('9 cells');
+  });
+
   it('leads with the postcard over the counting stats, names the order, and grows no ledger', () => {
     const { getByTestId, queryByTestId } = renderWithI18n(
       <FlipTicket job={VILLAGE} postcard={<span data-testid="shot" />} onFileAway={() => {}} />,
@@ -378,26 +411,25 @@ describe('aborted: one face, the fact at the headline rung, two answers', () => 
     expect(getByTestId('stop-fact').textContent).toBe('1 edit is on your map.');
   });
 
-  /**
-   * THE VERB BECOMES THE QUESTION while File it away dims where it stands: the row never reflows
-   * around it, so the hand travelling toward an answer keeps its target — the same control it was
-   * already on.
-   */
-  it('asks in the verb\'s own words before rewinding, and hushes the leave verb', () => {
+  it('keeps filing available while rewind asks for confirmation', () => {
     const rewound: number[] = [];
+    const filed: number[] = [];
     const { getByTestId } = renderReduced(
-      <StopCard job={stopped} onRewindAll={() => rewound.push(1)} onFileAway={() => {}} />,
+      <StopCard job={stopped} onRewindAll={() => rewound.push(1)} onFileAway={seq => filed.push(seq)} />,
     );
     const leave = getByTestId('ticket-file-away');
     const before = leave.parentElement!;
     fireEvent.click(getByTestId('stop-rewind'));
 
     expect(getByTestId('stop-rewind').textContent).toBe('Rewind it all?');
-    // The leave verb is still exactly where it was, dimmed and deaf.
     expect(getByTestId('ticket-file-away').parentElement).toBe(before);
-    expect(before.style.pointerEvents).toBe('none');
-    expect(Number(before.style.opacity)).toBeLessThan(1);
+    expectAvailable(leave);
+    fireEvent.pointerDown(leave);
+    fireEvent.click(leave);
+    expect(filed).toEqual([stopped.orderSeq]);
+    expect(rewound).toEqual([]);
 
+    fireEvent.click(getByTestId('stop-rewind'));
     fireEvent.click(getByTestId('stop-rewind'));
     expect(rewound).toEqual([1]);
     expect(getByTestId('stop-rewind').textContent).toBe('Rewind to start');
@@ -424,7 +456,7 @@ describe('aborted: one face, the fact at the headline rung, two answers', () => 
 describe('done.question: the receipt compresses to a two-line settle', () => {
   const asked = makeJob({ ...VILLAGE, question: true, orderText: 'Carve the stream to the south end' });
 
-  it('keeps its flip and drops the hero, the stats and File it away', () => {
+  it('keeps its flip and filing action without the hero or stats', () => {
     const { getByTestId, queryByTestId } = renderReduced(
       <FlipTicket
         job={asked}
@@ -437,7 +469,7 @@ describe('done.question: the receipt compresses to a two-line settle', () => {
     expect(getByTestId('flip-ticket').getAttribute('data-shape')).toBe('compact');
     expect(queryByTestId('ticket-postcard')).toBeNull();
     expect(queryByTestId('ticket-stats')).toBeNull();
-    expect(queryByTestId('ticket-file-away')).toBeNull();
+    expectAvailable(getByTestId('ticket-file-away'));
     // The flip is intact: the story is still one press away.
     fireEvent.click(getByTestId('flip-button'));
     expect(getByTestId('flip-ticket').getAttribute('data-face')).toBe('back');
@@ -473,7 +505,7 @@ describe('history.open: the archive dress', () => {
     expect(getByTestId('archive-stamp').textContent).toBe('Earlier');
     expect(getAllByTestId('archive-step').length).toBe(3);
     expect(getAllByTestId('archive-step-name').map((el) => el.textContent))
-      .toEqual(['Before the job', 'Lay the boardwalk', 'Raise the houses']);
+      .toEqual(['Map changes', 'Lay the boardwalk', 'Raise the houses']);
   });
 
   /** Later jobs sit on top of a mid-job state, so a rewind INTO one would take their work with it. */
@@ -500,8 +532,7 @@ describe('history.open: the archive dress', () => {
 
     fireEvent.click(clear);
     expect(getByTestId('archive-clear').textContent).toBe('Clear it?');
-    // Back keeps its rect and stops answering while the question stands.
-    expect(getByTestId('archive-back').parentElement!.style.pointerEvents).toBe('none');
+    expectAvailable(back);
     fireEvent.click(getByTestId('archive-clear'));
     expect(cleared).toEqual([1]);
   });
@@ -626,17 +657,11 @@ describe('the whole family', () => {
     const { getByTestId, getAllByTestId } = renderReduced(<FlipTicket job={VILLAGE} />);
     fireEvent.click(getByTestId('flip-button'));
     expect(getAllByTestId('ticket-step-name').map((el) => el.textContent))
-      .toEqual(['Before the job', 'Lay the boardwalk', 'Raise the houses']);
+      .toEqual(['Map changes', 'Lay the boardwalk', 'Raise the houses']);
     expect(getByTestId('ticket-back-stamp').textContent).toBe('4 steps');
   });
 
-  /**
-   * BOTH FACES STAND IN ONE BOX and the back one paints LAST, so `backface-visibility` is what keeps
-   * the turned-away face off the front. Without it the whole receipt reads MIRRORED. It only works
-   * inside a 3D rendering context, so the dim a
-   * rolled-back record wears may not sit on the `perspective` box above the faces.
-   */
-  it('hides each face\'s own back, and dims the faces rather than the card', () => {
+  it('preserves the flip perspective and keeps rewound records readable and usable', () => {
     const plain = renderReduced(<FlipTicket job={VILLAGE} />);
     const card = plain.getByTestId('flip-ticket');
     expect(card.style.perspective).toBe('1100px');
@@ -650,10 +675,16 @@ describe('the whole family', () => {
     expect(plain.getByTestId('flip-inner').style.opacity).toBe('');
     plain.unmount();
 
-    const rolled = renderReduced(<FlipTicket job={VILLAGE} rolledBack />);
+    const filed: number[] = [];
+    const rolled = renderReduced(<FlipTicket job={VILLAGE} rolledBack onFileAway={seq => filed.push(seq)} />);
     expect(rolled.getByTestId('flip-ticket').style.opacity).toBe('');
-    expect(Number(rolled.getByTestId('flip-face-front').style.opacity)).toBeLessThan(1);
-    expect(Number(rolled.getByTestId('flip-face-back').style.opacity)).toBeLessThan(1);
+    expectAvailable(rolled.getByTestId('flip-button'));
+    fireEvent.click(rolled.getByTestId('flip-button'));
+    expectAvailable(rolled.getByTestId('flip-button-back'));
+    fireEvent.click(rolled.getByTestId('flip-button-back'));
+    expectAvailable(rolled.getByTestId('ticket-file-away'));
+    fireEvent.click(rolled.getByTestId('ticket-file-away'));
+    expect(filed).toEqual([VILLAGE.orderSeq]);
   });
 
   it('turns over a real rotation, and swaps the faces outright under reduced motion', () => {
@@ -667,6 +698,38 @@ describe('the whole family', () => {
     expect(inner.style.transition).toBe('none');
     fireEvent.click(reduced.getByTestId('flip-button'));
     expect(reduced.getByTestId('flip-ticket').getAttribute('data-face')).toBe('back');
+  });
+
+  it.each(['full', 'compact', 'capped'] as const)('moves focus before hiding the %s card face', (shape) => {
+    const ui = renderReduced(<FlipTicket job={shape === 'capped' ? { ...VILLAGE, outcome: 'capped' } : VILLAGE} compact={shape === 'compact'} />);
+    const front = ui.getByTestId('flip-button');
+    const back = ui.getByTestId('flip-button-back');
+    const hiddenFocus: Element[] = [];
+    const setAttribute = Element.prototype.setAttribute;
+    const observer = vi.spyOn(Element.prototype, 'setAttribute').mockImplementation(function (this: Element, name, value) {
+      if (name === 'aria-hidden' && value === 'true' && this.contains(document.activeElement)) hiddenFocus.push(this);
+      setAttribute.call(this, name, value);
+    });
+    try {
+      front.focus();
+      fireEvent.click(front);
+      expect(document.activeElement).toBe(back);
+      expect(back.closest('[inert], [aria-hidden="true"]')).toBeNull();
+      fireEvent.click(back);
+      expect(document.activeElement).toBe(front);
+      expect(front.closest('[inert], [aria-hidden="true"]')).toBeNull();
+      expect(hiddenFocus).toEqual([]);
+    } finally {
+      observer.mockRestore();
+    }
+  });
+
+  it('preserves focus outside the card during a programmatic flip', () => {
+    const ui = renderReduced(<><input aria-label="Draft" /><FlipTicket job={VILLAGE} /></>);
+    const input = ui.getByRole('textbox');
+    input.focus();
+    fireEvent.click(ui.getByTestId('flip-button'));
+    expect(document.activeElement).toBe(input);
   });
 
   it('stamps each outcome with its own words and glyph', () => {
@@ -815,7 +878,7 @@ describe('the receipt: the per-step rewind asks, and shows what it would discard
     expect(rewound).toEqual([4]);
   });
 
-  it('ghosts the rows the press would discard, and no earlier one', () => {
+  it('previews affected step labels while keeping every rewind available', () => {
     const { getByTestId, getAllByTestId } = renderReduced(
       <FlipTicket job={SETTLED} undoDepth={15} onRewind={() => {}} />,
     );
@@ -823,6 +886,27 @@ describe('the receipt: the per-step rewind asks, and shows what it would discard
     fireEvent.click(getAllByTestId('ticket-step-rewind')[1]!);
     expect(getAllByTestId('ticket-step').map((el) => el.getAttribute('data-preview')))
       .toEqual(['false', 'true', 'true']);
+    expect(getAllByTestId('ticket-step-name').map(el => Number(el.style.opacity)))
+      .toEqual([1, 0.55, 0.55]);
+    getAllByTestId('ticket-step-rewind').forEach(expectAvailable);
+    fireEvent.click(getAllByTestId('ticket-step-rewind')[2]!);
+    expect(getAllByTestId('ticket-step').map(el => el.getAttribute('data-preview')))
+      .toEqual(['false', 'false', 'true']);
+  });
+
+  it('allows returning during confirmation and clears the pending rewind', () => {
+    const rewound: number[] = [];
+    const ui = renderReduced(<FlipTicket job={SETTLED} onRewind={() => {}} onRewindAll={() => rewound.push(1)} />);
+    fireEvent.click(ui.getByTestId('flip-button'));
+    fireEvent.click(ui.getAllByTestId('ticket-step-rewind')[1]!);
+    fireEvent.click(ui.getByTestId('ticket-rewind-all'));
+    expect(ui.getAllByTestId('ticket-step').every(el => el.dataset.preview === 'false')).toBe(true);
+    expectAvailable(ui.getByTestId('flip-button-back'));
+    fireEvent.click(ui.getByTestId('flip-button-back'));
+    fireEvent.click(ui.getByTestId('flip-button'));
+    expect(ui.queryAllByLabelText('Rewind it all?')).toHaveLength(0);
+    fireEvent.click(ui.getByTestId('ticket-rewind-all'));
+    expect(rewound).toEqual([]);
   });
 
   it('drops the ghost and fires nothing on Cancel', () => {

@@ -1,12 +1,3 @@
-/**
- * The scope screen: where a generation may act, painted.
- *
- * Two things are worth pinning and neither is a pixel. It is a SCREEN — the shelf goes away and
- * comes back with a fresh batch, because every candidate is stale the moment the region changes —
- * and it wears the TERRAIN BAR's row, so its cells are the same cells at the same size under the
- * same shortcut keys. The second is checked against the terrain bar's own table rather than against
- * a copy of it, since the bug it guards is the two drifting apart.
- */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 
@@ -15,7 +6,7 @@ import { setActiveView } from '../../../canvas/active-view';
 import { CommandExecutor } from '../../../core/commands/command-executor';
 import { EventBus } from '../../../core/commands/event-bus';
 import type { EditorEvents } from '../../../core/model/types';
-import { effectiveCombo, prettyCombo, useKeybinds } from '../../../core/runtime/keybindings';
+import { useKeybinds } from '../../../core/runtime/keybindings';
 import { setRegionBrushHandler } from '../../../core/runtime/region-brush';
 import { I18nProvider } from '../../../i18n/context';
 import { translations } from '../../../i18n/translations';
@@ -24,8 +15,7 @@ import { roadLookup } from '../../../state/object-index';
 import { useEditorStore } from '../../../state/store';
 import { ScaleProvider } from '../../../ui/design/scale';
 import { ScopeScreen } from '../../../ui/shell/bars/ScopeScreen';
-import { SCOPE_CELLS, SCOPE_TOOLS_FOR } from '../../../ui/shell/bars/scope-cells';
-import { TOOL_CELLS } from '../../../ui/shell/bars/terrain-cells';
+import { SCOPE_TOOLS_FOR } from '../../../ui/shell/bars/scope-cells';
 import { makeState } from '../../rules/_helpers';
 
 const en = (key: string): string => translations.en[key]!;
@@ -49,7 +39,7 @@ function installMap(size = 12) {
 }
 
 beforeEach(() => {
-  useEditorStore.setState({ locale: 'en', region: [], regionTool: 'brush', regionBrushSize: 3 });
+  useEditorStore.setState({ locale: 'en', region: [], regionTool: 'brush', regionBrushShape: 'brush', regionBrushSize: 3, regionDimensions: true, selectingRegion: true });
   useKeybinds.getState().resetAll();
 });
 
@@ -58,61 +48,48 @@ afterEach(() => {
   useEditorStore.setState({ gridState: null, commandExecutor: null, region: [], selectingRegion: false });
 });
 
-describe('the scope screen wears the terrain bar', () => {
-  /** One table read twice, not two tables that resemble each other: the six figures are the terrain
-   *  row's own, minus the trimmer, which trims a corner and has no region to paint. */
-  it('offers the terrain row minus the trimmer, with the same names and keys', () => {
-    const terrain = TOOL_CELLS.filter((cell) => cell.id !== 'trim');
-    expect(SCOPE_CELLS.map((c) => c.labelKey)).toEqual(terrain.map((c) => c.labelKey));
-    expect(SCOPE_CELLS.map((c) => c.commandId)).toEqual(terrain.map((c) => c.commandId));
-  });
-
-  it('shows assigned shortcuts and updates a newly bound shape', () => {
+describe('region brush controls', () => {
+  it('keeps drawing shapes inside Brush and restores the shape after erasing', () => {
     mount();
-    const overrides = useKeybinds.getState().overrides;
-    for (const cell of SCOPE_CELLS) {
-      const button = screen.getByLabelText(en(cell.labelKey));
-      const combo = effectiveCombo(overrides, cell.commandId);
-      if (combo) expect(within(button.parentElement!).getByText(prettyCombo(combo))).toBeTruthy();
-    }
-    const unbound = SCOPE_CELLS.find(cell => !effectiveCombo(overrides, cell.commandId))!;
-    act(() => useKeybinds.getState().rebind(unbound.commandId, 'k'));
-    expect(within(screen.getByLabelText(en(unbound.labelKey)).parentElement!).getByText('K')).toBeTruthy();
-  });
-
-  it('arms the region figure a cell names', () => {
-    mount();
-    fireEvent.click(screen.getByLabelText(en('design.circle_brush')));
+    fireEvent.click(screen.getByLabelText(en('eraser.circle')));
     expect(useEditorStore.getState().regionTool).toBe('circle');
+    expect(screen.getByLabelText(en('terrain.brush')).getAttribute('aria-pressed')).toBe('true');
     fireEvent.click(screen.getByLabelText(en('design.eraser')));
     expect(useEditorStore.getState().regionTool).toBe('eraser');
+    fireEvent.click(screen.getByLabelText(en('terrain.brush')));
+    expect(useEditorStore.getState().regionTool).toBe('circle');
   });
 
-  /**
-   * A SLIDER THAT CANNOT BE MOVED SAYS SO. A rectangle and a circle are laid to the size they are
-   * dragged out to, so the brush width has nothing to set while one of them is armed.
-   */
-  it('refuses its brush slider for the figures that take no width', () => {
+  it('shares the Brush binding and numbers the region options', () => {
     mount();
-    expect(screen.getByRole('slider').getAttribute('aria-disabled')).toBeNull();
+    const brush = screen.getByLabelText(en('terrain.brush'));
+    expect(within(brush.parentElement!).getByText('1')).toBeTruthy();
+    expect(screen.getByRole('group', { name: en('terrain.shapes') })).toBeTruthy();
+    act(() => useKeybinds.getState().rebind('tool.brush', 'k', 'region'));
+    expect(within(brush.parentElement!).getByText('K')).toBeTruthy();
+  });
 
-    fireEvent.click(screen.getByLabelText(en('design.rect_brush')));
-    expect(screen.getByRole('slider').getAttribute('aria-disabled')).toBe('true');
-    fireEvent.keyDown(screen.getByRole('slider'), { key: 'End' });
-    expect(useEditorStore.getState().regionBrushSize).toBe(3);
+  it('hides brush width for filled shapes', async () => {
+    mount();
+    expect(screen.getByRole('slider')).toBeTruthy();
+    fireEvent.click(screen.getByLabelText(en('eraser.rect')));
+    await vi.waitFor(() => expect(screen.queryByRole('slider')).toBeNull());
+    fireEvent.click(screen.getByLabelText(en('eraser.line')));
+    expect(await screen.findByRole('slider')).toBeTruthy();
+  });
 
-    fireEvent.click(screen.getByLabelText(en('design.line_brush')));
-    expect(screen.getByRole('slider').getAttribute('aria-disabled')).toBeNull();
+  it('switches dimension visibility without changing selected cells', () => {
+    const cells = [{ x: 1, y: 1 }, { x: 2, y: 1 }];
+    useEditorStore.setState({ region: cells });
+    mount();
+    fireEvent.click(screen.getByLabelText(en('region.dimensions_hide')));
+    expect(useEditorStore.getState().regionDimensions).toBe(false);
+    expect(useEditorStore.getState().region).toBe(cells);
+    fireEvent.click(screen.getByLabelText(en('region.dimensions_show')));
+    expect(useEditorStore.getState().regionDimensions).toBe(true);
   });
 });
 
-/**
- * THE HIGHLIGHT IS IMPERATIVE, SO IT HAS TO BE TAKEN DOWN BY WHOEVER PUT IT UP.
- *
- * Left standing on Done it would survive into the run that follows, and in 3D it is a DECAL draped
- * at the surface heights it was drawn against: the generation raises terrain under it, so part ends
- * up buried in the new mass and part still pokes out, a highlight that reads as never fully removed.
- */
 describe('the painted highlight', () => {
   it('survives Done, and goes only when the region itself does', () => {
     const shown: number[] = [];
@@ -179,9 +156,9 @@ describe('what the screen offers', () => {
         </ScaleProvider>
       </I18nProvider>,
     );
-    expect(screen.getByLabelText(en('design.circle_brush'))).toBeTruthy();
-    expect(screen.getByLabelText(en('design.rect_brush'))).toBeTruthy();
-    expect(screen.queryByLabelText(en('design.line_brush'))).toBeNull();
+    expect(screen.getByLabelText(en('eraser.circle'))).toBeTruthy();
+    expect(screen.getByLabelText(en('eraser.rect'))).toBeTruthy();
+    expect(screen.queryByLabelText(en('eraser.line'))).toBeNull();
   });
 
   /** The refusal has WORDS. A `gen.scope_min` called from here and defined in no locale would have

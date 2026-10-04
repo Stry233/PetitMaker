@@ -1,5 +1,5 @@
 /*
- * road-tile-texture.ts — the ONE normalization from a path item's icon to its map texture.
+ * The ONE normalization from a path item's icon to its map texture.
  *
  * The wiki tile art is a rounded-corner 128px square: usable as-is on a card, not as a repeating
  * fill (transparent corners would punch holes at every cell boundary). Both renderers take the

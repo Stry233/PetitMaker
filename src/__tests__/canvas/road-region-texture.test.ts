@@ -1,19 +1,23 @@
-/**
- * A path surface fills with its own tile art; a colour-only road (the dirt road) fills with its
- * colour, and so does a path whose art has not decoded yet.
- *
- * The second fact is the one with a mechanism behind it: a region's Graphics is cached by the
- * region's signature and never rebuilt while the map is unchanged, so the art arriving after the
- * first paint would otherwise never reach the surfaces already standing. `repaintMaterial` drops
- * the drawn surfaces of that material and lets the ordinary rebuild redraw them.
- */
+/** Road surfaces in 2D: material art phased at the map origin across regions and band windows, and cached surfaces repainting when tile art or the band clipper arrives. */
 import './_pixi-env';
 import * as PIXI from 'pixi.js-legacy';
-import { describe, it, expect, vi, afterEach } from 'vitest';
+import { describe, it, expect, vi, afterEach, beforeAll } from 'vitest';
 import type { GridState, PlacedObject } from '../../core/model/types';
 import { makeState } from '../rules/_helpers';
 import { ObjectLayer } from '../../canvas/map2d/layers/object-layer';
 import { useEditorStore } from '../../state/store';
+import { getCatalogItem } from '../../state/catalog';
+import { TILE_SIZE } from '../../core/model/constants';
+import { roadPatternRepeat } from '../../core/model/road-material';
+import { roadMaterialSettled } from '../../canvas/road-material';
+
+vi.mock('../../canvas/road-material-texture', () => ({
+  roadMaterialTexture: () => {
+    const canvas = document.createElement('canvas');
+    canvas.width = canvas.height = 256;
+    return canvas;
+  },
+}));
 
 // jsdom never decodes an Image, so the real helper can never hand back a canvas. Stand in for the
 // load: `waiting` collects the arrival callbacks the layer registers, `canvas` is the art once it
@@ -47,10 +51,14 @@ function layerWith(objs: PlacedObject[]): { layer: ObjectLayer; state: GridState
   return { layer, state };
 }
 
-/** The Graphics the layer currently holds one per drawn surface. */
+type DrawnSurfaces = Map<string, { g: PIXI.Container }>;
+const drawnSurfaces = (layer: ObjectLayer): DrawnSurfaces =>
+  (layer as unknown as { roadRegionGfx: DrawnSurfaces }).roadRegionGfx;
+
+/** Every Graphics the layer draws its surfaces with: one per unbanded surface, one per band window otherwise. */
 function regionGraphics(layer: ObjectLayer): PIXI.Graphics[] {
-  const gfx = (layer as unknown as { roadRegionGfx: Map<string, { g: PIXI.Graphics }> }).roadRegionGfx;
-  return [...gfx.values()].map((e) => e.g);
+  return [...drawnSurfaces(layer).values()].flatMap((e) => (e.g instanceof PIXI.Graphics
+    ? [e.g] : e.g.children.filter((c): c is PIXI.Graphics => c instanceof PIXI.Graphics)));
 }
 
 /** The fill textures of every region Graphics the layer holds. `Texture.WHITE` is what a plain
@@ -70,9 +78,35 @@ function loadedArt(): HTMLCanvasElement {
 
 const textured = (t: PIXI.Texture): boolean => t.baseTexture !== PIXI.Texture.WHITE.baseTexture;
 
+beforeAll(() => roadMaterialSettled());
 afterEach(() => { useEditorStore.setState({ gridState: null }); });
 
 describe('road region fill', () => {
+  it.each(['path-radiant-star-stone', 'path-overgrown-dirt', 'path-fan-shaped-brick'])('anchors %s art to the map across separated regions and a new connection', (id) => {
+    const { layer, state } = layerWith([road(id, 3), road(id, 5)]);
+    const period = roadPatternRepeat(getCatalogItem(id)!.roadMaterial!.edge.pattern);
+    const assertPhase = () => {
+      const graphics = regionGraphics(layer);
+      expect(graphics.length).toBeGreaterThan(0);
+      for (const g of graphics) for (const { fillStyle } of g.geometry.graphicsData) {
+        expect(textured(fillStyle.texture)).toBe(true);
+        const matrix = fillStyle.matrix!;
+        expect(matrix.a * TILE_SIZE * period).toBeCloseTo(fillStyle.texture.width);
+        expect(matrix.d).toBe(matrix.a);
+        expect(matrix.tx).toBeCloseTo(0);
+        expect(matrix.ty).toBeCloseTo(0);
+      }
+    };
+    expect(drawnSurfaces(layer).size).toBe(2);
+    assertPhase();
+    const connection = road(id, 4);
+    state.objects.set(connection.id, connection);
+    layer.addObjects([connection]);
+    layer.flushRoadRegions();
+    expect(drawnSurfaces(layer).size).toBe(1);
+    assertPhase();
+  });
+
   it('draws in colour while the tile art has not arrived, and in the art once it has', () => {
     art.canvas = null;
     art.waiting = [];

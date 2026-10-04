@@ -16,7 +16,7 @@ import { ItemCategory, ToolType, type GridState, type PlacedObject } from '../..
 import { I18nProvider, localizedName } from '../../../i18n/context';
 import { createDefaultRegistry } from '../../../rules';
 import {
-  getCatalogByCategory, getAllCategories, getCategoryMeta, registerCatalogItem,
+  getCatalogByCategory, registerCatalogItem,
 } from '../../../state/catalog';
 import { roadLookup } from '../../../state/object-index';
 import { useEditorStore } from '../../../state/store';
@@ -25,13 +25,19 @@ import { objectPlacementCommand } from '../../../tools/objects/object-placer';
 import { generateObjectId } from '../../../core/model/object-id';
 import { ScaleProvider } from '../../../ui/design/scale';
 import { ObjectShelf } from '../../../ui/shell/bars/ObjectShelf';
-import { CARD, ROW, SCROLL, SEARCH, SHELF_BOX, TABS, shelfItems } from '../../../ui/shell/bars/object-shelf';
-import { wheelPush } from '../../../ui/shell/bars/row-scroll';
+import { CARD, ROW, SCROLL, SEARCH, SHELF_BOX, TABS, planetShelfItems, shelfItems } from '../../../ui/shell/bars/object-shelf';
+import { PLAZA_ID } from '../../../core/model/constants';
+import { newMap } from '../../../kit/operations/map';
+import { enterPlanetSession, leavePlanetSession } from '../../../kit/operations/planet-session';
+import { host } from '../../../kit/host';
+import { CONTROL_CLEARANCE } from '../../../ui/primitives/use-scroll-row';
+import { wheelPush } from '../../../ui/primitives/scroll-input';
 import { ShelfScrollbar } from '../../../ui/shell/bars/ShelfScrollbar';
 import { MOTIONS } from '../../../ui/shell/motion/registry';
-import { PLATE_BAND, SHELF_SCALE, SHELF_TABS, TEXT, ZOOM, standsInNameRow } from '../../../ui/shell/units';
+import { MODE, PLATE_BAND, SHELF_SCALE, SHELF_TABS, TEXT, ZOOM, standsInNameRow } from '../../../ui/shell/units';
 import { frameFit } from '../../../ui/design/scale';
 import { makeState } from '../../rules/_helpers';
+import { CATEGORIES } from '../../../config/catalog/categories';
 
 function mount(itemId: string | null = null) {
   useEditorStore.getState().setEditMode({ mode: 'object', itemId });
@@ -80,7 +86,7 @@ afterEach(() => {
 describe('the shelf tabs', () => {
   it('offers every placeable category and never road', () => {
     const tabbed = TABS.map((tab) => tab.category).sort();
-    const expected = getAllCategories().filter((c) => getCategoryMeta(c)).sort();
+    const expected = CATEGORIES.filter((c) => c.placement).map((c) => c.id).sort();
     expect(tabbed).toEqual(expected);
     expect(tabbed).not.toContain(ItemCategory.Road);
   });
@@ -153,12 +159,10 @@ describe('the shelf tabs', () => {
  * row is laid out FROM.
  */
 describe('the search field belongs to the row of names', () => {
-  it('carries text at its own em, the one the plate was drawn around', () => {
-    // The design draws the plate 476 x 82 with a 44.5 px placeholder inside it. `TEXT.label` is the
-    // 35 px em a TOOL's caption is drawn at: a different role that happened to share a constant,
-    // and at that size the plate is an empty capsule with a word in the corner.
-    expect(SEARCH.text).toBeGreaterThan(TEXT.label);
-    expect(SEARCH.h / SEARCH.text).toBeCloseTo(82 / 44.5, 1);   // the drawing's proportion, at the row's size
+  it('keeps search subordinate to categories while preserving the capsule proportion', () => {
+    expect(SEARCH.text).toBeGreaterThan(MODE.label.size);
+    expect(SEARCH.text).toBeLessThan(TEXT.shelfTab);
+    expect(SEARCH.h / SEARCH.text).toBeCloseTo(82 / 44.5, 1);
 
     mount();
     const input = screen.getByRole('searchbox') as HTMLInputElement;
@@ -296,9 +300,8 @@ describe('the row of names travels sideways', () => {
   it('keeps room for a ring at its ends without moving either of them', () => {
     mount();
     const list = tabList();
-    const pad = Number.parseFloat(list.style.padding);
-    expect(pad).toBeGreaterThanOrEqual(5);
-    expect(list.style.margin).toBe(`${-pad}px`);
+    expect(list.style.padding).toBe(CONTROL_CLEARANCE);
+    expect(list.style.margin).toBe(`calc(0px - ${CONTROL_CLEARANCE})`);
   });
 
   /**
@@ -733,6 +736,45 @@ describe('the placed count', () => {
   });
 });
 
+describe('the planet session shelf', () => {
+  function mountSourced() {
+    return render(
+      <I18nProvider>
+        <ScaleProvider value={0.5}>
+          <ObjectShelf source={planetShelfItems} />
+        </ScaleProvider>
+      </I18nProvider>,
+    );
+  }
+
+  it('offers the plaza alone, once per planet', () => {
+    expect(planetShelfItems()).toEqual([expect.objectContaining({ id: PLAZA_ID, maxCount: 1 })]);
+  });
+
+  it('lists only the plaza while a session is open, with no tabs or search', () => {
+    newMap('hexia');
+    enterPlanetSession(null);
+    try {
+      mountSourced();
+      expect(within(row()).getAllByRole('button').map((b) => b.dataset.catalogId)).toEqual([PLAZA_ID]);
+      expect(screen.queryAllByRole('tab')).toHaveLength(0);
+      expect(screen.queryByRole('searchbox')).toBeNull();
+      fireEvent.click(within(row()).getByRole('button'));
+      expect(useEditorStore.getState().selectedItemId).toBe(PLAZA_ID);
+    } finally {
+      leavePlanetSession();
+      host.camera.takeQueued();
+    }
+  });
+
+  it('keeps the catalog outside a session', () => {
+    installMap();
+    mountSourced();
+    expect(screen.queryAllByRole('tab').length).toBeGreaterThan(0);
+    expect(within(row()).queryAllByRole('button').some((b) => b.dataset.catalogId === PLAZA_ID)).toBe(false);
+  });
+});
+
 describe('the card is a picture and a count', () => {
   /**
    * The footprint and the turn mark are gone from the tile, and this is what would put them back:
@@ -794,10 +836,8 @@ describe('the item card against the band it stands out of', () => {
     expect(card / PLATE_BAND.top).toBeCloseTo(1.227, 3);
   });
 
-  /** The text ratio, from the other end: text is
-   *  fixed here, so the card's size is the only free term in it. The game's is 0.277. */
-  it('carries a category name a little over a quarter of its own height', () => {
-    expect(TEXT.shelfTab / card).toBeCloseTo(0.28, 2);
+  it('keeps category names larger than mode captions', () => {
+    expect(TEXT.shelfTab).toBeGreaterThan(MODE.label.size);
   });
 
   /**

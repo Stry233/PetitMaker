@@ -1,5 +1,5 @@
 /*
- * agent-core.perf.test.ts — the agent harness's own floor: THE LOG IS THE STATE, and everything
+ * The agent harness's own floor: THE LOG IS THE STATE, and everything
  * else (the panel view, the provider messages) is a fold over it, recomputed on every append (the
  * store bumps an epoch per append and re-derives both). Covers building a ~500-event session log
  * through its own append API, folding it into the panel's `PanelView`, folding it into the

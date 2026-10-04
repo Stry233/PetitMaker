@@ -1,5 +1,5 @@
 /*
- * render.ts — a map plus a pack becomes a bitmap the export can swap in.
+ * A map plus a pack becomes a bitmap the export can swap in.
  *
  * The band this draws must frame EXACTLY as the 2D capture does, because the plan-notes ink is
  * composed over the result at export time: a renderer that framed the cells alone would land the

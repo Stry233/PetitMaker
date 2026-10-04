@@ -4,6 +4,10 @@ import { attributedNotes } from '../../../core/provenance/image-attribution';
 import type { CanonicalSave } from '../canonical';
 import { canonicalize, canonicalBytes, templateHash, catalogHash, objKey } from '../canonical';
 import { getMapTemplate } from '../../../config/maps';
+import { resolveTemplate, UnknownTemplateError } from '../../../config/maps/resolve';
+import { isCustomTemplate } from '../../../core/model/planet';
+import { ByteWriter, ByteReader } from './bytes';
+import { encodeTemplateRecord, decodeTemplateRecord } from './template-record';
 import { sha256 } from '../crypto/sha256';
 import { ShareError } from '../errors';
 import type { MapProvenanceSummary } from '../../../core/provenance/types';
@@ -11,7 +15,7 @@ import type { AnnotationsState } from '../../../core/model/annotations';
 import { tokensOf, tokensToCells, tokenOf, parseToken } from './grid-io';
 import { encodeMap, decodeMap, MODEL_VARIANTS, hasHalfPosition, modelCanRepresent, type MapModelOpts } from './map-coder';
 import { RangeEncoder, RangeDecoder } from './bitio';
-import type { GenerateConfig, GridState, MapNotes } from '../../../core/model/types';
+import type { GenerateConfig, GridState, MapNotes, MapTemplate } from '../../../core/model/types';
 import { clampNotes } from '../../../core/model/notes';
 import { decodeAnnotations } from '../../json-codec';
 import { CompressionMethod, deflate, inflate } from '../raster/zlib';
@@ -35,72 +39,13 @@ const MAGIC0 = 0x50; // 'P'
 const MAGIC1 = 0x32; // '2'
 /** Supported frame range. Frame 3 has no annotations; frame 4 adds a length-prefixed annotation
  * record between the generation note and map residual; frame 5 adds the title and description
- * after the annotations. A map without notes is still written as frame 4, so older readers keep
- * reading it. */
+ * after the annotations; frame 6 adds the custom planet after the notes, whose record it always
+ * writes. A map without notes is still written as frame 4 and a built-in map never as frame 6,
+ * so older readers keep reading them. */
 const EARLIEST_FRAME_VERSION = 3;
 const NOTES_FRAME_VERSION = 5;
-const FRAME_VERSION = 5;
-
-// ── Minimal little-endian byte writer/reader (frame assembly only — no dependency elsewhere). ──
-
-class ByteWriter {
-  private out: number[] = [];
-  u8(v: number): void { this.out.push(v & 0xff); }
-  u16(v: number): void { this.out.push(v & 0xff, (v >>> 8) & 0xff); }
-  u32(v: number): void {
-    this.out.push(v & 0xff, (v >>> 8) & 0xff, (v >>> 16) & 0xff, (v >>> 24) & 0xff);
-  }
-  raw(bytes: Uint8Array): void { for (let i = 0; i < bytes.length; i++) this.out.push(bytes[i]! & 0xff); }
-  /** u8 length prefix + utf8 bytes. Throws if the encoded string exceeds 255 bytes. */
-  str8(s: string): void {
-    const b = new TextEncoder().encode(s);
-    if (b.length > 0xff) throw new Error('payload: string exceeds u8 length prefix');
-    this.u8(b.length);
-    this.raw(b);
-  }
-  /** u16 length prefix + utf8 bytes. */
-  str16(s: string): void { this.blob16(new TextEncoder().encode(s)); }
-  /** u8 length prefix + raw bytes. */
-  blob8(b: Uint8Array): void {
-    if (b.length > 0xff) throw new Error('payload: blob exceeds u8 length prefix');
-    this.u8(b.length);
-    this.raw(b);
-  }
-  /** u16 length prefix + raw bytes. */
-  blob16(b: Uint8Array): void {
-    if (b.length > 0xffff) throw new Error('payload: blob exceeds u16 length prefix');
-    this.u16(b.length);
-    this.raw(b);
-  }
-  toBytes(): Uint8Array { return Uint8Array.from(this.out); }
-}
-
-class ByteReader {
-  private pos = 0;
-  constructor(private buf: Uint8Array) {}
-  private need(n: number): void {
-    if (this.pos + n > this.buf.length) throw new ShareError('decode-failed', 'Payload ends unexpectedly.');
-  }
-  u8(): number { this.need(1); return this.buf[this.pos++]!; }
-  u16(): number {
-    this.need(2);
-    const v = this.buf[this.pos]! | (this.buf[this.pos + 1]! << 8);
-    this.pos += 2;
-    return v >>> 0;
-  }
-  u32(): number {
-    this.need(4);
-    const v = (this.buf[this.pos]! | (this.buf[this.pos + 1]! << 8) | (this.buf[this.pos + 2]! << 16) | (this.buf[this.pos + 3]! << 24)) >>> 0;
-    this.pos += 4;
-    return v;
-  }
-  raw(n: number): Uint8Array { this.need(n); const out = this.buf.slice(this.pos, this.pos + n); this.pos += n; return out; }
-  str8(): string { const len = this.u8(); return new TextDecoder().decode(this.raw(len)); }
-  str16(): string { return new TextDecoder().decode(this.blob16()); }
-  blob8(): Uint8Array { const len = this.u8(); return this.raw(len); }
-  blob16(): Uint8Array { const len = this.u16(); return this.raw(len); }
-  rest(): Uint8Array { const out = this.buf.slice(this.pos); this.pos = this.buf.length; return out; }
-}
+const TEMPLATE_FRAME_VERSION = 6;
+const FRAME_VERSION = 6;
 
 function bytesEqual(a: Uint8Array, b: Uint8Array): boolean {
   if (a.length !== b.length) return false;
@@ -197,27 +142,29 @@ function readNotes(bytes: Uint8Array): MapNotes | undefined {
   return clampNotes({ title: r.str16(), description: r.str16() });
 }
 
-/** Unambiguous hash input: length-prefixed map bytes, then annotations, then (frame 5) the notes. */
-function contentBytes(canonical: CanonicalSave, annotations: Uint8Array, notes: Uint8Array = new Uint8Array(0)): Uint8Array {
-  const map = canonicalBytes(canonical);
-  const out = new Uint8Array(8 + map.length + annotations.length + (notes.length ? 4 + notes.length : 0));
+/** Unambiguous hash input: length-prefixed map bytes, then annotations, then (frame 5) the notes,
+ *  then (frame 6) the planet record. A planet record always follows a notes length, even zero. */
+function contentBytes(
+  canonical: CanonicalSave, annotations: Uint8Array, notes: Uint8Array = new Uint8Array(0), template: Uint8Array = new Uint8Array(0),
+): Uint8Array {
+  const parts = [canonicalBytes(canonical), annotations];
+  if (notes.length || template.length) parts.push(notes);
+  if (template.length) parts.push(template);
+  const out = new Uint8Array(parts.reduce((n, b) => n + 4 + b.length, 0));
   const view = new DataView(out.buffer);
-  view.setUint32(0, map.length, true);
-  out.set(map, 4);
-  view.setUint32(4 + map.length, annotations.length, true);
-  out.set(annotations, 8 + map.length);
-  if (notes.length) {
-    view.setUint32(8 + map.length + annotations.length, notes.length, true);
-    out.set(notes, 12 + map.length + annotations.length);
+  let at = 0;
+  for (const b of parts) {
+    view.setUint32(at, b.length, true);
+    out.set(b, at + 4);
+    at += 4 + b.length;
   }
   return out;
 }
 
 function buildFrame(
-  canonical: CanonicalSave, contentHash: Uint8Array, generation: GenerateConfig | undefined,
+  canonical: CanonicalSave, template: MapTemplate, templateRecord: Uint8Array, contentHash: Uint8Array, generation: GenerateConfig | undefined,
   annotations: Uint8Array, notes: Uint8Array, summary: MapProvenanceSummary | null, meta: ShareCodeMeta, variant: number,
 ): Uint8Array {
-  const template = getMapTemplate(canonical.templateId);
   const enc = new RangeEncoder();
   encodeMap(enc, template, tokensOf(canonical.cells).map(parseToken), canonical.objects, MODEL_VARIANTS[variant]!);
   const residual = enc.finish();
@@ -228,7 +175,7 @@ function buildFrame(
   const w = new ByteWriter();
   w.u8(MAGIC0);
   w.u8(MAGIC1);
-  w.u8(notes.length ? NOTES_FRAME_VERSION : NOTES_FRAME_VERSION - 1);
+  w.u8(templateRecord.length ? TEMPLATE_FRAME_VERSION : notes.length ? NOTES_FRAME_VERSION : NOTES_FRAME_VERSION - 1);
   w.u8(variant);
   w.u8(canonical.version);
   w.str8(canonical.templateId);
@@ -238,7 +185,8 @@ function buildFrame(
   w.raw(contentHash);
   w.blob16(note);
   w.blob16(annotations);
-  if (notes.length) w.blob16(notes);
+  if (notes.length || templateRecord.length) w.blob16(notes);
+  if (templateRecord.length) w.blob16(templateRecord);
   w.raw(residual);
   return w.toBytes();
 }
@@ -246,18 +194,20 @@ function buildFrame(
 /** Build and verify a payload frame before returning it. */
 export async function encodeMapPayload(state: GridState, summary: MapProvenanceSummary | null, meta: ShareCodeMeta): Promise<Uint8Array> {
   const canonical = canonicalize(state);
-  const template = getMapTemplate(canonical.templateId);
+  const custom = isCustomTemplate(state.template);
+  const template = custom ? state.template : getMapTemplate(canonical.templateId);
+  const templateRecord = custom ? encodeTemplateRecord(template) : new Uint8Array(0);
   const cells = tokensOf(canonical.cells).map(parseToken);
   const annotations = await annotationRecord(state.annotations);
   const notes = notesBytes(clampNotes(attributedNotes(state)));
-  const want = await sha256(contentBytes(canonical, annotations.plain, notes));
+  const want = await sha256(contentBytes(canonical, annotations.plain, notes, templateRecord));
   // Try applicable models and retain the smallest frame; half-cell anchors require half support.
   const half = hasHalfPosition(canonical.objects);
   let frame: Uint8Array | null = null;
   for (let v = 0; v < MODEL_VARIANTS.length; v++) {
     if (MODEL_VARIANTS[v]!.half !== half) continue;
     if (!modelCanRepresent(template, cells, canonical.objects, MODEL_VARIANTS[v]!)) continue;
-    const f = buildFrame(canonical, want, state.generation, annotations.compressed, notes, summary, meta, v);
+    const f = buildFrame(canonical, template, templateRecord, want, state.generation, annotations.compressed, notes, summary, meta, v);
     if (!frame || f.length < frame.length) frame = f;
   }
   await decodeMapPayload(frame!);
@@ -270,6 +220,8 @@ export interface DecodedMapPayload {
   generation?: GenerateConfig;
   annotations?: AnnotationsState;
   notes?: MapNotes;
+  /** The custom planet a frame-6 payload carries, validated and matching `canonical.templateId`. */
+  template?: MapTemplate;
   templateHash: number;
   catalogHash: number;
 }
@@ -299,9 +251,19 @@ export async function decodeMapPayload(bytes: Uint8Array): Promise<DecodedMapPay
     const note = r.blob16();
     const annotationBlob = version >= 4 ? r.blob16() : new Uint8Array(0);
     const notesBlob = version >= NOTES_FRAME_VERSION ? r.blob16() : new Uint8Array(0);
+    const templateBlob = version >= TEMPLATE_FRAME_VERSION ? r.blob16() : new Uint8Array(0);
     const residual = r.rest();
 
-    const template = getMapTemplate(templateId);
+    if (version >= TEMPLATE_FRAME_VERSION && templateBlob.length === 0) throw new ShareError('corrupt', 'Planet frame without a planet record.');
+    const embedded = templateBlob.length > 0 ? decodeTemplateRecord(templateBlob) : undefined;
+    if (embedded && embedded.id !== templateId) throw new ShareError('corrupt', 'Planet record does not match the map.');
+    let template: MapTemplate;
+    try {
+      template = resolveTemplate(templateId, embedded);
+    } catch (e) {
+      if (e instanceof UnknownTemplateError) throw new ShareError('incompatible-template', e.message);
+      throw e;
+    }
 
     let generation: GenerateConfig | undefined;
     if (note.length > 0) {
@@ -331,12 +293,13 @@ export async function decodeMapPayload(bytes: Uint8Array): Promise<DecodedMapPay
     };
 
     const gotHash = await sha256(version >= 4
-      ? contentBytes(canonical, annotationBytes, notesBlob)
+      ? contentBytes(canonical, annotationBytes, notesBlob, templateBlob)
       : canonicalBytes(canonical));
     if (!bytesEqual(gotHash, contentHash)) throw new ShareError('corrupt', 'Content hash mismatch.');
 
     const result: DecodedMapPayload = { canonical, provenance, templateHash: tHash, catalogHash: cHash };
     if (generation !== undefined) result.generation = generation;
+    if (embedded) result.template = embedded;
     if (notesBlob.length > 0) {
       const notes = readNotes(notesBlob);
       if (notes) result.notes = notes;

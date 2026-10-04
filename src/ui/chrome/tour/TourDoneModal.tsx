@@ -1,3 +1,4 @@
+import { windowTitle, windowPrimary } from '../../design/window-skin';
 /*
  * The tour's send-off: a short congratulation, a fall of confetti, and one button back to the map.
  *
@@ -22,7 +23,7 @@ import { motion, useReducedMotionConfig } from 'framer-motion';
 import { makeRng } from '../../../core/model/rng';
 import { useT } from '../../../i18n/context';
 import { useEditorStore } from '../../../state/store';
-import { colors, font, modalTitle, radii, buttonMotion, primaryButton } from '../../design/styles';
+import { colors, font, radii, buttonMotion } from '../../design/styles';
 import { Wavy } from '../../primitives/Wavy';
 import { ModalShell } from '../../primitives/ModalShell';
 
@@ -193,7 +194,7 @@ export function TourDoneModal() {
       <Confetti />
       {/* The content is positioned so it paints over the confetti, which is positioned itself:
           in-flow siblings would sit under it whatever the DOM order. */}
-      <div style={{ ...modalTitle, position: 'relative' }}>
+      <div style={{ ...windowTitle, position: 'relative' }}>
         {t('tour.done_title_a')}
         <Wavy>{t('tour.done_title_b')}</Wavy>
       </div>
@@ -202,7 +203,7 @@ export function TourDoneModal() {
         type="button"
         onClick={close}
         {...buttonMotion}
-        style={{ ...primaryButton, position: 'relative', marginTop: 6 }}
+        style={{ ...windowPrimary, position: 'relative', marginTop: 6 }}
       >
         {t('tour.done_action')}
       </motion.button>

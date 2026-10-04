@@ -1,4 +1,3 @@
-// src/io/share/canonical.ts
 import type { GridState, MapTemplate } from '../../core/model/types';
 import type { AnnotationsState } from '../../core/model/annotations';
 import { serialize } from '../json-codec';

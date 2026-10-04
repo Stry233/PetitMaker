@@ -1,9 +1,12 @@
+import { cssMotion } from '../../design/motion';
+import { ActionButton } from '../../primitives/ActionButton';
 import { BrandName } from '../BrandName';
 import { clientPoint } from '../../../core/runtime/viewport-space';
 import { useState, useRef, useEffect, type CSSProperties, type ReactNode, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { MotionSample } from '../../shell/motion/MotionSample';
 import { useT } from '../../../i18n/context';
-import { font, colors, inkTint, springs, radii, buttonMotion, cursors } from '../../design/styles';
+import { font, colors, inkTint, springs, radii, cursors } from '../../design/styles';
 import { skin, windowCard, windowPill, windowTitle } from '../../design/window-skin';
 import { roleFont, TEXT_ROLES } from '../../design/text-weight';
 import { reachableUiZoom, UI_ZOOM_MIN, useDockRef, useFitFloor, useReadableWeight, useViewportSize } from '../../design/scale';
@@ -14,11 +17,12 @@ import { cursorArt } from '../../../assets/cursors/cursor-art';
 import { iconUrl } from '../../../assets/icon-urls';
 import { ModalShell } from '../../primitives/ModalShell';
 import { resetAllLocalData } from '../../../io/local-reset';
-import { Spinner } from '../../primitives/Spinner';
+import { ConfirmationModal } from '../../primitives/ConfirmationModal';
 import { useEditorStore } from '../../../state/store';
 import { startTour } from '../tour/use-tour';
 import { KeymapMiniature } from './keyboard/KeymapMiniature';
 import { useFullscreen } from '../../hooks/useFullscreen';
+import { resolveReducedMotion, useOsReducedMotion } from '../../hooks/useMotionEnabled';
 import { helpTargetAttr } from './help/targets';
 import { visualRect } from '../../design/visual-rect';
 
@@ -71,7 +75,7 @@ function MapBase(): ReactNode {
 /** The overlays the two toggles show. Grid lines are white like the canvas's own (alpha raised —
  *  the canvas's 0.14 vanishes at stamp scale); chunk bounds are the renderer's black at 0.35. */
 function MapOverlay({ kind, on }: { kind: 'grid' | 'chunks'; on: boolean }): ReactNode {
-  const style: CSSProperties = { opacity: on ? 1 : 0, transition: 'opacity 0.18s ease' };
+  const style: CSSProperties = { opacity: on ? 1 : 0, transition: cssMotion('control.fade', ['opacity']) };
   if (kind === 'grid') {
     return (
       <g style={style} stroke="rgba(255,255,255,0.65)" strokeWidth={1}>
@@ -88,10 +92,7 @@ function MapOverlay({ kind, on }: { kind: 'grid' | 'chunks'; on: boolean }): Rea
   );
 }
 
-/* The quality tiles are photographs, not drawings: the SAME corner of a map captured from the
- * app's own 3D view at each pinned profile — full carries the extra sampling and render scale,
- * lite the blocky 1x it trades them for. 'auto' shows half of each with a seam, since its meaning
- * is "whichever this device earns". */
+// Matching camera frames expose model detail and shadows; Auto combines the two device profiles.
 const QUALITY_FULL_URL = iconUrl('settings-quality-full');
 const QUALITY_LITE_URL = iconUrl('settings-quality-lite');
 
@@ -101,7 +102,7 @@ const qualityImg = (clip?: 'left' | 'right'): CSSProperties => ({
   width: '100%',
   height: '100%',
   objectFit: 'cover',
-  ...(clip ? { clipPath: clip === 'left' ? 'inset(0 50% 0 0)' : 'inset(0 0 0 50%)' } : {}),
+  ...(clip ? { clipPath: clip === 'left' ? 'polygon(0 0, 65% 0, 35% 100%, 0 100%)' : 'polygon(65% 0, 100% 0, 100% 100%, 35% 100%)' } : {}),
 });
 
 function QualityShot({ q }: { q: 'auto' | 'full' | 'lite' }): ReactNode {
@@ -111,7 +112,9 @@ function QualityShot({ q }: { q: 'auto' | 'full' | 'lite' }): ReactNode {
     <>
       <img src={QUALITY_LITE_URL} alt="" style={qualityImg('left')} />
       <img src={QUALITY_FULL_URL} alt="" style={qualityImg('right')} />
-      <span style={{ position: 'absolute', top: 0, bottom: 0, left: '50%', width: 0, borderLeft: `1.5px dashed ${inkTint(0.45)}` }} />
+      <svg viewBox="0 0 100 75" preserveAspectRatio="none" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }}>
+        <path d="M65 0L35 75" fill="none" stroke={skin.plate} strokeWidth={2} />
+      </svg>
     </>
   );
 }
@@ -128,7 +131,7 @@ const picStyle = (on: boolean): CSSProperties => ({
   boxShadow: on
     ? `inset 0 0 0 1px ${inkTint(0.12)}, 0 0 0 3px ${skin.active}`
     : `inset 0 0 0 1px ${inkTint(0.12)}`,
-  transition: 'box-shadow 0.15s ease',
+  transition: cssMotion('control.paint', ['box-shadow']),
 });
 
 const tileStyle: CSSProperties = {
@@ -157,28 +160,25 @@ const capDot = (on: boolean): CSSProperties => ({
   height: 8,
   borderRadius: radii.pill,
   background: on ? skin.active : skin.track,
-  transition: 'background-color 0.15s ease',
+  transition: cssMotion('control.paint', ['background-color']),
 });
 
 function MapTile({ kind, on, label, onToggle }: { kind: 'grid' | 'chunks'; on: boolean; label: string; onToggle: () => void }) {
   return (
-    <motion.button
+    <ActionButton interaction="toggle"
       type="button"
       role="switch"
       aria-checked={on}
       aria-label={label}
       style={tileStyle}
       onClick={onToggle}
-      whileHover={{ scale: 1.03 }}
-      whileTap={{ scale: 0.97 }}
-      transition={springs.stiff}
     >
       <svg viewBox={`0 0 ${MAP_W} ${MAP_H}`} preserveAspectRatio="none" style={picStyle(on)} aria-hidden>
         <MapBase />
         <MapOverlay kind={kind} on={on} />
       </svg>
       <span style={capStyle}><span style={capDot(on)} />{label}</span>
-    </motion.button>
+    </ActionButton>
   );
 }
 
@@ -196,7 +196,7 @@ const stepStyle = (on: boolean): CSSProperties => ({
   background: on ? skin.active : skin.plate,
   boxShadow: on ? 'none' : `inset 0 0 0 1px ${inkTint(0.10)}`,
   cursor: cursors.clickable,
-  transition: 'background-color 0.15s ease, box-shadow 0.15s ease',
+  transition: cssMotion('control.paint', ['background-color', 'box-shadow']),
 });
 
 const stepName: CSSProperties = { ...roleFont('chip'), fontFamily: font.family, color: skin.plateInk };
@@ -227,30 +227,18 @@ const DEVICE_BADGE = (
   </svg>
 );
 
-/** Whether THIS device asks for reduced motion — what the System choice resolves to, so its demo
- *  shows the answer rather than a symbol for the question. Read per render: cheap, and a toggle
- *  of the OS setting while the panel is open is then honoured. */
-function deviceReduces(): boolean {
-  return typeof window !== 'undefined' && !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
-}
-
 /**
- * Each option performs itself: Full's pinwheel spins, Reduced's stands still, and System's does
- * whichever this device asks for while wearing the device badge that says who decided. Framer
- * drives the spin, so App's MotionConfig stops it under an actual reduced-motion state.
+ * Each option performs itself under every preference: Full's pinwheel spins, Reduced's stands
+ * still, and System's does whichever this device asks for while wearing the device badge that says
+ * who decided. Only the pinwheel is exempt from the reduced-motion gate; the tile's feedback is not.
  */
 function MotionDemo({ pref }: { pref: MotionPref }) {
-  const spins = pref === 'full' || (pref === 'system' && !deviceReduces());
+  // System's demo shows what this device resolves to, read from the same live OS reading as the gates.
+  const spins = !resolveReducedMotion(pref, useOsReducedMotion());
   return (
     <span style={{ height: 30, display: 'grid', placeItems: 'center' }} aria-hidden>
       <span style={{ position: 'relative', display: 'block' }}>
-        <motion.span
-          style={{ display: 'block' }}
-          animate={spins ? { rotate: 360 } : { rotate: 0 }}
-          transition={spins ? { duration: 2.2, ease: 'linear', repeat: Infinity } : { duration: 0 }}
-        >
-          {PINWHEEL}
-        </motion.span>
+        <MotionSample id="settings.orbit" playing={spins}>{PINWHEEL}</MotionSample>
         {pref === 'system' && DEVICE_BADGE}
       </span>
     </span>
@@ -269,7 +257,7 @@ const choiceStyle = (on: boolean): CSSProperties => ({
   background: on ? skin.active : skin.plate,
   boxShadow: on ? 'none' : `inset 0 0 0 1px ${inkTint(0.10)}`,
   cursor: cursors.clickable,
-  transition: 'background-color 0.15s ease, box-shadow 0.15s ease',
+  transition: cssMotion('control.paint', ['background-color', 'box-shadow']),
   ...roleFont('chip'),
   fontFamily: font.family,
   color: skin.plateInk,
@@ -420,11 +408,11 @@ function UiScaleSlider({ label }: { label: string }) {
       <span style={flankA('title')} aria-hidden>A</span>
       {/* The live specimen: the letters scale as the interface would. */}
       <div style={{ width: 50, height: 50, borderRadius: radii.md, background: skin.plate, boxShadow: `inset 0 0 0 1px ${inkTint(0.10)}`, display: 'grid', placeItems: 'center', overflow: 'hidden', flexShrink: 0 }} aria-hidden>
-        <span style={{ ...roleFont('label'), fontWeight: weightAt(TEXT_ROLES.label.weight, TEXT_ROLES.label.px * shownZoom), fontFamily: font.family, color: skin.ink, transition: 'transform 0.15s ease', transform: `scale(${shownZoom})` }}>Aa</span>
+        <span style={{ ...roleFont('label'), fontWeight: weightAt(TEXT_ROLES.label.weight, TEXT_ROLES.label.px * shownZoom), fontFamily: font.family, color: skin.ink, transition: cssMotion('control.paint', ['transform']), transform: `scale(${shownZoom})` }}>Aa</span>
       </div>
       {/* ↺ keeps its slot when hidden so appearing never shifts the row; aria-hidden takes it out
           of the accessibility tree at 100%, where there is nothing to reset. */}
-      <motion.button
+      <ActionButton interaction="tile"
         type="button"
         aria-label={`${label} 100%`}
         aria-hidden={isDefault}
@@ -435,14 +423,12 @@ function UiScaleSlider({ label }: { label: string }) {
           ...roleFont('chip'), display: 'grid', placeItems: 'center', flexShrink: 0,
           cursor: cursors.clickable,
           opacity: isDefault ? 0 : 1, pointerEvents: isDefault ? 'none' : 'auto',
-          transition: 'opacity 0.15s ease',
+          transition: cssMotion('control.paint', ['opacity']),
         }}
         onClick={() => setUiZoom(1)}
-        whileTap={{ scale: 0.9 }}
-        whileHover={{ scale: 1.08 }}
       >
         {'↺'}
-      </motion.button>
+      </ActionButton>
     </div>
   );
 }
@@ -450,15 +436,13 @@ function UiScaleSlider({ label }: { label: string }) {
 // Language pills — native endonyms so each is recognizable in its own script,
 // all seven visible at once. Order matches the translation source spreadsheet
 // (zh first).
-const LOCALES: { code: Locale; label: string }[] = [
-  { code: 'zh', label: '中文' },
-  { code: 'en', label: 'English' },
-  { code: 'ja', label: '日本語' },
-  { code: 'ru', label: 'Русский' },
-  { code: 'th', label: 'ไทย' },
-  { code: 'id', label: 'Indonesia' },
-  { code: 'fr', label: 'Français' },
-];
+const LOCALE_LABELS: Record<Locale, string> = {
+  zh: '中文', en: 'English', ja: '日本語', ru: 'Русский', th: 'ไทย', id: 'Indonesia', fr: 'Français',
+};
+const LOCALE_ORDER = ['zh', 'en', 'ja', 'ru', 'th', 'id', 'fr'] as const satisfies readonly Locale[];
+type _AssertEveryLocale = Exclude<Locale, (typeof LOCALE_ORDER)[number]> extends never ? true : ['LOCALE_ORDER is missing a Locale member'];
+const _localeOrderCoverage: _AssertEveryLocale = true;
+void _localeOrderCoverage;
 
 export interface SettingsModalProps {
   /** Drives the shared `ModalShell` open/close choreography. Defaults to `true`
@@ -496,15 +480,6 @@ const cardStyle: CSSProperties = {
   gap: CARD_ROW_GAP,
   overflowY: 'auto',
   overflowX: 'hidden',
-};
-
-/** The erase-confirm dialog's card: the same plate at the compact size a single question needs. */
-const confirmCardStyle: CSSProperties = {
-  ...windowCard,
-  padding: '22px 22px 20px',
-  display: 'flex',
-  flexDirection: 'column',
-  gap: 14,
 };
 
 const titleStyle: CSSProperties = { ...windowTitle };
@@ -562,15 +537,16 @@ const keyboardFootStyle: CSSProperties = {
   width: '100%',
 };
 
-// The meta strip: what the app is (drills into About), what it can replay, what it can forget.
-// Wraps so the identity readout stays the longest element and the pills fall to their own row when the card is narrow.
+/** The identity stays on one line; the action group wraps as a unit and fills its row. */
 const metaStyle: CSSProperties = { display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'stretch' };
 
-/** The action pills as one group, so a wrap moves them together. */
-const metaPillsStyle: CSSProperties = { display: 'flex', gap: 10, alignItems: 'stretch', flex: '0 0 auto' };
+const metaPillsStyle: CSSProperties = {
+  display: 'grid', gridAutoFlow: 'column', gridAutoColumns: 'minmax(0, 1fr)',
+  gap: 10, alignItems: 'stretch', flex: '1 0 auto', minWidth: 0, maxWidth: '100%',
+};
 
 const readoutStyle: CSSProperties = {
-  flex: 1,
+  flex: '1 0 auto',
   display: 'flex',
   alignItems: 'center',
   gap: 10,
@@ -578,6 +554,7 @@ const readoutStyle: CSSProperties = {
   border: 'none',
   borderRadius: 14,
   padding: '10px 16px',
+  whiteSpace: 'nowrap',
   textAlign: 'left',
   cursor: cursors.clickable,
   fontFamily: font.family,
@@ -586,12 +563,15 @@ const readoutStyle: CSSProperties = {
 const metaPillStyle: CSSProperties = {
   display: 'flex',
   alignItems: 'center',
+  justifyContent: 'center',
   gap: 8,
   background: skin.inset,
   border: 'none',
   borderRadius: 14,
-  padding: '10px 16px',
-  whiteSpace: 'nowrap',
+  padding: '10px 12px',
+  minWidth: 0,
+  whiteSpace: 'normal',
+  overflowWrap: 'anywhere',
   cursor: cursors.clickable,
   ...roleFont('chip'),
   fontFamily: font.family,
@@ -602,14 +582,6 @@ const dangerPillStyle: CSSProperties = {
   ...metaPillStyle,
   background: colors.dangerBg,
   color: colors.dangerText,
-};
-
-const aboutChipStyle: CSSProperties = { ...windowPill() };
-
-const dangerConfirmStyle: CSSProperties = {
-  ...windowPill('danger'),
-  background: colors.statusError,
-  color: colors.white,
 };
 
 export function SettingsModal({
@@ -632,6 +604,8 @@ export function SettingsModal({
   const t = useT();
   const fullscreen = useFullscreen();
   const setModal = useEditorStore((s) => s.setModal);
+  // The tour walks the map's interface, which a planet session has set aside.
+  const inSession = useEditorStore((s) => s.planetSession !== null);
   const [confirmReset, setConfirmReset] = useState(false);
   const [resetting, setResetting] = useState(false);
 
@@ -654,19 +628,17 @@ export function SettingsModal({
 
       {/* Language — all seven endonyms visible at once; each names itself in its own script. */}
       <div {...helpTargetAttr('settings', 'settings-language')} style={langBandStyle} role="radiogroup" aria-label={t('modal.settings_language')}>
-        {LOCALES.map(({ code, label }) => (
-          <motion.button
+        {LOCALE_ORDER.map((code) => (
+          <ActionButton interaction="choice"
             key={code}
             type="button"
             role="radio"
             aria-checked={locale === code}
             style={langPill(locale === code)}
             onClick={() => onLocaleChange(code)}
-            whileTap={{ scale: 0.95 }}
-            whileHover={{ scale: 1.05 }}
           >
-            {label}
-          </motion.button>
+            {LOCALE_LABELS[code]}
+          </ActionButton>
         ))}
       </div>
 
@@ -683,22 +655,19 @@ export function SettingsModal({
               the wait. Shown as the same map at each quality. */}
           <div style={rowOfTiles} role="radiogroup" aria-label={t('modal.settings_quality3d')}>
             {qualityOptions.map((q) => (
-              <motion.button
+              <ActionButton interaction="toggle"
                 key={q}
                 type="button"
                 role="radio"
                 aria-checked={quality3d === q}
-                style={tileStyle}
+                style={{ ...tileStyle, minWidth: 0 }}
                 onClick={() => onQuality3dChange(q)}
-                whileHover={{ scale: 1.03 }}
-                whileTap={{ scale: 0.97 }}
-                transition={springs.stiff}
               >
                 <span style={{ ...picStyle(quality3d === q), position: 'relative' }} aria-hidden>
                   <QualityShot q={q} />
                 </span>
-                <span style={capStyle}>{t(`modal.settings_quality3d_${q}`)}</span>
-              </motion.button>
+                <span lang={locale} style={{ ...capStyle, overflowWrap: 'anywhere', hyphens: 'auto' }}>{t(`modal.settings_quality3d_${q}`)}</span>
+              </ActionButton>
             ))}
           </div>
         </div>
@@ -710,52 +679,43 @@ export function SettingsModal({
               override it. Each step's ball performs the choice. */}
           <div style={{ display: 'flex', gap: 10 }} role="radiogroup" aria-label={t('modal.settings_motion')}>
             {motionOptions.map((p) => (
-              <motion.button
+              <ActionButton interaction="pill"
                 key={p}
                 type="button"
                 role="radio"
                 aria-checked={motionPref === p}
                 style={stepStyle(motionPref === p)}
                 onClick={() => onMotionPrefChange(p)}
-                whileHover={{ scale: 1.03 }}
-                whileTap={{ scale: 0.96 }}
-                transition={springs.stiff}
               >
                 <MotionDemo pref={p} />
                 <span style={stepName}>{t(`modal.settings_motion_${p}`)}</span>
-              </motion.button>
+              </ActionButton>
             ))}
           </div>
           {/* Cursor — the accessibility opt-out. A custom CSS cursor is an image, so it cannot
               honour the pointer size or theme the OS is configured with; a user who relies on
               those needs a way back. The choice shows the two arrows themselves. */}
           <div style={{ display: 'flex', gap: 10 }} role="radiogroup" aria-label={t('modal.settings_cursor')}>
-            <motion.button
+            <ActionButton interaction="pill"
               type="button"
               role="radio"
               aria-checked={!systemCursors}
               style={choiceStyle(!systemCursors)}
               onClick={() => onSystemCursorsChange(false)}
-              whileHover={{ scale: 1.03 }}
-              whileTap={{ scale: 0.96 }}
-              transition={springs.stiff}
             >
               {PAINTED_ARROW_URL ? <img src={PAINTED_ARROW_URL} alt="" width={24} height={24} /> : null}
               {t('modal.settings_cursor_painted')}
-            </motion.button>
-            <motion.button
+            </ActionButton>
+            <ActionButton interaction="pill"
               type="button"
               role="radio"
               aria-checked={systemCursors}
               style={choiceStyle(systemCursors)}
               onClick={() => onSystemCursorsChange(true)}
-              whileHover={{ scale: 1.03 }}
-              whileTap={{ scale: 0.96 }}
-              transition={springs.stiff}
             >
               {SYSTEM_ARROW}
               {t('modal.settings_cursor_system')}
-            </motion.button>
+            </ActionButton>
           </div>
         </div>
       </div>
@@ -765,91 +725,57 @@ export function SettingsModal({
           Keyboard Shortcuts window; Settings closes first so the board never opens behind it.
           The hover is the meta rows' own (scale 1.01/0.985), so the row presses like its
           neighbours. */}
-      <motion.button
+      <ActionButton interaction="row"
         type="button"
         aria-label={t('modal.keyboard_title')}
         {...helpTargetAttr('shortcuts')}
         style={keyboardRowStyle}
         onClick={() => { onClose(); setModal('keyboard', true); }}
-        whileHover={{ scale: 1.01 }}
-        whileTap={{ scale: 0.985 }}
-        transition={springs.stiff}
       >
         <KeymapMiniature />
         <span style={keyboardFootStyle}>
           <span style={{ ...roleFont('chip'), fontFamily: font.family, color: skin.plateInk }}>{t('modal.keyboard_title')}</span>
           <span style={{ marginLeft: 'auto', ...roleFont('chip'), fontFamily: font.family, color: skin.muted }}>{t('modal.settings_keyboard_hint')}</span>
         </span>
-      </motion.button>
+      </ActionButton>
 
       <div style={metaStyle}>
         {/* Identity readout — the app and its build, drilling into About. */}
-        <motion.button {...helpTargetAttr('settings', 'settings-reset')} type="button" style={readoutStyle} onClick={onAbout} whileTap={{ scale: 0.985 }} whileHover={{ scale: 1.01 }} aria-label={t('modal.settings_about')}>
+        <ActionButton interaction="row" {...helpTargetAttr('settings', 'settings-reset')} type="button" style={readoutStyle} onClick={onAbout}   aria-label={t('modal.settings_about')}>
           <span style={{ ...roleFont('label'), fontFamily: font.family, color: skin.ink }}><BrandName /></span>
           <span style={{ ...roleFont('chip'), fontFamily: font.family, color: skin.muted }}>{`${t('about.build')} ${BUILD_NUMBER}`}</span>
           <span style={{ marginLeft: 'auto', color: skin.muted, ...roleFont('chip'), fontFamily: font.family }}>{'›'}</span>
-        </motion.button>
+        </ActionButton>
 
         <div style={metaPillsStyle}>
           {fullscreen.available && (
-            <motion.button {...helpTargetAttr('settings', 'settings-immersive')} type="button" style={metaPillStyle} onClick={fullscreen.toggle} whileTap={{ scale: 0.96 }} whileHover={{ scale: 1.03 }}>
+            <ActionButton interaction="pill" {...helpTargetAttr('settings', 'settings-immersive')} type="button" style={metaPillStyle} onClick={fullscreen.toggle}  >
               {t(fullscreen.active ? 'modal.settings_immersive_exit' : 'modal.settings_immersive')}
-            </motion.button>
+            </ActionButton>
           )}
 
           {/* Replay the first-launch tour. A button, not a toggle: it performs an action rather
               than holding a setting. Closes Settings before starting the tour so the modal does
               not sit on top of the overlay it just launched. */}
-          <motion.button {...helpTargetAttr('tour')} type="button" style={metaPillStyle} onClick={() => { onClose(); startTour(); }} whileTap={{ scale: 0.96 }} whileHover={{ scale: 1.03 }}>
+          <ActionButton interaction="pill" {...helpTargetAttr('tour')} type="button" style={metaPillStyle} disabled={inSession} onClick={() => { onClose(); startTour(); }}  >
             {t('modal.settings_tour')}
-          </motion.button>
+          </ActionButton>
 
           {/* Reset local data — asks in its own dialog below, so the pill stands whatever the
               answer and the card never changes shape under it. */}
-          <motion.button {...helpTargetAttr('settings', 'settings-reset')} type="button" style={dangerPillStyle} onClick={() => setConfirmReset(true)} whileTap={{ scale: 0.96 }} whileHover={{ scale: 1.03 }}>
+          <ActionButton interaction="pill" {...helpTargetAttr('settings', 'settings-reset')} type="button" style={dangerPillStyle} onClick={() => setConfirmReset(true)}  >
             {t('modal.settings_reset_btn')}
-          </motion.button>
+          </ActionButton>
         </div>
       </div>
     </ModalShell>
 
-    {/* The erase confirm: a small dialog over the dimmed panel, the same shell every modal is
-        made of. A SIBLING of the settings shell, never a child of its card — the card carries
-        the chrome-scale CSS zoom, which scales a nested fixed overlay a second time. Mounted
-        after it, so it paints above at their shared rung, and ModalShell's Escape stack makes
-        one press close only this. While `resetting` the wipe is in flight and reload is the
-        only exit, so the dialog stops offering one (onClose is a no-op). */}
-    <ModalShell helpTarget={{ page: 'settings', anchor: 'settings-reset' }}
-      open={open && confirmReset}
-      onClose={() => { if (!resetting) setConfirmReset(false); }}
-      width={380}
-      maxVw={94}
-      cardStyle={confirmCardStyle}
-      ariaLabel={t('modal.settings_reset_title')}
-    >
-      <div style={{ ...windowTitle, color: colors.dangerDeep }}>{t('modal.settings_reset_title')}</div>
-      <span style={{ ...roleFont('label'), fontFamily: font.family, color: colors.dangerDeep, lineHeight: 1.45, background: colors.dangerBg, borderRadius: radii.lg, padding: '14px 16px' }}>
-        {t('modal.settings_reset_warn')}
-      </span>
-      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', justifyContent: 'flex-end', alignItems: 'center' }}>
-        {resetting ? (
-          <Spinner size={22} color={colors.statusError} />
-        ) : (
-          <>
-            <motion.button style={aboutChipStyle} onClick={() => setConfirmReset(false)} {...buttonMotion}>
-              {t('delete.cancel')}
-            </motion.button>
-            <motion.button
-              style={dangerConfirmStyle}
-              onClick={() => { setResetting(true); void resetAllLocalData(); }}
-              {...buttonMotion}
-            >
-              {t('modal.settings_reset_confirm')}
-            </motion.button>
-          </>
-        )}
-      </div>
-    </ModalShell>
+    {/* A sibling shell keeps the reset confirmation outside the Settings card's CSS zoom. */}
+    <ConfirmationModal open={open && confirmReset} helpTarget={{ page: 'settings', anchor: 'settings-reset' }}
+      title={t('modal.settings_reset_title')} message={t('modal.settings_reset_warn')}
+      cancelLabel={t('delete.cancel')} confirmLabel={t('modal.settings_reset_confirm')}
+      onCancel={() => setConfirmReset(false)} busy={resetting}
+      onConfirm={() => { setResetting(true); void resetAllLocalData(); }} />
     </>
   );
 }

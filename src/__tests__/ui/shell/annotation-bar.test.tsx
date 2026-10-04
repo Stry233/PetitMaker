@@ -6,6 +6,7 @@ import { useKeybinds } from '../../../core/runtime/keybindings';
 import { useEditorStore } from '../../../state/store';
 import { createDefaultRegistry } from '../../../rules';
 import { I18nProvider } from '../../../i18n/context';
+import { AnnotationDiscardModal } from '../../../ui/chrome/modals/AnnotationDiscardModal';
 import { AnnotationBar } from '../../../ui/shell/bars/AnnotationBar';
 import { useEditorShortcuts } from '../../../ui/shell/use-editor-shortcuts';
 import { makeTemplate } from '../../rules/_helpers';
@@ -16,12 +17,12 @@ const click = (name: string) => fireEvent.click(screen.getByRole('button', { nam
 const key = (value: string) => fireEvent.keyDown(window, { key: value });
 function Editor() {
   useEditorShortcuts({ openBuild: vi.fn(), handleTileAction: vi.fn(), toggleMenu: vi.fn() });
-  return <MotionConfig reducedMotion="always"><I18nProvider><AnnotationBar/></I18nProvider></MotionConfig>;
+  return <MotionConfig reducedMotion="always"><I18nProvider><AnnotationBar/><AnnotationDiscardModal/></I18nProvider></MotionConfig>;
 }
 
 beforeEach(() => {
   state().initMap(makeTemplate(20, 20), createDefaultRegistry());
-  useEditorStore.setState({ locale: 'en', brushSize: 1, annotationTool: 'zone', annotationZoneShape: 'free', annotationSize: 'm', annotationRouteDashed: true, selectingRegion: false });
+  useEditorStore.setState({ locale: 'en', brushSize: 1, annotationTool: 'zone', annotationTag: 'homes', annotationZoneShape: 'free', annotationSize: 'm', annotationRouteDashed: true, selectingRegion: false });
   state().setEditMode({ mode: 'annotate' });
   useKeybinds.getState().resetAll();
   render(<Editor/>);
@@ -45,11 +46,13 @@ describe('annotation tool pills', () => {
     expect(state().annotationZoneShape).toBe(shape);
   });
 
-  it('discards an unfinished route when its tool is put down', () => {
+  it('confirms before discarding an unfinished route when its tool is put down', () => {
     click('Route');
     const draft = { kind: 'route', id: 'route', points: [{ x: 2, y: 2 }, { x: 5, y: 4 }], color: ANNOTATION_COLORS[0]!, dashed: true } as const;
     act(() => { state().setAnnotationDraft({ ...draft, points: [...draft.points] }); state().setAnnotationSelection(['route']); });
     click('Route');
+    expect(state().annotationTool).toBe('route');
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Discard' }));
     expect(state().annotationTool).toBe('none');
     expect(state().annotationDraft).toBeNull();
     expect(state().annotationSelection).toEqual([]);
@@ -66,6 +69,19 @@ describe('annotation tool pills', () => {
     fireEvent.keyDown(screen.getByRole('slider'), { key: 'End' });
     expect(state().brushSize).toBe(5);
     expect(screen.queryByRole('group', { name: 'Brush shape' })).toBeNull();
+  });
+
+  it('saves the standing drawing from the confirmation before switching tools', () => {
+    act(() => { state().setAnnotationDraft(zone()); });
+    click('Route');
+    const dialog = within(screen.getByRole('dialog'));
+    expect(dialog.getAllByRole('button').map(b => b.textContent)).toEqual(['Discard', 'Cancel', 'Save']);
+    expect(document.activeElement).toBe(dialog.getByRole('button', { name: 'Cancel' }));
+    fireEvent.click(dialog.getByRole('button', { name: 'Save' }));
+    expect(state().gridState?.annotations?.items).toEqual([zone()]);
+    expect(state().annotationDraft).toBeNull();
+    expect(state().annotationDiscardAction).toBeNull();
+    expect(state().annotationTool).toBe('route');
   });
 
   it('updates draft settings through the size, color and tag pickers', () => {
@@ -113,12 +129,33 @@ describe('annotation tool pills', () => {
     key('1'); expect(state().annotationTool).toBe('zone'); expect(state().annotationZoneShape).toBe('line');
     key('Escape'); expect(state().annotationTool).toBe('none');
   });
-  it('Escape cancels the draft, selection and active tool in one press', () => {
+  it('Escape asks before discarding the draft and disarming the tool', () => {
     act(() => { state().setAnnotationDraft(zone()); state().setAnnotationSelection(['draft']); });
     key('Escape');
+    expect(state().annotationTool).toBe('zone');
+    expect(state().annotationDraft).not.toBeNull();
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Discard' }));
     expect(state().annotationTool).toBe('none');
     expect(state().annotationDraft).toBeNull();
     expect(state().annotationSelection).toEqual([]);
   });
 
+});
+
+
+it('toggles the selected text tag off while retaining the painted region', () => {
+  act(() => { state().setAnnotationDraft(zone()); });
+  click('Homes');
+  expect(state().annotationTag).toBeNull();
+  expect(state().annotationDraft).toMatchObject({ tag: null, cells: zone().cells });
+  expect(screen.getByRole('button', { name: 'Homes' }).getAttribute('aria-pressed')).toBe('false');
+  click('Homes'); expect(state().annotationDraft).toMatchObject({ tag: 'homes' });
+});
+
+it('Cancel preserves the draft and active tool', () => {
+  act(() => { state().setAnnotationDraft(zone()); });
+  click('Route');
+  fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Cancel' }));
+  expect(state().annotationTool).toBe('zone');
+  expect(state().annotationDraft).toEqual(zone());
 });

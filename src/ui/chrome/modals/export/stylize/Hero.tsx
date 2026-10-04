@@ -1,5 +1,5 @@
 /*
- * Hero.tsx — the connection page: the deck of samples on the left, and on the right the four things
+ * The connection page: the deck of samples on the left, and on the right the four things
  * a picture cannot be drawn without.
  *
  * THE MODEL IS READ OFF THE KEY, never asked for from memory (`use-stylize-connection.ts` owns the
@@ -7,13 +7,13 @@
  * it belongs to the one provider that has no address of its own.
  *
  * NOTHING ON THIS PAGE APPEARS OR VANISHES. Every row is standing from the first painted frame, the
- * status slot keeps its height with nothing to report, and 开始创作 is disabled rather than absent
+ * status slot keeps its height with nothing to report, and Start creating is disabled rather than absent
  * until the connection is complete: a refusal then arrives without moving the control the hand is
  * already travelling to.
  */
+import { interactionProfiles, buttonMotion, colors, cursors, font, radii } from '../../../../design/styles';
 import { useEffect, useRef, useState, type CSSProperties, type MouseEvent as ReactMouseEvent, type ReactNode } from 'react';
 import { AnimatePresence, motion, useAnimationControls, useMotionValue, useReducedMotionConfig, useSpring, useTransform, type MotionValue } from 'framer-motion';
-import { buttonMotion, colors, cursors, font, radii } from '../../../../design/styles';
 import { skin } from '../../../../design/window-skin';
 import { roleFont } from '../../../../design/text-weight';
 import { useChromeScale } from '../../../../design/scale';
@@ -23,7 +23,7 @@ import { useT } from '../../../../../i18n/context';
 import { STYLE_PACKS, STYLIZE_PROVIDERS, type StylizeProvider } from '../../../../../io/stylize';
 import { packSampleUrl } from './sample-assets';
 import { Field, GhostVerb, PrimaryVerb, SampleTile, StatusSlot, WindowFoot, entering, fieldBox, fieldLabel } from './atoms';
-import { amplitude, framerMotion, staggerDelay } from './motion';
+import { amplitude, framerMotion, staggerDelay } from '../../../../design/motion';
 
 import type { StylizeConnection } from './use-stylize-connection';
 import { visualRect } from '../../../../design/visual-rect';
@@ -83,7 +83,7 @@ function Deck() {
       onMouseLeave={onLeave}
       aria-label={t('stylize.deck_next')}
       title={t('stylize.deck_next')}
-      whileTap={{ scale: 0.97 }}
+      whileTap={interactionProfiles.toggleTap.whileTap}
       transition={buttonMotion.transition}
       style={{
         position: 'relative', borderRadius: 20, background: skin.inset, overflow: 'hidden',

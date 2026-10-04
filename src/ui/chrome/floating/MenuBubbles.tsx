@@ -13,9 +13,12 @@ import { useFullscreen } from '../../hooks/useFullscreen';
 import { hasSeenTour } from '../tour/use-tour';
 import { arrivalOpens } from './arrival-gate';
 import { SpeechBubble } from './SpeechBubble';
+import { anyModalOpen } from '../../../state/slices/shell';
 
 export function MenuBubbles({ splashActive }: { splashActive: boolean }) {
   const t = useT();
+  const loadDue = useEditorStore((s) => s.loadLimitNotice);
+  const dismissLoad = useEditorStore((s) => s.dismissLoadLimitNotice);
   const touch = useTouchPrimary();
   const overrides = useKeybinds(s => s.overrides);
   const helpCombo = effectiveCombo(overrides, 'app.whats_this');
@@ -35,8 +38,11 @@ export function MenuBubbles({ splashActive }: { splashActive: boolean }) {
     if (seenRunning && !tourRunning) setHelpDue(true);
   }
 
-  const windowOpen = Object.values(modals).some(Boolean);
-  const released = !windowOpen
+  const windowOpen = anyModalOpen({ modals });
+  // A scanned planet's review chip stands under the session's nameplate, where a bubble from the
+  // menu can reach in a narrow window; the bubbles wait until that session ends.
+  const reviewing = useEditorStore((s) => !!s.planetSession?.review);
+  const released = !windowOpen && !reviewing
     && arrivalOpens({ splashActive, blocked, tourRunning, tourSettled: hasSeenTour(), tourDoneOpen: modals.tourDone, whatsNewOpen: modals.whatsNew });
   // The bubbles look one task after the release, as the arrival notice does: a window that opens
   // in the same commit's effects is up before they do.
@@ -46,15 +52,18 @@ export function MenuBubbles({ splashActive }: { splashActive: boolean }) {
     const timer = setTimeout(() => setSettled(true), 0);
     return () => clearTimeout(timer);
   }, [released]);
-  const help = released && settled && helpDue;
-  const immersive = released && settled && !helpDue && !immersiveDone && touch && fullscreen.available && !fullscreen.active;
+  const load = released && settled && loadDue;
+  const help = released && settled && !loadDue && helpDue;
+  const immersive = released && settled && !loadDue && !helpDue && !immersiveDone && touch && fullscreen.available && !fullscreen.active;
 
+  const openLoad = useCallback(() => setModal('regionLoad', true), [setModal]);
   const openHelp = useCallback(() => setModal('help', true), [setModal]);
   const closeHelp = useCallback(() => setHelpDue(false), []);
   const closeImmersive = useCallback(() => setImmersiveDone(true), []);
 
   return (
     <AnimatePresence>
+      {load && <SpeechBubble key="load" anchor="load" text={t('load.disabled_bubble')} onAct={openLoad} onClose={dismissLoad} />}
       {help && <SpeechBubble key="help" anchor="menu" text={helpCombo && !touch ? t('hint.help', { shortcut: prettyCombo(helpCombo) }) : t('hint.help_touch')} onAct={openHelp} onClose={closeHelp} />}
       {immersive && <SpeechBubble key="immersive" anchor="menu" text={t('immersive.bubble')} onAct={fullscreen.toggle} onClose={closeImmersive} />}
     </AnimatePresence>

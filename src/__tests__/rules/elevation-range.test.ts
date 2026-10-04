@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { elevationRangeRule } from '../../rules/elevation-range';
 import { CommandType, TerrainType } from '../../core/model/types';
 import { makeState, paintCmd } from './_helpers';
-import { ELEVATION_MAX } from '../../core/model/constants';
+import { ELEVATION_MAX } from '../../core/model/game-profile';
 
 describe('V-MTN-01: Elevation Range', () => {
   it('only applies to PaintTerrain', () => {

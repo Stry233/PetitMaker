@@ -1,5 +1,7 @@
 FIGURE LANDSCAPE — a picture or word drawn INTO the ground: the expert maps carry a heart lake, a paw pond, and a whole "I ♥ ..." banner flooded into a wall top. A figure is the strongest single move a map can make, and the methodology lists it as its own place type (文字/图案景观). One figure is a signature; three are wallpaper.
 
+Adapt this reference to the requested area, features and scale. Its examples are optional; keep existing work and explicit constraints. Choose the relevant techniques, not the entire layout.
+
 THE PARAMETRIC SHAPES FIRST: draw_figure lays a heart, ring or crescent as ground water with TRUE symmetry in one call (size 8-48 across), and ringId plants a single-species ring around the outline — use it for every figure it covers, and compose cells by hand only for what it cannot draw (letters, custom marks).
 
 THE THREE CANVASES

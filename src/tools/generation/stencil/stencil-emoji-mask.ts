@@ -2,8 +2,7 @@ import type { SourcePixels } from './stencil-sample';
 import { stencilFromPixels } from './stencil-sample';
 import type { Stencil } from '../../../core/model/types';
 import { textTopology } from './stencil-text-grid';
-
-const EDGE = [[0, -1], [1, 0], [0, 1], [-1, 0]] as const;
+import { NEIGHBORS4_NESW } from '../../../core/model/grid-model';
 
 export interface EmojiDrawing {
   width: number;
@@ -101,7 +100,7 @@ export function emojiTextDrawing(source: SourcePixels, minimumDetail = 0.0025): 
       histogram[bucket] = histogram[bucket]! + 1;
       for (let channel = 0; channel < 3; channel++) sums[bucket * 3 + channel] = sums[bucket * 3 + channel]! + data[p + channel]!;
       let edge = false;
-      for (const [dx, dy] of EDGE) {
+      for (const [dx, dy] of NEIGHBORS4_NESW) {
         const nx = x + dx, ny = y + dy, j = ny * width + nx;
         if (nx < 0 || ny < 0 || nx >= width || ny >= height || coverage[j]! < 128) { edge = true; continue; }
         if (!seen[j]) { seen[j] = 1; pixels.push(j); }
@@ -118,7 +117,7 @@ export function emojiTextDrawing(source: SourcePixels, minimumDetail = 0.0025): 
     const rim = Math.max(1, Math.round(Math.min(right - left + 1, bottom - top + 1) * 0.05));
     for (let head = 0; head < border.length; head++) {
       const i = border[head]!, x = i % width, y = Math.floor(i / width);
-      for (const [dx, dy] of EDGE) {
+      for (const [dx, dy] of NEIGHBORS4_NESW) {
         const nx = x + dx, ny = y + dy, j = ny * width + nx;
         if (nx < 0 || ny < 0 || nx >= width || ny >= height || coverage[j]! < 128 || distance[j]) continue;
         distance[j] = distance[i]! + 1; border.push(j);
@@ -130,7 +129,7 @@ export function emojiTextDrawing(source: SourcePixels, minimumDetail = 0.0025): 
       const feature = [i]; detail[i] = 0;
       for (let head = 0; head < feature.length; head++) {
         const j = feature[head]!, x = j % width, y = Math.floor(j / width);
-        for (const [dx, dy] of EDGE) {
+        for (const [dx, dy] of NEIGHBORS4_NESW) {
           const nx = x + dx, ny = y + dy, k = ny * width + nx;
           if (nx < 0 || ny < 0 || nx >= width || ny >= height || !detail[k]) continue;
           detail[k] = 0; feature.push(k);
@@ -153,7 +152,7 @@ export function emojiTextDrawing(source: SourcePixels, minimumDetail = 0.0025): 
       let contrast = 0, perimeter = 0;
       for (const j of feature) {
         const x = j % width, y = Math.floor(j / width);
-        for (const [dx, dy] of EDGE) {
+        for (const [dx, dy] of NEIGHBORS4_NESW) {
           const nx = x + dx, ny = y + dy, k = ny * width + nx;
           if (nx < 0 || ny < 0 || nx >= width || ny >= height || (distance[k]! > rim && delta(k) > threshold)) continue;
           contrast += Math.sqrt([0, 1, 2].reduce((sum, c) => sum + (data[j * 4 + c]! - data[k * 4 + c]!) ** 2, 0) / 3);
@@ -221,7 +220,7 @@ function fitDrawing(source: EmojiDrawing, box: { width: number; height: number }
     const candidates: { i: number; score: number }[] = [];
     for (let y = 1; y < height - 1; y++) for (let x = 1; x < width - 1; x++) {
       const i = y * width + x;
-      if (body[i]! < 128 || EDGE.some(([dx, dy]) => body[(y + dy) * width + x + dx]! < 128)) continue;
+      if (body[i]! < 128 || NEIGHBORS4_NESW.some(([dx, dy]) => body[(y + dy) * width + x + dx]! < 128)) continue;
       const distance = (x + 0.5 - cx) ** 2 + (y + 0.5 - cy) ** 2;
       if (weights[i]! > 0 || distance < 2) candidates.push({ i, score: weights[i]! - distance * 0.015 });
     }
@@ -232,7 +231,7 @@ function fitDrawing(source: EmojiDrawing, box: { width: number; height: number }
     for (const { i, score } of candidates) {
       if (kept >= wanted || (kept && score <= 0)) break;
       const x = i % width, y = Math.floor(i / width);
-      if (labels[i] !== -1 || EDGE.some(([dx, dy]) => {
+      if (labels[i] !== -1 || NEIGHBORS4_NESW.some(([dx, dy]) => {
         const label = labels[(y + dy) * width + x + dx]!;
         return label !== -1 && label !== id;
       })) continue;

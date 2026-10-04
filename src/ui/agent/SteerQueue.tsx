@@ -3,12 +3,14 @@
  * scroll separately so the hidden-count control remains visible. Recalled notes shrink in place;
  * delivered notes lift as they leave.
  */
-import { useCallback, useRef, useState, type CSSProperties } from 'react';
-import { AnimatePresence, motion, useReducedMotionConfig } from 'framer-motion';
+import { Disclosure, DisclosureStack } from '../primitives/Disclosure';
+import { ScrollArea } from '../primitives/ScrollArea';
+import { useCallback, useRef, useState, type ButtonHTMLAttributes, type CSSProperties } from 'react';
+import { AnimatePresence, motion, useIsPresent, useReducedMotionConfig } from 'framer-motion';
 import { Icon } from './icons';
-import { amplitude, framerMotion } from './motion';
+import { amplitude, framerMotion } from '../design/motion';
 import { ACTIVE, INK } from '../design/tokens';
-import { colors, cursors, font } from '../design/styles';
+import { colors, cursors, font, radii } from '../design/styles';
 import { roleFont } from '../design/text-weight';
 import { useT } from '../../i18n/context';
 
@@ -41,8 +43,6 @@ const CHIPS_STYLE: CSSProperties = {
   minHeight: 0,
   display: 'flex',
   flexDirection: 'column',
-  gap: GAP,
-  overflowY: 'auto',
 };
 
 const CHIP_STYLE: CSSProperties = {
@@ -54,7 +54,7 @@ const CHIP_STYLE: CSSProperties = {
   boxSizing: 'border-box',
   background: ACTIVE,
   color: INK,
-  borderRadius: 999,
+  borderRadius: radii.pill,
   padding: '7px 6px 7px 10px',
   ...roleFont('chip'),
   fontFamily: font.family,
@@ -71,7 +71,7 @@ const MORE_STYLE: CSSProperties = {
   alignItems: 'center',
   gap: 5,
   background: colors.surfaceSecondary,
-  borderRadius: 999,
+  borderRadius: radii.pill,
   border: 'none',
   padding: '5px 12px',
   ...roleFont('small'),
@@ -86,7 +86,7 @@ const CROSS_STYLE: CSSProperties = {
   display: 'inline-flex', padding: 0, cursor: cursors.clickable,
 };
 
-export interface SteerQueueProps {
+interface SteerQueueProps {
   /** `PanelView.queuedSteers` — every note with neither a delivery nor a recall behind it. */
   steers: readonly { seq: number; text: string }[];
   /** Take one note back, by its own seq. Absent, the chips draw no cross. */
@@ -114,45 +114,47 @@ export function SteerQueue({ steers, onRecall }: SteerQueueProps) {
   return (
     // Preserve the zone in the layout while the queue is empty.
     <div data-testid="panel-steer-zone" style={ZONE_STYLE}>
-      <div data-testid="steer-chips" style={CHIPS_STYLE}>
-        <AnimatePresence initial={false}>
-          {shown.map((steer) => {
-            const takenBack = recalled.current === steer.seq;
-            return (
-              <motion.div
-                key={steer.seq}
-                data-testid="panel-steer-chip"
-                data-seq={steer.seq}
-                initial={{ opacity: 0, scale: 1 - CHIP_GROWTH }}
-                animate={{ opacity: 1, scale: 1, y: 0 }}
-                exit={takenBack || reduced
-                  ? { opacity: 0, scale: 1 - CHIP_GROWTH }
-                  : { opacity: 0, scale: 1 - CHIP_GROWTH, y: -DELIVER_LIFT }}
-                transition={framerMotion(takenBack ? 'panel.steer.chip' : 'panel.steer.deliver')}
-                style={CHIP_STYLE}
-              >
-                <span style={{ color: INK, display: 'inline-flex', flex: '0 0 auto' }}>
-                  <Icon id="pw-note" size={14} />
-                </span>
-                <span style={TEXT_STYLE}>{steer.text}</span>
-                <span style={{ color: colors.brownText, flex: '0 0 auto' }}>{t('agent3.steer_at_next_step')}</span>
-                {onRecall && (
-                  <button
-                    type="button"
-                    data-testid="panel-steer-recall"
-                    aria-label={t('agent3.steer_take_back')}
-                    title={t('agent3.steer_take_back')}
-                    onClick={() => recall(steer.seq)}
-                    style={CROSS_STYLE}
+      <ScrollArea data-testid="steer-chips" gutter="stable" fade="none" style={CHIPS_STYLE}>
+        <DisclosureStack gap={GAP}>
+          <AnimatePresence initial={false}>
+            {shown.map((steer) => {
+              const takenBack = recalled.current === steer.seq;
+              return (
+                <Disclosure key={steer.seq} motionId="panel.steer.chip">
+                  <motion.div
+                    data-testid="panel-steer-chip"
+                    data-seq={steer.seq}
+                    initial={{ opacity: 0, scale: 1 - CHIP_GROWTH }}
+                    animate={{ opacity: 1, scale: 1, y: 0 }}
+                    exit={takenBack || reduced
+                      ? { opacity: 0, scale: 1 - CHIP_GROWTH }
+                      : { opacity: 0, scale: 1 - CHIP_GROWTH, y: -DELIVER_LIFT }}
+                    transition={framerMotion(takenBack ? 'panel.steer.chip' : 'panel.steer.deliver')}
+                    style={CHIP_STYLE}
                   >
-                    <Icon id="pw-cross" size={11} />
-                  </button>
-                )}
-              </motion.div>
-            );
-          })}
-        </AnimatePresence>
-      </div>
+                    <span style={{ color: INK, display: 'inline-flex', flex: '0 0 auto' }}>
+                      <Icon id="pw-note" size={14} />
+                    </span>
+                    <span style={TEXT_STYLE}>{steer.text}</span>
+                    <span style={{ color: colors.brownText, flex: '0 0 auto' }}>{t('agent3.steer_at_next_step')}</span>
+                    {onRecall && (
+                      <RecallButton
+                        data-testid="panel-steer-recall"
+                        aria-label={t('agent3.steer_take_back')}
+                        title={t('agent3.steer_take_back')}
+                        onClick={() => recall(steer.seq)}
+                        style={CROSS_STYLE}
+                      >
+                        <Icon id="pw-cross" size={11} />
+                      </RecallButton>
+                    )}
+                  </motion.div>
+                </Disclosure>
+              );
+            })}
+          </AnimatePresence>
+        </DisclosureStack>
+      </ScrollArea>
       {more && (
         <button
           type="button"
@@ -165,4 +167,9 @@ export function SteerQueue({ steers, onRecall }: SteerQueueProps) {
       )}
     </div>
   );
+}
+
+function RecallButton(props: ButtonHTMLAttributes<HTMLButtonElement>) {
+  const present = useIsPresent();
+  return <button {...props} type="button" disabled={!present} onClick={present ? props.onClick : undefined} />;
 }

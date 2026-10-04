@@ -11,6 +11,8 @@
  *                                       agent trim_corner API.
  * NW=TL, NE=TR, SW=BL, SE=BR (same index either way).
  */
+import type { CornerTrim, Corners } from '../model/types';
+
 export type CornerPos = 'TL' | 'TR' | 'BL' | 'BR';
 
 /** index → screen-quadrant label. */
@@ -21,3 +23,18 @@ export const CORNER_INDEX: Record<CornerPos, number> = { TL: 0, TR: 1, BL: 2, BR
 /** index → compass label (== the `CornerTrim` 'tri-XX' suffix and the agent's corner vocabulary). */
 export const CORNER_COMPASS = ['NW', 'NE', 'SW', 'SE'] as const;
 export type CornerCompass = typeof CORNER_COMPASS[number];
+
+/** A cell with no corner cut. Spread it where a mutable `Corners` is stored. */
+export const SQUARE_CORNERS: Readonly<Corners> = ['square', 'square', 'square', 'square'];
+/** Every corner cut away: as a command's `afterCorners`, it removes the terrain or road. */
+export const EMPTY_CORNERS: Readonly<Corners> = ['empty', 'empty', 'empty', 'empty'];
+
+/** True when no corner is cut; an absent tuple is square. */
+export function isSquareCorners(c: readonly CornerTrim[] | null | undefined): boolean {
+  return !c || c.every(t => t === 'square');
+}
+
+/** True when every corner is cut away. */
+export function isEmptyCorners(c: readonly CornerTrim[]): boolean {
+  return c.every(t => t === 'empty');
+}

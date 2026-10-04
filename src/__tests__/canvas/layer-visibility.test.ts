@@ -4,7 +4,7 @@
  * panel click from rebuilding the whole terrain layer.
  */
 import { describe, it, expect } from 'vitest';
-import { cellsAffectedByLayerToggle } from '../../canvas/map2d/layers/layer-visibility';
+import { cellsAffectedByLayerToggle } from '../../canvas/layer-visibility';
 import { TerrainType } from '../../core/model/types';
 import { makeState, setTerrain } from '../rules/_helpers';
 

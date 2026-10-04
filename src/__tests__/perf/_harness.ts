@@ -1,5 +1,5 @@
 /*
- * _harness.ts — the perf tier's measurement harness.
+ * The perf tier's measurement harness.
  *
  * The perf suites (`*.perf.test.ts`, this directory) time the app's operation layer — generation,
  * commands, indexes, codecs, geometry builders — as plain functions, no browser. They are SKIPPED

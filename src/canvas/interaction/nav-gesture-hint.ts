@@ -13,7 +13,7 @@
  */
 import { showToast } from '../../core/runtime/toast-bus';
 import { translate } from '../../i18n/context';
-import { readPref, writePref, PREFS } from '../../core/runtime/prefs';
+import { readPref, writePref } from '../../core/runtime/prefs';
 
 let shownThisSession = false;
 
@@ -27,10 +27,4 @@ export function noteNavGestureLost(): void {
   shownThisSession = true;
   writePref('navGestureHint', true);
   showToast(translate('nav.gesture_taken'), 'warning');
-}
-
-/** Test-only: forget that the hint was shown. */
-export function __resetNavGestureHint(): void {
-  shownThisSession = false;
-  try { localStorage.removeItem(PREFS.navGestureHint.key); } catch { /* nothing to forget */ }
 }

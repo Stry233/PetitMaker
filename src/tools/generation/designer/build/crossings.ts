@@ -15,7 +15,7 @@ import {
   ItemCategory, TerrainType, type GridState, type MacroCoord, type PlacedObject,
 } from '../../../../core/model/types';
 import { getPlaceableByCategory } from '../../../../state/catalog';
-import { objectRect } from '../../../../state/object-geometry';
+import { crossingRunsAlongX, objectRect } from '../../../../state/object-geometry';
 import { removePlaced, tryPlace, type PlaceCtx } from '../../../placement/object';
 import type { RampSpec, StreetPlan } from '../streets/streets';
 import { connector } from './paving';
@@ -62,7 +62,7 @@ export function layFlights(
  *
  * The `heightDrop` trait resolves the ramp from a cliff beside the anchor and then stores the
  * footprint at one of two offsets — a ramp facing +y or +x stores it FROM the high cell, one facing
- * -y or -x stores it four cells back. So the stored position is not itself an anchor the trait can
+ * -y or -x stores it one footprint length back. So the stored position is not itself an anchor the trait can
  * resolve from: at the far end of the run there is no cliff to read. The high cell is where the
  * footprint says it is in both facings, and the run's first cell is the same step read from below.
  */
@@ -104,9 +104,8 @@ export function layLineDecks(place: PlaceCtx, streets: StreetPlan, scope: Scope)
     const cx = r.x + r.w / 2, cy = r.y + r.h / 2;
     cells.sort((a, b) => Math.hypot(a.x - cx, a.y - cy) - Math.hypot(b.x - cx, b.y - cy));
     // THE CROSSING NAMES ITS OWN AXIS, and the rect does not: the gap lies ACROSS the street, so its
-    // long side is perpendicular to the walk the deck has to carry. Derived from the rect instead,
-    // every line deck was asked for the wrong axis and came back turned across the trunk it was
-    // planned into (measured: two of `hexia/7`'s three decks, and one on eight of the twenty maps).
+    // long side is perpendicular to the walk the deck has to carry, and an axis derived from the rect
+    // turns a line deck across the trunk it was planned into.
     const axis: readonly [number, number] = crossing.axis === 'x' ? [1, 0] : [0, 1];
     let landed = false;
     for (const style of styles) {
@@ -260,9 +259,9 @@ function landBank(place: PlaceCtx, material: string, bank: MacroCoord, scope: Sc
  *
  * The `heightDrop` and `waterSpan` traits SNAP a ramp's or a deck's position, rotation and span
  * themselves — that is the whole reason the pipeline names a cell and lets the rules answer with the
- * crossing that fits it — so where one finally stands is only knowable once it has run. Measured: a
- * ramp asked for at row 96 came back covering row 95, half a cell above the anchor, and no box drawn
- * around the anchor beforehand can be both tight enough to be useful and wide enough to be right.
+ * crossing that fits it, so where one finally stands is only knowable once it has run: a snapped ramp
+ * can cover the row above its anchor, and no box drawn around the anchor beforehand can be both tight
+ * enough to be useful and wide enough to be right.
  * So the check is made afterwards, on the footprint the map actually holds, and a crossing that
  * strayed is taken back. The same reading the agent's own region lock makes, for the same reason.
  */
@@ -292,17 +291,11 @@ function placeAndRead(
   const landed = tryPlace(place, catalogId, x, y);
   if (!landed) return null;
   const r = objectRect(landed);
-  if (axis && !spansAlong(r, axis)) { removePlaced(place, landed); return null; }
+  if (axis && (axis[0] !== 0) !== crossingRunsAlongX(landed)) { removePlaced(place, landed); return null; }
   if (!scope.bounded) return landed;
   if (scope.rect(r.x, r.y, r.w, r.h)) return landed;
   removePlaced(place, landed);
   return null;
-}
-
-/** Whether a landed deck's own long side runs along `axis`. A deck is longer across the gap it spans
- *  than it is wide, so its footprint names its axis. */
-function spansAlong(r: { w: number; h: number }, axis: readonly [number, number]): boolean {
-  return axis[0] !== 0 ? r.w >= r.h : r.h >= r.w;
 }
 
 /** Whether pavement stands within `reach` cells of (x, y). */

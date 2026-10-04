@@ -1,10 +1,14 @@
 import { describe, it, expect } from 'vitest';
 import { mapNativePx, clampedCaptureRequestPx, canvasFitScale, CANVAS_LIMITS } from '../../../io/export/sizing';
+import { getMapTemplate } from '../../../config/maps';
 
 /** A WebKit-shaped ceiling: a long side it allows, an area a sixteenth of the desktop one. */
 const WEBKIT = { maxDim: 16384, maxArea: 4096 * 4096 };
 
 describe('export sizing', () => {
+  it.each(['hexia', 'tafa'])('includes all surrounding sea chunks in %s exports', (id) => {
+    expect(mapNativePx(getMapTemplate(id))).toEqual({ w: 208 * 64, h: 192 * 64 });
+  });
   it('mapNativePx = 64 px/cell + half-tile border (matches capture region)', () => {
     expect(mapNativePx({ width: 10, height: 8 })).toEqual({ w: 10 * 64 + 32, h: 8 * 64 + 32 });
     expect(mapNativePx({ width: 169, height: 140 })).toEqual({ w: 169 * 64 + 32, h: 140 * 64 + 32 });

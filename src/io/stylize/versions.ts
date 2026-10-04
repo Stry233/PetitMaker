@@ -2,8 +2,10 @@
 // useSyncExternalStore while the generation engine writes to it directly.
 import type { EventBus } from '../../core/commands/event-bus';
 import type { EditorEvents } from '../../core/model/types';
+import { onMapEdited } from '../../core/runtime/map-edits';
 import type { DirectionId } from './presets';
 import type { ProcPackId } from './proc/packs/manifest';
+import { createSignal } from '../../core/runtime/signal';
 
 /** What produced a version's pixels. `model` covers provider and on-device neural output and
  *  receives the AI disclosure when composed; `proc` is drawn by a non-neural local procedure. */
@@ -40,11 +42,11 @@ function emptyState(): VersionState {
 let state: VersionState = emptyState();
 let mintCounter = 0;
 let fingerprint = 0;
-const listeners = new Set<() => void>();
+const changed = createSignal();
 
 function setState(next: VersionState): void {
   state = next;
-  for (const l of [...listeners]) l();
+  changed.emit();
 }
 
 /** Remove takes captured from an older map state and clear a stale selection. */
@@ -59,8 +61,7 @@ export const versionStore = {
     return state;
   },
   subscribe(fn: () => void): () => void {
-    listeners.add(fn);
-    return () => listeners.delete(fn);
+    return changed.subscribe(fn);
   },
   /** Reject a take if the map changed while it was being generated. */
   mint(v: Omit<StylizeVersion, 'id' | 'no'>): StylizeVersion | null {
@@ -90,17 +91,9 @@ export const versionStore = {
     return fingerprint;
   },
   bindMapEvents(bus: EventBus<EditorEvents>): () => void {
-    const bump = () => {
+    return onMapEdited(bus, () => {
       fingerprint += 1;
       invalidateStale();
-    };
-    bus.on('cells-changed', bump);
-    bus.on('objects-changed', bump);
-    bus.on('history-applied', bump);
-    return () => {
-      bus.off('cells-changed', bump);
-      bus.off('objects-changed', bump);
-      bus.off('history-applied', bump);
-    };
+    });
   },
 };

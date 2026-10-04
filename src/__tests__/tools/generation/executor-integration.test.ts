@@ -36,7 +36,7 @@ function commit(mode: 'earth' | 'water' | 'mixed', seed: number, size = 48): Out
     if (!r.success && (cmd.type === CommandType.PaintTerrain || cmd.type === CommandType.TrimCorners)) terrainRejects++;
     return r;
   }, exec.getRegistry());
-  const postViol = exec.commitStrokeGroup(start).length;
+  const postViol = exec.commitStroke(start).length;
   let mtn = 0, water = 0, ground = 0;
   for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
     const c = state.cells[y]![x]!; if (c.zone !== 2 /* Grass */) continue;

@@ -65,7 +65,6 @@ describe('V-PLACE-OVERLAP: surface coatings do not block', () => {
   const placeStallAt = (x: number, y: number): PlaceObjectCommand => ({
     type: CommandType.PlaceObject, timestamp: 0,
     object: { id: 'new', catalogId: 'building-stall', position: { x, y }, rotation: 0, elevation: 0 },
-    loadValue: 0,
   });
 
   it('a road under the footprint is not an overlap', () => {

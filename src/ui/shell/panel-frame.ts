@@ -8,7 +8,7 @@ import type { BuildMode } from '../../core/model/edit-mode';
 import type { DockSide } from '../../core/runtime/prefs';
 import { FIT_FLOOR, FIT_REF, fittedUiScale } from '../design/scale';
 import { ASSISTANT_BLOCK, ASSISTANT_ROW_TOP, MODE_ROW_BASE, MODES } from './frame';
-import { LABEL_BOX_DEPTH, MODE, EDGE_LEFT, EDGE_TOP, MODE_SCALE, SCALE, ZOOM } from './units';
+import { LABEL_BOX_DEPTH, MODE, EDGE_LEFT, EDGE_TOP, MODE_SCALE, SCALE, SHELF_HEADING_HEIGHT, SHELF_TABS, ZOOM } from './units';
 
 /** The panel's left edge: the block rows' own, so the three share one margin. */
 export const PANEL_LEFT = EDGE_LEFT;
@@ -77,8 +77,7 @@ export const SEAT_TRAVEL_MAX = CHARACTER_SEAT.w;
 
 /** Room below the panel for each bottom-bar layout, in CSS pixels at the frame scale. */
 export function footReserve(mode: BuildMode): number {
-  if (mode === 'object') return 560 * SCALE;
-  if (mode === 'generate') return 760 * SCALE;
+  if (mode === 'object' || mode === 'generate') return SHELF_TABS.floor + SHELF_HEADING_HEIGHT;
   // The three terrain bars are one row of cells with a shortcut badge over each, and the smart
   // build's proposal puts one line of its own above them.
   return (mode === null ? 200 : 330) * SCALE;
@@ -123,11 +122,6 @@ export const PANEL_CAP_TRIM = 24;
  * block the panel hangs FROM. So the cap is the courteous room wherever there is any, and the least
  * workable height where there is not — bounded by whatever `panelTop` has left below it, that end
  * having already given what it can.
- *
- * Generate mode is the case this was ruled on: its shelf reserve leaves ~159 frame px against the
- * same 180px skeleton at 1280x800, 1366x768, 1440x810 and 1280x700 alike, so the composer was sliced
- * off flush with the plate's bottom at every common laptop height and the record was a 2.5px band.
- * The panel now overlaps the shelf's top by what it needs and no more.
  *
  * `borrow` IS THE SAME YIELD ASKED FOR BY THE CONTENT rather than by the skeleton, and it is spent
  * at the FOOT alone: `panelTop` keeps reading the plain `least`, so a borrowing panel grows downward

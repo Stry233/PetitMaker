@@ -1,9 +1,11 @@
 GARDEN TOWN — the flat FORMAL dialect, measured from a hand-built expert map: order itself is the ornament. A REFERENCE SET PIECE: load it when the order asks for this look; on a free order its floorplan is never the default. Aligned repetition here IS the style: edging runs, orchard grids and twin courts are pattern, not stamps.
 
+Adapt this reference to the requested area, features and scale. Its examples are optional; keep existing work and explicit constraints. Choose the relevant techniques, not the entire layout.
+
 STAGE 0 — BOUND AND PARTITION (2-4 calls)
 - BOUND THE TOWN: a composed district roughly 60-90 cells square around the plaza, NOT the whole planet — the reference keeps open meadow outside its boundary streets, and a town stretched over everything is finished nowhere. Flat throughout.
 - DRAW THE JUNCTION GRAMMAR, never hope for it: lay the 3-wide trunk first (build_road width 3, one call per straight run, ONE jog in its course, passing plaza + facility-shop), then tee each 2-wide side street INTO it from ALTERNATING sides at staggered positions and STOP it at the trunk — a side street that continues across becomes the four-way that builds the grid. 4-6 panels of different sizes. update_plan the stages.
-- THE SIZE LADDER is a placement law: a figure may OUTRANK the locked plaza (~20x27) only as the town's CROWN — centered on the plaza's own axis at the boundary (the reference's lake sits top-center straight above the plaza, 28-36 wide in a clearing that STAYS LAWN, and the two read as one composition). In a side panel or corner the figure is a SECONDARY: 10-14 wide, half the plaza or less — two co-equal masses side by side split the eye. Landmark plaza ~14; home courts ~10.
+- Scale focal features to the requested district and leave useful open ground around the plaza.
 
 STAGE 1 — THE FIGURE AND THE CANAL (2-4 calls)
 - ONE iconic figure where two streets frame it: draw_figure (heart, ring or crescent — symmetric by construction) or a composed mark via paint_terrain cells. Streets FRAME a figure, never cross it — stop the trunk at the clearing's edge (the reference's street ends at the water); a road through the figure cuts it into two crescents. It happens ONCE: any second water is a DIFFERENT shape, half the size, far away.
@@ -19,4 +21,4 @@ STAGE 3 — THE EDGING (3-5 calls)
 STAGE 4 — THE PANELS (3-5 calls)
 - One ORDERED block per panel, panels VARY (at most two orchards ON THE WHOLE MAP): an orchard is a COURT-BOUND patch, 10x6 to 16x8 with its own edge (scatter_objects pattern "grid" step 2-3, one tree species) — a lattice running past one panel is wallpaper, and the sweep will name it. Other panels: a crop panel (decorate_zone farm), a solid one-species flower field (pattern "fill"). One panel stays plain lawn on purpose. decorate_zone garden only inside a court.
 
-DONE BAR: trunk visibly wider and jogged, side streets tee in, no four-way lattice; every street edged end to end; each court complete with its own dooryard bed, twins somewhere; ONE figure (a circle is not a figure) + the canal bridged at a street; landmark alone on its plaza; at least 2 spurs ENDING at a door; one empty panel. Then find_speckle and clear or replant every patch it names; view_map — the town should read as embroidery, pattern not noise.
+DONE BAR: trunk visibly wider and jogged, side streets tee in, no four-way lattice; every street edged end to end; each court complete with its own dooryard bed, twins somewhere; ONE figure (a circle is not a figure) + the canal bridged at a street; landmark alone on its plaza; at least 2 spurs ENDING at a door; one empty panel. Use view_map to check the requested composition; preserve intentional patterns and adjust only specific defects.

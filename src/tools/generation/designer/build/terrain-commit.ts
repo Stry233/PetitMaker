@@ -14,7 +14,7 @@ import type { TerrainPlan } from '../../core/types';
 import type { TerrainSculpt } from '../terrain/terrain-sculpt';
 
 /** The part of a run's context a terrain commit needs: the map, the command door, the rules. */
-export interface CommitContext {
+interface CommitContext {
   state: GridState;
   execute: (c: Command) => ValidationResult;
   reg: RuleDispatcher;

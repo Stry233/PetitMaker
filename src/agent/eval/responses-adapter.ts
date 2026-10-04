@@ -15,12 +15,12 @@ import type { Adapter, AdapterRequest } from '../providers/types';
 
 /* Responses wire item grammar. */
 
-export type ResponsesContentPart =
+type ResponsesContentPart =
   | { type: 'input_text'; text: string }
   | { type: 'input_image'; image_url: string }
   | { type: 'output_text'; text: string };
 
-export type ResponsesInputItem =
+type ResponsesInputItem =
   | { role: 'user' | 'assistant'; content: ResponsesContentPart[] }
   | { type: 'function_call'; call_id: string; name: string; arguments: string }
   | { type: 'function_call_output'; call_id: string; output: string };

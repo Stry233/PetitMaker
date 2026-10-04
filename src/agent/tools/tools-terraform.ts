@@ -3,11 +3,20 @@
  * rivers. Each is ONE stroke group (via runStroke) with an auto edge-cut pass
  * folded into the same undo step, exactly like the build brushes (ATOMIC UNDO).
  */
-import { CellZone, CommandType, TerrainType, type Command, type MacroCoord } from '../../core/model/types';
+import { CommandType, TerrainType, type Command, type MacroCoord } from '../../core/model/types';
 import { circleCells, lineCells, bezier4, expandLine } from '../../tools/paint';
 import { edgeCutGeneratedTerrain } from '../../tools/edge-cut';
 import { makeRng } from '../../core/model/rng';
-import { type AgentToolDeps, type ToolResultBody, argError, clamp, clipBuildable, clipOccupied, runStroke } from './tools-common';
+import { type AgentToolDeps, type ToolResultBody, argError, clipBuildable, clipOccupied, runStroke } from './tools-common';
+import { clamp } from '../../core/model/math';
+import { TOOL_DEFAULTS } from './defaults';
+
+/** Wall bands one support reach apart, the last at the elevation ceiling. */
+const WALL_BANDS: readonly number[] = Array.from(
+  { length: Math.ceil(ELEVATION_MAX / BASE_SUPPORT.reach) }, (_, i) => Math.min((i + 1) * BASE_SUPPORT.reach, ELEVATION_MAX),
+);
+import { BASE_SUPPORT, ELEVATION_MAX } from '../../core/model/game-profile';
+import { isBuildableZone } from '../../core/model/grid-model';
 
 /**
  * The armed region as a membership test, or null with none armed. The organic generators CLIP what
@@ -48,8 +57,8 @@ function blobCells(cx: number, cy: number, r: number, rng: { float(): number }):
 export function sculptTerrace(deps: AgentToolDeps, input: Record<string, unknown>): ToolResultBody {
   const cx = Number(input.cx);
   const cy = Number(input.cy);
-  const baseRadius = clamp(Number(input.baseRadius) || 5, 3, 12);
-  const tiers = clamp(Number(input.tiers) || 2, 1, 3);
+  const baseRadius = clamp(Number(input.baseRadius) || TOOL_DEFAULTS.terraceBaseRadius, 3, 12);
+  const tiers = clamp(Number(input.tiers) || TOOL_DEFAULTS.terraceTiers, 1, 3);
   const smooth = input.smooth === 'rect' ? 'rect' : 'round';
   // The default seed comes from the site itself: the same terrace at the same spot replays
   // exactly, and a terrace elsewhere draws its own shape.
@@ -120,17 +129,16 @@ export function sculptWall(deps: AgentToolDeps, input: Record<string, unknown>):
   const edge = input.edge === 'N' || input.edge === 'S' || input.edge === 'E' || input.edge === 'W' ? input.edge : undefined;
   if (edge) {
     // The convenience siting: a wall IS a boundary condition, so `edge` derives the rect from the
-    // buildable grass bounds itself — abutting the named edge, spanning it, `depth` rows deep. A
-    // wall placed by eye landed mid-field with grass showing behind it, which reads as a
-    // picture-frame pond rather than the map's far wall.
+    // buildable grass bounds itself: abutting the named edge, spanning it, `depth` rows deep. A wall
+    // with grass showing behind it reads as a picture-frame pond rather than the map's far wall.
     let gx1 = mw, gy1 = mh, gx2 = -1, gy2 = -1;
     for (let y = 0; y < mh; y++) for (let x = 0; x < mw; x++) {
-      if (state.cells[y]![x]!.zone === CellZone.Grass) {
+      if (isBuildableZone(state.cells[y]![x]!.zone)) {
         if (x < gx1) gx1 = x; if (x > gx2) gx2 = x; if (y < gy1) gy1 = y; if (y > gy2) gy2 = y;
       }
     }
     if (gx2 < gx1) return argError('the map has no buildable grass to stand a wall on.');
-    const depth = clamp(Number(input.depth) || 14, 7, 30);
+    const depth = clamp(Number(input.depth) || TOOL_DEFAULTS.wallDepth, 7, 30);
     if (edge === 'N') { ix1 = gx1; ix2 = gx2; iy1 = gy1; iy2 = gy1 + depth - 1; }
     else if (edge === 'S') { ix1 = gx1; ix2 = gx2; iy2 = gy2; iy1 = gy2 - depth + 1; }
     else if (edge === 'W') { iy1 = gy1; iy2 = gy2; ix1 = gx1; ix2 = gx1 + depth - 1; }
@@ -146,9 +154,9 @@ export function sculptWall(deps: AgentToolDeps, input: Record<string, unknown>):
   const w = x2 - x1 + 1;
   const h = y2 - y1 + 1;
   if (w < 7 || h < 7) return argError(`the wall band is ${w}x${h}; it needs at least 7 cells on each side for one inset step.`);
-  const askedCrest = clamp(Number(input.crest) || 6, 2, 8);
-  // Bands at 3, 6, 8 up to the crest; each +1 band needs 2 more cells of inset per side.
-  const ladder = [3, 6, 8].filter((e) => e <= askedCrest);
+  const askedCrest = clamp(Number(input.crest) || TOOL_DEFAULTS.wallCrest, 2, ELEVATION_MAX);
+  // Bands one support reach apart up to the crest; each +1 band needs 2 more cells of inset per side.
+  const ladder = WALL_BANDS.filter((e) => e <= askedCrest);
   if (ladder.length === 0 || ladder[ladder.length - 1]! !== askedCrest) ladder.push(askedCrest);
   const maxBands = Math.max(1, Math.floor((Math.min(w, h) - 3) / 4) + 1);
   const bands = ladder.slice(0, maxBands);
@@ -164,7 +172,8 @@ export function sculptWall(deps: AgentToolDeps, input: Record<string, unknown>):
     for (let y = y1 + inset; y <= y2 - inset; y++) {
       for (let x = x1 + inset; x <= x2 - inset; x++) {
         if (clip && !clip.has(`${x},${y}`)) continue;
-        if (state.cells[y]?.[x]?.zone !== CellZone.Grass) continue;
+        const zone = state.cells[y]?.[x]?.zone;
+        if (zone === undefined || !isBuildableZone(zone)) continue;
         finalElev.set(`${x},${y}`, e);
       }
     }
@@ -218,8 +227,8 @@ export function sinkPool(deps: AgentToolDeps, input: Record<string, unknown>): T
   const y1 = clamp(Math.min(iy1, iy2), 1, mh - 2), y2 = clamp(Math.max(iy1, iy2), 1, mh - 2);
   const w = x2 - x1 + 1, h = y2 - y1 + 1;
   if (w < 5 || h < 5) return argError(`the pool rect is ${w}x${h}; it needs at least 5 cells each way for a 1-cell rim around 3x3 of water.`);
-  // Capped at 3: a sheer bench taller than one band step is what V-MTN-03 refuses.
-  const elevation = clamp(Number(input.elevation) || 1, 1, 3);
+  // Capped at one support reach: a sheer bench taller than one band step is what V-MTN-03 refuses.
+  const elevation = clamp(Number(input.elevation) || TOOL_DEFAULTS.poolElevation, 1, BASE_SUPPORT.reach);
   const islets = input.islets === true;
   const clip = regionClip(deps);
   const inRect: MacroCoord[] = [];
@@ -255,7 +264,7 @@ export function carveRiver(deps: AgentToolDeps, input: Record<string, unknown>):
   if (points.length < 2) {
     return argError('points needs 2-6 waypoints from source to mouth.', 'points: [{"x":8,"y":10},{"x":16,"y":14},{"x":24,"y":12}]');
   }
-  const width = clamp(Number(input.width) || 4, 2, 6);
+  const width = clamp(Number(input.width) || TOOL_DEFAULTS.riverWidth, 2, 6);
   const smooth = input.smooth === 'rect' ? 'rect' : 'round';
   // smooth polyline: bezier through consecutive midpoints with waypoints as controls
   const path: MacroCoord[] = [];

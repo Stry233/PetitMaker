@@ -1,5 +1,5 @@
 /**
- * The stylize window: one card with two pages, opened from the export modal's own 画风 group.
+ * The stylize window: one card with two pages, opened from the export modal's own Art style group.
  *
  * IT OPENS ON THE STUDIO, ALWAYS. Most directions draw on this machine and need nothing filed, so
  * a key is not a doorway any more: it is a requirement certain directions carry, surfaced by the
@@ -23,7 +23,7 @@ import { useEditorStore } from '../../../../../state/store';
 import { versionStore } from '../../../../../io/stylize';
 import { Hero } from './Hero';
 import { Studio } from './Studio';
-import { amplitude, framerMotion, leaveMotion } from './motion';
+import { amplitude, framerMotion, outMotion } from '../../../../design/motion';
 import { useStylizeConnection, type StylizeListModels } from './use-stylize-connection';
 
 type Page = 'hero' | 'studio';
@@ -32,7 +32,7 @@ type Page = 'hero' | 'studio';
  *  that side, the departing one goes out the other. */
 const swapTravel = amplitude('stylize.page.swap');
 
-export interface StylizeWindowProps {
+interface StylizeWindowProps {
   onClose: () => void;
   /** Injected for tests; the default asks the chosen dialect. */
   listModels?: StylizeListModels;
@@ -103,7 +103,7 @@ export function StylizeWindow({ onClose, listModels }: StylizeWindowProps) {
               key={page}
               initial={{ opacity: 0, x: swapTravel }}
               animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -swapTravel, pointerEvents: 'none', transition: leaveMotion('stylize.page.swap') }}
+              exit={{ opacity: 0, x: -swapTravel, pointerEvents: 'none', transition: outMotion('stylize.page.swap') }}
               transition={framerMotion('stylize.page.swap')}
               style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column' }}
             >

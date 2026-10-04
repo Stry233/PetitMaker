@@ -2,19 +2,20 @@ import { viewportRect } from '../../core/runtime/viewport-space';
 import { useEffect, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import { useEditorStore } from '../../state/store';
+import { layerNumbersShown } from '../../state/slices/planet-session';
 import { annotationInkScale } from '../../core/model/annotations';
 import { tagLabel } from '../../i18n/annotation-tags';
-import { selectedObjectIds } from '../../state/selection';
 import { MapRenderer } from './map-renderer';
 import { createDefaultRegistry } from '../../rules/index';
 import { DEFAULT_MAP } from '../../config/maps';
 import { ToolType } from '../../core/model/types';
+import { isDrawingMode } from '../../core/model/edit-mode';
 
 import { ToolManager } from '../../tools/runtime';
 import { DrawingTool } from '../../tools/paint';
 
 import { useWasdPan, useUiZoomShortcut } from '../interaction/use-view-shortcuts';
-import { usePointerInteraction, paintSelection } from '../interaction/usePointerInteraction';
+import { usePointerInteraction } from '../interaction/usePointerInteraction';
 import { useCursor } from '../interaction/use-cursor';
 import { registerToolManager, setActiveView } from '../active-view';
 import { setMapRenderer } from './renderer-registry';
@@ -65,7 +66,7 @@ function Canvas2D({ onUnrecoverableLoss }: { onUnrecoverableLoss: () => void }) 
   const brushSize = useEditorStore((s) => s.brushSize);
   const layerVisibility = useEditorStore((s) => s.layerVisibility);
   const layerLocked = useEditorStore((s) => s.layerLocked);
-  const showLayerNumbers = useEditorStore((s) => s.showLayerNumbers);
+  const showLayerNumbers = useEditorStore(layerNumbersShown);
   const locale = useEditorStore((s) => s.locale);
   const annotationsEpoch = useEditorStore((s) => s.annotationsEpoch);
   const annotationDraft = useEditorStore((s) => s.annotationDraft);
@@ -125,9 +126,7 @@ function Canvas2D({ onUnrecoverableLoss }: { onUnrecoverableLoss: () => void }) 
     // terrain-vs-tile. Sync the registered instance whether active or not.
     const dt = tm.getToolById?.(ToolType.TerrainBrush);
     if (dt instanceof DrawingTool) {
-      if (designMode === 'brush' || designMode === 'line' || designMode === 'curve' || designMode === 'rect' || designMode === 'circle') {
-        dt.mode = designMode;
-      }
+      if (isDrawingMode(designMode)) dt.mode = designMode;
       dt.contentType = contentType;
     }
     // The mirror is written; whoever asks a tool a question may ask now. The store told its own
@@ -198,7 +197,7 @@ function Canvas2D({ onUnrecoverableLoss }: { onUnrecoverableLoss: () => void }) 
     const exec = useEditorStore.getState().commandExecutor;
     if (exec) {
       // ToolManager registers the full default tool set in its constructor.
-      const tm = new ToolManager(renderer, exec, gridState);
+      const tm = new ToolManager(renderer.asEditorView(), exec, gridState);
       // A map that arrives mid-session keeps the arming the shell already shows.
       const s = useEditorStore.getState();
       tm.setActiveTool(s.activeTool);
@@ -246,24 +245,6 @@ function Canvas2D({ onUnrecoverableLoss }: { onUnrecoverableLoss: () => void }) 
       observer?.disconnect();
     };
   }, []);
-
-  // Re-paint the selection box when the selected object's geometry changes — a
-  // rotation (or move) swaps its footprint and fires objects-changed, but NOT a
-  // store update, so the subscription above won't catch it; without this the
-  // outline keeps the pre-rotation width/height.
-  useEffect(() => {
-    const onObjectsChanged = () => {
-      const renderer = rendererRef.current;
-      const store = useEditorStore.getState();
-      if (!renderer || !store.gridState) return;
-      // A terrain-only selection cannot be affected by objects-changed.
-      if (selectedObjectIds(store.selection).length > 0) {
-        paintSelection(renderer.overlayLayer, store.gridState, store.selection, store.showLayerNumbers);
-      }
-    };
-    eventBus.on('objects-changed', onObjectsChanged);
-    return () => eventBus.off('objects-changed', onObjectsChanged);
-  }, [eventBus]);
 
   return (
     // One-shot cold-start reveal on first mount. MotionConfig gates it

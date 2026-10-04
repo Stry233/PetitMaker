@@ -1,3 +1,4 @@
+import { framerMotion } from '../../design/motion';
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useChromeScale, useWeightVars } from '../../design/scale';
 import type { CSSProperties } from 'react';
@@ -5,10 +6,11 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { colors, font, inkTint, radii, springs, z } from '../../design/styles';
 import { roleFont } from '../../design/text-weight';
 import { useEditorStore } from '../../../state/store';
-import { useT } from '../../../i18n/context';
+import { quantityParams, useT } from '../../../i18n/context';
 import type { ValidationError } from '../../../core/model/types';
 import { setToastPresenter, type ToastType } from '../../../core/runtime/toast-bus';
-import { TOAST_BAND_TOP } from './toast-band';
+import { TOAST_BAND_TOP, bandTop } from './toast-band';
+import { ruleToast } from '../../../i18n/rule-copy';
 
 export { showToast } from '../../../core/runtime/toast-bus';
 
@@ -16,7 +18,7 @@ const TOAST_DURATION = 3000;
 
 const containerStyle: CSSProperties = {
   position: 'fixed',
-  top: TOAST_BAND_TOP,
+  top: bandTop(TOAST_BAND_TOP),
   // Centred over the WORK: while the assistant's panel is docked it owns a strip at one side of the
   // window, and a notice about what just happened on the map belongs over the map. Half the difference
   // between the two edges, since the dock stands at either and only one is ever non-zero.
@@ -146,7 +148,8 @@ export function ToastContainer() {
     const handler = ({ errors }: { errors: ValidationError[] }) => {
       if (errors.length === 0) return;
       const first = errors[0]!;
-      const message = t(first.message, first.messageParams);
+      // Rule message params are limits and counts.
+      const message = ruleToast(t, first.message, quantityParams(useEditorStore.getState().locale, first.messageParams));
       addToast(message, 'error');
     };
     eventBus.on('validation-failed', handler);
@@ -170,7 +173,7 @@ export function ToastContainer() {
             // Exit uses its own non-bouncy ease so the toast slides out cleanly
             // instead of springing (the per-variant transition wins over the
             // component-level bouncy spring used for the entrance).
-            exit={{ opacity: 0, y: -10, scale: 0.95, transition: { duration: 0.2, ease: [0.4, 0, 1, 1] } }}
+            exit={{ opacity: 0, y: -10, scale: 0.95, transition: framerMotion('notice.leave') }}
             transition={springs.bouncy}
           >
             <ToastFace text={toast.text} type={toast.type} count={toast.count} />

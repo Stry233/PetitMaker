@@ -1,15 +1,14 @@
-// src/core/provenance/tracker.ts
 import { cellKey } from '../model/grid-model';
 import type { MacroCoord } from '../model/types';
 import { applyMoveToTaint, applyOpToTaint, deriveSummary, dominantAuthor, type OpKind, sourceClass } from './policy';
 import { APP_VERSION } from '../../version';
 import {
   ProvSource, type SourceContext, type UnitTaint, type ProvenanceOperation,
-  type ProvenanceState, type MapProvenanceSummary, type OperationScope, type ActorType, type DisclosureClass,
+  type ProvenanceState, type MapProvenanceSummary, type OperationScope, type ActorType, type DisclosureClass, type AuthorClass,
 } from './types';
 
 /** Whose work a unit is — see `dominantAuthor`. */
-export type Author = 'ai' | 'human' | 'procedural' | null;
+export type Author = AuthorClass | null;
 
 export interface TaintDelta {
   cells: { x: number; y: number; before: UnitTaint | null; after: UnitTaint | null }[];

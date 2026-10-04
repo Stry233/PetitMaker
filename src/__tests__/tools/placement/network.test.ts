@@ -48,7 +48,7 @@ describe('buildNetwork (region-portal router)', () => {
 
     const { regionAdj } = scanPortals(ctx, a);
     buildNetwork(ctx, a, 1, nodes, regionAdj);
-    expect(exec.commitStrokeGroup(0).length, 'rule-clean').toBe(0);
+    expect(exec.commitStroke(0).length, 'rule-clean').toBe(0);
 
     const objs = [...state.objects.values()];
     expect(objs.filter((o) => bridgeIds.has(o.catalogId)).length, 'a bridge over the ford').toBeGreaterThan(0);

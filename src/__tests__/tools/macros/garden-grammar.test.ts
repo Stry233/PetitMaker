@@ -26,7 +26,7 @@ import type { KitContext } from '../../../kit/context';
 import { makeState } from '../../rules/_helpers';
 
 const SIZE = 44;
-/** A 5x4 cabin, well inside the map so its bed has room all the way round. */
+/** A cabin well inside the map, so its bed has room all the way round. */
 const CABIN = { id: 'building-forest-cabin', x: 18, y: 16 };
 /** Below the cabin: the disc reaches its bottom edge, so the press is beside the house. */
 const BESIDE = { x: 20, y: 24 };

@@ -1,5 +1,5 @@
 /*
- * road-shape.ts — the DRAWN outline of a trimmed road tile, as plain points.
+ * The DRAWN outline of a trimmed road tile, as plain points.
  *
  * A road's stored corners are symbolic canonical-state tokens (see road-cut-states), not
  * quadrant-faithful geometry: the same tokens that make a `tri-SE` at TL mean a `\` diagonal
@@ -17,8 +17,10 @@ import type { Corners, CornerTrim, PlacedObject } from '../model/types';
 import type { RoadLookup } from '../model/road-lookup';
 import {
   detectRoadConn, fromCanonicalSide, matchCanonicalRoadState, roadSideKept,
-  type RoadConnSide, type RoadSide,
+  type RoadConnSide,
 } from './road-cut-states';
+import type { Side } from '../model/grid-model';
+import { SIDE_DELTA, OPPOSITE_SIDE } from '../model/grid-model';
 
 export type RoadPt = [number, number];
 
@@ -29,13 +31,8 @@ export type RoadPt = [number, number];
  *  ground glowing through the two fades IS the seam — nothing draws a line. */
 export const ROAD_FEATHER = 0.25;
 
-const SIDE_DELTA: Record<RoadSide, readonly [number, number]> = {
-  N: [0, -1], E: [1, 0], S: [0, 1], W: [-1, 0],
-};
-const OPPOSITE: Record<RoadSide, RoadSide> = { N: 'S', S: 'N', E: 'W', W: 'E' };
-
 /** Whether `road`'s own drawn shape reaches its full edge on grid side `side`. */
-function keepsOwnSide(roads: RoadLookup, road: PlacedObject, side: RoadSide): boolean {
+function keepsOwnSide(roads: RoadLookup, road: PlacedObject, side: Side): boolean {
   const state = matchCanonicalRoadState(road.corners);
   if (state === null) return true; // foreign corner sets draw as the whole cell
   return roadSideKept(state, detectRoadConn(roads, road), side);
@@ -51,11 +48,11 @@ export function roadBoundarySides(
   roads: RoadLookup, road: PlacedObject,
 ): { n: boolean; e: boolean; s: boolean; w: boolean } {
   const { x, y } = road.position;
-  const at = (side: RoadSide): boolean => {
+  const at = (side: Side): boolean => {
     const [dx, dy] = SIDE_DELTA[side];
     const o = roads(x + dx, y + dy);
     const continues = !!o && o.elevation === road.elevation && (
-      (o.catalogId === road.catalogId && keepsOwnSide(roads, road, side) && keepsOwnSide(roads, o, OPPOSITE[side]))
+      (o.catalogId === road.catalogId && keepsOwnSide(roads, road, side) && keepsOwnSide(roads, o, OPPOSITE_SIDE[side]))
       || (o.catalogId !== road.catalogId
         && roadCutFeeds(roads, o).some((f) => f.feeders.some((w) => w.id === road.id)))
     );
@@ -79,7 +76,7 @@ export function roadBodyPoints(
   const b = roadBoundarySides(roads, road);
   const state = matchCanonicalRoadState(road.corners);
   const conn = detectRoadConn(roads, road);
-  const fade = (side: RoadSide): boolean =>
+  const fade = (side: Side): boolean =>
     (state !== null && state > 0 && !roadSideKept(state, conn, side))
     || (side === 'N' ? b.n : side === 'E' ? b.e : side === 'S' ? b.s : b.w);
   const iN = fade('N') ? t : 0, iE = fade('E') ? t : 0, iS = fade('S') ? t : 0, iW = fade('W') ? t : 0;
@@ -143,7 +140,7 @@ function clampedArc(cx: number, cy: number, a0: number, a1: number, r: number): 
  *  stands on ITS side; a triangle or wedge complement has no natural halves and stays whole.
  *  Every polygon leads with the vertex the whole region is visible from — the far corner behind
  *  an arc, the notch apex of the wedge complement — the star vertex `RoadFeed` promises. */
-function feedPart(state: number, half: number, tc: number): { sides: readonly RoadSide[]; poly: RoadPt[] } | null {
+function feedPart(state: number, half: number, tc: number): { sides: readonly Side[]; poly: RoadPt[] } | null {
   const c = tc * Math.SQRT2; // where an offset diagonal meets a cell edge
   const r = 2 + tc;
   const q = Math.PI / 4;
@@ -233,12 +230,12 @@ export function roadCutFeeds(roads: RoadLookup, road: PlacedObject): RoadFeed[] 
   if (!state) return [];
   const conn = detectRoadConn(roads, road);
 
-  const feederOn = (cSide: RoadSide): PlacedObject | null => {
+  const feederOn = (cSide: Side): PlacedObject | null => {
     const side = fromCanonicalSide(conn, cSide);
     const [dx, dy] = SIDE_DELTA[side];
     const n = roads(road.position.x + dx, road.position.y + dy);
     if (!n || n.catalogId === road.catalogId || n.elevation !== road.elevation) return null;
-    return keepsOwnSide(roads, n, OPPOSITE[side]) ? n : null;
+    return keepsOwnSide(roads, n, OPPOSITE_SIDE[side]) ? n : null;
   };
 
   const halves = state === 1 || state === 2 ? [0, 1] : [0];

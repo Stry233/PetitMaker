@@ -4,8 +4,8 @@
  * tiers all read adjacent cells), so an edit dirties the chunks covering the
  * changed cells expanded by one cell in every direction.
  */
-import { CHUNK_SIZE } from '../../../core/model/constants';
 import type { MacroCoord } from '../../../core/model/types';
+import { CHUNK_SIZE } from '../../../core/model/game-profile';
 
 export function dirtyChunksFor(cells: readonly MacroCoord[], mapWidth: number, mapHeight: number): Set<string> {
   const maxCx = Math.ceil(mapWidth / CHUNK_SIZE) - 1;

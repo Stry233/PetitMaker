@@ -1,6 +1,5 @@
-import { useToolbarContext } from '../use-toolbar-context';
 /*
- * bar-atoms.tsx — the pieces every bottom bar is built from.
+ * The pieces every bottom bar is built from.
  *
  * A bar is drawn art plus text over it, at design coordinates. Two things it needs that the frame
  * does not: the bars hang off the BOTTOM edge (the design canvas maps onto viewport HEIGHT, but the
@@ -8,21 +7,17 @@ import { useToolbarContext } from '../use-toolbar-context';
  * bar placed by its design `top` would float), and their labels are live strings in seven languages
  * rather than baked art.
  */
+import { useToolbarContext } from '../use-toolbar-context';
 import type { CSSProperties, ReactNode } from 'react';
 import { motion } from 'framer-motion';
 import { effectiveCombo, useKeybinds } from '../../../core/runtime/keybindings';
-import { CANVAS, usePx } from '../../design/scale';
+import { usePx } from '../../design/scale';
 import { prettyCombo } from '../../../core/runtime/keybindings';
 import { MAP_LABEL, ON_DARK } from '../../design/tokens';
 import { SCALE, TEXT } from '../units';
 import { useMotion } from '../motion/use-motion';
 import { useFrameReadableWeight } from '../use-frame-zoom';
 import { BADGE, PLATE_ART, plateRight, type ArtPart } from './terrain-cells';
-
-/** Design y of a box's top → its distance from the design canvas's bottom edge. */
-export function fromBottom(y: number, h: number): number {
-  return CANVAS.h - (y + h);
-}
 
 
 /** One layer of a glyph, placed against an origin its parent box sits at. */
@@ -104,7 +99,7 @@ export function ShortcutBadge({ commandId, active = false, grown = false }: {
 
 /**
  * A label. Its size is a CONSTANT in css px and its box is as wide as the words need: no shrink to
- * fit, in either direction. A label that shrinks to hold its box is how "Естественность" ends up at
+ * fit, in either direction. A label that shrinks to hold its box is how a long Russian slider label ends up at
  * a third the size of the "100%" beside it, unreadable, while the row it sits in looks tidy. The
  * row is what gives instead — it flows, wraps or scrolls — so every language reads at one size.
  *

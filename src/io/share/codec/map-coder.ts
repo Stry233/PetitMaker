@@ -11,17 +11,19 @@ import {
 import type { CellFields } from './grid-io';
 import { SHARE_CATALOG_ORDER } from './catalog-order';
 import { frozenTemplateMask } from './template-mask';
-import type { Corners, CornerTrim, MapTemplate } from '../../../core/model/types';
+import type { MapTemplate } from '../../../core/model/types';
 import type { SaveObject } from '../../save-format';
 import { MAX_OBJECTS_PER_CELL } from '../../import-limits';
+import { ROTATIONS } from '../../../core/model/types';
+import { structuralTop } from '../../../core/edge-cut/terrain-silhouette';
+import { CORNER_CODE } from '../../json-codec';
 
 /** The encoder's inverse of `SHARE_CATALOG_ORDER[idx]`, asked once per object per pass. */
 const SHARE_CATALOG_INDEX = new Map(SHARE_CATALOG_ORDER.map((id, i) => [id, i]));
 
-/** Corner codes, in the order `grid-io` spells them. */
-const CORNERS = 'SF1234E';
-const CORNER_TRIM: readonly CornerTrim[] = ['square', 'fan', 'tri-NW', 'tri-NE', 'tri-SW', 'tri-SE', 'empty'];
-const ROTS = [0, 90, 180, 270];
+/** Corner codes in their persisted index order. */
+const CORNERS = Object.values(CORNER_CODE).join('');
+const ROTS: readonly number[] = ROTATIONS;
 
 const models = <T>(n: number, make: () => T): T[] => Array.from({ length: n }, make);
 
@@ -71,9 +73,6 @@ const EDGE_NEIGHBOURS: readonly (readonly (readonly [number, number])[])[] = [
   [[1, 0], [0, 1]],   // bottom-right
 ];
 const WATER = 2;
-
-/** The mass a cell contributes: a patch is a cosmetic fillet standing on whatever was there. */
-const structuralTop = (f: CellFields) => (f.patchOnly ? f.patchBase ?? f.elevation - 1 : f.elevation);
 
 /** Does this cell hold solid mass of `type` at tier `e`? Water fills from 0, mountain from 1. */
 function solidAt(f: CellFields | null, type: number, e: number): boolean {
@@ -179,9 +178,6 @@ const elevCtx = ({ w, n }: Neighbourhood) =>
   (w ? 1 : 0) | (n ? 2 : 0) | (w && n && w.elevation === n.elevation ? 4 : 0);
 const typeCtx = ({ w, n }: Neighbourhood) => (w ? w.type + 1 : 0) * 5 + (n ? n.type + 1 : 0);
 
-/** The four corner codes of a cell, or null when every one is square. */
-function cornersOf(f: CellFields): string | null { return f.corners; }
-
 export function encodeMap(
   enc: RangeEncoder, template: MapTemplate, cells: (CellFields | null)[], objects: SaveObject[],
   opts: MapModelOpts = { parity: false, half: false },
@@ -226,7 +222,7 @@ export function encodeMap(
     const c = cells[i] ?? null;
     if (!c) continue;
     const locked = lockedCorners(cells, width, template.height, i % width, Math.floor(i / width));
-    const code = cornersOf(c);
+    const code = c.corners;
     for (let k = 0; k < 4; k++) {
       const v = CORNERS.indexOf(code?.[k] ?? 'S');
       if (locked[k]) {
@@ -410,7 +406,3 @@ export function decodeMap(
   }
   return { cells, objects };
 }
-
-/** The trim codes as the model layer spells them, for callers rebuilding a TerrainCell. */
-export const cornerTrimOf = (code: string): Corners =>
-  [...code].map((ch) => CORNER_TRIM[CORNERS.indexOf(ch)] ?? 'square') as unknown as Corners;

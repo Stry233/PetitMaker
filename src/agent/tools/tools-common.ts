@@ -6,7 +6,7 @@
  * tools-director.ts) share one source of truth without import cycles.
  *
  * Every WRITE tool call is exactly ONE stroke group:
- *   getUndoStackSize() → runSilently(execute each command) → commitStrokeGroup()
+ *   executor.transaction → runSilently(execute each command) → commit
  * - runSilently suppresses `validation-failed` events, so the error Toast never
  *   fires for agent edits — rejections are fed back to the LLM instead.
  * - Pre-command rejections are reported per command (reject-and-skip, the same
@@ -18,37 +18,40 @@
  *   converses in any language but reasons over stable rule feedback.
  */
 import {
-  CellZone,
+  
   CommandType,
-  type CatalogItem,
+  
   type Command,
   type GridState,
   type MacroCoord,
-  type PlacementTrait,
-  type ValidationError,
-} from '../../core/model/types';
+  
+  type ValidationError } from '../../core/model/types';
+import type { MapAnnotation } from '../../core/model/annotations';
 import type { CommandExecutor } from '../../core/commands/command-executor';
 import { translateFor } from '../../i18n/context';
+import { ruleToast } from '../../i18n/rule-copy';
 import { footprintCells, getPlacedObjectSize } from '../../state/object-geometry';
 import { entriesNear, getObjectIndex } from '../../state/object-index';
 import { regionBounds } from '../../state/region-bounds';
 import { circleCells, lineCells } from '../../tools/paint';
-import { rectsOverlap } from '../../core/model/grid-model';
+import { rectsOverlap, isBuildableZone } from '../../core/model/grid-model';
 import { normalizeGeometry, missingScalars, type FlatDefault } from './geometry';
 import { regionTokens } from '../serialize';
 import { RULE_HINTS } from '../../rules';
-import { ProvSource } from '../../core/provenance/types';
+import { ProvSource, type SourceContext } from '../../core/provenance/types';
 import type { ToolResultDetail } from '../core/types';
 
 /** The user's single-block selection (mirrors state/store BlockRef). The editor's selection is a
  *  set; this surface has no vocabulary for a group, so a PLURAL selection arrives here as null. */
-export type SelectedBlock = { kind: 'object'; id: string } | { kind: 'terrain'; x: number; y: number } | null;
+type SelectedBlock = { kind: 'object'; id: string } | { kind: 'terrain'; x: number; y: number } | null;
 
 export interface AgentToolDeps {
   getState(): GridState;
   /** Resolves catalog names for human-facing approval summaries. */
   catalogName?(id: string): string | undefined;
   getExecutor(): CommandExecutor;
+  /** Applies one reversible edit to finished notes on the job’s captured map. */
+  editAnnotations?(edit: (items: MapAnnotation[]) => MapAnnotation[]): boolean;
   getRegion(): MacroCoord[];
   /** The clicked/selected block on canvas, if any. */
   getSelectedBlock?(): SelectedBlock;
@@ -85,7 +88,6 @@ export interface AgentToolDeps {
 export type ToolResultBody = { content: string; isError: boolean; image?: { dataUrl: string }; detail?: ToolResultDetail };
 
 import { clamp } from '../../core/model/math';
-export { clamp };
 export const dedupe = (xs: string[]): string[] => [...new Set(xs)];
 
 /** The cells a WRITE may actually reach: the buildable grass zone. Sea, beach, the plaza and the
@@ -93,13 +95,21 @@ export const dedupe = (xs: string[]): string[] => [...new Set(xs)];
  *  clipped up front and the result names the count, instead of one off-zone corner failing or
  *  reverting the whole stroke. Read tools never clip: a look at the sea is a legitimate look. */
 export function clipBuildable(cells: MacroCoord[], state: GridState): { cells: MacroCoord[]; offZone: number } {
-  const kept = cells.filter((c) => state.cells[c.y]?.[c.x]?.zone === CellZone.Grass);
+  const kept = cells.filter((c) => {
+    const zone = state.cells[c.y]?.[c.x]?.zone;
+    return zone !== undefined && isBuildableZone(zone);
+  });
   return { cells: kept, offZone: cells.length - kept.length };
 }
 
 /** The one sentence a clipped write appends where anything was clipped. */
 export function offZoneNote(offZone: number): string {
   return offZone > 0 ? ` ${offZone} cell(s) outside the buildable grass zone were skipped.` : '';
+}
+
+/** The refusal a write whose every cell clipped away answers with. */
+export function offZoneError(): ToolResultBody {
+  return argError('every cell lies outside the buildable grass zone (sea, beach, plaza or boundary), aim inside it.');
 }
 
 /** The paint cells a NON-coating object footprint covers, filtered out: terrain under a standing
@@ -120,7 +130,7 @@ export function clipOccupied(cells: MacroCoord[], state: GridState): { cells: Ma
 
 /** The sentence an occupied-clipped paint appends where anything was clipped. */
 export function occupiedNote(occupied: number): string {
-  return occupied > 0 ? ` ${occupied} cell(s) under standing objects were skipped (clear_area removes object and terrain together).` : '';
+  return occupied > 0 ? ` ${occupied} cell(s) under standing objects were skipped. Those objects remain unchanged; this did not replace or remove them. Inspect the objects before correcting a missing part. Locked objects and the plaza cannot be removed.` : '';
 }
 
 
@@ -143,7 +153,7 @@ const LINE_EXAMPLE = 'shape: "line", x1: 10, y1: 10, x2: 20, y2: 10';
 /** The shared refusal for a shape-taking tool called with no geometry at all. `'area'` is the
  *  rect/circle/line/cells family (paint_terrain, erase_terrain, clear_area); `'path'` is the
  *  line/cells pair (build_road). */
-export function noCellsError(shapes: 'area' | 'path'): ToolResultBody {
+function noCellsError(shapes: 'area' | 'path'): ToolResultBody {
   return shapes === 'path'
     ? argError('no cells given, pass shape "line" with flat endpoint coordinates, or cells.', LINE_EXAMPLE)
     : argError('no cells given, pass shape ("rect", "circle", or "line") with its flat coordinates, or cells.', RECT_EXAMPLE);
@@ -185,13 +195,14 @@ export function geometryError(input: Record<string, unknown>, shapes: 'area' | '
 }
 
 export function formatErrors(errors: ValidationError[]): string {
+  const inEnglish = (key: string, params?: Record<string, string | number>): string => translateFor('en', key, params);
   // One line per DISTINCT refusal (rule + sentence), with the evidence merged across errors: a
   // region-sized stroke over a forbidden zone comes back as one error per cell, and quoting each
   // would put thousands of identical lines in front of the model (a real run overflowed the
   // provider's context doing exactly that).
   const groups = new Map<string, { e: ValidationError; rects: NonNullable<ValidationError['rects']>; cells: ValidationError['cells'] }>();
   for (const e of errors) {
-    const text = translateFor('en', e.message, e.messageParams);
+    const text = ruleToast(inEnglish, e.message, e.messageParams);
     const key = `${e.ruleId}|${text}`;
     const g = groups.get(key) ?? { e, rects: [], cells: [] };
     if (e.rects) g.rects.push(...e.rects);
@@ -200,8 +211,8 @@ export function formatErrors(errors: ValidationError[]): string {
   }
   return [...groups.values()]
     .map(({ e, rects, cells }) => {
-      const text = translateFor('en', e.message, e.messageParams);
-      // Rect evidence (an object's drawn body) is quoted WHOLE: a 4-cell sample of a 6x5 footprint
+      const text = ruleToast(inEnglish, e.message, e.messageParams);
+      // Rect evidence (an object's drawn body) is quoted WHOLE: a 4-cell sample of a building's footprint
       // reads as a thin bar, and the model then probes "free" cells that are inside the same
       // blocker. Cell evidence keeps the sample but names how much of it is unshown.
       const at = rects.length > 0
@@ -241,7 +252,7 @@ function withViolations(
   return list ? { violations: list } : {};
 }
 
-export function detailViolations(errors: ValidationError[]): NonNullable<ToolResultDetail['violations']> | undefined {
+function detailViolations(errors: ValidationError[]): NonNullable<ToolResultDetail['violations']> | undefined {
   const out: NonNullable<ToolResultDetail['violations']> = [];
   const seen = new Set<string>();
   for (const e of errors) {
@@ -304,9 +315,6 @@ export function commandCells(cmd: Command): MacroCoord[] {
   }
 }
 
-/** Shared bounds keep the region chip, order context, and write guard in agreement. */
-export { regionBounds };
-
 type RegionGuard = { has(c: MacroCoord): boolean; bounds: string };
 
 /**
@@ -336,7 +344,7 @@ function firstStray(guard: RegionGuard, commands: Command[]): MacroCoord | null 
   return null;
 }
 
-/** Tallies applied commands into the same shape `runStroke` reports: painted/erased cells deduped
+/** Tallies applied commands into the shape both stroke runners report: painted/erased cells deduped
  *  (a multi-tier mountain stroke issues one PaintTerrain per tier over the SAME cell list, so the
  *  count is cells touched, not commands issued) and objects placed/removed. `undefined` when
  *  neither landed, matching how an ordinary tool call omits `detail` entirely. */
@@ -393,6 +401,12 @@ function outOfRegionResult(at: MacroCoord, guard: RegionGuard): ToolResultBody {
   };
 }
 
+/** The author both stroke runners name: a model wrote this content, accepted by the user or not. */
+function agentSource(deps: AgentToolDeps): SourceContext {
+  const src = deps.getProvenanceSource?.() ?? {};
+  return { source: src.userApproved ? ProvSource.AiAccepted : ProvSource.AiWrite, tool: 'agent', ai: src };
+}
+
 export function runStroke(
   deps: AgentToolDeps,
   commands: Command[],
@@ -407,33 +421,24 @@ export function runStroke(
   opts: { reconcile?: boolean } = {},
 ): ToolResultBody {
   const exec = deps.getExecutor();
-  const start = exec.getUndoStackSize();
-  const src = deps.getProvenanceSource?.() ?? {};
-  exec.pushSource({ source: src.userApproved ? ProvSource.AiAccepted : ProvSource.AiWrite, tool: 'agent', ai: src });
   let ok = 0; const failures: string[] = [];
   // The refusals as RULES beside the same refusals as the model's English (see `detailViolations`).
   const rejected: ValidationError[] = [];
-  // Tallied alongside `ok` for the view's detail — a Set for cells since a multi-tier
-  // mountain stroke (paintTerrain) issues one PaintTerrain command per tier over the
-  // SAME cell list, and the painted count is the cells, not the tier count.
-  const cellSet = new Set<string>();
-  let objectsCount = 0;
-  let violations: ReturnType<typeof exec.commitStrokeGroup>;
+  // The caller's commands that applied, tallied for the view's detail; afterApply's own commands
+  // are not among them.
+  const accepted: Command[] = [];
   // A painted region is a boundary, not a suggestion. Checked as each command applies, so a stray
   // stops the loop before the rest of the batch runs.
   const guard = regionGuard(deps.getRegion());
   let strayed: MacroCoord | null = null;
-  try {
+  // Crashes restore the whole call, including commands that have already applied.
+  const stroke = exec.transaction({ source: agentSource(deps) }, (tx): { refusal: ToolResultBody } | { start: number; violations: ValidationError[] } => {
     exec.runSilently(() => {
       for (const cmd of commands) {
         const r = exec.execute(cmd);
         if (!r.success) { failures.push(formatErrors(r.errors)); rejected.push(...r.errors); continue; }
         ok++;
-        if (cmd.type === CommandType.PaintTerrain || cmd.type === CommandType.EraseTerrain) {
-          for (const c of cmd.cells) cellSet.add(`${c.x},${c.y}`);
-        } else if (cmd.type === CommandType.PlaceObject || cmd.type === CommandType.RemoveObject) {
-          objectsCount++;
-        }
+        accepted.push(cmd);
         if (guard) {
           const out = firstStray(guard, [cmd]);
           if (out) { strayed = out; return; }
@@ -443,17 +448,13 @@ export function runStroke(
     });
     if (strayed) {
       // Nothing half-applies: an undo has to restore what the user was looking at.
-      exec.rollbackTo(start);
-      return outOfRegionResult(strayed as MacroCoord, guard!);
+      tx.rollback();
+      return { refusal: outOfRegionResult(strayed as MacroCoord, guard!) };
     }
-    violations = exec.commitStrokeGroup(start, opts);
-  } catch (err) {
-    // Crashes restore the whole call, including commands that have already applied.
-    exec.rollbackTo(start);
-    throw err;
-  } finally {
-    exec.popSource();
-  }
+    return { start: tx.start, violations: tx.commit(opts) };
+  });
+  if ('refusal' in stroke) return stroke.refusal;
+  const { start, violations } = stroke;
   if (violations.length > 0) {
     const detail = postStrokeDetail(exec, start, violations);
     return {
@@ -477,12 +478,7 @@ export function runStroke(
     msg += bboxSnapshot(deps, snapshotCells);
     deps.onFlash?.(snapshotCells);
   }
-  const partial = withViolations(detailViolations(rejected));
-  const tally = {
-    ...(cellSet.size > 0 ? { cells: cellSet.size } : {}),
-    ...(objectsCount > 0 ? { objects: objectsCount } : {}),
-    ...partial,
-  };
+  const tally = { ...tallyDetail(accepted), ...withViolations(detailViolations(rejected)) };
   const detail: ToolResultDetail | undefined = Object.keys(tally).length > 0 ? tally : undefined;
   return { isError: failures.length > 0, content: msg, detail };
 }
@@ -492,7 +488,7 @@ export function runStroke(
  * per-cell loop or a populator call rather than a fixed Command[]. It reproduces
  * the same one-stroke-group dance runStroke does — capture the undo size, run the
  * body with validation-failed events silenced (async-safe: keeps silent across
- * awaits), then commitStrokeGroup and detect a post-stroke revert — and hands back
+ * awaits), then commitStroke and detect a post-stroke revert — and hands back
  * the body's own data (`result`) plus the raw `violations` and retained-change detail. It names
  * the same author runStroke does — a model wrote this content either way, and the
  * export disclosure and clearGenerated's sparing both read that authorship.
@@ -509,21 +505,19 @@ export async function runStrokeBody<T>(
   body: () => T | Promise<T>,
 ): Promise<{ reverted: boolean; violations: ValidationError[]; result: T; outOfRegion: ToolResultBody | null; detail?: ToolResultDetail }> {
   const exec = deps.getExecutor();
-  const start = exec.getUndoStackSize();
-  const src = deps.getProvenanceSource?.() ?? {};
-  exec.pushSource({ source: src.userApproved ? ProvSource.AiAccepted : ProvSource.AiWrite, tool: 'agent', ai: src });
   const guard = regionGuard(deps.getRegion());
-  try {
+  // Same guarantee as runStroke: a crash never leaves half-applied, unvalidated edits.
+  return exec.transactionAsync({ source: agentSource(deps) }, async (tx) => {
     const result = await exec.runSilentlyAsync(async () => body());
-    const applied = exec.commandsSince(start); // read BEFORE commitStrokeGroup collapses the group
+    const applied = exec.commandsSince(tx.start); // read BEFORE the commit collapses the group
     if (guard) {
       const stray = firstStray(guard, applied);
       if (stray) {
-        exec.rollbackTo(start);
+        tx.rollback();
         return { reverted: false, violations: [], result, outOfRegion: outOfRegionResult(stray, guard) };
       }
     }
-    const violations = exec.commitStrokeGroup(start);
+    const violations = tx.commit();
     const reverted = violations.length > 0;
     return {
       reverted,
@@ -531,16 +525,10 @@ export async function runStrokeBody<T>(
       result,
       outOfRegion: null,
       detail: reverted
-        ? postStrokeDetail(exec, start, violations)
+        ? postStrokeDetail(exec, tx.start, violations)
         : tallyDetail(applied),
     };
-  } catch (err) {
-    // Same guarantee as runStroke: a crash never leaves half-applied, unvalidated edits.
-    exec.rollbackTo(start);
-    throw err;
-  } finally {
-    exec.popSource();
-  }
+  });
 }
 
 /** Both stroke runners report the retained state beside the rule text and correction hints. */
@@ -555,13 +543,6 @@ export function revertedMsg(what: string, violations: ValidationError[], detail:
 /** A caller-supplied determinism seed, or the fallback when absent/malformed. */
 export function parseSeed(input: Record<string, unknown>, fallback: number): number {
   return input.seed !== undefined && Number.isFinite(Number(input.seed)) ? Number(input.seed) : fallback;
-}
-
-/** The waterSpan (bridge) trait of a catalog item, if it has one. Shared by the
- *  bridge-site scanner and place_object's failure diagnostics. */
-export type WaterSpanTrait = Extract<PlacementTrait, { type: 'waterSpan' }>;
-export function waterSpanTrait(item: CatalogItem | undefined): WaterSpanTrait | undefined {
-  return item?.traits.find((tr): tr is WaterSpanTrait => tr.type === 'waterSpan');
 }
 
 /* ── input helpers ───────────────────────────────────────────────────── */

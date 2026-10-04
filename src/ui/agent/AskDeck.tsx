@@ -4,10 +4,11 @@
  * swaps the deck and cards without transitions.
  */
 import { useState, type CSSProperties, type ReactNode } from 'react';
-import { AnimatePresence, motion, useReducedMotionConfig } from 'framer-motion';
+import { AnimatePresence } from 'framer-motion';
 import { ASK_SPINE, markFor, VerdictChip, type VerdictMark } from './GateBlock';
 import { Icon } from './icons';
-import { framerMotion, NO_MOTION } from './motion';
+import { Disclosure } from '../primitives/Disclosure';
+import { useReadingIntent } from '../primitives/scroll-intent';
 import { edge } from './tokens';
 import { INK, LINE, PLATE } from '../design/tokens';
 import { colors, cursors, font } from '../design/styles';
@@ -20,7 +21,7 @@ import type { AskRecord } from '../../agent/core/project-view';
 export const DECK_MIN = 3;
 
 /** One stretch of the ask list as the record draws it: a pile, or a card standing alone. */
-export type AskRun =
+type AskRun =
   | { deck: true; asks: AskRecord[] }
   | { deck: false; ask: AskRecord };
 
@@ -117,10 +118,11 @@ export function AskDeck({
   children: ReactNode;
 }) {
   const t = useT();
-  const reduced = useReducedMotionConfig() === true;
+  const preserveReading = useReadingIntent();
   const [internalOpen, setInternalOpen] = useState(false);
   const open = openProp ?? internalOpen;
   const setOpen = (next: boolean) => {
+    preserveReading();
     onOpenChange?.(next);
     if (openProp === undefined) setInternalOpen(next);
   };
@@ -128,16 +130,6 @@ export function AskDeck({
   if (asks.length === 0 || newest === undefined) return null;
   const face = faceMark(newest);
   const cards = Array.isArray(children) ? children : [children];
-
-  /** A fanned card arrives on its own height so the record below it moves down, and carries NO exit
-   *  under reduced motion, which is what makes the restack an instant swap rather than a fade. */
-  const fold = reduced
-    ? { initial: false as const, transition: NO_MOTION }
-    : {
-      initial: { opacity: 0, height: 0 },
-      exit: { opacity: 0, height: 0 },
-      transition: framerMotion('panel.gate.deck'),
-    };
 
   return (
     <div
@@ -185,7 +177,7 @@ export function AskDeck({
 
       <AnimatePresence initial={false}>
         {!open && (
-          <motion.div key="edges" data-testid="ask-deck-edges" {...fold} animate={{ opacity: 1, height: 'auto' }} style={{ overflow: 'hidden' }}>
+          <Disclosure key="edges" testId="ask-deck-edges" motionId="panel.gate.deck">
             {PEEK_HEIGHTS.map((height, i) => (
               <div
                 key={height}
@@ -200,18 +192,12 @@ export function AskDeck({
                 }}
               />
             ))}
-          </motion.div>
+          </Disclosure>
         )}
         {open && asks.map((ask, i) => (
-          <motion.div
-            key={ask.gateId}
-            data-testid="ask-deck-card"
-            {...fold}
-            animate={{ opacity: 1, height: 'auto' }}
-            style={{ overflow: 'hidden' }}
-          >
-            <div style={{ paddingTop: FAN_GAP, display: 'flex', flexDirection: 'column' }}>{cards[i]}</div>
-          </motion.div>
+          <Disclosure key={ask.gateId} testId="ask-deck-card" motionId="panel.gate.deck" spaceBefore={FAN_GAP}>
+            <div style={{ display: 'flex', flexDirection: 'column' }}>{cards[i]}</div>
+          </Disclosure>
         ))}
       </AnimatePresence>
     </div>

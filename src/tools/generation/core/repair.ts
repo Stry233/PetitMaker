@@ -1,5 +1,6 @@
-import { TerrainType, type GridState, type MapTemplate, type PlacedObject, type ValidationError } from '../../../core/model/types';
-import { getCell, createDefaultTerrainCell, createGrid, createPlazaObject, isBuildableZone, bumpCellsVersion, NEIGHBORS4 } from '../../../core/model/grid-model';
+import { TerrainType, type GridState, type MapTemplate, type ValidationError } from '../../../core/model/types';
+import { getCell, createDefaultTerrainCell, isBuildableZone, bumpCellsVersion, NEIGHBORS4 } from '../../../core/model/grid-model';
+import { createGridState } from '../../../core/model/planet';
 import type { RuleDispatcher } from '../../../core/model/rule-dispatcher';
 import type { TerrainPlan } from './types';
 
@@ -7,27 +8,18 @@ import type { TerrainPlan } from './types';
 // terminates on its own; this bounds how long a pathological plan may spend getting there.
 const MAX_PASSES = 64;
 
-/** A fresh editor-equivalent GridState (grass + plaza, no terrain) for scratch validation. */
-export function makeScratchState(template: MapTemplate): GridState {
-  const cells = createGrid(template);
-  const objects = new Map<string, PlacedObject>();
-  const plaza = createPlazaObject(template);
-  if (plaza) objects.set(plaza.id, plaza);
-  return { template, cells, objects, lockedLayers: new Set() };
-}
-
 // ONE cached scratch per template, rewritten fully on every call. Callers must consume the
 // returned state synchronously and discard it — it is invalid after the next applyPlanToScratch.
 // Generation validates plans hundreds of times (repair passes + per-waterfall candidates), so a
 // fresh W×H MacroCell grid per call was the pipeline's dominant allocation.
 const scratchCache = new WeakMap<MapTemplate, GridState>();
 
-/** Build a GridState whose cells reflect the plan (terrain only on grass), reusing makeScratchState.
+/** Build a GridState whose cells reflect the plan (terrain only on grass), reusing createGridState.
  *  Returns a SHARED per-template scratch — valid only until the next applyPlanToScratch call. */
 export function applyPlanToScratch(plan: TerrainPlan, template: MapTemplate): GridState {
   let state = scratchCache.get(template);
   if (!state) {
-    state = makeScratchState(template); // fresh grass + plaza, no terrain
+    state = createGridState(template); // the template as a new map opens
     scratchCache.set(template, state);
   }
   for (let y = 0; y < plan.height; y++) {

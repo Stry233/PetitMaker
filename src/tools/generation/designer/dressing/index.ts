@@ -1,5 +1,5 @@
 /**
- * Stage 4 of the methodology pipeline (步骤 4 · 细节点缀): the regions filled in.
+ * Stage 4 of the designer pipeline (the detailing step): the regions filled in.
  *
  * A REGION IS A RUN OF OPEN GROUND, not a rectangle. The lots the layout drew are where a region was
  * PLANNED; what it actually gets is whatever open ground survives the terrain, the roads and the
@@ -24,15 +24,16 @@
  * and cut by `terrain-sculpt.ts` long before, since terrain must be down before a road or a plant is.
  */
 import { makeRng, type Rng } from '../../../../core/model/rng';
-import { flatIndex } from '../../../../core/model/grid-model';
-import { CellZone, ItemCategory, TerrainType, type Rect } from '../../../../core/model/types';
+import { flatIndex, isBuildableZone, NEIGHBORS4, rectContains } from '../../../../core/model/grid-model';
+import { ItemCategory, TerrainType, type PlacedObject, type Rect } from '../../../../core/model/types';
 import { getCatalogItem } from '../../../../state/catalog';
 import { getRotatedSize, objectRect } from '../../../../state/object-geometry';
 import { tryDecorate, tryPlace, type PlaceCtx } from '../../../placement/object';
 import type { AnchorPlan } from '../places/anchors';
 import { streetTermini } from '../eval/streets';
 import { familyOf, planPalettes, speciesOf, type RegionPalette } from './palette';
-import { composesFormally, mirrorOf, symmetrize, type Axis } from './symmetry';
+import { composesFormally, mirrorOf, reflect, symmetrize, type Axis } from './symmetry';
+import { LoadBudget } from '../../../../state/load-budget';
 import { plantableSurface } from '../terrain/terrain-sculpt';
 import type { AnchorKind, DesignPlan, RegionPlan, ThemeId } from '../types';
 import { anchorStyle, hedgeMarks } from './anchor';
@@ -181,7 +182,7 @@ export function planKitGround(plan: DesignPlan, seed: number, richness: number):
 
 // --- dressing the finished map ----------------------------------------------------------------------
 
-export interface DressInput {
+interface DressInput {
   place: PlaceCtx;
   plan: DesignPlan;
   anchors: AnchorPlan;
@@ -205,6 +206,9 @@ export interface DressOutcome {
   /** Plants the rules turned down. A composed mark stands on ground the pass already read as
    *  plantable, so this counts the cases the reading and the rules disagree on. */
   refused: number;
+  /** Marks left out because their region's load budget could not carry them. A mirrored pair is
+   *  left out whole, so the budget never breaks a composed mirror in half. */
+  overBudget: number;
   /** Forecourt cells paved beside the museum and the shop. */
   paved: number;
   /** Runs of open ground composed, and how many of those were composed as a mirror. */
@@ -217,7 +221,7 @@ export function dressRegions(input: DressInput): DressOutcome {
   const state = place.state;
   const W = state.template.width, H = state.template.height;
   const surface = plantableSurface(state);
-  const out: DressOutcome = { planted: 0, refused: 0, paved: 0, composed: 0, formal: 0 };
+  const out: DressOutcome = { planted: 0, refused: 0, overBudget: 0, paved: 0, composed: 0, formal: 0 };
   // The forecourts go down BEFORE the ground is read: they are pavement, and pavement is one of the
   // things that decides where a plant may stand.
   out.paved = layForecourts(input, surface);
@@ -232,7 +236,7 @@ export function dressRegions(input: DressInput): DressOutcome {
   // in the density band whatever the kits happened to be drawn.
   let land = 0;
   for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
-    if (state.cells[y]![x]!.zone === CellZone.Grass) land++;
+    if (isBuildableZone(state.cells[y]![x]!.zone)) land++;
   }
   const styles = new Map<string, KitStyle>();
   const styleFor = (region: RegionPlan): KitStyle => {
@@ -324,20 +328,34 @@ export function dressRegions(input: DressInput): DressOutcome {
     composed = jobs.map((job) => composeRun(job, anchors, W, water));
   }
 
+  // THE LOAD BUDGET IS PLANNED, NOT DISCOVERED: a group of marks (a mark and its mirror image) is
+  // charged to a ledger first and left out whole when its regions cannot carry it, so the rules
+  // never refuse a mark for load and a mirror never loses one half.
+  const ledger = new LoadBudget(state);
+  const plant = (group: readonly PlantMark[]): void => {
+    const objects = group.map(markObject);
+    for (const o of objects) ledger.change(o, 1);
+    if (!ledger.fits) {
+      for (const o of objects) ledger.change(o, -1);
+      out.overBudget += group.length;
+      return;
+    }
+    for (const [i, mark] of group.entries()) {
+      if (tryDecorate(place, mark.catalogId, mark.x, mark.y)) out.planted++;
+      else { out.refused++; ledger.change(objects[i]!, -1); }
+    }
+  };
   const taken = new Set<number>();
   for (const [index, job] of jobs.entries()) {
     out.composed++;
     if (job.formal) out.formal++;
-    for (const mark of composed[index]!) {
-      taken.add(flatIndex(mark.x, mark.y, W));
-      if (tryDecorate(place, mark.catalogId, mark.x, mark.y)) out.planted++;
-      else out.refused++;
-    }
+    const marks = composed[index]!;
+    for (const mark of marks) taken.add(flatIndex(mark.x, mark.y, W));
+    for (const group of markGroups(marks, job.formal ? mirrorOf(job.canvas.box, job.axis) : null, W)) plant(group);
   }
   for (const mark of ends) {
     if (taken.has(flatIndex(mark.x, mark.y, W))) continue;
-    if (tryDecorate(place, mark.catalogId, mark.x, mark.y)) out.planted++;
-    else out.refused++;
+    plant([mark]);
   }
   return out;
 }
@@ -404,6 +422,31 @@ function endMarks(
 
 /** One run composed: its kit's tiling, mirrored where the run is a formal one, with an anchor
  *  region's hedges laid round its buildings first. Each cell is asked for once. */
+/** A mark as the placed object a load ledger prices. */
+function markObject(mark: PlantMark): PlacedObject {
+  return { id: '', catalogId: mark.catalogId, position: { x: mark.x, y: mark.y }, rotation: 0, elevation: 0 };
+}
+
+/** The marks in planting order, each with its mirror image of the same species when the run is
+ *  formal, so the budget keeps or drops a pair together. */
+function markGroups(marks: readonly PlantMark[], mirror: ReturnType<typeof mirrorOf> | null, W: number): PlantMark[][] {
+  if (!mirror) return marks.map((m) => [m]);
+  const at = new Map(marks.map((m) => [flatIndex(m.x, m.y, W), m] as const));
+  const grouped = new Set<PlantMark>();
+  const groups: PlantMark[][] = [];
+  for (const mark of marks) {
+    if (grouped.has(mark)) continue;
+    grouped.add(mark);
+    const image = reflect(mirror, mark.x, mark.y);
+    const twin = image.x >= 0 && image.x < W && image.y >= 0 ? at.get(flatIndex(image.x, image.y, W)) : undefined;
+    if (twin && twin !== mark && !grouped.has(twin) && twin.catalogId === mark.catalogId) {
+      grouped.add(twin);
+      groups.push([mark, twin]);
+    } else groups.push([mark]);
+  }
+  return groups;
+}
+
 function composeRun(
   job: { canvas: KitCanvas; style: KitStyle; region: RegionPlan; formal: boolean; axis: Axis },
   anchors: AnchorPlan, W: number, water?: Uint8Array,
@@ -563,11 +606,11 @@ function openGround(
   for (let y = 0; y < H; y++) {
     for (let x = 0; x < W; x++) {
       const i = flatIndex(x, y, W);
-      if (surface[i]! < 0 || state.cells[y]![x]!.zone !== CellZone.Grass) continue;
+      if (surface[i]! < 0 || !isBuildableZone(state.cells[y]![x]!.zone)) continue;
       if (place.clearance.has(i) || avoid?.has(i)) continue;
       if (within && !within(x, y)) continue;
       let paved = 0;
-      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
+      for (const [dx, dy] of NEIGHBORS4) {
         const nx = x + dx, ny = y + dy;
         if (nx >= 0 && ny >= 0 && nx < W && ny < H && place.roads.has(flatIndex(nx, ny, W))) paved++;
       }
@@ -599,7 +642,7 @@ function segmentRuns(open: Uint8Array, surface: Int8Array, W: number, H: number)
       const p = stack.pop()!;
       cells.push(p);
       const x = p % W, y = (p / W) | 0;
-      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
+      for (const [dx, dy] of NEIGHBORS4) {
         const nx = x + dx, ny = y + dy;
         if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
         const j = flatIndex(nx, ny, W);
@@ -624,9 +667,6 @@ const grounds = (region: RegionPlan): Rect | null => {
     : null;
 };
 
-const within = (rect: Rect, x: number, y: number): boolean =>
-  x >= rect.x && x < rect.x + rect.w && y >= rect.y && y < rect.y + rect.h;
-
 /**
  * Which region composes each run: the one whose lot-plus-apron covers most of it, and it composes
  * the WHOLE run.
@@ -650,7 +690,7 @@ function assignRuns(runs: number[][], plan: DesignPlan, W: number): { run: numbe
       const ground = grounds(region);
       if (!ground) continue;
       let overlap = 0;
-      for (const i of cells) if (within(ground, i % W, (i / W) | 0)) overlap++;
+      for (const i of cells) if (rectContains(ground, i % W, (i / W) | 0)) overlap++;
       if (overlap > bestOverlap) { bestOverlap = overlap; bestId = region.id; }
     }
     if (!bestId) bestId = nearestRegion(plan, cells, W);
@@ -720,7 +760,7 @@ function layForecourts(input: DressInput, surface: Int8Array): number {
     }
     if (!free || !cells.length) continue;
     for (const c of cells) {
-      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
+      for (const [dx, dy] of NEIGHBORS4) {
         if (place.roads.has(flatIndex(c.x + dx, c.y + dy, W))) { touches = true; break; }
       }
       if (touches) break;

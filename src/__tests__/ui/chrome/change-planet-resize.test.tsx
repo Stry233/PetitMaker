@@ -1,7 +1,7 @@
 /**
- * The change-planet window's card eases its height whenever its content changes: choosing the planet
- * you are on takes the carry row away and puts the start-over warning up, a language change rewraps
- * every line in it, and the verb's busy dots stand where a sentence stood.
+ * The change-planet window's card eases its height whenever its content changes: the next step
+ * replaces the list and preview, a language change rewraps every line in it, and the verb's busy
+ * dots stand where a sentence stood.
  *
  * WHAT THIS FILE IS FOR is the COVERAGE of that "whenever": the glide runs off a named change
  * (`useSizeGlide`'s `change`), so a height change the name does not carry both snaps and leaves the
@@ -22,13 +22,9 @@ import { MotionConfig } from 'framer-motion';
 import { ChangePlanetModal } from '../../../ui/chrome/modals/ChangePlanetModal';
 import { I18nProvider } from '../../../i18n/context';
 import { useEditorStore } from '../../../state/store';
-import { CommandExecutor } from '../../../core/commands/command-executor';
-import { EventBus } from '../../../core/commands/event-bus';
-import { createDefaultRegistry } from '../../../rules';
 import { createGrid } from '../../../core/model/grid-model';
 import { MAP_TEMPLATES } from '../../../config/maps';
-import { roadLookup } from '../../../state/object-index';
-import { CommandType, TerrainType, type EditorEvents, type GridState, type MapTemplate } from '../../../core/model/types';
+import { TerrainType, type GridState, type MapTemplate } from '../../../core/model/types';
 
 const HEXIA = MAP_TEMPLATES['hexia']!;
 const TAFA = MAP_TEMPLATES['tafa']!;
@@ -40,7 +36,7 @@ function grid(template: MapTemplate): GridState {
   return { template, cells: createGrid(template), objects: new Map(), lockedLayers: new Set() };
 }
 
-/** A planet with something built on it, so the carry row is on screen to begin with. */
+/** A planet with something built on it, so choosing another planet leads to the next step. */
 function worldWithBuild(template: MapTemplate = HEXIA) {
   const state = grid(template);
   const cell = state.cells[60]?.[60];
@@ -60,14 +56,16 @@ function show(reduced = false) {
 }
 
 const body = () => screen.getByTestId('planet-body');
+const verb = () => screen.getByTestId('planet-switch');
 
-/** Choosing the planet you are already on: the carry row goes, the start-over warning arrives. */
-function chooseHere(nextHeight: number) {
+/** Choosing another planet and pressing Next: the list gives way to the next step. */
+function nextStep(nextHeight: number) {
   height = nextHeight;
-  fireEvent.click(screen.getByTestId(`planet-${HEXIA.id}`));
+  fireEvent.click(screen.getByTestId(`planet-${TAFA.id}`));
+  fireEvent.click(verb());
 }
 
-/** The card is a different height now — and it travelled there rather than jumping. Clipping is the
+/** The card is a different height now, and it travelled there rather than jumping. Clipping is the
  *  signal: the window puts it on for exactly as long as the glide runs. */
 async function expectGlide(nextHeight: number, change: () => void) {
   height = nextHeight;
@@ -90,88 +88,45 @@ afterEach(() => {
 });
 
 describe('the change-planet card', () => {
-  it('eases to its new height when the choice changes what it holds', async () => {
+  it('eases to its new height when the next step replaces the list', async () => {
     show();
     expect(body().style.overflow).toBe('');
-    chooseHere(520);
-    // The content really did change: this is the row the glide exists for.
-    expect(screen.getByTestId('planet-start-over-hint')).toBeTruthy();
+    nextStep(220);
+    expect(screen.getByRole('radio', { name: 'Start fresh' })).toBeTruthy();
     // Clipped while it travels, so no row re-lays itself out on the way.
     expect(body().style.overflow).toBe('hidden');
     expect(body().style.height).toBe('400px');
-    // And it arrives carrying nothing: a leftover inline height would make the next measurement
-    // describe this glide rather than the card's own content.
+    // A leftover inline height would make the next measurement describe this glide.
     await waitFor(() => expect(body().style.height).toBe(''), { timeout: 3000 });
     expect(body().style.overflow).toBe('');
   });
 
   it('takes the new height outright under reduced motion', () => {
     show(true);
-    chooseHere(520);
-    expect(screen.getByTestId('planet-start-over-hint')).toBeTruthy();
+    nextStep(220);
+    expect(screen.getByRole('radio', { name: 'Start fresh' })).toBeTruthy();
     expect(body().style.overflow).toBe('');
     expect(body().style.height).toBe('');
   });
 
-  it('animates the first selection after an empty modal opens', async () => {
-    act(() => { useEditorStore.setState({ gridState: grid(HEXIA) }); });
-    const frame = (open: boolean) => (
-      <MotionConfig reducedMotion="never">
-        <I18nProvider><ChangePlanetModal open={open} onSwitch={() => {}} onClose={() => {}} /></I18nProvider>
-      </MotionConfig>
-    );
-    const view = render(frame(false));
-    view.rerender(frame(true));
-    height = 460;
-    fireEvent.click(screen.getByTestId(`planet-${TAFA.id}`));
-    expect(body().style.height).toBe('400px');
-    await waitFor(() => expect(body().style.height).toBe(''), { timeout: 3000 });
-  });
-
-  it('eases when a destination is picked at all, and again when the choice moves', async () => {
+  it('eases back when the visitor returns to the list', async () => {
     show();
-    await expectGlide(460, () => fireEvent.click(screen.getByTestId(`planet-${TAFA.id}`)));
-    await expectGlide(520, () => fireEvent.click(screen.getByTestId(`planet-${HEXIA.id}`)));
-  });
-
-  it('eases when the unsaved-work row arrives', async () => {
-    show();
-    // The row reads the undo stack, which the window sees through the executor the store holds.
-    const state = useEditorStore.getState().gridState!;
-    const executor = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
-    act(() => {
-      executor.execute({
-        type: CommandType.PaintTerrain, timestamp: 1, cells: [{ x: 40, y: 60 }],
-        terrainType: TerrainType.Mountain, elevation: 1,
-      });
-    });
-    await expectGlide(470, () => { act(() => { useEditorStore.setState({ commandExecutor: executor }); }); });
-    expect(screen.getByText('Unexported changes will be lost.')).toBeTruthy();
+    nextStep(220);
+    await waitFor(() => expect(body().style.overflow).toBe(''), { timeout: 3000 });
+    await expectGlide(560, () => fireEvent.click(screen.getByRole('button', { name: 'Back' })));
+    expect(screen.getByTestId(`planet-${TAFA.id}`)).toBeTruthy();
   });
 
   it('eases when the language changes under it', async () => {
     show();
-    // Every line in the card is a different length in Russian, so the card is a different card.
     await expectGlide(540, () => { act(() => { useEditorStore.setState({ locale: 'ru' }); }); });
     expect(screen.getByRole('dialog', { name: 'Сменить планету' })).toBeTruthy();
   });
 
   it('eases when the busy dots take the verb', async () => {
     show();
-    fireEvent.click(screen.getByTestId(`planet-${TAFA.id}`));
+    nextStep(220);
     await waitFor(() => expect(body().style.overflow).toBe(''), { timeout: 3000 });
-    await expectGlide(380, () => fireEvent.click(screen.getByTestId('planet-switch')));
-  });
-
-  it('eases when the planet under the visitor changes while their choice stands', async () => {
-    show();
-    // Choosing here is starting over: the carry row goes.
-    chooseHere(520);
-    await waitFor(() => expect(body().style.overflow).toBe(''), { timeout: 3000 });
-    expect(screen.queryByText('What you have built')).toBeNull();
-    // The map is replaced under the window and the same choice is now a destination elsewhere, so
-    // the carry row comes back with the choice itself unmoved.
-    await expectGlide(600, () => { worldWithBuild(TAFA); });
-    expect(screen.getByText('What you have built')).toBeTruthy();
+    await expectGlide(210, () => fireEvent.click(verb()));
   });
 });

@@ -6,7 +6,8 @@ import { STYLIZE_TRUST } from '../prompt/compile';
 import judgeInstructions from '../prompt/judge.md?raw';
 import { quotePromptData } from '../../../core/runtime/prompt-data';
 import { classify, scrub } from './errors';
-import { StylizeError, type DialectConfig, type StylizeDialect, type StylizeImage } from './types';
+import { StylizeError, type DialectConfig, type StylizeDialect } from './types';
+import { baseOf, orderByRole } from './request';
 
 const DEFAULT_BASE = 'https://generativelanguage.googleapis.com';
 
@@ -31,20 +32,10 @@ function parseDataUrl(dataUrl: string): { mimeType: string; data: string } {
   return { mimeType: match[1]!, data: match[2]! };
 }
 
-/** Style, then layout, then source last, dropping any role absent from this call. */
-function orderImages(images: readonly StylizeImage[]): StylizeImage[] {
-  const byRole = (role: StylizeImage['role']) => images.filter((i) => i.role === role);
-  return [...byRole('style'), ...byRole('layout'), ...byRole('source')];
-}
-
-function baseOf(cfg: DialectConfig): string {
-  return cfg.baseUrl || DEFAULT_BASE;
-}
-
 async function post(cfg: DialectConfig, path: string, body: unknown, signal?: AbortSignal): Promise<unknown> {
   let res: Response;
   try {
-    res = await fetch(`${baseOf(cfg)}${path}`, {
+    res = await fetch(`${baseOf(cfg, DEFAULT_BASE)}${path}`, {
       method: 'POST',
       headers: { 'content-type': 'application/json', 'x-goog-api-key': cfg.key },
       body: JSON.stringify(body),
@@ -73,7 +64,7 @@ export const geminiDialect: StylizeDialect = {
   async listModels(cfg, signal) {
     let res: Response;
     try {
-      res = await fetch(`${baseOf(cfg)}/v1beta/models?pageSize=1000`, {
+      res = await fetch(`${baseOf(cfg, DEFAULT_BASE)}/v1beta/models?pageSize=1000`, {
         headers: { 'x-goog-api-key': cfg.key },
         signal,
       });
@@ -93,7 +84,7 @@ export const geminiDialect: StylizeDialect = {
 
   async generate(cfg, req, signal) {
     const parts = [
-      ...orderImages(req.images).map((img) => ({ inline_data: parseDataUrl(img.dataUrl) })),
+      ...orderByRole(req.images, ['style', 'layout', 'source']).map((img) => ({ inline_data: parseDataUrl(img.dataUrl) })),
       { text: req.prompt },
     ];
     const body = {

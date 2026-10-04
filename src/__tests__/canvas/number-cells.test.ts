@@ -4,7 +4,7 @@
  * plan never leaves its chunk.
  */
 import { describe, it, expect } from 'vitest';
-import { chunkNumberCells } from '../../canvas/map2d/layers/number-cells';
+import { chunkNumberCells } from '../../canvas/number-cells';
 import { ItemCategory, TerrainType } from '../../core/model/types';
 import type { PlacedObject } from '../../core/model/types';
 import { makeState, setTerrain } from '../rules/_helpers';

@@ -2,15 +2,13 @@ import { useCallback, useEffect, type RefObject } from 'react';
 import type { MapRenderer } from '../map2d/map-renderer';
 import { getActiveView } from '../active-view';
 import { useEditorStore } from '../../state/store';
-import { clampUiZoom } from '../map2d/zoom-accum';
+import { clampUiZoom } from '../../core/runtime/prefs';
 import { anyOverlayOpen } from '../../core/runtime/overlay-state';
 import { isConstrainHeld } from '../../core/runtime/modifier-state';
 import {
   bindingIndex, effectiveCombo, matchesUiZoomCombo, normalizeCombo, useKeybinds, ALIASES, type Overrides,
 } from '../../core/runtime/keybindings';
-
-/** Tags whose focused state means the keys belong to what is being typed, not to a shortcut. */
-const TYPING_TAGS = new Set(['INPUT', 'TEXTAREA', 'SELECT']);
+import { isTextEntry } from '../../core/runtime/text-entry';
 
 type Dir = 'up' | 'down' | 'left' | 'right';
 const PAN_CMD: Record<Dir, string> = {
@@ -110,8 +108,7 @@ export function useHeldPan(pan: (dx: number, dy: number) => void, enabled: () =>
       if (!enabled()) return;
       const key = e.key.toLowerCase();
       if (!map.has(key)) return;
-      const target = e.target as HTMLElement | null;
-      if (target && TYPING_TAGS.has(target.tagName)) return;
+      if (isTextEntry(e.target)) return;
       // Auto-repeat is the SAME press held down, not a second tap.
       if (!e.repeat && !keysDown.has(key)) {
         const since = performance.now() - (lastUp.get(key) ?? -Infinity);
@@ -196,8 +193,7 @@ export function useUiZoomShortcut() {
       // up. Every OTHER shortcut (map pan, tool keys, delete) still self-suppresses.
       // A text field still wins, the same guard the discrete engine applies: rebound to a plain
       // letter, this would otherwise scale the chrome while the user types.
-      const target = e.target as HTMLElement | null;
-      if (target && (TYPING_TAGS.has(target.tagName) || target.isContentEditable)) return;
+      if (isTextEntry(e.target)) return;
       // Zoom-in is tested first, so a pair deliberately bound onto each other's twin scales one way
       // rather than firing both and cancelling out.
       if (matchesUiZoomCombo(combos.in, e)) { e.preventDefault(); bumpUiZoom(0.1); }

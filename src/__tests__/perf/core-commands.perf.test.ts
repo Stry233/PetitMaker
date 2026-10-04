@@ -1,5 +1,5 @@
 /*
- * core-commands.perf.test.ts — the command executor's per-operation costs.
+ * The command executor's per-operation costs.
  *
  * Covers the paths a brush stroke and its history actually pay for: a plain paint stroke laid one
  * command per cell (what a drag issues), the auto-stack ladder a mountain climb takes one rung at a
@@ -36,7 +36,7 @@ function paintCell(world: World, coord: MacroCoord, elevation: number): boolean 
   return world.executor.execute(cmd).success;
 }
 
-// A 20x10 block of plain grass on the hexia template, clear of the plaza (76.5,58.5, 20x27) — a
+// A 20x10 block of plain grass on the hexia template, clear of the plaza — a
 // real drag's worth of cells for the stroke benches below.
 const BLOCK_ORIGIN = { x: 19, y: 7 };
 const BLOCK_W = 20, BLOCK_H = 10;

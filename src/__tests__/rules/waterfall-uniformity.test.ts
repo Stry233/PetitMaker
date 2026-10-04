@@ -105,4 +105,29 @@ describe('V-WTR-03: Waterfall Adjacent Row Uniformity', () => {
       setTerrain(state, x, 4, TerrainType.Water, 2);
     expect(waterfallAdjacentUniformityRule.validate(state)).toHaveLength(0);
   });
+
+  describe('a strip holding a patch-only water cell (a fillet whose support is a tier lower)', () => {
+    /** The (x, y) `along` cells down the strip axis and `across` rows deep, the axes swapped when `vertical`. */
+    const at = (vertical: boolean, along: number, across: number): [number, number] => (vertical ? [across, along] : [along, across]);
+
+    it.each([false, true])('keeps the far cap and reports the front cell off the row (vertical %s)', (vertical) => {
+      // Strip M@2, W@2, patch water (elevation 2, base 1), M@2 at row 3; wall behind at row 2;
+      // front row 4 is M@1 under the first three and bare ground under the far cap.
+      const state = makeState(10, 10);
+      const put = (along: number, across: number, type: TerrainType, elevation: number) => {
+        const [x, y] = at(vertical, along, across);
+        setTerrain(state, x, y, type, elevation);
+      };
+      put(3, 3, TerrainType.Mountain, 2);
+      put(4, 3, TerrainType.Water, 2);
+      const [px, py] = at(vertical, 5, 3);
+      state.cells[py]![px]!.terrain = { type: TerrainType.Water, elevation: 2, patchOnly: true, patchBase: 1, corners: ['square', 'square', 'fan', 'square'] };
+      put(6, 3, TerrainType.Mountain, 2);
+      put(4, 2, TerrainType.Mountain, 2);
+      put(5, 2, TerrainType.Mountain, 2);
+      for (const along of [3, 4, 5]) put(along, 4, TerrainType.Mountain, 1);
+      const [fx, fy] = at(vertical, 6, 4);
+      expect(waterfallAdjacentUniformityRule.validate(state).flatMap((e) => e.cells ?? [])).toEqual([{ x: fx, y: fy }]);
+    });
+  });
 });

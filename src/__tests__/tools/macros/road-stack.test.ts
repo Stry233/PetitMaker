@@ -39,7 +39,7 @@ describe('roads macro: paving strips the coating it covers', () => {
     const ctx = { state, executor: exec, registry: exec.getRegistry() };
     const place = (catalogId: string, x: number, y: number): void => {
       const obj = { id: generateObjectId(), catalogId, position: { x, y }, rotation: 0 as const, elevation: 0 };
-      expect(exec.execute({ type: CommandType.PlaceObject, timestamp: 1, object: obj, loadValue: 0 }).success).toBe(true);
+      expect(exec.execute({ type: CommandType.PlaceObject, timestamp: 1, object: obj }).success).toBe(true);
     };
     place('building-myhouse', 40, 40);
     place('building-stall', 55, 48);
@@ -64,7 +64,7 @@ describe('roads macro: paving strips the coating it covers', () => {
     const ctx = { state, executor: exec, registry: exec.getRegistry() };
     const place = (catalogId: string, x: number, y: number): void => {
       const obj = { id: generateObjectId(), catalogId, position: { x, y }, rotation: 0 as const, elevation: 0 };
-      expect(exec.execute({ type: CommandType.PlaceObject, timestamp: 1, object: obj, loadValue: 0 }).success).toBe(true);
+      expect(exec.execute({ type: CommandType.PlaceObject, timestamp: 1, object: obj }).success).toBe(true);
     };
     place('building-myhouse', 40, 40);
     place('building-stall', 55, 48);

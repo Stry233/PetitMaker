@@ -43,10 +43,13 @@ export interface ProvenanceOperation {
   promptHash?: string; inputHash?: string; outputHash?: string;
 }
 
+/** The three classes of authorship a unit's contribution is split across. */
+export type AuthorClass = 'ai' | 'human' | 'procedural';
+
 export interface UnitTaint {
   createdByOp: string; lastModifiedByOp: string;
   origin: ProvSource;
-  contribution: { ai: number; human: number; procedural: number };
+  contribution: Record<AuthorClass, number>;
   flags: number;
 }
 

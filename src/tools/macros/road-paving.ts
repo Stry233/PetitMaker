@@ -4,10 +4,10 @@
  * guarantee every building the run connected keeps a paved doorstep — plus the two derivations both
  * share, the hub and the nodes a live map implies.
  */
-import { ItemCategory, type AutoEdgeCut, type GridState, type MacroCoord, type PlacedObject } from '../../core/model/types';
-import { cellKey, NEIGHBORS4 } from '../../core/model/grid-model';
+import { type AutoEdgeCut, type GridState, type MacroCoord, type PlacedObject, type Rotation } from '../../core/model/types';
+import { cellKey, NEIGHBORS4, templateLandmark } from '../../core/model/grid-model';
 import { surfaceElevation } from '../../core/edge-cut/terrain-silhouette';
-import { categoryOf, getCatalogItem, isDecoration } from '../../state/catalog';
+import { getCatalogItem, isDecoration } from '../../state/catalog';
 import { getObjectIndex, objectAt } from '../../state/object-index';
 import { objectPlacementCommand, stripCoatingsFor } from '../objects/object-placer';
 import { generateObjectId } from '../../core/model/object-id';
@@ -18,9 +18,10 @@ import type { PlacementAnalysis } from '../placement/analysis';
 import { approachCells, astar, crossingExitCells, type Node } from '../placement/network';
 import { buildingGate, hasGate, openAt, tryPlace, type PlaceCtx } from '../placement/object';
 import { gateTerminalCells } from '../placement/route';
-import { objectRect } from '../../state/object-geometry';
+import { crossingRunsAlongX, objectRect } from '../../state/object-geometry';
 import type { MacroContext } from './context';
 import { components, networkCells } from './walkable';
+import { isCoatingItem, isCrossing } from '../../core/model/traits';
 
 /** Lay `roadId` on each cell that can take one, through the rules. A cell the rules refuse is
  *  SKIPPED, never forced: that is how a route necks past a shore the flat trait will not pave. A
@@ -62,7 +63,7 @@ function nearestWalkCell(
 }
 
 /** What a run must be told about the route it just laid. */
-export interface RouteJoin {
+interface RouteJoin {
   /** Null when the pavement joins the two ends. Otherwise the cell where the road toward the far end
    *  stops, so the caller can say where rather than merely that. */
   stoppedAt: MacroCoord | null;
@@ -104,7 +105,7 @@ export function joinRoute(
   // using another lane only when its preferred entrance is blocked.
   for (const obj of crossings) {
     const [exitA, exitB] = crossingExitCells(obj);
-    const r = objectRect(obj), horizontal = r.w >= r.h;
+    const r = objectRect(obj), horizontal = crossingRunsAlongX(obj);
     const center = Math.floor(horizontal ? r.y + (r.h - 1) / 2 : r.x + (r.w - 1) / 2);
     const low = center - Math.floor((width - 1) / 2), high = center + Math.ceil((width - 1) / 2);
     for (const exit of [exitA, exitB]) {
@@ -205,7 +206,7 @@ export function beautifyRoads(ctx: MacroContext, cells: readonly MacroCoord[], m
  *  miss a cell that already has a coating. `state/object-index`'s `roadByCell` is patched by EVERY
  *  command-executor mutation regardless of which path placed it (`bumpObjectsVersion` fires inside
  *  `command-apply.ts`, not inside `tryPlace`), so it is the one answer that cannot be stale. */
-export function gateAlreadyPaved(state: GridState, rect: { x: number; y: number; w: number; h: number }, rotation: 0 | 90 | 180 | 270): boolean {
+export function gateAlreadyPaved(state: GridState, rect: { x: number; y: number; w: number; h: number }, rotation: Rotation): boolean {
   const { roadByCell } = getObjectIndex(state);
   return gateTerminalCells(rect, rotation).some((c) => roadByCell.has(cellKey(c.x, c.y)));
 }
@@ -253,7 +254,7 @@ interface DoorSpur {
  */
 function planDoorSpur(
   ctx: MacroContext, roadId: string, rect: { x: number; y: number; w: number; h: number },
-  rotation: 0 | 90 | 180 | 270,
+  rotation: Rotation,
 ): DoorSpur | null {
   const state = ctx.state;
   const W = state.template.width, H = state.template.height;
@@ -360,17 +361,16 @@ export function ensureGateTerminals(
  * A HUB'S REGION IS THE ONE ITS FOOTPRINT TOUCHES, and it is read off the map rather than guessed.
  * The plaza's own cells are occupied, so they belong to no region and the centre cell answers -1;
  * falling back to the map's LARGEST region is only right where the plaza stands in the middle of it,
- * which is how a generated planet comes out and is not how a hand-terraced one does. On a map whose
- * plaza sits in its own walled court, that fallback told `buildNetwork` the network was seeded in a
- * region 7000 cells away: the spanning tree planned every portal chain out of a region the plaza
- * cannot reach, so each realized ramp's approaches A*-ed toward a network on the far side of a cliff,
- * every link failed, and 12 crossings landed joined to nothing while not one road tile was laid.
+ * which is how a generated planet comes out and is not how a hand-terraced one does. Where the plaza
+ * sits in its own walled court, that fallback seeds `buildNetwork` in a region the plaza cannot reach,
+ * and every link from it fails.
  */
 export function hubNode(state: GridState, analysis: PlacementAnalysis): Node | null {
   const W = analysis.width, H = analysis.height;
   const regionAt = (p: MacroCoord): number => analysis.region[p.y * W + p.x] ?? -1;
   const hubRegion = analysis.rankedRegions[0];
-  const plaza = [...state.objects.values()].find((o) => o.locked);
+  const landmark = templateLandmark(state);
+  const plaza = landmark?.locked ? landmark : undefined;
   if (plaza) {
     const r = objectRect(plaza);
     const pos: MacroCoord = { x: Math.round(r.x + r.w / 2), y: Math.round(r.y + r.h / 2) };
@@ -406,11 +406,11 @@ function touchedRegion(
 }
 
 /** THE NETWORK IS NOT A DESTINATION: the road surfaces plus the crossings that carry one over water
- *  or a step. These three categories are exactly what a road macro lays, so they are also exactly
+ *  or a step. These pieces are exactly what a road macro lays, so they are also exactly
  *  what it must not read back as somewhere to go. */
 function isNetworkPiece(obj: PlacedObject): boolean {
-  const cat = categoryOf(obj);
-  return cat === ItemCategory.Road || cat === ItemCategory.Bridge || cat === ItemCategory.Ramp;
+  const item = getCatalogItem(obj.catalogId);
+  return isCoatingItem(item) || isCrossing(item);
 }
 
 /** The cells of the ring one step out from a footprint, the band a street can stand in to be "at"
@@ -433,7 +433,7 @@ function pavementTouches(state: GridState, rect: { x: number; y: number; w: numb
 }
 
 /** What a live map offers a road run: where to route from, and how much of the map is already done. */
-export interface StandingNodes {
+interface StandingNodes {
   /** The hub, plus one hamlet per standing thing that still wants a road. */
   nodes: Node[];
   /** How many things the network ALREADY meets, and so have no node. The one honest source for

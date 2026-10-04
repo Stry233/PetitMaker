@@ -1,6 +1,5 @@
-import { viewportSize } from '../../core/runtime/viewport-space';
 /*
- * use-viewport-epoch.ts — "the room has changed", as one render input.
+ * "the room has changed", as one render input.
  *
  * Two things move the geometry a measured layout was derived from, and neither is a change to any
  * prop or to any store fact the surface is reading: the WINDOW resizing, and the interface's own
@@ -13,6 +12,7 @@ import { viewportSize } from '../../core/runtime/viewport-space';
  * layout depends on produce the same value, and a hook comparing it can tell "the room moved" from
  * "the content changed" without a second reading of its own.
  */
+import { viewportSize } from '../../core/runtime/viewport-space';
 import { useEffect, useState } from 'react';
 import { useChromeScale } from '../design/scale';
 

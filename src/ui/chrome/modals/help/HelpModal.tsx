@@ -1,19 +1,20 @@
 /*
- * HelpModal.tsx — the Help Center: catalog on the left, one page on the right, search and the
+ * The Help Center: catalog on the left, one page on the right, search and the
  * "what's this?" arm in the header. The window keeps the reader's place across opens; a deep link
  * (`openHelp`) outranks it once, then clears.
  */
+import { cssMotion } from '../../../design/motion';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence, useReducedMotionConfig } from 'framer-motion';
 import { effectiveCombo, prettyCombo, useKeybinds } from '../../../../core/runtime/keybindings';
 import { useEditorStore } from '../../../../state/store';
 import { useT } from '../../../../i18n/context';
 import { ensureHelpStrings } from '../../../../i18n/locales/help';
-import { ModalShell } from '../../../primitives/ModalShell';
+import { ModalShell, useModalEntered } from '../../../primitives/ModalShell';
 import { ClickCatcher } from '../../../primitives/ClickCatcher';
 import { roleFont } from '../../../design/text-weight';
-import { ACTIVE, INK, INSET, LINE, PLATE, PLATE_INK, TRACK } from '../../../design/tokens';
-import { colors, cursors, exitTransition, pressable, radii, shadows, springs, z } from '../../../design/styles';
+import { ACTIVE, INK, INSET, LINE, MAP_EDGE_ALPHA, PLATE, PLATE_INK, TRACK } from '../../../design/tokens';
+import { colors, cursors, exitTransition, pressable, radii, shadows, springs, withAlpha, z } from '../../../design/styles';
 import { HELP_GROUPS, HELP_GROUP_TITLES, HELP_PAGES, HELP_PAGE_ORDER } from './catalog';
 import type { HelpPageId } from './page-schema';
 import { PageView } from './PageView';
@@ -51,9 +52,7 @@ export function HelpModal({ open, onClose }: { open: boolean; onClose: () => voi
   const scrollRef = useRef<HTMLDivElement>(null);
   const pendingAnchor = useRef<{ page: HelpPageId; anchor?: string } | null>(null);
   const reduced = useReducedMotionConfig();
-  const [entered, setEntered] = useState(false);
-  const onEntered = useCallback(() => setEntered(true), []);
-  useEffect(() => { if (!open) setEntered(false); }, [open]);
+  const { entered, onEntered } = useModalEntered(open);
 
   // A deep link is consumed exactly once, at the open (or the click) that carried it.
   useEffect(() => {
@@ -82,10 +81,10 @@ export function HelpModal({ open, onClose }: { open: boolean; onClose: () => voi
       const el = host.querySelector<HTMLElement>(`#help-${anchor}`);
       if (!el) { host.scrollTop = 0; return; }
       el.scrollIntoView({ block: 'start', behavior: reduced ? 'auto' : 'smooth' });
-      el.style.transition = reduced ? 'none' : 'background-color 0.4s ease';
+      el.style.transition = cssMotion('help.highlight', ['background-color'], reduced);
       const raf = requestAnimationFrame(() => { el.style.backgroundColor = ACTIVE; });
       const timeout = setTimeout(() => {
-        el.style.transition = reduced ? 'none' : 'background-color 1.2s ease';
+        el.style.transition = cssMotion('help.highlight.leave', ['background-color'], reduced);
         el.style.backgroundColor = 'transparent';
       }, 900);
       return () => { cancelAnimationFrame(raf); clearTimeout(timeout); };
@@ -149,7 +148,7 @@ export function HelpModal({ open, onClose }: { open: boolean; onClose: () => voi
                     animate={{ opacity: 1, y: 0, scale: 1 }}
                     exit={{ opacity: 0, y: -6, scale: 0.98, transition: exitTransition }}
                     transition={springs.stiff}
-                    style={{ position: 'absolute', top: 'calc(100% + 8px)', left: 0, right: 0, transformOrigin: 'top center', background: PLATE, border: `1px solid rgba(87,73,53,0.62)`, borderRadius: radii.lg, padding: 6, boxShadow: shadows.menu, display: 'flex', flexDirection: 'column', gap: 2, maxHeight: 340, overflowY: 'auto', zIndex: 5 }}
+                    style={{ position: 'absolute', top: 'calc(100% + 8px)', left: 0, right: 0, transformOrigin: 'top center', background: PLATE, border: `1px solid ${withAlpha(INK, MAP_EDGE_ALPHA)}`, borderRadius: radii.lg, padding: 6, boxShadow: shadows.menu, display: 'flex', flexDirection: 'column', gap: 2, maxHeight: 340, overflowY: 'auto', zIndex: 5 }}
                   >
                     {hits.map((h, i) => (
                       <motion.button
@@ -158,7 +157,7 @@ export function HelpModal({ open, onClose }: { open: boolean; onClose: () => voi
                         onClick={() => go(h.page, h.anchor)}
                         initial={reduced ? false : { opacity: 0 }}
                         animate={{ opacity: 1, transition: { ...springs.stiff, delay: reduced ? 0 : i * 0.025 } }}
-                        style={{ display: 'flex', alignItems: 'baseline', gap: 9, textAlign: 'left', border: 'none', borderRadius: radii.md, padding: '9px 14px', background: PLATE, cursor: cursors.clickable, transition: 'background-color 0.15s ease' }}
+                        style={{ display: 'flex', alignItems: 'baseline', gap: 9, textAlign: 'left', border: 'none', borderRadius: radii.md, padding: '9px 14px', background: PLATE, cursor: cursors.clickable, transition: cssMotion('control.paint', ['background-color']) }}
                         onPointerEnter={(e) => { e.currentTarget.style.background = INSET; }}
                         onPointerLeave={(e) => { e.currentTarget.style.background = PLATE; }}
                       >
@@ -206,7 +205,7 @@ export function HelpModal({ open, onClose }: { open: boolean; onClose: () => voi
                           color: current ? INK : PLATE_INK,
                           background: current ? ACTIVE : 'transparent',
                           cursor: cursors.clickable,
-                          transition: 'background-color 0.15s ease',
+                          transition: cssMotion('control.paint', ['background-color']),
                         }}
                         onPointerEnter={(e) => { if (!current) e.currentTarget.style.background = PLATE; }}
                         onPointerLeave={(e) => { if (!current) e.currentTarget.style.background = 'transparent'; }}

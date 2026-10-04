@@ -1,23 +1,24 @@
 /** Localized approval descriptions with map coordinates and object names. */
 import { displayAgentText, toolVerbKey } from './tool-labels';
 import type { ToolCall } from './tools/types';
+import type { Theme } from './tools/tools-director';
 import { normalizeGeometry, rectInput, type FlatDefault } from './tools/geometry';
+import { TOOL_DEFAULTS, defaultRoadId } from './tools/defaults';
+import type { Translate } from '../core/model/types';
 
 type In = Record<string, unknown>;
 
-export interface DescribeNames {
+interface DescribeNames {
   catalog(id: string): string | undefined;
   object(id: string): string | undefined;
 }
 const NO_NAMES: DescribeNames = { catalog: () => undefined, object: () => undefined };
 const itemName = (id: unknown, t: Translate, names: DescribeNames): string => names.catalog(String(id)) ?? t('agent3.object_name');
 
-export type Translate = (key: string, params?: Record<string, string | number>) => string;
-
 const n = (v: unknown): number => Number(v);
 
-/** decorate_zone's themes (tools-director THEMES) named for the panel. */
-export const THEME_KEY: Record<string, string> = {
+/** decorate_zone's themes named for the panel. */
+const THEME_KEY: Record<Theme, string> = {
   orchard: 'agent2.theme_orchard',
   farm: 'agent2.theme_farm',
   garden: 'agent2.theme_garden',
@@ -68,6 +69,11 @@ const box = (i: In): string => `${at(i)}+${n(i.w)}×${n(i.h)}`;
 
 /** Arguments worth reviewing before a map operation. */
 const DESCRIBERS: Record<string, (input: In, t: Translate, names: DescribeNames) => string> = {
+  set_annotation: (i, t) => {
+    const kind = ({ zone: 'annot.layer', chip: 'annot.chip', route: 'annot.route', measure: 'annot.measure' } as Record<string, string>)[String(i.kind)];
+    return [kind ? t(kind) : t('annot.layer'), Array.isArray(i.cells) ? t('agent2.dc_cells', { n: i.cells.length }) : ''].filter(Boolean).join(' ');
+  },
+  remove_annotation: (_i, t) => t('annot.layer'),
   paint_terrain: (i, t) => {
     const painted = t('agent2.dc_paint', {
       terrain: word(TERRAIN_KEY, i.terrain, t),
@@ -89,7 +95,7 @@ const DESCRIBERS: Record<string, (input: In, t: Translate, names: DescribeNames)
     at: at(i),
     style: word(TRIM_KEY, i.style, t),
   }),
-  build_road: (i, t, names) => t('agent2.dc_along', { what: itemName(i.catalogId ?? 'path-rustic-dirt', t, names), area: shape(i, t, 'line') }),
+  build_road: (i, t, names) => t('agent2.dc_along', { what: itemName(i.catalogId ?? defaultRoadId(), t, names), area: shape(i, t, 'line') }),
   scatter_objects: (i, t, names) => {
     const ids = ((i.catalogIds as string[] | undefined) ?? []).map((id) => itemName(id, t, names));
     const pool = ids.length > 2 ? `${ids.slice(0, 2).join(', ')} +${ids.length - 2}` : ids.join(', ');
@@ -103,7 +109,7 @@ const DESCRIBERS: Record<string, (input: In, t: Translate, names: DescribeNames)
   sculpt_wall: (i, t) => t('agent2.dc_wall', {
     w: Math.abs(n(i.x2) - n(i.x1)) + 1,
     h: Math.abs(n(i.y2) - n(i.y1)) + 1,
-    crest: n(i.crest) || 6,
+    crest: n(i.crest) || TOOL_DEFAULTS.wallCrest,
     flood: i.flood === true ? t('agent2.dc_wall_flood') : '',
   }),
   draw_figure: (i, t) => t('agent2.dc_figure', {
@@ -113,18 +119,18 @@ const DESCRIBERS: Record<string, (input: In, t: Translate, names: DescribeNames)
     ring: typeof i.ringId === 'string' ? t('agent2.dc_figure_ring', { ring: t('agent3.object_name') }) : '',
   }),
   sculpt_terrace: (i, t) => t('agent2.dc_terrace', {
-    tiers: n(i.tiers) || 2,
+    tiers: n(i.tiers) || TOOL_DEFAULTS.terraceTiers,
     r: n(i.baseRadius),
     at: `(${n(i.cx)},${n(i.cy)})`,
   }),
   carve_river: (i, t) => {
     const pts = (i.points as In[] | undefined) ?? [];
-    const course = t('agent2.dc_river', { w: n(i.width) || 4, n: pts.length });
+    const course = t('agent2.dc_river', { w: n(i.width) || TOOL_DEFAULTS.riverWidth, n: pts.length });
     if (pts.length < 2) return course;
     return `${course} (${n(pts[0]!.x)},${n(pts[0]!.y)})→(${n(pts[pts.length - 1]!.x)},${n(pts[pts.length - 1]!.y)})`;
   },
   decorate_zone: (i, t) => t('agent2.dc_zone', {
-    theme: t(THEME_KEY[String(i.theme ?? '')] ?? 'agent2.theme_zone'),
+    theme: t((THEME_KEY as Partial<Record<string, string>>)[String(i.theme ?? '')] ?? 'agent2.theme_zone'),
     area: box(i),
   }),
   plant_forest: (i, t) => (i.density !== undefined
@@ -132,7 +138,7 @@ const DESCRIBERS: Record<string, (input: In, t: Translate, names: DescribeNames)
     : box(i)),
   build_road_network: (_i, t) => t('agent2.dc_connect'),
   frame_crossing: (i, t) => t('agent2.dc_crossing', { at: at(i) }),
-  undo: (i, t) => t('agent2.dc_steps', { n: n(i.steps) || 1 }),
+  undo: (i, t) => t('agent2.dc_steps', { n: n(i.steps) || TOOL_DEFAULTS.historySteps }),
   delegate_task: (i) => String(i.label ?? i.task ?? '').slice(0, 90),
   update_plan: (i, t) => {
     const stages = Array.isArray(i.stages) ? (i.stages as In[]) : undefined;

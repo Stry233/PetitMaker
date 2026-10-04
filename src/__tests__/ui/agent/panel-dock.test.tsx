@@ -27,7 +27,7 @@ import {
 } from '../../../ui/shell/panel-frame';
 import { PANEL_WIDTH } from '../../../ui/agent/tokens';
 import { cozyOverlay, z } from '../../../ui/design/styles';
-import { outSeconds, seconds } from '../../../ui/agent/motion';
+import { outSeconds, seconds } from '../../../ui/design/motion';
 import { useDockDriver, useDockStage } from '../../../ui/shell/use-dock';
 
 const backing = new Map<string, string>();

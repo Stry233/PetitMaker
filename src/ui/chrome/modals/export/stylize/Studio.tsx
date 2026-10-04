@@ -44,7 +44,7 @@ export type RunStylize = (
   signal?: AbortSignal,
 ) => Promise<{ image: HTMLImageElement }>;
 
-export interface StudioProps {
+interface StudioProps {
   /** Provider connection; local directions do not require one. */
   dialect: StylizeDialect | null;
   cfg: DialectConfig | null;

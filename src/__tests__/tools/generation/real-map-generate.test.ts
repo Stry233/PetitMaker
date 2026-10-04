@@ -9,6 +9,8 @@ import { generateTerrain, clearAllObjects, clearAllTerrain } from '../../../tool
 import { objectRect, getPlacedObjectSize } from '../../../state/object-geometry';
 import { PLAZA_ID } from '../../../core/model/constants';
 import { CellZone, TerrainType, type GridState, type MapTemplate, type EditorEvents, type GenerateConfig, type Command } from '../../../core/model/types';
+import { getMapStats } from '../../../state/map-stats';
+import { CHUNK_LOAD_LIMIT } from '../../../core/model/game-profile';
 import { roadLookup } from '../../../state/object-index';
 
 // Shipped maps include fractional locked plazas and production zone boundaries absent from makeState.
@@ -33,7 +35,7 @@ function generate(file: string, mode: 'earth' | 'water' | 'mixed', seed = 42) {
   clearAllObjects(state, (c: Command) => exec.execute(c));
   clearAllTerrain(state, (c: Command) => exec.execute(c));
   generateTerrain(config, state, (c: Command) => exec.execute(c), exec.getRegistry());
-  const postViol = exec.commitStrokeGroup(start).length;
+  const postViol = exec.commitStroke(start).length;
   let mtn = 0, water = 0;
   for (let y = 0; y < state.template.height; y++) for (let x = 0; x < state.template.width; x++) {
     const t = state.cells[y]![x]!.terrain;
@@ -47,6 +49,9 @@ function generate(file: string, mode: 'earth' | 'water' | 'mixed', seed = 42) {
     for (let yy = Math.floor(r.y); yy < Math.ceil(r.y + sz.h); yy++)
       for (let xx = Math.floor(r.x); xx < Math.ceil(r.x + sz.w); xx++)
         if (state.cells[yy]?.[xx]?.zone !== CellZone.Grass) onNonGrass++;
+  }
+  for (const [key, chunk] of getMapStats(state).chunks) {
+    expect(chunk.load, `${file} seed ${seed} region ${key}`).toBeLessThanOrEqual(CHUNK_LOAD_LIMIT);
   }
   const objects = [...state.objects.values()].filter((o) => !o.locked).length;
   return { mtn, water, objects, postViol, onNonGrass, plazaSurvives: state.objects.has(PLAZA_ID) };

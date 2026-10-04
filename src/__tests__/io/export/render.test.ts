@@ -1,4 +1,3 @@
-// src/__tests__/io/export/render.test.ts
 import { describe, it, expect, vi } from 'vitest';
 import { renderExport } from '../../../io/export/render';
 import { ProvenanceTracker } from '../../../core/provenance/tracker';

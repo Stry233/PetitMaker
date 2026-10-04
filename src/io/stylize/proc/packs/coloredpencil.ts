@@ -1,5 +1,5 @@
 /*
- * coloredpencil.ts — the mechanical track's pencil drawing: XDoG sketch lines, oriented hatch
+ * The mechanical track's pencil drawing: XDoG sketch lines, oriented hatch
  * strokes and a tooth that keeps the paper's white in the lights (see `../pencilize`). The strokes
  * FOLLOW THE MAP where it has direction — along roads, along shores — because the pack hands the
  * pass an orientation field built from the fields' own distance gradients.

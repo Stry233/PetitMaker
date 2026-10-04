@@ -1,30 +1,19 @@
 import type { ReviewProgress, ReviewResult, TextPart } from './policy';
+import { createWorkerClient, WORKER_IDLE_MS } from '../../../core/runtime/worker-client';
 
 export class ReviewUnavailable extends Error {}
 export class ReviewTooLong extends Error {}
 
+const spawnReviewWorker = () => new Worker(new URL('./review.worker.ts', import.meta.url), { type: 'module' });
+
 /** A visible editor may reuse initialized package matchers. Idle, closed or interrupted editors release its memory. */
 export class ReviewWorkerLease {
-  private worker: Worker | null = null;
-  private idle: ReturnType<typeof setTimeout> | undefined;
-  private busy = false;
+  /** One check at a time; the worker stays warm after each. */
+  readonly client = createWorkerClient({ spawn: spawnReviewWorker, idleMs: WORKER_IDLE_MS });
 
-  acquire(): Worker {
-    if (this.busy) throw new ReviewUnavailable();
-    clearTimeout(this.idle);
-    this.worker ??= new Worker(new URL('./review.worker.ts', import.meta.url), { type: 'module' });
-    this.busy = true;
-    return this.worker;
-  }
-
-  release(): void {
-    this.busy = false;
-    this.idle = setTimeout(() => this.dispose(), 30_000);
-  }
-
+  /** Release the worker now; a check in flight fails as unavailable. */
   dispose(): void {
-    clearTimeout(this.idle);
-    this.worker?.terminate(); this.worker = null; this.busy = false;
+    this.client.dispose();
   }
 }
 
@@ -44,41 +33,25 @@ export async function reviewText(parts: TextPart[], signal: AbortSignal, progres
   if (!parts.length) return { allowed: true };
   if (parts.reduce((n, p) => n + p.text.length + (p.segments?.reduce((size, text) => size + text.length, 0) ?? 0), 0) > 4096) throw new ReviewTooLong();
   if (typeof Worker === 'undefined') return reviewOnThread(parts, signal, progress);
-  return new Promise((resolve, reject) => {
-    let worker: Worker;
-    try { worker = lease ? lease.acquire() : new Worker(new URL('./review.worker.ts', import.meta.url), { type: 'module' }); }
-    catch (e) {
-      // A busy lease refuses the concurrent request; an engine that cannot build the worker reviews here.
-      if (e instanceof ReviewUnavailable) reject(e); else resolve(reviewOnThread(parts, signal, progress));
-      return;
-    }
-    let finished = false;
-    let heard = false;
-    const finish = (result?: ReviewResult, error?: Error, fallback = false) => {
-      if (finished) return;
-      finished = true;
-      clearTimeout(timer); signal.removeEventListener('abort', abort);
-      worker.onmessage = null; worker.onerror = null; worker.onmessageerror = null;
-      if (lease) { if (error || fallback) lease.dispose(); else lease.release(); }
-      else worker.terminate();
-      if (fallback) resolve(reviewOnThread(parts, signal, progress));
-      else if (error) reject(error);
-      else resolve(result!);
-    };
-    const abort = () => finish(undefined, new DOMException('Cancelled', 'AbortError'));
+  const client = lease?.client ?? createWorkerClient({ spawn: spawnReviewWorker, idleMs: 0 });
+  // Null is the worker reporting that its check failed.
+  const result = await client.request<ReviewResult | null>({
+    message: parts, signal,
     // Includes worker bundle loading on slow connections; cancellation remains available.
-    const timer = setTimeout(() => finish(undefined, new ReviewUnavailable()), 30_000);
-    signal.addEventListener('abort', abort, { once: true });
-    // An error before the first message is a worker that never started: the engine lacks module
-    // workers or cannot parse the chunk, and the review runs here instead.
-    worker.onerror = () => (heard ? finish(undefined, new ReviewUnavailable()) : finish(undefined, undefined, true));
-    worker.onmessageerror = () => finish(undefined, new ReviewUnavailable());
-    worker.onmessage = ({ data }: MessageEvent<{ progress?: ReviewProgress; result?: ReviewResult; error?: true }>) => {
-      heard = true;
-      if (data.progress) progress(data.progress);
-      else if (data.result) finish(data.result);
-      else finish(undefined, new ReviewUnavailable());
-    };
-    try { worker.postMessage(parts); } catch { finish(undefined, new ReviewUnavailable()); }
+    timeoutMs: 30_000,
+    read: (data) => {
+      const reply = data as { progress?: ReviewProgress; result?: ReviewResult; error?: true };
+      if (reply.progress) { progress(reply.progress); return undefined; }
+      return reply.result ?? null;
+    },
+    fallback: (failure) => {
+      // A worker that cannot be built, or breaks before its first message, is an engine that lacks
+      // module workers or cannot parse the chunk: the review runs here instead. A busy lease
+      // refuses the concurrent request.
+      if (failure.kind === 'spawn' || (failure.kind === 'crash' && !failure.heard)) return reviewOnThread(parts, signal, progress);
+      throw new ReviewUnavailable();
+    },
   });
+  if (!result) { client.dispose(); throw new ReviewUnavailable(); }
+  return result;
 }

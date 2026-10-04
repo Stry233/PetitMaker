@@ -18,7 +18,7 @@ import { Expand } from '../../../primitives/Expand';
 import { FooterEditor } from './FooterEditor';
 import { Shot3dStrip } from './Shot3dStrip';
 import { StylizeEntry, applyExportPreset, exportPresetDescriptions } from './edition-export';
-import { IS_LITE } from '../../../../core/runtime/edition';
+import { WRAPS_EXPORT_OPTION_LABELS } from '../../../../core/runtime/edition';
 import type { TextField } from '../../../../io/moderation/text/policy';
 import { ReviewIndicator } from './review/ReviewIndicator';
 
@@ -53,7 +53,7 @@ export function ExportControls({ options, setOptions, notes, setNotes, summary, 
       {/* Preset */}
       <div {...helpTargetAttr('share', 'share-preset')} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         <div style={capStyle}>{t('export.preset')}</div>
-        <SegmentedControl wrapLabels={IS_LITE} idPrefix="preset" value={options.preset} options={PRESETS} render={(p) => t(`export.preset_${p}`)} onChange={(p) => setOptions(applyExportPreset(options, p))} />
+        <SegmentedControl wrapLabels={WRAPS_EXPORT_OPTION_LABELS} idPrefix="preset" value={options.preset} options={PRESETS} render={(p) => t(`export.preset_${p}`)} onChange={(p) => setOptions(applyExportPreset(options, p))} />
         <div style={{ ...roleFont('caption'), color: skin.muted, lineHeight: 1.4 }}>{t(exportPresetDescriptions[options.preset])}</div>
       </div>
 
@@ -74,7 +74,7 @@ export function ExportControls({ options, setOptions, notes, setNotes, summary, 
       {/* Size */}
       <div {...helpTargetAttr('share', 'share-size')} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         <div style={capStyle}>{t('export.sec_size')}</div>
-        <SegmentedControl wrapLabels={IS_LITE} idPrefix="size" value={options.resolution} options={RES_KEYS} render={(k) => t(`export.res_${k}`)} onChange={(k) => set('resolution', k)} />
+        <SegmentedControl wrapLabels={WRAPS_EXPORT_OPTION_LABELS} idPrefix="size" value={options.resolution} options={RES_KEYS} render={(k) => t(`export.res_${k}`)} onChange={(k) => set('resolution', k)} />
       </div>
 
       <StylizeEntry />
@@ -173,7 +173,7 @@ function editAnnotations(): void {
 }
 
 const editNotesBtn: CSSProperties = {
-  background: 'transparent', border: `1.5px dashed ${skin.muted}`, borderRadius: 999,
+  background: 'transparent', border: `1.5px dashed ${skin.muted}`, borderRadius: radii.pill,
   padding: '3px 11px', cursor: cursors.clickable, fontFamily: font.family,
   ...roleFont('caption'), color: skin.ink,
 };

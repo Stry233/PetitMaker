@@ -2,8 +2,8 @@
  * V-MTN-02 / V-WTR-01: No Floating Blocks (pre-command)
  *
  * Terrain at elevation N > 1 requires terrain at N-1 at the same cell.
- * Cannot skip layers. Water IS valid support for the floating check
- * (water is terrain), but water is NOT valid for the 3x3 base check (V-MTN-03).
+ * Cannot skip layers. Water IS valid support (water is terrain), as it is
+ * in the 3x3 base check (V-MTN-03).
  *
  * Elevation 0 and 1 always pass: ground implicitly supports layer 1.
  *

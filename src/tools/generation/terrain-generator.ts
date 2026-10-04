@@ -2,7 +2,7 @@
  * THE GENERATION FACADE, and the only file at this module's root: a recipe in, a built map out.
  *
  * It dispatches `config.algorithm` to one of the three generators beside it, each behind its own
- * door — `designer/` (the planet: the methodology pipeline, and the only planet generator),
+ * door — `designer/` (the planet: the designer pipeline, and the only planet generator),
  * `maze/` (a labyrinth carved into the buildable region), `stencil/` (a picture read as terrain) —
  * and all three stand on `core/`, the floor: what a terrain plan is, how it is repaired into a
  * legal one, and how it becomes commands. Putting objects on ground that already exists is
@@ -13,19 +13,20 @@
  * the evaluation harness runs the same call the app does rather than a private path.
  */
 import { CommandType, TerrainType } from '../../core/model/types';
-import type { Command, Corners, GridState, MacroCoord, PlacedObject, ResolvedMazeGates, ValidationResult } from '../../core/model/types';
+import type { Command, GridState, MacroCoord, PlacedObject, ResolvedMazeGates, ValidationResult } from '../../core/model/types';
 import { getCell, isBuildableZone } from '../../core/model/grid-model';
 import { buildObjectOccupancy, objectRect } from '../../state/object-geometry';
 import { generateMaze } from './maze/maze-generator';
 import { runStencilPlan } from './stencil/stencil-generator';
 import { edgeCutGeneratedTerrain, edgeCutTerrainWith } from '../edge-cut/auto-edge-cut';
 import { stencilChooser } from './stencil/stencil-trim';
-import type { GenerateConfig } from '../../core/model/types';
+import type { GenerateConfig, StencilBudgetOutcome } from '../../core/model/types';
 import type { RuleDispatcher } from '../../core/model/rule-dispatcher';
 import { generateDesigned, type DesignedOutcome } from './designer';
 import { removeObjectCommand } from '../objects/object-placer';
+import { SQUARE_CORNERS, EMPTY_CORNERS } from '../../core/edge-cut/corner-index';
+import { DEFAULT_RICHNESS } from './core/types';
 
-const SQUARE: Corners = ['square', 'square', 'square', 'square'];
 
 /** The refusals a designed run collected. Zero on flat ground; a caller reports them. */
 const refusedTotal = (out: DesignedOutcome): number =>
@@ -35,7 +36,7 @@ export interface GenerateResult {
   placed: number;
   skipped: number;
   overwritten: number;
-  /** The methodology run's plan and its refusal counts ('designed' algorithm only). */
+  /** The designer run's plan and its refusal counts ('designed' algorithm only). */
   designed?: DesignedOutcome;
   /** Where the maze opened ('maze' algorithm only). The requested coordinates are snapped to the
    *  border ring, so a caller that marks the gates must read them back from here. */
@@ -43,6 +44,8 @@ export interface GenerateResult {
   /** The one walk between the gates, over the run's own carved corridors and at their own width
    *  ('maze' only). */
   mazeWalk?: MacroCoord[];
+  /** How an object stencil met its regional load budget ('stencil' only); absent when it fit. */
+  stencilBudget?: StencilBudgetOutcome;
   /** Where a TEXT run landed ('stencil' with a shape read): the surface tier the glyph stands one
    *  layer above, and the three ways a covered cell can be left alone — crossing a step or a pond,
    *  reaching the edge of the ground the word stands on, or standing on the tallest layer the grid
@@ -73,7 +76,8 @@ export function generateTerrain(
       // A picture the shell rasterized. Nothing here reaches for a canvas, which is what lets this
       // run in the candidate worker alongside every other kind.
       if (!config.stencilPlan) return { placed: 0, skipped: 0, overwritten: 0 };
-      const { placed, skipped, base, offBase, unsupported, atCeiling } = runStencilPlan(state, config.stencilPlan, config.maxElevation, executeCommand);
+      const { placed, skipped, base, offBase, unsupported, atCeiling, budget } = runStencilPlan(state, config.stencilPlan, config.maxElevation, executeCommand);
+      if (budget === 'blocked') return { placed: 0, skipped: 0, overwritten: 0, stencilBudget: budget };
       // TRIM IS PART OF THE APPROXIMATION. A stencil is quantised to whole cells, so its outline is
       // a staircase; the cut pass recovers the diagonal the letter's stroke or the picture's edge
       // had. Each corner's shape comes from the source's sub-cell coverage (`stencil-trim.ts`); a
@@ -94,6 +98,7 @@ export function generateTerrain(
       }
       return {
         placed, skipped, overwritten: 0,
+        ...(budget ? { stencilBudget: budget } : {}),
         ...(base !== undefined
           ? { stencil: { base, offBase: offBase ?? 0, unsupported: unsupported ?? 0, atCeiling: atCeiling ?? 0 } }
           : {}),
@@ -102,11 +107,9 @@ export function generateTerrain(
     case 'designed':
     default: {
       if (!reg) throw new Error('generateTerrain: the designed algorithm needs the rule registry');
-      // The fallback matches the shelf's own default, so a recipe that names no richness gets the
-      // style the interface would have offered.
       const out = generateDesigned({
         state, execute: executeCommand, reg, seed: config.seed,
-        richness: config.richness ?? 0.7,
+        richness: config.richness ?? DEFAULT_RICHNESS,
         maxElevation: config.maxElevation,
         mode: config.mode,
         region: config.region,
@@ -162,8 +165,8 @@ export function clearAllTerrain(
   for (const { x, y } of patches) {
     executeCommand({
       type: CommandType.TrimCorners, timestamp: Date.now(), layer: 'terrain', x, y,
-      beforeCorners: getCell(state.cells, x, y)?.terrain?.corners ?? SQUARE,
-      afterCorners: ['empty', 'empty', 'empty', 'empty'],
+      beforeCorners: getCell(state.cells, x, y)?.terrain?.corners ?? [...SQUARE_CORNERS],
+      afterCorners: [...EMPTY_CORNERS],
     });
   }
   return cells.length + patches.length;

@@ -5,7 +5,7 @@
  * Everything here is in cell units, and a quadrant is half a cell.
  */
 import { describe, it, expect } from 'vitest';
-import { filletOnly, trimmedOutline, type EdgeSegment, type TrimmedGhostCell } from '../../canvas/map2d/layers/ghost-geometry';
+import { filletOnly, trimmedOutline, type EdgeSegment, type TrimmedGhostCell } from '../../canvas/ghost-geometry';
 
 const SQUARE = ['square', 'square', 'square', 'square'] as const;
 const cell = [{ x: 2, y: 3 }];

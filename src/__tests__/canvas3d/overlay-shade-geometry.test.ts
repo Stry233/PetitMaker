@@ -4,7 +4,7 @@
  * The 3D view draws the same shades as surface-draped decals, so it owes the same contract: each
  * covers its body exactly, on the grid that body renders at (terrain −0.5 in world units, objects
  * unshifted). The hard cases are where a fractional anchor meets those two grids — the plaza's
- * 20×27 body at x.5/y.5, a halfStep bridge/ramp anchor — because a body that is not a whole number
+ * body at x.5/y.5, a halfStep bridge/ramp anchor — because a body that is not a whole number
  * of cells from the origin cannot be described by the cells it touches.
  *
  * Everything here is measured in MACRO units off the mesh's own vertices, so a shade that drifts
@@ -13,10 +13,12 @@
 import { describe, it, expect, vi } from 'vitest';
 import * as THREE from 'three';
 import { Overlay3D } from '../../canvas/map3d/scene/overlay3d';
+import { hoverTarget } from '../../canvas/hover-target';
 import { mapCenterOffset } from '../../canvas/map3d/core/coords';
 import type { GridState, Rect, ValidationError } from '../../core/model/types';
 import { bodyEvidence } from '../../core/model/grid-model';
 import { makeState } from '../rules/_helpers';
+import { PLAZA_RECT } from '../fixtures/planet';
 
 const MAP = 120;
 const overlayFor = (gs: GridState) => new Overlay3D(() => gs, () => {});
@@ -57,14 +59,15 @@ const BODIES: Array<{ name: string; body: Rect; micro: boolean }> = [
   { name: 'plain terrain cell', body: { x: 4, y: 5, w: 1, h: 1 }, micro: true },
   { name: 'terrain cell at the map corner', body: { x: 0, y: 0, w: 1, h: 1 }, micro: true },
   { name: 'macro object 2x3', body: { x: 4, y: 5, w: 2, h: 3 }, micro: false },
-  { name: 'the plaza (fractional anchor)', body: { x: 76.5, y: 58.5, w: 20, h: 27 }, micro: false },
+  { name: 'the plaza (fractional anchor)', body: { ...PLAZA_RECT }, micro: false },
   { name: 'halfStep bridge anchor', body: { x: 10.5, y: 12.5, w: 4, h: 1 }, micro: false },
   { name: 'halfStep ramp anchor, rotated', body: { x: 3, y: 7.5, w: 1, h: 4 }, micro: false },
 ];
 
 describe('3D shades: a box covers its body exactly', () => {
   for (const c of BODIES) {
-    it(`selection box — ${c.name}`, () => {
+    // Objects are marked in screen space by the interface; a regular terrain cell keeps its exact box.
+    if (c.micro) it(`selection box — ${c.name}`, () => {
       const gs = state();
       const o = overlayFor(gs);
       o.showSelection(c.body.x, c.body.y, c.body.w, c.body.h, undefined, c.micro);
@@ -79,6 +82,40 @@ describe('3D shades: a box covers its body exactly', () => {
     });
   }
 
+  it('hover also publishes its target for the interface to outline the body', () => {
+    const gs = state();
+    const o = overlayFor(gs);
+    o.showHover(PLAZA_RECT.x, PLAZA_RECT.y, PLAZA_RECT.w, PLAZA_RECT.h, false);
+    expect(hoverTarget()).toEqual({ ...PLAZA_RECT, terrainMode: false });
+    o.clearHover();
+    expect(hoverTarget()).toBeNull();
+  });
+
+  it('keeps a ground shadow over a selected object\'s exact footprint', () => {
+    const gs = state();
+    gs.objects.set('h', { id: 'h', catalogId: 'building-plush-cabin', position: { x: 10, y: 12 }, rotation: 0, elevation: 0 });
+    const o = overlayFor(gs);
+    o.showObjectSelection('h');
+    o.flush();
+    expectCovers(macroExtent(gs, lastFill(o), false), { x: 10, y: 12, w: 5, h: 4 });
+    o.clearSelection();
+    expect(o.group.children.filter((c) => (c as THREE.Mesh).isMesh)).toHaveLength(0);
+  });
+
+  it('drapes the exact box on a selected road', () => {
+    const gs = state();
+    const o = overlayFor(gs);
+    o.showSelection(6, 7, 1, 1, undefined, false, false, true);
+    expectCovers(macroExtent(gs, lastFill(o), false), { x: 6, y: 7, w: 1, h: 1 });
+  });
+
+  it('draws no scene box for a selected object', () => {
+    const gs = state();
+    const o = overlayFor(gs);
+    o.showSelection(4, 5, 2, 3, undefined, false);
+    expect(o.group.children.filter((c) => (c as THREE.Mesh).isMesh)).toHaveLength(0);
+  });
+
   it('the rubber band covers the macro band rect (a band only ever selects objects)', () => {
     const gs = state();
     const o = overlayFor(gs);
@@ -91,7 +128,7 @@ describe('3D shades: the error flash', () => {
   it('drapes the shade over the exact plaza body', () => {
     const gs = state();
     const o = overlayFor(gs);
-    const plaza: Rect = { x: 76.5, y: 58.5, w: 20, h: 27 };
+    const plaza: Rect = { ...PLAZA_RECT };
     o.flashErrors([bodyErr([plaza], 'macro')], true);
     expectCovers(macroExtent(gs, lastFill(o), false), plaza);
   });

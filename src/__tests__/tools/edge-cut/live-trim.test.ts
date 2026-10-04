@@ -136,7 +136,7 @@ function pavedAtOnce(cells: MacroCoord[], mode: AutoEdgeCut) {
       id: `r-${x}-${y}`, catalogId: 'path-overgrown-dirt',
       position: { x, y }, rotation: 0, elevation: 0,
     };
-    executor.execute({ type: CommandType.PlaceObject, timestamp: Date.now(), object: road, loadValue: 0 });
+    executor.execute({ type: CommandType.PlaceObject, timestamp: Date.now(), object: road });
   }
   applyAutoEdgeCut({ gridState: state, executeCommand: (cmd) => executor.execute(cmd) }, mode, [], cells);
   return state;

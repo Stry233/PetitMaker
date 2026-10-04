@@ -1,6 +1,6 @@
 /** Aimed routes compare walking and crossings, consolidate bends, and join standing pavement
  *  squarely. The world contains validated crossing geometry; placement rechecks the final plan. */
-import type { MacroCoord } from '../../core/model/types';
+import type { MacroCoord, Rotation } from '../../core/model/types';
 import { NEIGHBORS4, type Rect } from '../../core/model/grid-model';
 import { TUNING } from './tuning';
 import { astar, nearestWalkable, type AstarCost } from './network';
@@ -32,7 +32,7 @@ export interface RouteWorld {
 }
 
 /** One straight leg of the plan. A leg never bends, so a bend is always a leg boundary. */
-export interface RouteLeg {
+interface RouteLeg {
   cells: MacroCoord[];
   /** The crossing this leg runs ONTO, when it ends at one. The deck's own cells are not paved. */
   crossing?: Portal;
@@ -85,7 +85,7 @@ function lineOk(a: MacroCoord, b: MacroCoord, passable: (x: number, y: number) =
  *  direction to compare against, so no turn cost applies). A caller mirrors `astar`'s own inner-loop
  *  arithmetic (network.ts) exactly, so `straighten` can compare a substitute's TRUE cost against the
  *  window it would replace, not merely its length. */
-export type StepCost = (from: MacroCoord, to: MacroCoord, prevDir: readonly [number, number] | null) => number;
+type StepCost = (from: MacroCoord, to: MacroCoord, prevDir: readonly [number, number] | null) => number;
 
 const dirOfStep = (a: MacroCoord, b: MacroCoord): [number, number] => [Math.sign(b.x - a.x), Math.sign(b.y - a.y)];
 const sameDir = (a: readonly [number, number] | null, b: readonly [number, number]): boolean => !!a && a[0] === b[0] && a[1] === b[1];
@@ -203,7 +203,7 @@ export function straighten(
   return out;
 }
 
-export const APPROACH_DEPTH = 2;
+const APPROACH_DEPTH = 2;
 
 /** Join the actual deck exit to open ground, then extend the straight approach when space allows. */
 export function approachRun(p: Portal, side: 'A' | 'B', depth = APPROACH_DEPTH): MacroCoord[] {
@@ -269,7 +269,7 @@ export function squareJunction(
 /** A building's gate strip, nearest the gate first: where a road SERVING it must terminate.
  *  `buildingGate` gives the 3-wide by 2-deep strip; this orders it so the terminal pass tries the
  *  approach cell, then its two shoulders, then the gate row. */
-export function gateTerminalCells(rect: Rect, rotation: 0 | 90 | 180 | 270): MacroCoord[] {
+export function gateTerminalCells(rect: Rect, rotation: Rotation): MacroCoord[] {
   const { clear } = buildingGate(rect, rotation);
   const gateRow = clear.slice(0, 3), approachRow = clear.slice(3, 6);
   return [approachRow[1]!, approachRow[0]!, approachRow[2]!, gateRow[0]!, gateRow[1]!, gateRow[2]!];

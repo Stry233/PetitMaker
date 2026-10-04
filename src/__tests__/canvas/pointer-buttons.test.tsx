@@ -9,8 +9,9 @@ import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 import { render, cleanup } from '@testing-library/react';
 import { useRef } from 'react';
 import { usePointerInteraction } from '../../canvas/interaction/usePointerInteraction';
+import { useCameraOnly } from '../../canvas/interaction/use-camera-only';
 import { setActiveView } from '../../canvas/active-view';
-import type { ActiveView } from '../../canvas/view-projection';
+import type { ActiveView, ViewCamera } from '../../canvas/view-projection';
 import { ToolType } from '../../core/model/types';
 import { useEditorStore } from '../../state/store';
 import { makeState } from '../rules/_helpers';
@@ -42,6 +43,12 @@ function Host() {
   const ref = useRef<HTMLDivElement>(null);
   usePointerInteraction(ref);
   return <div ref={ref} data-testid="canvas" style={{ width: 400, height: 300 }} />;
+}
+
+function CameraHost({ camera }: { camera: ViewCamera }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useCameraOnly(ref, () => camera, true);
+  return <div ref={ref} data-testid="camera-preview" />;
 }
 
 /** jsdom has no PointerEvent; MouseEvent carries every field the machine reads. */
@@ -77,6 +84,34 @@ describe('pointer machine: middle button navigates like right', () => {
     });
   });
   afterEach(() => { cleanup(); setActiveView(null); });
+
+  it.each(['2d', '3d', 'preview'] as const)('%s releases text focus on a map press and preserves the draft', (surface) => {
+    const { view } = makeView(surface !== '2d');
+    setActiveView(view);
+    const ui = render(<><textarea defaultValue="Keep this draft" />{surface === 'preview' ? <CameraHost camera={view.camera} /> : <Host />}</>);
+    const field = ui.getByRole('textbox') as HTMLTextAreaElement;
+    const host = ui.getByTestId(surface === 'preview' ? 'camera-preview' : 'canvas');
+    field.focus();
+    field.select();
+    const event = pointer('pointerdown', { button: 0, clientX: 100, clientY: 100 });
+    host.dispatchEvent(event);
+    expect(event.defaultPrevented).toBe(true);
+    expect(document.activeElement).not.toBe(field);
+    expect(field.value).toBe('Keep this draft');
+    window.dispatchEvent(pointer('pointerup', { button: 0, clientX: 100, clientY: 100 }));
+  });
+
+  it('keeps text focus while scrolling the map or selecting inside the field', () => {
+    const { view } = makeView(false);
+    setActiveView(view);
+    const ui = render(<><textarea defaultValue="Keep this draft" /><Host /></>);
+    const field = ui.getByRole('textbox') as HTMLTextAreaElement;
+    field.focus();
+    ui.getByTestId('canvas').dispatchEvent(new WheelEvent('wheel', { bubbles: true, cancelable: true, deltaY: 10 }));
+    expect(document.activeElement).toBe(field);
+    field.dispatchEvent(pointer('pointerdown', { button: 0 }));
+    expect(document.activeElement).toBe(field);
+  });
 
   it.each([['middle', MIDDLE], ['right', RIGHT]] as const)('%s-drag orbits a view that can orbit', (_name, button) => {
     const { view, camera } = makeView(true);

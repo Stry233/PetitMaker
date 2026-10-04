@@ -179,7 +179,7 @@ describe('Maze gates', () => {
       entrance: { x: 20, y: 20 },
       exit: { x: 1, y: 20 },
     });
-    expect(exec.commitStrokeGroup(start)).toEqual([]);
+    expect(exec.commitStroke(start)).toEqual([]);
     expect(placed).toBeGreaterThan(0);
     expect(skipped).toBe(0);
     expect(fails).toBe(0);
@@ -244,7 +244,7 @@ describe('Maze generator', () => {
       const exec = new CommandExecutor(state, bus, createDefaultRegistry(), roadLookup(state));
       const start = exec.getUndoStackSize();
       const { placed, skipped } = generateMaze(state, 42, maxElev, 1, null, (c) => exec.execute(c));
-      const postViol = exec.commitStrokeGroup(start).length;
+      const postViol = exec.commitStroke(start).length;
       expect(placed, `maxElev ${maxElev} placed`).toBeGreaterThan(0);
       expect(skipped, `maxElev ${maxElev} skipped`).toBe(0);
       expect(fails, `maxElev ${maxElev} rejected commands`).toBe(0);

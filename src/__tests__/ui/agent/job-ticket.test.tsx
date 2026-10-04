@@ -1,5 +1,5 @@
 /**
- * job-ticket.test.tsx — the job ticket at its final grammar: the sticky order line, the region it
+ * The job ticket at its final grammar: the sticky order line, the region it
  * was filed under, the tape, the says line, the op rows with their end marks and result chips, the
  * plan rail's rollups and flags, and a hold's own mark and verbs.
  *
@@ -11,8 +11,8 @@
  * (`asColor`), mirroring atoms.test.tsx — jsdom's cssstyle can normalize a hex differently from a
  * var()-free literal though the two agree in meaning.
  */
-import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { act, render, fireEvent } from '@testing-library/react';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { act, render, fireEvent, waitFor } from '@testing-library/react';
 import { I18nProvider } from '../../../i18n/context';
 import { translations } from '../../../i18n/translations';
 import { useEditorStore } from '../../../state/store';
@@ -22,6 +22,10 @@ import { tickInk } from '../../../ui/agent/tokens';
 import { ACTIVE, INK } from '../../../ui/design/tokens';
 import type { JobView, OpRow as OpRowData } from '../../../agent/core/project-view';
 import type { Locale } from '../../../core/model/types';
+import { formatNumber } from '../../../i18n/context';
+import { BASE_SUPPORT, CHUNK_LOAD_LIMIT } from '../../../core/model/game-profile';
+import { deserializeLog } from '../../../agent/session/persist';
+import { eventsOf } from '../../../agent/core/log';
 
 const backing = new Map<string, string>();
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -42,14 +46,30 @@ function renderWithI18n(node: React.ReactElement) {
 
 beforeEach(() => {
   backing.clear();
+  // Framer restores scroll after measuring auto height; jsdom has no window scrolling.
+  vi.spyOn(window, 'scrollTo').mockImplementation(() => {});
   act(() => useEditorStore.setState({ locale: 'en' }));
 });
+
+afterEach(() => { vi.restoreAllMocks(); });
 
 function asColor(value: string): string {
   const probe = document.createElement('span');
   probe.style.color = value;
   return probe.style.color;
 }
+
+it('shows a localized operation target and retained counts while keeping provider prose private', () => {
+  const ui = renderWithI18n(<OpRow op={makeOp({
+    name: 'paint_terrain', summary: 'RAW PROVIDER RESULT WITH INTERNAL DATA',
+    input: { terrain: 'mountain', elevation: 2, x1: 1, y1: 2, x2: 3, y2: 4 }, detail: { cells: 9 },
+  })} />);
+  expect(ui.getByTestId('op-target').textContent).toContain('(1,2)');
+  expect(ui.getByTestId('op-row').textContent).toContain('9 cells');
+  fireEvent.click(ui.getByTestId('op-row'));
+  expect(ui.getByTestId('op-detail').textContent).toBe('9 cells');
+  expect(ui.container.textContent).not.toContain('RAW PROVIDER');
+});
 
 function asBackground(value: string): string {
   const probe = document.createElement('span');
@@ -104,7 +124,7 @@ describe('JobTicket: plan rail presence', () => {
 });
 
 describe('JobTicket: newest-3 collapse', () => {
-  it('collapses ops beyond the newest 3 into one count pill; expanding shows all', () => {
+  it('collapses ops beyond the newest 3 into one count pill; expanding shows all', async () => {
     const ops = Array.from({ length: 5 }, () => makeOp());
     const job = makeJob({ ops });
     const { getAllByTestId, getByTestId } = renderWithI18n(<JobTicket job={job} live />);
@@ -117,7 +137,8 @@ describe('JobTicket: newest-3 collapse', () => {
     expect(getAllByTestId('op-row').length).toBe(5);
     expect(getByTestId('ops-count-pill').getAttribute('aria-expanded')).toBe('true');
     fireEvent.click(getByTestId('ops-count-pill'));
-    expect(getAllByTestId('op-row')).toHaveLength(3);
+    expect(getAllByTestId('op-row').filter(row => row.closest('[inert]'))).toHaveLength(2);
+    await waitFor(() => expect(getAllByTestId('op-row')).toHaveLength(3));
     expect(getByTestId('ops-count-pill').getAttribute('aria-expanded')).toBe('false');
   });
 
@@ -135,7 +156,7 @@ describe('plan stage history', () => {
     stages: [{ label: 'Terrain' }, { label: 'Roads' }], currentIndex: 1, doneCount: 1, revision: 1,
   };
 
-  it('reopens completed work in its own stage and toggles either stage closed', () => {
+  it('reopens completed work in its own stage and toggles either stage closed', async () => {
     const ops = [makeOp({ stageIndex: 0, status: 'ok' }), makeOp({ stageIndex: 1, status: 'run' })];
     const { getAllByTestId } = renderWithI18n(<JobTicket job={makeJob({ plan, ops })} live />);
     const [done, active] = getAllByTestId('plan-stage');
@@ -147,9 +168,10 @@ describe('plan stage history', () => {
     expect(done!.querySelector('[data-testid="op-row"]')!.getAttribute('data-status')).toBe('ok');
     expect(active!.querySelector('[data-testid="op-row"]')!.getAttribute('data-status')).toBe('run');
     fireEvent.click(activeButton!);
-    expect(active!.querySelectorAll('[data-testid="op-row"]')).toHaveLength(0);
+    expect(active!.querySelector('[data-testid="stage-operations"]')?.hasAttribute('inert')).toBe(true);
+    await waitFor(() => expect(active!.querySelectorAll('[data-testid="op-row"]')).toHaveLength(0));
     fireEvent.click(doneButton!);
-    expect(done!.querySelectorAll('[data-testid="op-row"]')).toHaveLength(0);
+    await waitFor(() => expect(done!.querySelectorAll('[data-testid="op-row"]')).toHaveLength(0));
   });
 
   it('keeps ungrouped legacy operations accessible after every stage completes', () => {
@@ -400,6 +422,43 @@ describe('OpRow: a reverted row', () => {
     act(() => useEditorStore.setState({ locale: 'en' }));
   });
 
+  it.each([
+    ['error.need_3x3_base', { window: 3, reach: 3 }, 'error.need_base_support'],
+    ['error.need_3x3_base', undefined, 'error.need_base_support'],
+    ['error.ground_under_plaza', undefined, 'error.ground_under_object'],
+    ['error.tree_too_close', undefined, 'error.too_close_same_kind'],
+  ] as const)('says a rule a 1.4.18 log stored as %s in the reader s language', (message, params, current) => {
+    act(() => useEditorStore.setState({ locale: 'zh' }));
+    const stored = JSON.stringify({ v: 3, nextSeq: 2, events: [{
+      seq: 1, at: 0, kind: 'toolResult', callId: 'c1', name: 'paint_terrain', isError: true,
+      content: '[V-X] Rule: refused', detail: { violations: [{ ruleId: 'V-X', message, ...(params ? { params } : {}) }] },
+    }] });
+    const event = eventsOf(deserializeLog(stored)!)[0]!;
+    const violations = event.kind === 'toolResult' ? event.detail?.violations : undefined;
+    const op = makeOp({ name: 'paint_terrain', status: 'error', summary: '[V-X] Rule: refused', detail: { violations } });
+    const text = renderWithI18n(<OpRow op={op} />).getByTestId('op-detail').textContent ?? '';
+    const expected = translations.zh[current]!
+      .replace(/\{window\}/g, String(BASE_SUPPORT.window)).replace('{reach}', String(BASE_SUPPORT.reach));
+    expect(text).toContain(expected);
+    expect(text).not.toContain('Rule: refused');
+    act(() => useEditorStore.setState({ locale: 'en' }));
+  });
+
+  it.each(['en', 'ru', 'id'] as const)('groups a rule limit the way the toast does (%s)', (locale) => {
+    act(() => useEditorStore.setState({ locale }));
+    const op = makeOp({
+      name: 'place_object',
+      status: 'error',
+      summary: '[V-CHUNK-01] Chunk load: limit reached (10000)',
+      detail: { violations: [{ ruleId: 'V-CHUNK-01', message: 'error.chunk_full', params: { max: CHUNK_LOAD_LIMIT } }] },
+    });
+    const { getByTestId } = renderWithI18n(<OpRow op={op} />);
+    const text = getByTestId('op-detail').textContent ?? '';
+    expect(text).toContain(formatNumber(locale, CHUNK_LOAD_LIMIT));
+    expect(text).not.toContain(String(CHUNK_LOAD_LIMIT));
+    act(() => useEditorStore.setState({ locale: 'en' }));
+  });
+
   /** Every locale says the app sent something TO the model; ru's genitive said the model had
    *  ANSWERED, which is the opposite of what happened — a rule refused the call. */
   it('names the direction of a sent-back refusal the same way in every locale', () => {
@@ -408,7 +467,7 @@ describe('OpRow: a reverted row', () => {
       expect(line, locale).toContain('{text}');
       expect(line, locale).not.toBe(translations[locale]['agent3.op_detail_put_back']);
     }
-    // The one that reversed: "Ответ модели" reads as the model's own answer.
+    // The one that reversed: the Russian wording reads as the model's own answer.
     expect(translations.ru['agent3.op_detail_sent_back']).not.toContain('Ответ модели');
   });
 
@@ -651,12 +710,11 @@ describe('JobTicket: the says-line', () => {
 describe('JobTicket: the order line and the region it was filed under', () => {
   /** The record scrolls inside the job zone and the ticket can outgrow the room it has; the panel's
    *  subject is the one thing that must not scroll away with it. */
-  it('sticks the order line to the top of its own card', () => {
+  it('pins the order inside the visible scroll edge', () => {
     const { getByTestId } = renderWithI18n(<JobTicket job={makeJob()} live />);
     const order = getByTestId('ticket-order');
     expect(order.style.position).toBe('sticky');
-    // Offset by the card's own padding AND its border, so the line sits flush with the card's top.
-    expect(order.style.top).toBe('-13px');
+    expect(order.style.top).toBe('0px');
     expect(order.style.background).not.toBe('');
   });
 

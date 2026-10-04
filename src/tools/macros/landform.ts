@@ -1,10 +1,10 @@
-import { ELEVATION_MAX } from '../../core/model/constants';
 import { TerrainType, type AutoEdgeCut, type MacroCoord } from '../../core/model/types';
 import type { MacroContext } from './context';
 import type { MacroReport } from './run';
 import { TerrainDraft } from './terrain-draft';
+import { ELEVATION_MAX } from '../../core/model/game-profile';
 
-export interface MountainFillInput {
+interface MountainFillInput {
   area: readonly MacroCoord[];
   elevation: number;
   trim?: AutoEdgeCut;

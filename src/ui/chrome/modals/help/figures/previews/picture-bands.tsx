@@ -1,5 +1,5 @@
 /*
- * picture-bands.tsx — real crops of the real composed share picture, one per band the export
+ * Real crops of the real composed share picture, one per band the export
  * lays out. The picture is painted ONCE by the export's own pipeline (`paintPreviewLayout` over a
  * posed built map), and each figure slices it by the composition's own rects, so a crop can
  * never drift from where the band truly sits or how it truly looks. The pose: a titled, badged,
@@ -99,7 +99,7 @@ function usePaintedPicture(active: boolean): PaintedPreview | null {
   return painted;
 }
 
-export type PictureBand = 'header' | 'layers' | 'shots' | 'code' | 'footer' | 'brand';
+type PictureBand = 'header' | 'layers' | 'shots' | 'code' | 'footer' | 'brand';
 
 function bandRect(p: PaintedPreview, band: PictureBand) {
   const { comp } = p;

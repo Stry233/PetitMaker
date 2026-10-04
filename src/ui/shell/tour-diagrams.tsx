@@ -28,6 +28,8 @@ const RUN = MOTIONS['tour.gesture.stroke'].amplitude;
 const ZOOM = MOTIONS['tour.gesture.wheel'].amplitude;
 /** How far a left drag slides the 3D scene. */
 const SLIDE = MOTIONS['tour.gesture.orbit'].amplitude;
+/** The tip into 3D runs on its own entry's clock and curve. */
+const TILT = MOTIONS['tour.gesture.tilt'];
 
 /** Right/middle-drag yaw in degrees. */
 const YAW_DEG = 13;
@@ -475,7 +477,7 @@ function Card({ w, h, stand, children }: { w: number; h: number; stand?: 'tip' |
     <div style={{ perspective: PERSPECTIVE }}>
       {stand === 'tip'
         ? (
-          <div className={`${CLS.anim} ${CLS.tilt}`} data-testid="tour-plane" style={{ animationName: ANIM.tip, width: w, height: h }}>
+          <div className={`${CLS.anim} ${CLS.tilt}`} data-testid="tour-plane" style={{ animationName: ANIM.tip, animationDuration: `${TILT.duration}s`, animationTimingFunction: CSS_CURVES[TILT.curve], width: w, height: h }}>
             {svg}
           </div>
         )

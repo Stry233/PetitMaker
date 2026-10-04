@@ -8,7 +8,6 @@
  */
 import {
   CommandType,
-  ItemCategory,
   type Command,
   type GridState,
   type PlacedObject,
@@ -16,7 +15,7 @@ import {
   type ValidationError,
 } from '../core/model/types';
 import { bodyEvidence, rectsOverlap, type Rect } from '../core/model/grid-model';
-import { isCoating, standsOnCoating } from '../core/model/traits';
+import { isBridge, isCoating, standsOnCoating } from '../core/model/traits';
 import { getCatalogItem } from '../state/catalog';
 import { objectElevation, objectRect } from '../state/object-geometry';
 import { entriesCovering, getObjectIndex, type ObjectIndexEntry } from '../state/object-index';
@@ -43,7 +42,7 @@ export function placementBlockers(object: PlacedObject, state: GridState): Objec
     if (entry.coating && !coating) continue;
     if (candidate && standsOnCoating(entry.item, candidate)) continue;
     // Pavement follows the ground beneath the deck; bridge landings and ramps remain occupied.
-    if (coating && entry.item?.category === ItemCategory.Bridge && elevation < entry.obj.elevation) continue;
+    if (coating && isBridge(entry.item) && elevation < entry.obj.elevation) continue;
     if (rectsOverlap(rect, entry.rect)) blockers.push(entry);
   }
   return blockers;

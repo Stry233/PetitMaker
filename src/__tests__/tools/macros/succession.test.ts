@@ -20,6 +20,8 @@ import { CLIMAX_STAGE, successionPalette, tierAt, tierOf } from '../../../tools/
 import { objectPlacementCommand } from '../../../tools/objects/object-placer';
 import type { ToolContext } from '../../../tools/runtime/types';
 import { makeState } from '../../rules/_helpers';
+import { CHUNK_LOAD_LIMIT } from '../../../core/model/game-profile';
+import { getMapStats } from '../../../state/map-stats';
 
 const AT = { x: 20, y: 20 };
 const RADIUS = 8;
@@ -46,6 +48,9 @@ function hold(kit: KitContext, id: MacroId, bursts: number, seed = 1): void {
       seed: seed + k - 1, at: AT, radius: RADIUS, density: DENSITY, stage: k,
       ...(heldIds.length > 0 ? { heldIds } : {}),
     });
+  }
+  if (!kit.state.ignoreChunkLoad) {
+    for (const chunk of getMapStats(kit.state).chunks.values()) expect(chunk.load).toBeLessThanOrEqual(CHUNK_LOAD_LIMIT);
   }
 }
 
@@ -132,13 +137,16 @@ describe('a hold', () => {
    * from the tier draw AND a plant already wearing it is never skipped, which is what makes one an
    * upper bound rather than a likely outcome.
    */
-  it.each(['patch-tree', 'patch-flora'] as const)('%s: stands at most one grand specimen, and only at the oldest centre', (id) => {
+  it.each([
+    ['patch-tree', 'on'], ['patch-flora', 'on'], ['patch-tree', 'off'], ['patch-flora', 'off'],
+  ] as const)('%s: stands at most one grand specimen, and only at the oldest centre, with the load limit %s', (id, limit) => {
     const lead = id === 'patch-tree' ? ItemCategory.Tree : ItemCategory.Flora;
     const grand = successionPalette(lead)!.grand;
     const ringWidth = RADIUS / CLIMAX_STAGE;
     let stood = 0;
     for (let seed = 1; seed <= 30; seed++) {
       const kit = setup();
+      kit.state.ignoreChunkLoad = limit === 'off';
       hold(kit, id, BURSTS, seed);
       const specimens = [...kit.state.objects.values()].filter((o) => o.catalogId === grand);
       expect(specimens.length, `seed ${seed}: ${specimens.length} grand specimens`).toBeLessThanOrEqual(1);

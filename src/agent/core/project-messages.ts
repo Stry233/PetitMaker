@@ -4,13 +4,14 @@ import type { SessionLog } from './log';
 import { eventsOf } from './log';
 import { DROPPED_STOPS } from './types';
 import type { GateAnswer, SessionEvent } from './types';
+import { OccurrenceScan, occurrenceKey } from './occurrence';
 
 export type ProviderMessage =
   | { role: 'user'; text: string; images?: string[] }
   | { role: 'assistant'; text: string; toolCalls: { callId: string; name: string; args: Record<string, unknown> }[]; raw?: unknown }
   | { role: 'tool'; results: { callId: string; name: string; content: string; isError: boolean; image?: string }[] };
 
-export interface ProjectOptions {
+interface ProjectOptions {
   budgetTokens: number;
   estimate?: (text: string) => number;
   /** Loop-authored note appended after budget trimming so it always reaches the next request. */
@@ -50,18 +51,12 @@ export function rawIsAllFrom(log: SessionLog, model: string): boolean {
   return eventsOf(log).every((e) => e.kind !== 'assistant' || e.raw === undefined || e.rawModel === model);
 }
 
-/** Scopes a provider call ID to the assistant turn that emitted it. */
-function occurrenceKey(callId: string, assistantSeq: number): string {
-  return `${callId}#${assistantSeq}`;
-}
-
 function buildTagged(events: readonly SessionEvent[]): Tagged[] {
   const compaction = latestCompaction(events);
   const retainedFromSeq = compaction?.retainedFromSeq ?? 0;
   const kept = events.filter((e) => e.seq >= retainedFromSeq && e.kind !== 'compaction');
 
-  // Rebind repeated call IDs to the nearest preceding assistant event during the forward scan.
-  const currentOccurrenceSeq = new Map<string, number>();
+  const scan = new OccurrenceScan();
   const resultsByOccurrence = new Map<string, Extract<SessionEvent, { kind: 'toolResult' }>>();
   // Steering text and recall state precede delivery and may sit before the compaction boundary.
   const steerTextBySeq = new Map<number, string>();
@@ -73,15 +68,10 @@ function buildTagged(events: readonly SessionEvent[]): Tagged[] {
   const gateIdByOccurrence = new Map<string, string>();
   const answerByGateId = new Map<string, { answer: GateAnswer; words?: string }>();
   for (const e of kept) {
-    if (e.kind === 'assistant') {
-      for (const p of e.parts) {
-        if (p.kind === 'tool') currentOccurrenceSeq.set(p.callId, e.seq);
-      }
-    } else if (e.kind === 'toolResult') {
-      // Orphan results use their own sequence and therefore cannot bind to a real call occurrence.
-      resultsByOccurrence.set(occurrenceKey(e.callId, currentOccurrenceSeq.get(e.callId) ?? e.seq), e);
-    } else if (e.kind === 'gateAsked' && e.callId !== undefined) {
-      gateIdByOccurrence.set(occurrenceKey(e.callId, currentOccurrenceSeq.get(e.callId) ?? e.seq), e.gateId);
+    if (e.kind === 'assistant') scan.see(e);
+    else if (e.kind === 'toolResult') resultsByOccurrence.set(scan.keyOf(e.callId, e.seq), e);
+    else if (e.kind === 'gateAsked' && e.callId !== undefined) {
+      gateIdByOccurrence.set(scan.keyOf(e.callId, e.seq), e.gateId);
     } else if (e.kind === 'gateAnswered') answerByGateId.set(e.gateId, { answer: e.answer, words: e.words });
   }
 

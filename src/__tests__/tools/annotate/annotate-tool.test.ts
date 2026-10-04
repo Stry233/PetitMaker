@@ -40,6 +40,8 @@ function liveCtx(over: Partial<ToolContext> = {}): ToolContext {
     annotationRouteDashed: s().annotationRouteDashed,
     annotationSelection: s().annotationSelection,
     annotationDraft: s().annotationDraft,
+    annotationHistoryEpoch: s().annotationHistoryEpoch,
+    annotationDiscardPending: s().annotationDiscardAction !== null,
     annotationEdit: {
       begin: () => s().beginAnnotationStroke(),
       apply: (fn) => s().applyAnnotationEdit(fn),
@@ -66,6 +68,55 @@ const rect = (x0: number, y0: number, x1: number, y1: number): MacroCoord[] => {
 };
 const zone = (id: string, cells: MacroCoord[], num = 1): ZoneNote =>
   ({ kind: 'zone', id, cells, color: '#2FBF9B', tag: 'farm', num });
+
+describe('annotation brush previews', () => {
+  beforeEach(() => {
+    s().initMap(makeTemplate(40, 40), createDefaultRegistry());
+    useEditorStore.setState({ annotationTool: 'zone', annotationZoneShape: 'free', annotationDraft: null, annotationDiscardAction: null });
+  });
+
+  it.each(['free', 'line', 'rect', 'circle', 'curve'] as const)('%s previews the cells painted by a tap without creating a draft on hover', shape => {
+    s().setAnnotationZoneShape(shape);
+    const tool = new AnnotateTool();
+    const ctx = press(12, 12);
+    const show = vi.spyOn(ctx.overlay, 'showGhost');
+    const before = s().annotationUndoLane.length;
+    tool.onPointerMove(at(12, 12), at(0, 0), ctx);
+    const cells = show.mock.calls[show.mock.calls.length - 1]![0];
+    expect(cells.length).toBeGreaterThan(0);
+    expect(s().annotationDraft).toBeNull();
+    expect(s().annotationUndoLane.length).toBe(before);
+    tool.onPointerDown(at(12, 12), at(0, 0), ctx);
+    expect((s().annotationDraft as ZoneNote).cells).toEqual(cells);
+  });
+
+  it('eraser previews exactly the cells removed from a zone', () => {
+    s().addAnnotation(zone('test-zone', rect(0, 0, 30, 30)));
+    s().setAnnotationTool('erase');
+    const tool = new AnnotateTool();
+    const ctx = press(12, 12);
+    const show = vi.spyOn(ctx.overlay, 'showGhost');
+    tool.onPointerMove(at(12, 12), at(0, 0), ctx);
+    const cells = show.mock.calls[show.mock.calls.length - 1]![0];
+    const before = zoneById('test-zone').cells;
+    tool.onPointerDown(at(12, 12), at(0, 0), ctx);
+    expect(before.filter(c => !zoneById('test-zone').cells.some(after => after.x === c.x && after.y === c.y))).toEqual(cells);
+  });
+
+  it('clears the preview when editing is unavailable or the tool leaves', () => {
+    const tool = new AnnotateTool();
+    s().setAnnotationsLocked(true);
+    const ctx = press(12, 12);
+    const clear = vi.spyOn(ctx.overlay, 'clearGhost');
+    const show = vi.spyOn(ctx.overlay, 'showGhost');
+    tool.onPointerMove(at(12, 12), at(0, 0), ctx);
+    expect(show).not.toHaveBeenCalled();
+    expect(clear).toHaveBeenCalled();
+    clear.mockClear();
+    tool.onDeactivate(ctx);
+    expect(clear).toHaveBeenCalled();
+  });
+});
 
 function drag(tool: AnnotateTool, from: [number, number], to: [number, number]): void {
   tool.onPointerDown(at(Math.floor(from[0]), Math.floor(from[1])), at(0, 0), press(from[0], from[1]));
@@ -215,6 +266,8 @@ describe('the zone figures', () => {
     s().setAnnotationTool('zone');
     expect(s().annotationDraft?.kind).toBe('zone');
     s().setAnnotationTool('none');
+    expect(s().annotationDiscardAction).not.toBeNull();
+    s().confirmAnnotationDiscard();
     expect(s().annotationDraft).toBeNull();
     s().setAnnotationTool('zone');
     expect(s().annotationZoneShape).toBe('circle');
@@ -394,10 +447,12 @@ describe('routes', () => {
     expect(items()).toHaveLength(1);
   });
 
-  it('a bar press that clears the draft clears the pending answer with it', () => {
+  it('confirming a tool switch clears the route draft and its pending points', () => {
     click(tool, 2, 2);
     expect(tool.hasPending(liveCtx())).toBe(true);
     s().setAnnotationTool('zone');
+    expect(s().annotationDiscardAction).not.toBeNull();
+    s().confirmAnnotationDiscard();
     expect(s().annotationDraft).toBeNull();
     expect(tool.hasPending(liveCtx())).toBe(false);
   });
@@ -427,13 +482,15 @@ describe('putting down a drawing tool during a drag', () => {
     expect(items()).toEqual([]);
   });
 
-  it.each(['zone', 'route', 'measure'] as const)('a shortcut can put down %s before pointer release', (kind) => {
+  it.each(['zone', 'route', 'measure'] as const)('confirming a shortcut switch discards %s before pointer release', (kind) => {
     const tool = new AnnotateTool();
     __resetCurveSession();
     s().initMap(makeTemplate(24, 24), createDefaultRegistry());
     s().setAnnotationTool(kind);
     tool.onPointerDown(at(3, 3), at(0, 0), press(3, 3));
     s().toggleAnnotationTool(kind);
+    expect(s().annotationDraft).not.toBeNull();
+    s().confirmAnnotationDiscard();
     tool.onPointerMove(at(8, 3), at(0, 0), press(8, 3));
     tool.onPointerUp(at(8, 3), at(0, 0), press(8, 3));
     expect(s().annotationDraft).toBeNull();
@@ -633,4 +690,54 @@ it('uses the rendered tag hit for selection and treats its miss as authoritative
   expect(tool.grabAt(at(15, 15), liveCtx({ halfCoord: at(15, 15), annotationLabelHit: 'tag' }))).toBe(true);
   expect(tool.selectHit(at(5, 5), liveCtx({ halfCoord: at(5, 5), annotationLabelHit: null }))).toBeNull();
   expect(tool.selectHit(at(5, 5), liveCtx({ halfCoord: at(5, 5) }))).toEqual({ id: 'tag', selected: true });
+});
+
+
+describe('draft gesture history', () => {
+  it('undoes and redoes whole paint and erase strokes before Done', () => {
+    s().initMap(makeTemplate(30, 30), createDefaultRegistry());
+    s().setAnnotationTool('zone');
+    s().setAnnotationZoneShape('free');
+    const tool = new AnnotateTool();
+    drag(tool, [6, 6], [10, 6]);
+    const first = structuredClone(s().annotationDraft);
+    drag(tool, [6, 14], [10, 14]);
+    const second = structuredClone(s().annotationDraft);
+    s().undoAnnotation(); expect(s().annotationDraft).toEqual(first);
+    s().redoAnnotation(); expect(s().annotationDraft).toEqual(second);
+    s().setAnnotationTool('erase');
+    drag(tool, [6, 6], [10, 6]);
+    expect(s().annotationDraft).not.toEqual(second);
+    s().undoAnnotation(); expect(s().annotationDraft).toEqual(second);
+    s().undoAnnotation(); expect(s().annotationDraft).toEqual(first);
+    s().undoAnnotation(); expect(s().annotationDraft).toBeNull();
+    s().redoAnnotation(); expect(s().annotationDraft).toEqual(first);
+    expect(items()).toEqual([]);
+  });
+
+  it('keeps an undone stroke from resuming on the next pointer move', () => {
+    s().initMap(makeTemplate(30, 30), createDefaultRegistry());
+    s().setAnnotationTool('zone'); s().setAnnotationZoneShape('free');
+    const tool = new AnnotateTool();
+    tool.onPointerDown(at(6, 6), at(0, 0), press(6, 6));
+    s().undoAnnotation();
+    tool.onPointerMove(at(10, 6), at(0, 0), press(10, 6));
+    tool.onPointerUp(at(10, 6), at(0, 0), press(10, 6));
+    expect(s().annotationDraft).toBeNull();
+    s().redoAnnotation(); expect(s().annotationDraft?.kind).toBe('zone');
+  });
+
+  it('pauses a drag while discard confirmation is pending', () => {
+    s().initMap(makeTemplate(30, 30), createDefaultRegistry());
+    s().setAnnotationTool('zone'); s().setAnnotationZoneShape('free');
+    const tool = new AnnotateTool();
+    tool.onPointerDown(at(6, 6), at(0, 0), press(6, 6));
+    const draft = structuredClone(s().annotationDraft);
+    s().setAnnotationTool('route');
+    tool.onPointerMove(at(15, 6), at(0, 0), press(15, 6));
+    tool.onPointerUp(at(15, 6), at(0, 0), press(15, 6));
+    s().cancelAnnotationDiscard();
+    expect(s().annotationDraft).toEqual(draft);
+    expect(s().annotationTool).toBe('zone');
+  });
 });

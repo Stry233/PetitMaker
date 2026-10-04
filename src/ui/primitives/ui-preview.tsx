@@ -1,5 +1,5 @@
 /*
- * ui-preview.tsx — the one flag that says "this interface subtree is a PICTURE of itself".
+ * The one flag that says "this interface subtree is a PICTURE of itself".
  *
  * The Help Center mounts real chrome as its figures, so a change to the interface changes its own
  * documentation. A pictured subtree must render exactly what the live one renders and DO nothing:

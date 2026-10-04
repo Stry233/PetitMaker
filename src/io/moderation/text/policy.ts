@@ -1,7 +1,7 @@
 import { DEFAULT_FOOTER, parseFooter, resolveFooter } from '../../export/footer-template';
 import type { ExportOptions } from '../../export/types';
 
-export type TextField = 'title' | 'description' | 'footer' | 'author';
+export type TextField = 'title' | 'description' | 'footer' | 'author' | 'planet';
 export type TextPart = { field: TextField; text: string; segments?: string[] };
 export type Restriction = 'content' | 'political' | 'website';
 export type ReviewResult = { allowed: true } | { allowed: false; reason: Restriction; fields: TextField[] };

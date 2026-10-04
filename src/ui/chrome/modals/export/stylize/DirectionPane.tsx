@@ -1,9 +1,9 @@
 /*
- * DirectionPane.tsx — the RESERVED pane under the booklet: one box of fixed height whose contents
+ * The RESERVED pane under the booklet: one box of fixed height whose contents
  * change with the direction, never its size.
  *
  * A preset shows its sample enlarged, which is the only honest answer to "what will this look
- * like". 自定义 shows the writing desk: a field with real room, the fragment chips that append to
+ * like". Custom shows the writing desk: a field with real room, the fragment chips that append to
  * it in the reader's own language, and the counter that says how much of the cap is spent. The two
  * fill the same rect, so choosing a direction never moves the shelf or the canvas beside it — and
  * they CROSS over each other rather than one following the other out, so the pane is never empty
@@ -22,7 +22,7 @@ import {
 import { packSampleUrl } from './sample-assets';
 import { SampleTile, entering, fieldBox } from './atoms';
 import { directionRow } from './DirectionBooklet';
-import { framerMotion } from './motion';
+import { framerMotion } from '../../../../design/motion';
 
 /** The six fragments the desk offers. They carry the LOCALE'S OWN words into the prompt: the model
  *  reads them, and the user has to recognise their own sentence afterwards. */
@@ -64,7 +64,7 @@ export function DirectionPane({ direction, text, onText, connected, onConnect, e
   );
 }
 
-/** Which face the pane wears: the desk for 自定义 once a key stands, the sample otherwise — a model
+/** Which face the pane wears: the desk for Custom once a key stands, the sample otherwise — a model
  *  direction with no key wears its sample too, with the way to the key laid over the tile's foot,
  *  so choosing a locked style still shows what it is before it asks for anything. */
 function faceOf(direction: StylizeDirection, connected: boolean): 'desk' | 'sample' {

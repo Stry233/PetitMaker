@@ -2,14 +2,14 @@ import { providerName } from '../../i18n/providers';
 /*
  * Guides key entry, provider detection and connection completion. Automatic advance waits for an
  * idle interval or Enter so typing never loses focus. Explicit provider choices override key-shape
- * suggestions, and leaving a reading cancels its pending request. Ambiguous keys require a provider
+ * suggestions, and leaving a reading invalidates its pending result. Ambiguous keys require a provider
  * choice; custom endpoints require an address. Model choice and oversight remain in management.
  * Network functions are injected, and default adapters load dynamically by provider dialect.
  */
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type RefObject } from 'react';
 import { useUiPreview } from '../primitives/ui-preview';
 import { motion, useReducedMotionConfig } from 'framer-motion';
-import { HelpLink, zoneEnter } from './atoms';
+import { HelpLink } from './atoms';
 import { useT } from '../../i18n/context';
 import { QUIRKS, type ProviderId } from '../../agent/providers/defaults';
 import { classify } from '../../agent/core/errors';
@@ -22,17 +22,18 @@ import { FIELD_INPUT_CLASS, FIELD_WRAP_CLASS } from '../design/focus-source';
 import { windowFooterGhost, windowFooterPrimary } from '../design/window-skin';
 import { useFrameZoom, useZoomedLayoutTransform } from '../shell/use-frame-zoom';
 import { Icon } from './icons';
-import { amplitude, framerMotion } from './motion';
+import { amplitude, framerMotion } from '../design/motion';
 import { ManageScreen } from './ManageScreen';
 import { defaultListModels, IDLE_MS, type ListModels } from './model-discovery';
 import { rememberRoster, rosterKey } from './model-roster';
-import { connectionGaps, runnerSettings, useAgentPanelSettings } from './settings';
+import { connectionGaps, providerForSavedKey, providerRegion, runnerSettings, useAgentPanelSettings } from './settings';
 import {
   endpointOwed, FIELD_STYLE, FOOT_STYLE, GATED, GROUP_STYLE, INPUT_STYLE,
   keyDestination, keyLooksUsable, NOTE_STYLE, PROVIDER_ROSTER, rawFailure, readKeyShape, SAY_STYLE,
   stepSlide, urlLooksUsable, WRAP_STYLE,
-  type KeyDestination, type KeyShape, type SetupEntry, type SetupFace, type T,
+  type KeyDestination, type KeyShape, type SetupEntry, type SetupFace,
 } from './setup-parts';
+import type { Translate } from '../../core/model/types';
 
 export { defaultListModels, IDLE_MS, withModelsDeadline, type ListModels } from './model-discovery';
 
@@ -44,11 +45,12 @@ export type Mark = 'spin' | 'cross' | null;
 
 /** Stateless key input shared by key and endpoint steps; the caller owns value, masking and refusal state. */
 export function SetupKeyField({
-  value, masked = false, refused, shakeSeq, inputRef, onChange, onFocus, onBlur, onEnter,
+  value, masked = false, optional = false, refused, shakeSeq, inputRef, onChange, onFocus, onBlur, onEnter,
 }: {
   value: string;
   /** Whether the resting key field uses `type="password"`. */
   masked?: boolean;
+  optional?: boolean;
   refused: boolean;
   /** Bumped on every refusal, so a second refusal of the same key shakes again (see the caller). */
   shakeSeq: number;
@@ -80,7 +82,7 @@ export function SetupKeyField({
         className={FIELD_INPUT_CLASS}
         spellCheck={false}
         autoComplete="off"
-        placeholder={t('agent3.setup_key_placeholder')}
+        placeholder={t(optional ? 'agent3.setup_key_optional' : 'agent3.setup_key_placeholder')}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); onEnter?.(); } }}
@@ -92,7 +94,7 @@ export function SetupKeyField({
   );
 }
 
-export interface SetupScreenProps {
+interface SetupScreenProps {
   /** Called once a key, a provider and a model are all settled. The shell leaves setup on it. */
   onDone?: () => void;
   /** Injected for tests; the default reaches an SDK adapter by dynamic import. */
@@ -130,12 +132,14 @@ export function SetupScreen({
     const gaps = connectionGaps(useAgentPanelSettings.getState());
     return gaps.includes('key') || gaps.length === 0 ? 'key' : gaps.includes('endpoint') ? 'custom' : 'checking';
   });
-  const [keyDraft, setKeyDraft] = useState('');
+  const [keyDraft, setKeyDraft] = useState(() => phase === 'custom'
+    ? runnerSettings({ ...settings, provider: 'custom' }).apiKey : '');
   /** The key masks while unfocused and remains visible while editing. */
-  const [keyMasked, setKeyMasked] = useState(false);
+  const [keyMasked, setKeyMasked] = useState(keyDraft.length > 0);
   /** Tracks field focus for password-manager fills that arrive without focus events. */
   const keyFocused = useRef(false);
   const [rowOpen, setRowOpen] = useState(entry === 'chooser');
+  const [automatic, setAutomatic] = useState(false);
   const [urlDraft, setUrlDraft] = useState(settings.customBaseUrl);
   const [urlBad, setUrlBad] = useState(false);
   const [refused, setRefused] = useState(false);
@@ -152,13 +156,16 @@ export function SetupScreen({
 
   const provider = armed.current ?? settings.provider;
   /** Explicit provider choice, including a custom provider still awaiting its endpoint. */
-  const pinned = settings.providerPinned || endpointOwed(settings) ? settings.provider : null;
+  const pinned = !automatic && (settings.providerPinned || endpointOwed(settings)) ? settings.provider : null;
   const customBaseUrl = settings.customBaseUrl;
   const forgetKey = settings.forgetKey;
   const connectKey = settings.connectKey;
 
-  const shape: KeyShape = pinned ?? readKeyShape(keyDraft);
-  const accepted = keyLooksUsable(keyDraft);
+  const savedProvider = pinned ? null : providerForSavedKey(keyDraft);
+  const shape: KeyShape = pinned ?? savedProvider ?? readKeyShape(keyDraft);
+  const regionProvider = (QUIRKS[shape as ProviderId]?.baseUrls?.length ?? 0) > 1
+    && savedProvider !== shape && (!pinned || providerRegion(pinned) === undefined) ? shape as ProviderId : null;
+  const accepted = shape === 'custom' ? keyDraft.trim() !== '' : keyLooksUsable(keyDraft);
   const typing = keyDraft.length > 0;
   /** Outstanding requirements for the provider currently being configured. */
   const gaps = connectionGaps(settings, provider);
@@ -168,8 +175,9 @@ export function SetupScreen({
   /** Checks the credential and caches the available models without choosing one. */
   const loadModels = useCallback((id: ProviderId, apiKey: string) => {
     setModelsSettled(false);
+    const customBaseUrl = useAgentPanelSettings.getState().customBaseUrl;
     // Never send a custom-provider key until its endpoint is explicit.
-    if (apiKey === '' || (id === 'custom' && customBaseUrl === '')) return;
+    if ((apiKey === '' && id !== 'custom') || (id === 'custom' && customBaseUrl === '')) return;
     // Capture the reading generation so superseded results cannot mutate current setup.
     const mine = reading.current;
     const region = runnerSettings(useAgentPanelSettings.getState()).region;
@@ -183,7 +191,7 @@ export function SetupScreen({
       })
       .catch((err: unknown) => {
         if (mine !== reading.current) return;
-        // Retire legacy discovery failures without blocking manual model entry.
+        // A failed model listing leaves the endpoint usable: a model can still be entered by hand.
         if (id === 'custom') {
           useAgentPanelSettings.getState().recordEndpointCheck(true);
         }
@@ -202,7 +210,7 @@ export function SetupScreen({
         }
         setModelsSettled(true);
       });
-  }, [listModels, customBaseUrl, forgetKey]);
+  }, [listModels, forgetKey]);
 
   /** Files the key and provider while keeping the key field visible during validation. */
   const commit = useCallback((id: ProviderId, key: string) => {
@@ -220,14 +228,14 @@ export function SetupScreen({
     if (phase !== 'key' || refused) return null;
     if (heldBack === keyDraft) return null;
     const dest = keyDestination({ shape, usable: accepted, endpointFiled: !needsEndpoint, explicit: false });
-    if (!pinned && shape === 'zhipu') return 'ask';
+    if (regionProvider && dest) return 'ask';
     return dest === 'endpoint' ? null : dest;
   })();
 
   const fire = useCallback((what: Exclude<KeyDestination, null>) => {
     const key = keyDraft.trim();
     if (what === 'endpoint') { setPhase('custom'); return; }
-    if (key === '') return;
+    if (key === '' && shape !== 'custom') return;
     if (what === 'ask') { setRowOpen(true); return; }
     commit(shape as ProviderId, key);
   }, [keyDraft, shape, commit]);
@@ -254,8 +262,11 @@ export function SetupScreen({
   useLayoutEffect(() => {
     if (phase !== 'manage' || handedOff.current) return;
     handedOff.current = true;
+    useAgentPanelSettings.getState().clearProviderPin();
     onManage?.();
   }, [phase, onManage]);
+
+  useEffect(() => () => { reading.current += 1; }, []);
 
   const askedOnMount = useRef(false);
   useEffect(() => {
@@ -280,7 +291,15 @@ export function SetupScreen({
     if (!dest) return;
     reading.current += 1;
     setHeldBack(null);
-    fire(!pinned && shape === 'zhipu' ? 'ask' : dest);
+    fire(regionProvider ? 'ask' : dest);
+  }
+
+  function saveEndpoint(): void {
+    if (!urlLooksUsable(urlDraft) || settings.setCustomBaseUrl(urlDraft) === '') { setUrlBad(true); return; }
+    settings.pinProvider('custom');
+    reading.current += 1;
+    setHeldBack(null);
+    commit('custom', keyDraft.trim());
   }
 
   /** Returns to key entry while retaining the draft and suspending its automatic advance. */
@@ -304,6 +323,7 @@ export function SetupScreen({
 
   function pickProvider(id: ProviderId, region?: 0 | 1): void {
     // An explicit pick clears status from the reading it supersedes.
+    setAutomatic(false);
     setRefused(false);
     if (id === 'custom') { setRowOpen(false); setPhase('custom'); return; }
     if (region !== undefined) settings.setProviderRegion(id, region);
@@ -322,14 +342,33 @@ export function SetupScreen({
     commit(id, held);
   }
 
+  function detectAutomatically(): void {
+    reading.current += 1;
+    armed.current = null;
+    settings.clearProviderPin();
+    setAutomatic(true);
+    setRefused(false);
+    setModelsSettled(false);
+    setHeldBack(null);
+    setPhase('key');
+  }
+
+  function leave(): void {
+    reading.current += 1;
+    settings.clearProviderPin();
+    onLeave?.();
+  }
+
   const mark: Mark = refused ? 'cross' : phase === 'checking' || (gate !== null && gate !== 'ask') ? 'spin' : null;
   /** Whether the selected provider is currently checking the key. */
   const checking = phase === 'checking' || accepted && !needsEndpoint && (gate !== null && gate !== 'ask');
   /** Whether the open chooser is asking the user to identify an unknown key shape. */
-  const asking = rowOpen && !pinned && (shape === 'unknown' || shape === 'empty' || shape === 'ambiguous' || shape === 'zhipu') && !refused;
+  const asking = rowOpen && !pinned && (shape === 'unknown' || shape === 'empty' || shape === 'ambiguous') && !refused;
   const row = phase === 'custom'
     // The endpoint step gives the provider row its custom-provider identity.
     ? { id: 'custom' as ProviderId, name: t('agent3.setup_custom_endpoint'), sub: t('agent3.setup_row_openai_compat'), dim: false }
+    : regionProvider
+      ? { id: regionProvider, name: providerName(regionProvider, t), sub: t('agent3.setup_row_region'), dim: false }
     : asking
       ? {
         id: null,
@@ -338,7 +377,9 @@ export function SetupScreen({
         dim: false,
       }
       : rowFace({ t, shape, pinned, checking, refused });
-  const note = asking && typing
+  const note = regionProvider && typing
+    ? { text: t('agent3.setup_note_region', { name: providerName(regionProvider, t) }), danger: false }
+    : asking && typing
     ? { text: t('agent3.setup_note_unknown_pick'), danger: false }
     : noteLine({
       t, shape, pinned, typing, refused, needsEndpoint, checking,
@@ -376,6 +417,7 @@ export function SetupScreen({
     <SetupKeyField
       value={keyDraft}
       masked={keyMasked}
+      optional={phase === 'custom' || pinned === 'custom'}
       refused={refused}
       shakeSeq={shakeSeq}
       inputRef={fieldRef}
@@ -392,7 +434,7 @@ export function SetupScreen({
       }}
       onFocus={() => { keyFocused.current = true; setKeyMasked(false); }}
       onBlur={(next) => { keyFocused.current = false; setKeyMasked(next.length > 0); }}
-      onEnter={confirmNow}
+      onEnter={phase === 'custom' ? saveEndpoint : confirmNow}
     />
   );
 
@@ -404,12 +446,13 @@ export function SetupScreen({
       onOpen={chooseByHand}
       onClose={() => setRowOpen(false)}
       onPick={(choice) => {
+        if (choice === 'automatic') { detectAutomatically(); return; }
         const [id, region] = choice.split(':');
         pickProvider(id as ProviderId, region === '1' ? 1 : region === '0' ? 0 : undefined);
       }}
       {...(pinned ? { activeId: pinned } : {})}
       zoom={zoom}
-      items={rosterItems(t, shape)}
+      items={rosterItems(t, shape, pinned !== null, regionProvider)}
       row={<SetupProviderFace row={row} mark={mark} />}
     />
   );
@@ -417,10 +460,10 @@ export function SetupScreen({
   if (phase === 'manage' && !onManage) return <ManageScreen jobCount={0} listModels={listModels} onDone={onDone} />;
 
   return (
-    <motion.div {...zoneEnter(reduced)} data-testid="setup-screen" data-phase={phase} style={WRAP_STYLE}>
+    <div data-testid="setup-screen" data-phase={phase} style={WRAP_STYLE}>
       {(phase === 'key' || phase === 'checking' || phase === 'manage') && (
         <>
-          {!typing && <p style={SAY_STYLE}>{t('agent3.setup_say_key')} <HelpLink page="agent-setup" anchor="agsetup-keys" /></p>}
+          {!typing && phase === 'key' && <p style={SAY_STYLE}>{t('agent3.setup_say_key')} <HelpLink page="agent-setup" anchor="agsetup-keys" /></p>}
           <motion.div {...slides} style={GROUP_STYLE}>{keyField}</motion.div>
           <motion.div {...slides} style={GROUP_STYLE}>{providerRow}</motion.div>
           {note && (
@@ -456,7 +499,7 @@ export function SetupScreen({
                 ))}
               </div>
             )}
-            {!foot.includes('reenter') && canLeave && <LeaveRow t={t} {...(onLeave ? { onLeave } : {})} />}
+            {!foot.includes('reenter') && canLeave && <LeaveRow t={t} {...(onLeave ? { onLeave: leave } : {})} />}
           </div>
         </>
       )}
@@ -481,6 +524,7 @@ export function SetupScreen({
                 placeholder={t('agent3.setup_endpoint_placeholder')}
                 value={urlDraft}
                 onChange={(e) => { setUrlDraft(e.target.value); setUrlBad(false); }}
+                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); saveEndpoint(); } }}
                 style={{ ...INPUT_STYLE, letterSpacing: 0 }}
               />
             </label>
@@ -499,14 +543,7 @@ export function SetupScreen({
                 // Keep the disabled action in layout until the endpoint becomes usable.
                 data-gated={!urlLooksUsable(urlDraft) || undefined}
                 disabled={!urlLooksUsable(urlDraft)}
-                onClick={() => {
-                  if (settings.setCustomBaseUrl(urlDraft) === '') { setUrlBad(true); return; }
-                  settings.pinProvider('custom');
-                  // Filing the endpoint invalidates older readings and re-enables advance for the current key.
-                  reading.current += 1;
-                  setHeldBack(null);
-                  setPhase(keyDraft === '' && runnerSettings(useAgentPanelSettings.getState()).apiKey ? 'checking' : 'key');
-                }}
+                onClick={saveEndpoint}
                 style={urlLooksUsable(urlDraft) ? FOOT_PRIMARY : { ...FOOT_PRIMARY, ...GATED }}
               >
                 {t('agent3.setup_endpoint_check')}
@@ -523,7 +560,7 @@ export function SetupScreen({
           </div>
         </>
       )}
-    </motion.div>
+    </div>
   );
 }
 
@@ -534,11 +571,11 @@ function urlHost(raw: string): string {
 
 /* ── the row's face, the note and the foot, as three small derivations ────── */
 
-export interface RowFace { id: ProviderId | null; name: string; sub: string; dim: boolean }
+interface RowFace { id: ProviderId | null; name: string; sub: string; dim: boolean }
 
 /** Derives the provider row's identity, status copy and emphasis from setup state. */
 export function rowFace(a: {
-  t: T; shape: KeyShape; pinned: ProviderId | null; checking: boolean;
+  t: Translate; shape: KeyShape; pinned: ProviderId | null; checking: boolean;
   refused: boolean;
 }): RowFace {
   const { t, shape, pinned, checking, refused } = a;
@@ -624,7 +661,7 @@ export function SetupProviderFace({ row, mark }: { row: RowFace; mark: Mark }) {
 
 /** The sentence under the row, or none. `danger` is the refusal's own ink. */
 function noteLine(a: {
-  t: T; shape: KeyShape; pinned: ProviderId | null; typing: boolean; checking: boolean;
+  t: Translate; shape: KeyShape; pinned: ProviderId | null; typing: boolean; checking: boolean;
   refused: boolean; needsEndpoint: boolean; held: boolean;
 }): { text: string; danger: boolean } | null {
   const { t, shape, pinned, typing, checking, refused, needsEndpoint, held } = a;
@@ -665,16 +702,19 @@ function footVerbs(a: {
 }
 
 /** Provider-menu items, with compatibility hints for ambiguous keys. */
-function rosterItems(t: T, shape: KeyShape): FloatMenuItem[] {
+function rosterItems(t: Translate, shape: KeyShape, pinned: boolean, regionProvider: ProviderId | null): FloatMenuItem[] {
   const amb = shape === 'ambiguous';
-  const items: FloatMenuItem[] = PROVIDER_ROSTER.flatMap<FloatMenuItem>((id) => {
+  const roster = regionProvider ? [regionProvider, ...PROVIDER_ROSTER.filter(id => id !== regionProvider)] : PROVIDER_ROSTER;
+  const items: FloatMenuItem[] = roster.flatMap<FloatMenuItem>((id, index) => {
+    const separated = regionProvider !== null && index === 1;
     if ((QUIRKS[id].baseUrls?.length ?? 0) > 1) {
       return ([0, 1] as const).map((region) => ({
         id: `${id}:${region}`, label: providerName(id, t),
         sub: t(region === 0 ? 'agent3.endpoint_global' : 'agent3.endpoint_cn'),
+        separated: separated && region === 0,
       }));
     }
-    return [{ id, label: providerName(id, t) }];
+    return [{ id, label: providerName(id, t), separated }];
   });
   items.push({
     id: 'custom',
@@ -682,11 +722,12 @@ function rosterItems(t: T, shape: KeyShape): FloatMenuItem[] {
     separated: true,
     ...(amb ? { sub: t('agent3.setup_gateway_fits') } : {}),
   });
+  if (pinned) items.push({ id: 'automatic', label: t('agent3.setup_detect_automatically'), separated: true });
   return items;
 }
 
 /** Optional footer action that returns from setup to its originating surface. */
-function LeaveRow({ t, onLeave }: { t: T; onLeave?: () => void }) {
+function LeaveRow({ t, onLeave }: { t: Translate; onLeave?: () => void }) {
   if (!onLeave) return null;
   return (
     <div style={FOOT_ROW}>

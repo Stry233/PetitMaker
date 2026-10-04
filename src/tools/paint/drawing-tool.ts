@@ -3,15 +3,15 @@ import type { MacroCoord, MicroCoord } from '../../core/model/types';
 import { showToast } from '../../core/runtime/toast-bus';
 import { line4, expandLine, dragShapeCells, dragShapeSpans, snapShapeEnd, splineCells } from './shapes';
 import { getCell, cellKey } from '../../core/model/grid-model';
-import { ELEVATION_MAX } from '../../core/model/constants';
 import type { Command, Corners, TerrainCell } from '../../core/model/types';
-import type { RowSpan } from '../../canvas/map2d/layers/ghost-geometry';
+import type { RowSpan } from '../../canvas/ghost-geometry';
 import type { Tool, ToolContext } from '../runtime/types';
+import type { DrawingMode } from '../../core/model/edit-mode';
 import type { CursorId } from '../../core/runtime/cursor-spec';
 import { placeTileCell, strippableRefusal } from './tile-coating';
 import type { ContentType } from './paint-plan';
 import type { PreviewCell, PreviewIcon } from '../../core/runtime/preview-cell';
-import { planPaint, buildFloor, autoStackTarget, waterLayerAt } from './paint-plan';
+import { planPaint, buildFloor, autoStackTarget, mountainCeiling, waterLayerAt, isLowGround } from './paint-plan';
 import { soleLegalWaterLayer } from './water-layers';
 import {
   previewAutoTrim, shapeOfCells, shapeOfSpans, type GhostShape, type TrimmedCell,
@@ -28,8 +28,9 @@ import {
 } from './curve-session';
 import type { CurveAnchor } from './shapes';
 import type { PlacedObject, ValidationError } from '../../core/model/types';
-
-export type DrawingMode = 'brush' | 'line' | 'curve' | 'rect' | 'circle';
+import { ELEVATION_MAX } from '../../core/model/game-profile';
+import { SQUARE_CORNERS, isSquareCorners } from '../../core/edge-cut/corner-index';
+import { ruleToast } from '../../i18n/rule-copy';
 
 /** What a curve cell held before the curve reached it: the WHOLE terrain, so a hand-cut corner
  *  beside the path comes back as it was. Null = the cell was bare ground. */
@@ -463,7 +464,7 @@ export class DrawingTool implements Tool {
       out.push({
         type: CommandType.TrimCorners, timestamp: Date.now(), x, y, layer: 'terrain',
         beforeCorners: getCell(ctx.gridState.cells, x, y)?.terrain?.corners,
-        afterCorners: (base.corners ?? ['square', 'square', 'square', 'square']) as Corners,
+        afterCorners: base.corners ?? [...SQUARE_CORNERS],
         patchOnly: base.patchOnly,
         ...(base.patchOnly
           ? { terrainType: base.type, elevation: base.elevation, patchBase: base.patchBase }
@@ -663,6 +664,7 @@ export class DrawingTool implements Tool {
       return;
     }
     const plan = planPaint(cells, ctx, this.contentType, this.strokeCells);
+    if (plan.clipped) ctx.reportGroundClipped?.();
     // Record the stroke's footprint (road reconcile + auto edge-trim read it) only after planning:
     // the plan must see the heights as they were before this batch, and a cell already in the set
     // is one this stroke has raised already.
@@ -670,8 +672,9 @@ export class DrawingTool implements Tool {
     // A SHAPE is one deliberate figure, so it lays the part of itself that is legal. The freehand
     // MOUNTAIN brush keeps its footprint atomic: its cells hold each other up (the ladder), so a
     // dab is a single mark. Water neither stacks nor supports anything, so a dab lays the cells
-    // that can hold it and skips the ones the rules refuse.
-    const splitOnRefusal = this.mode !== 'brush' || this.contentType === 'water';
+    // that can hold it and skips the ones the rules refuse. In the planet session a dab also lays
+    // what is legal, so a fresh island's coast cells stay ground while its interior rises.
+    const splitOnRefusal = this.mode !== 'brush' || this.contentType === 'water' || ctx.groundEditable;
     for (const cmd of plan.commands) this.execute(ctx, cmd, splitOnRefusal);
   }
 
@@ -684,10 +687,10 @@ export class DrawingTool implements Tool {
       // real block's silhouette is the stroke's to re-derive; the trim pass owns the patches.
       if (t?.patchOnly) continue;
       const corners = t?.corners;
-      if (!corners || corners.every((c) => c === 'square')) continue;
+      if (isSquareCorners(corners)) continue;
       ctx.executeCommand({
         type: CommandType.TrimCorners, timestamp: Date.now(), x, y, layer: 'terrain',
-        beforeCorners: corners, afterCorners: ['square', 'square', 'square', 'square'],
+        beforeCorners: corners, afterCorners: [...SQUARE_CORNERS],
       });
     }
   }
@@ -700,11 +703,11 @@ export class DrawingTool implements Tool {
     const roads = roadLookup(ctx.gridState);
     for (const { x, y } of cells) {
       const road = roads(x, y);
-      if (!road?.corners || road.corners.every((c) => c === 'square')) continue;
+      if (!road?.corners || isSquareCorners(road.corners)) continue;
       ctx.executeCommand({
         type: CommandType.TrimCorners, timestamp: Date.now(), x, y, layer: 'road', objectId: road.id,
         beforeCorners: [...road.corners] as Corners,
-        afterCorners: ['square', 'square', 'square', 'square'],
+        afterCorners: [...SQUARE_CORNERS],
       });
     }
   }
@@ -840,9 +843,9 @@ export class DrawingTool implements Tool {
   private refusalMessage(ctx: ToolContext, first: ValidationError): string {
     if (this.contentType === 'water') {
       const layer = soleLegalWaterLayer(this.cellsFromSet(this.strokeCells), ctx.gridState, ctx.rules);
-      if (layer !== null) return ctx.t('error.water_only_layer', { layer });
+      if (layer !== null) return ruleToast(ctx.t, 'error.water_only_layer', { layer });
     }
-    return ctx.t(first.message);
+    return ruleToast(ctx.t, first.message);
   }
 
   /** Returns the post-stroke violations, so a caller that must be all-or-nothing can act on them.
@@ -911,8 +914,11 @@ export class DrawingTool implements Tool {
     // ground chose must not become the layer the next stroke is pinned to.
     if (this.contentType === 'water') { ctx.setDisplayLayer(waterLayerAt(coord, ctx)); return; }
     if (this.contentType !== 'mountain') { ctx.setDisplayLayer(null); return; }
-    const existing = getCell(ctx.gridState.cells, coord.x, coord.y)?.terrain?.elevation ?? 0;
-    ctx.setDisplayLayer(autoStackTarget(existing, buildFloor(ctx)));
+    const cell = getCell(ctx.gridState.cells, coord.x, coord.y);
+    // Sea, and sand in either material, lay layer 0 in the planet session.
+    if (cell && ctx.groundEditable && (ctx.planetMaterial === 'sand' || isLowGround(cell, ctx))) { ctx.setDisplayLayer(0); return; }
+    const existing = cell?.terrain?.elevation ?? 0;
+    ctx.setDisplayLayer(Math.max(existing, autoStackTarget(existing, buildFloor(ctx), mountainCeiling(ctx))));
   }
 
   // After commit, settle the highlight on what the cell UNDER THE CURSOR actually

@@ -11,7 +11,7 @@
  *
  * This is `kit/operations/generate.ts:generateCandidate` in the small, and it inherits both of the
  * things that path learned the hard way — the two of them share `mapFingerprint` and
- * `detachCommand` rather than each carrying a copy.
+ * `detachCommand` (from the command layer) rather than each carrying a copy.
  *
  * THE CLONE IS THE WHOLE MAP, not the macro's neighbourhood. A clone cut to the macro's own radius
  * would re-decide every rule at its own rim, since V-MTN-03 reads a 3x3 and an edge cut reads the
@@ -21,13 +21,15 @@
  * whether the step it has just built is legal.
  */
 import { CommandExecutor } from '../../core/commands/command-executor';
+import { detachCommand } from '../../core/commands/command-apply';
 import { EventBus } from '../../core/commands/event-bus';
 import { cloneGridState } from '../../core/model/grid-model';
-import { CommandType } from '../../core/model/types';
 import type {
-  Command, Corners, EditorEvents, GridState, PlacedObject, ValidationResult,
+  Command, Corners, EditorEvents, GridState, ValidationResult,
 } from '../../core/model/types';
 import { roadLookup } from '../../state/object-index';
+import { createExecutor } from '../../state/executor';
+import type { RuleDispatcher } from '../../core/model/rule-dispatcher';
 import type { MacroContext } from './context';
 
 /** A run that has already happened somewhere else. */
@@ -48,7 +50,7 @@ export interface ScratchRun {
  * placements were refused around it.
  *
  * A macro that rolls a step back has decided not to build it, so the recording follows the undo
- * stack down. Nothing here collapses the stack — `commitStrokeGroup` runs on the LIVE executor,
+ * stack down. Nothing here collapses the stack — `commitStroke` runs on the LIVE executor,
  * after the replay — so tracking the stack's size is enough to know what is still standing.
  */
 class RecordingExecutor extends CommandExecutor {
@@ -85,6 +87,12 @@ class RecordingExecutor extends CommandExecutor {
   }
 }
 
+/** An editor over `state` that reaches nothing live: its own executor, an unheard bus, and `registry`
+ *  for the rules. `state` is the caller's copy; nothing here clones it. */
+export function detachedContext(state: GridState, registry: RuleDispatcher): MacroContext {
+  return { state, executor: createExecutor(state, registry), registry };
+}
+
 /** Runs `build` against a copy of the live map and hands back what it built. The live map is not
  *  touched, and neither is its undo stack, its event bus or its provenance ledger. */
 export function runOnScratch(ctx: MacroContext, build: (scratch: MacroContext) => void): ScratchRun {
@@ -93,47 +101,6 @@ export function runOnScratch(ctx: MacroContext, build: (scratch: MacroContext) =
   const executor = new RecordingExecutor(state, new EventBus<EditorEvents>(), ctx.registry, roadLookup(state));
   build({ state, executor, registry: ctx.registry });
   return { commands: executor.recorded, base };
-}
-
-/**
- * Puts a scratch run on the live map, inside whatever stroke group the caller has open.
- *
- * Every command is validated again here; nothing is trusted about them beyond the map they were
- * built on still being the map they are landing on. Returns false when it is not, which is the
- * caller's cue to build again rather than to land a result that was never promised.
- */
-export function replayOnLive(ctx: MacroContext, run: ScratchRun): boolean {
-  if (mapFingerprint(ctx.state) !== run.base) return false;
-  for (const cmd of run.commands) ctx.executor.execute(detachCommand(cmd));
-  return true;
-}
-
-/** A copy of `cmd` sharing nothing mutable with the map it was built on. A placement command carries
- *  the object itself and a corner edit carries arrays that are assigned straight into a cell, so
- *  replaying either as it stands would leave two maps holding one object. */
-export function detachCommand(cmd: Command): Command {
-  switch (cmd.type) {
-    case CommandType.PlaceObject:
-      return { ...cmd, object: cloneObject(cmd.object) };
-    case CommandType.RemoveObject:
-      return { ...cmd, removedObject: cloneObject(cmd.removedObject) };
-    case CommandType.TrimCorners:
-      return {
-        ...cmd,
-        ...(cmd.beforeCorners ? { beforeCorners: [...cmd.beforeCorners] as Corners } : {}),
-        afterCorners: [...cmd.afterCorners] as Corners,
-      };
-    default:
-      return cmd;
-  }
-}
-
-function cloneObject(obj: PlacedObject): PlacedObject {
-  return {
-    ...obj,
-    position: { ...obj.position },
-    ...(obj.corners ? { corners: [...obj.corners] as Corners } : {}),
-  };
 }
 
 /**
@@ -161,6 +128,7 @@ export function mapFingerprint(state: GridState): string {
     for (const c of corners) mixText(c);
   };
 
+  mix(state.ignoreChunkLoad ? 1 : 0);
   mix(state.template.width);
   mix(state.template.height);
   for (const row of state.cells) {

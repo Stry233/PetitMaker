@@ -198,7 +198,7 @@ describe('ASSET_LICENSES.zh-CN.md — authored equivalent + parity', () => {
     expect(ZH).toContain('本身不授予您或本项目再利用、再分发或转授权相关素材的权利');
   });
 
-  it('carries the affiliation disclaimer (米哈游/HoYoverse) and the IP channel', () => {
+  it('carries the affiliation disclaimer (HoYoverse, in both scripts) and the IP channel', () => {
     expect(ZH).toContain('米哈游');
     expect(ZH).toMatch(/HoYoverse/);
     expect(ZH).toContain('[IP]');
@@ -375,7 +375,7 @@ describe('README.zh-CN.md — authored equivalent + parity', () => {
     expect(ZH).toContain('README.md');
   });
 
-  it('carries the same contact + affiliation disclaimer (米哈游/HoYoverse)', () => {
+  it('carries the same contact + affiliation disclaimer (HoYoverse, in both scripts)', () => {
     expect(ZH).toContain('petit.maker@outlook.com');
     expect(ZH).toContain('米哈游');
     expect(ZH).toMatch(/HoYoverse/);

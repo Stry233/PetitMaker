@@ -1,5 +1,5 @@
 /**
- * projection-routing.test.ts — EVERY BYTE THE BACKEND LOGS HAS A DECLARED DESTINATION.
+ * EVERY BYTE THE BACKEND LOGS HAS A DECLARED DESTINATION.
  *
  * The session log is the state and everything else is a projection of it, so a new event kind — or
  * a new field on an existing one — that nobody routed is a silent hole: the loop records a fact and
@@ -131,6 +131,11 @@ const ROUTING: { [K in Kind]: FieldTable<K> } = {
     summary: ['ui:the answer paper\'s body and the receipt\'s closing words, as rendered markdown'],
     question: ['ui:the asking dress (spine + quick row) on the settled card', 'fold:celebrate withheld'],
     undoIndex: ['ui:the take-back confirm\'s "n steps, m yours" split'],
+  },
+  replySuggested: {
+    orderSeq: ['fold:binds the optional draft to the latest settled question'],
+    reply: ['ui:Composer suggestion ghost, never sent without user input'],
+    usage: ['record:token accounting for the optional draft request'],
   },
 };
 

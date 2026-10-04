@@ -1,4 +1,5 @@
-import { IS_LITE } from '../../../../core/runtime/edition';
+import { cssMotion } from '../../../design/motion';
+import { EDITION_COPY, SUPPORTS_CLIPBOARD } from '../../../../core/runtime/edition';
 import type { CSSProperties, DragEvent } from 'react';
 import { cursors } from '../../../design/styles';
 import { skin } from '../../../design/window-skin';
@@ -17,6 +18,9 @@ export interface ImportDropZoneProps {
   onDragOver?: (e: DragEvent<HTMLDivElement>) => void;
   onDragLeave?: (e: DragEvent<HTMLDivElement>) => void;
   onDrop?: (e: DragEvent<HTMLDivElement>) => void;
+  /** Another surface's drop copy in place of the map import's; it then shows no paste hint and no
+   *  import note. */
+  label?: string;
 }
 
 // Three lines of prose about what will and will not import, so it is set to be read rather than
@@ -40,7 +44,7 @@ export const IMPORT_CARD_PADDING = '26px 28px 28px';
  * "armed" with, everywhere from a chosen mode to a pressed button — so the moment the window is
  * live still looks like the window.
  */
-export function ImportDropZone({ dragOver, busy, onClick, onDragOver, onDragLeave, onDrop }: ImportDropZoneProps) {
+export function ImportDropZone({ dragOver, busy, onClick, onDragOver, onDragLeave, onDrop, label }: ImportDropZoneProps) {
   const t = useT();
   return (
     <>
@@ -59,7 +63,7 @@ export function ImportDropZone({ dragOver, busy, onClick, onDragOver, onDragLeav
           cursor: onClick ? cursors.clickable : cursors.default,
           // The paste hint recedes on the resting cream; on the active yellow a grey would recede
           // out of legibility, so it takes the plate ink instead.
-          color: dragOver ? skin.plateInk : skin.muted, transition: 'all 120ms ease',
+          color: dragOver ? skin.plateInk : skin.muted, transition: cssMotion('control.drop', ['background-color', 'color', 'border-color']),
         }}
       >
         {/* The copy follows the affordance: without an onClick there is nothing to click, and
@@ -67,11 +71,11 @@ export function ImportDropZone({ dragOver, busy, onClick, onDragOver, onDragLeav
             would be an invitation the surface cannot honour. */}
         <div style={{ ...roleFont('head'), color: skin.ink, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10 }}>
           {busy && <Spinner size={18} />}
-          {busy ? t('import.busy') : t(IS_LITE ? 'lite.import_pick' : onClick ? 'import.drop' : 'import.drop_only')}
+          {busy ? t('import.busy') : label ?? t(EDITION_COPY.importPick ?? (onClick ? 'import.drop' : 'import.drop_only'))}
         </div>
-        {!IS_LITE && <div style={{ ...roleFont('caption'), marginTop: 6, opacity: 0.8 }}>{t('import.paste_hint')}</div>}
+        {SUPPORTS_CLIPBOARD && label === undefined && <div style={{ ...roleFont('caption'), marginTop: 6, opacity: 0.8 }}>{t('import.paste_hint')}</div>}
       </div>
-      <div style={noteStyle}>{t(IS_LITE ? 'lite.import_hint' : 'import.note')}</div>
+      {label === undefined && <div style={noteStyle}>{t(EDITION_COPY.importNote)}</div>}
     </>
   );
 }

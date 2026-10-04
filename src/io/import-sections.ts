@@ -11,6 +11,8 @@
 import type { HistoryEntry } from '../core/commands/command-apply';
 import { decodeHistory } from './history-codec';
 import type { GenerateConfig, GridState } from '../core/model/types';
+import { ELEVATION_MAX } from '../core/model/game-profile';
+import { isFiniteNumber } from './import-validate';
 
 export interface SectionRestoreDeps {
   executor: { restoreHistory(entries: HistoryEntry[]): void } | null;
@@ -20,10 +22,6 @@ export interface SectionRestoreDeps {
 }
 
 export interface SectionRestoreResult { restored: string[]; dropped: string[] }
-
-function isFiniteNumber(v: unknown): v is number {
-  return typeof v === 'number' && Number.isFinite(v);
-}
 
 /** A generation recipe off the wire: informational, so only the fields every reader needs. */
 export function isGenerationConfig(value: unknown): value is GenerateConfig {
@@ -60,7 +58,7 @@ export function applyOptionalSections(raw: unknown, deps: SectionRestoreDeps): S
       if (s && typeof s === 'object' && s.v === 1) {
         if (Array.isArray(s.lockedLayers)) {
           for (const layer of s.lockedLayers) {
-            if (typeof layer === 'number' && layer >= 1 && layer <= 8) deps.setLayerLocked(layer, true);
+            if (typeof layer === 'number' && layer >= 1 && layer <= ELEVATION_MAX) deps.setLayerLocked(layer, true);
           }
         }
         const cam = s.camera as { x?: unknown; y?: unknown; zoom?: unknown } | undefined;

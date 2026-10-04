@@ -1,7 +1,7 @@
 /*
  * A SIZE IS NAMED, NOT CHOSEN.
  *
- * Modelled on `__tests__/core/prefs.test.ts` (a storage key written outside its one table) and
+ * Modelled on `__tests__/core/runtime/prefs.test.ts` (a storage key written outside its one table) and
  * `__tests__/ui/shell/motion-registry.test.ts` (a curve chosen at a call site). The same argument
  * carries: a number written into a style object is a decision nobody can find later, and it lets
  * one semantic level drift to six different sizes across the windows — a section heading at

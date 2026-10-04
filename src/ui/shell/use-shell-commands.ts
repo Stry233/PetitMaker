@@ -1,5 +1,5 @@
 /*
- * use-shell-commands.ts — what a keyboard command MEANS in this shell.
+ * What a keyboard command MEANS in this shell.
  *
  * `use-editor-shortcuts` is the one keyboard surface for the editor: it builds every binding
  * from the command registry over the user's overrides, and it also publishes the HELD modifiers
@@ -10,17 +10,17 @@
  * Everything else a command does it does through the store, the kit host or the active view, so the
  * whole rest of the registry is chrome-independent and arrives working.
  */
-import { IS_LITE } from '../../core/runtime/edition';
+import { inEdition } from '../../core/runtime/edition';
 import { useCallback } from 'react';
 import { MODE_FOR_CONTENT, designModeToEditInputs } from '../../core/model/edit-mode';
 import type { DesignMode } from '../../core/model/types';
 import type { EditorAction } from '../../kit/actions';
 import type { CommandContext } from '../../kit/commands';
 import { useEditorStore } from '../../state/store';
-import { REGION_TOOL_FOR } from './bars/scope-cells';
 import { terrainSurface } from './bars/terrain-cells';
+import { sessionModes } from './frame';
 
-export interface ShellCommandDeps {
+interface ShellCommandDeps {
   /** The menu sheet's own toggle. It lives in the shell's React state, not the store. */
   toggleMenu: () => void;
   regionUndo: () => boolean;
@@ -53,18 +53,12 @@ export function useShellCommands({ toggleMenu, regionUndo, regionRedo }: ShellCo
    */
   const openBuild = useCallback((design: DesignMode) => {
     const s = useEditorStore.getState();
-    // The scope screen wears the terrain bar's row, keys included, so while it is up a tool key
-    // picks the REGION's figure. It is the same six drawings and the same six letters; what differs
-    // is what the stroke collects.
-    if (s.selectingRegion) {
-      const region = REGION_TOOL_FOR[design];
-      if (region) s.setRegionTool(region);
-      return;
-    }
     // The plan-notes bar has its own cells and no bindings yet: a terrain tool key pressed there
     // must not yank the user onto a terrain surface mid-annotation.
     if (s.editMode.mode === 'annotate') return;
-    const surface = terrainSurface(s.editMode.mode) ?? MODE_FOR_CONTENT[s.contentType];
+    const wanted = terrainSurface(s.editMode.mode) ?? MODE_FOR_CONTENT[s.contentType];
+    // A planet session has no road surface, so a tool key there opens the mountain one.
+    const surface = sessionModes(s.planetSession).includes(wanted) ? wanted : 'mountain';
     setEditMode({ mode: surface, ...designModeToEditInputs(design) });
   }, [setEditMode]);
 
@@ -78,11 +72,12 @@ export function useShellCommands({ toggleMenu, regionUndo, regionRedo }: ShellCo
    */
   const handleTileAction = useCallback((action: EditorAction) => {
     if (action.action === 'file') {
+      if (!inEdition(action)) return;
       if (action.payload === 'new') setModal('newProject', true);
       // The save-and-share window carries both exports as sections, and opens at the one named.
       else if (action.payload === 'image') setModal('export', true);
-      else if (!IS_LITE && action.payload === 'export') setModal('exportJson', true);
-      else if (!IS_LITE && action.payload === 'import') setModal('import', true);
+      else if (action.payload === 'export') setModal('exportJson', true);
+      else if (action.payload === 'import') setModal('import', true);
       return;
     }
     if (action.action === 'move') {

@@ -18,7 +18,7 @@ export type TourStepId =
 
 /** The elements a step can point at. Each is carried by exactly one element, via `tourTargetAttr`. */
 export type TourTargetId =
-  | 'modes' | 'bar' | 'view3d' | 'assistant' | 'share' | 'menu';
+  | 'modes' | 'bar' | 'view3d' | 'assistant' | 'share' | 'menu' | 'load';
 
 export interface TourStep {
   id: TourStepId;

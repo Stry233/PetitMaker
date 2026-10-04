@@ -8,13 +8,14 @@
  * derivation with an authored table; the signature is what callers hold.
  */
 import { getCatalogItem } from '../../../../state/catalog';
+import { numberToRgb01 } from '../../../../core/model/colors';
 
 /** Coarse hue name for an sRGB hex colour. Neutrals answer white / grey / black. */
 export function hueFamily(hex: string): string {
   const m = /^#?([0-9a-f]{6})$/i.exec(hex.trim());
   if (!m) return 'unknown';
   const n = parseInt(m[1]!, 16);
-  const r = ((n >> 16) & 255) / 255, g = ((n >> 8) & 255) / 255, b = (n & 255) / 255;
+  const [r, g, b] = numberToRgb01(n);
   const max = Math.max(r, g, b), min = Math.min(r, g, b), d = max - min;
   const l = (max + min) / 2;
   if (d < 0.09) return l > 0.75 ? 'white' : l < 0.22 ? 'black' : 'grey';

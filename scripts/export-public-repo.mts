@@ -12,7 +12,7 @@
 //                                                                       manual/CI use only)
 
 // @ts-ignore - node:fs is untyped here (no @types/node)
-import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 // @ts-ignore - node:path is untyped here (no @types/node)
 import { dirname, join, resolve } from 'node:path';
 // @ts-ignore - node:child_process is untyped here (no @types/node)
@@ -27,6 +27,7 @@ import {
   findByBasename,
   isProbablyText,
   findLeakedPaths,
+  listFiles,
   parseManifest,
   publicGitignore,
   selectPublicPaths,
@@ -73,20 +74,6 @@ function copyAllowlisted(rootDir: string, outDir: string, paths: readonly string
 /** Explicit denylist re-scan: none of these known-internal names may exist in the output. */
 function spotCheckDenylist(outDir: string): string[] {
   return DENYLIST_SPOTCHECK.filter((name) => existsSync(join(outDir, name)));
-}
-
-/** Every file in the output, as a path relative to it. */
-function walkOutput(outDir: string, rel = ''): string[] {
-  const out: string[] = [];
-  for (const entry of readdirSync(join(outDir, rel), { withFileTypes: true }) as Array<{
-    name: string;
-    isDirectory(): boolean;
-  }>) {
-    const child = rel ? `${rel}/${entry.name}` : entry.name;
-    if (entry.isDirectory()) out.push(...walkOutput(outDir, child));
-    else out.push(child);
-  }
-  return out;
 }
 
 // Verification uses a throwaway git commit because the exported hygiene tests inspect tracked
@@ -164,7 +151,7 @@ async function main(): Promise<void> {
     );
   }
   // Agent-instruction files can occur at any depth, so scan by basename.
-  const denied = findByBasename(walkOutput(outDir), AGENT_DOC_NAMES);
+  const denied = findByBasename(listFiles(outDir), AGENT_DOC_NAMES);
   if (denied.length > 0) {
     throw new Error(
       `[export-public-repo] LEAK: agent-instruction file(s) exist in the output:\n` +

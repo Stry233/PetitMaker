@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { traitPlacementRule } from '../../rules/placement';
 import { objectBlocksTerrainRule } from '../../rules/object-blocks-terrain';
-import { CellZone, CommandType, TerrainType } from '../../core/model/types';
+import { CellZone, CommandType, TerrainType, type Rotation } from '../../core/model/types';
 import type { PlaceObjectCommand, PaintTerrainCommand, EraseTerrainCommand } from '../../core/model/types';
 import { makeState, setTerrain, setZone } from './_helpers';
 import { registerCatalogItem } from '../../state/catalog';
@@ -23,12 +23,11 @@ registerCatalogItem({
   traits: [{ type: 'flat' }],
 });
 
-function placeItemRot(id: string, x: number, y: number, rotation: 0 | 90 | 180 | 270): PlaceObjectCommand {
+function placeItemRot(id: string, x: number, y: number, rotation: Rotation): PlaceObjectCommand {
   return {
     type: CommandType.PlaceObject,
     timestamp: 0,
     object: { id: 'test', catalogId: id, position: { x, y }, rotation, elevation: 0 },
-    loadValue: 0,
   };
 }
 
@@ -37,7 +36,6 @@ function placeItem(id: string, x: number, y: number): PlaceObjectCommand {
     type: CommandType.PlaceObject,
     timestamp: 0,
     object: { id: 'test', catalogId: id, position: { x, y }, rotation: 0, elevation: 0 },
-    loadValue: 0,
   };
 }
 

@@ -1,5 +1,6 @@
 import type { GateAnswer, GateOption } from './types';
 import { append, eventsOf, subscribe, type SessionLog } from './log';
+import { abortError } from './errors';
 
 export type Oversight = 'strict' | 'checkpoint' | 'yolo';
 
@@ -69,13 +70,7 @@ export function callApproved(log: SessionLog, callId: string): boolean {
   return false;
 }
 
-function abortError(): Error {
-  // Plain Node environments may not provide DOMException.
-  if (typeof DOMException !== 'undefined') return new DOMException('The gate wait was aborted.', 'AbortError');
-  const err = new Error('The gate wait was aborted.');
-  err.name = 'AbortError';
-  return err;
-}
+const gateAbortError = (): Error => abortError('The gate wait was aborted.');
 
 /** Resolves from a persisted or future answer and rejects if the signal aborts first. */
 export function awaitGate(
@@ -86,13 +81,13 @@ export function awaitGate(
   const already = eventsOf(log).find((ev) => ev.kind === 'gateAnswered' && ev.gateId === gateId);
   if (already && already.kind === 'gateAnswered') {
     return signal.aborted
-      ? Promise.reject(abortError())
+      ? Promise.reject(gateAbortError())
       : Promise.resolve({ answer: already.answer, words: already.words });
   }
-  if (signal.aborted) return Promise.reject(abortError());
+  if (signal.aborted) return Promise.reject(gateAbortError());
 
   return new Promise((resolve, reject) => {
-    const onAbort = () => { unsubscribe(); reject(abortError()); };
+    const onAbort = () => { unsubscribe(); reject(gateAbortError()); };
     const unsubscribe = subscribe(log, () => {
       const ev = eventsOf(log).find((e) => e.kind === 'gateAnswered' && e.gateId === gateId);
       if (ev && ev.kind === 'gateAnswered') {

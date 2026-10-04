@@ -1,49 +1,41 @@
-// A small "[?]" help bubble: a circular toggle that reveals a short dark tooltip. The tooltip is
-// FIXED-positioned (anchored to the button via
-// getBoundingClientRect, clamped to the viewport) so the modal's overflow:hidden never clips it.
-import { useState, useRef, useLayoutEffect, type CSSProperties } from 'react';
+import { useId, useState, useRef, type CSSProperties } from 'react';
+import { createPortal } from 'react-dom';
 import { motion } from 'framer-motion';
-import { font, springs, inkTint, cursors } from '../../../design/styles';
+import { font, springs, inkTint, cursors, z, pressOnly } from '../../../design/styles';
 import { skin } from '../../../design/window-skin';
 import { roleFont } from '../../../design/text-weight';
 import { useT } from '../../../../i18n/context';
-import { useChromeScale } from '../../../design/scale';
-import { ClickCatcher, clampLeft } from '../../../primitives/ClickCatcher';
-import { visualRect } from '../../../design/visual-rect';
+import { useChromeScale, useWeightVars } from '../../../design/scale';
+import { ClickCatcher } from '../../../primitives/ClickCatcher';
+import { useFloatingPosition } from '../../../primitives/use-floating-position';
+import { useSurfaceScope } from '../../../primitives/surface-scope';
+import { useUiPreview } from '../../../primitives/ui-preview';
 
-const WIDTH = 230;
+const WIDTH = 254;
 
 export function HelpBubble({ text }: { text: string }) {
   const t = useT();
   const [open, setOpen] = useState(false);
   const btnRef = useRef<HTMLButtonElement>(null);
-  const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
+  const id = useId();
   const chrome = useChromeScale();
-
-  useLayoutEffect(() => {
-    if (!open || !btnRef.current) return;
-    const r = visualRect(btnRef.current);
-    // Clamp in VISUAL px (the bubble renders at WIDTH x the modal's css zoom), then divide
-    // the zoom back out of the stored css coordinates (they live inside the zoomed subtree).
-    const left = clampLeft(r.left, WIDTH, chrome);
-    setPos({ left: left / chrome, top: (r.bottom + 6) / chrome });
-  }, [open, chrome]);
-
+  const weights = useWeightVars();
+  const pictured = useUiPreview();
+  const floating = useFloatingPosition({ open: open && !pictured, anchor: btnRef, zoom: chrome, width: WIDTH, gap: 6 });
+  useSurfaceScope({ open: open && !pictured, root: floating.ref, trigger: btnRef, onClose: () => setOpen(false) });
+  const content = <motion.div ref={floating.ref} id={id} role="tooltip" initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} transition={springs.stiff}
+    onClick={() => setOpen(false)} style={{ ...bubble, zoom: pictured ? 1 : chrome, ...weights, ...(pictured ? { position: 'absolute' } : floating.style) }}>{text}</motion.div>;
   return (
     <span style={{ position: 'relative', display: 'inline-flex', verticalAlign: 'middle' }}>
-      <motion.button ref={btnRef} type="button" aria-label={t('a11y.help')} onClick={() => setOpen((v) => !v)} whileTap={{ scale: 0.9 }}
+      <motion.button ref={btnRef} type="button" aria-label={t('a11y.help')} aria-expanded={open} aria-describedby={open ? id : undefined} onClick={() => setOpen((v) => !v)} {...pressOnly}
         style={{ ...dot, background: open ? skin.ink : skin.line, color: open ? skin.onDark : skin.ink }}>?</motion.button>
-      {open && pos && (
-        <>
-          <ClickCatcher onDismiss={() => setOpen(false)} />
-          <motion.div initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} transition={springs.stiff}
-            onClick={() => setOpen(false)}
-            style={{ ...bubble, left: pos.left, top: pos.top }}>{text}</motion.div>
-        </>
-      )}
+      {open && (pictured ? content : createPortal(<>
+        <ClickCatcher onDismiss={() => setOpen(false)} zIndex={z.popover} />
+        {content}
+      </>, document.body))}
     </span>
   );
 }
 
 const dot: CSSProperties = { width: 17, height: 17, borderRadius: '50%', border: 'none', cursor: cursors.clickable, fontFamily: font.family, ...roleFont('small'), lineHeight: '17px', padding: 0, flex: 'none' };
-const bubble: CSSProperties = { position: 'fixed', zIndex: 301, width: WIDTH, background: skin.ink, color: skin.onDark, borderRadius: 12, padding: '9px 12px', fontFamily: font.family, ...roleFont('caption'), lineHeight: 1.45, boxShadow: `0 6px 18px ${inkTint(0.32)}`, cursor: cursors.clickable };
+const bubble: CSSProperties = { position: 'fixed', zIndex: z.popover, width: WIDTH, boxSizing: 'border-box', background: skin.ink, color: skin.onDark, borderRadius: 12, padding: '9px 12px', fontFamily: font.family, ...roleFont('caption'), lineHeight: 1.45, boxShadow: `0 6px 18px ${inkTint(0.32)}`, cursor: cursors.clickable };

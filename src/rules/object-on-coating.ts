@@ -18,28 +18,21 @@
  * road bank-to-bank over the deck — so a road overlapping one is the intended arrangement, not a
  * violation. Coatings themselves are exempt for the same reason they are exempt from the overlap
  * rule: one road replacing another is the brush repainting. And flora on a PLANTABLE coating is
- * the game's own arrangement — flowers and crops grow on the dirt path (standsOnCoating).
+ * the game's own arrangement — flowers and crops grow on plantable road surfaces (standsOnCoating).
  */
 import {
-  ItemCategory,
-  type CatalogItem,
   type GridState,
   type PostStrokeRule,
   type Rect,
   type ValidationError,
 } from '../core/model/types';
 import { bodyEvidence, rectsOverlap } from '../core/model/grid-model';
-import { standsOnCoating } from '../core/model/traits';
+import { isCrossing, standsOnCoating } from '../core/model/traits';
 import { entriesCovering, getObjectIndex } from '../state/object-index';
-
-/** A crossing's deck is a road SURFACE, so pavement over it is the design, not an overlap. */
-function isCrossing(item: CatalogItem | undefined): boolean {
-  return item?.category === ItemCategory.Bridge || item?.category === ItemCategory.Ramp;
-}
 
 export const objectOnCoatingRule: PostStrokeRule = {
   id: 'V-PLACE-COATED',
-  agentHint: 'Objects cannot stand on a road, except flora on the plantable dirt path. Remove the road first, or place elsewhere.',
+  agentHint: 'Objects cannot stand on a road, except flora on a road with the plantable trait (see CATALOG). Remove the road first, or place elsewhere.',
   phase: 'post-stroke',
 
   validate(state: GridState, opts?: { firstOnly?: boolean }): ValidationError[] {

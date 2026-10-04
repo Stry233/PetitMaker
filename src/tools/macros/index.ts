@@ -9,5 +9,6 @@ export type { MacroContext } from './context';
 export { plantPatch } from './patch';
 export { layRoadNetwork } from './roads';
 
-export { detachCommand, mapFingerprint } from './scratch';
+export { detachCommand } from '../../core/commands/command-apply';
+export { detachedContext, mapFingerprint } from './scratch';
 export { installMacroPreviewRunner, previewMacro, type MacroPreview } from './preview';

@@ -2,14 +2,15 @@
  * V-MTN-03: 3x3 Base Support (post-stroke)
  *
  * Every mountain at elevation N >= 4 must have a full 3x3 area of solid support
- * at some LOWER elevation E where E >= N-3. A support cell is solid if its mass
+ * at some LOWER elevation E where E >= N-3 (the thresholds are `BASE_SUPPORT`; the
+ * figures here are today's values). A support cell is solid if its mass
  * reaches elevation >= E, OR it is covered by a `terrainBase` object (the central
  * plaza, or any future base-providing building) whose elevation >= E.
  *
  * A WATER CELL FILLS ITS CELL TO ITS SURFACE. In a neighbour's 3x3 window, water at
  * elevation N counts as support up to N — the same as the mountain it replaced —
  * because the game forms waterfalls by CONVERTING a mountain block to water among its
- * standing neighbours (游戏内建造规则 rule 8), and a conversion that lowered the
+ * standing neighbours, and a conversion that lowered the
  * neighbourhood's support would demolish the structure it was carving. Support in the
  * WINDOW is all this grants: nothing may be built ON water (placement rules), and the
  * water's own footing is V-WTR-01's question, not this rule's.
@@ -31,12 +32,15 @@ import { objectRect } from '../state/object-geometry';
 import { getCatalogItem } from '../state/catalog';
 import { hasTrait } from '../core/model/traits';
 import { surfaceElevation } from '../core/edge-cut/terrain-silhouette';
+import { BASE_SUPPORT } from '../core/model/game-profile';
 
 interface TerrainBase { rect: Rect; elevation: number; }
 
+const HALF_WINDOW = (BASE_SUPPORT.window - 1) / 2;
+
 export const baseSupportRule: PostStrokeRule = {
   id: 'V-MTN-03',
-  agentHint: 'POST-CHECK — a mountain cell at elevation >=4 needs a full 3x3 base at some elevation >= N-3 below it. Build pyramids, not 1-wide towers. A water cell counts as support up to its own surface, but nothing can be built ON water.',
+  agentHint: `POST-CHECK — a mountain cell at elevation >=${BASE_SUPPORT.fromLayer} needs a full ${BASE_SUPPORT.window}x${BASE_SUPPORT.window} base at some elevation >= N-${BASE_SUPPORT.reach} below it. Build pyramids, not 1-wide towers. A water cell counts as support up to its own surface, but nothing can be built ON water.`,
   phase: 'post-stroke',
 
   validate(state: GridState, opts?: { firstOnly?: boolean }): ValidationError[] {
@@ -67,12 +71,13 @@ export const baseSupportRule: PostStrokeRule = {
         // cosmetic-4 fillet on a base-3 block is structurally a layer-3 mountain — exempt. For a
         // mountain that is exactly what `mass` holds, so it is read rather than derived twice.
         const elev = mass[y * width + x]!;
-        if (elev < 4) continue;
+        if (elev < BASE_SUPPORT.fromLayer) continue;
 
         if (!has3x3Base(mass, width, height, x, y, elev, bases)) {
           errors.push({
             ruleId: 'V-MTN-03',
-            message: 'error.need_3x3_base',
+            message: 'error.need_base_support',
+            messageParams: { window: BASE_SUPPORT.window, reach: BASE_SUPPORT.reach },
             cells: [{ x, y }],
             severity: 'error',
           });
@@ -113,9 +118,9 @@ function has3x3Base(
   // Per-cell support ("cap >= E") is monotone in E, so a valid E in [max(1, N-3), N-1] exists iff
   // the LOWEST candidate E works — one 3x3 pass at E = max(1, N-3) suffices, because lower layers
   // are implied by the no-floating rule (and no realSurface allocations in the hot loop).
-  const minBase = Math.max(1, targetElev - 3);
-  for (let dy = -1; dy <= 1; dy++) {
-    for (let dx = -1; dx <= 1; dx++) {
+  const minBase = Math.max(1, targetElev - BASE_SUPPORT.reach);
+  for (let dy = -HALF_WINDOW; dy <= HALF_WINDOW; dy++) {
+    for (let dx = -HALF_WINDOW; dx <= HALF_WINDOW; dx++) {
       const nx = x + dx, ny = y + dy;
       // Off the map is not support: the 3x3 must land entirely on the grid.
       if (nx < 0 || ny < 0 || nx >= width || ny >= height) return false;

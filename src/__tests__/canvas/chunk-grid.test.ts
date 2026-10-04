@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { cullRect, chunkVisible } from '../../canvas/map2d/layers/chunk-cull';
-import { TILE_SIZE, CHUNK_SIZE } from '../../core/model/constants';
+import { TILE_SIZE } from '../../core/model/constants';
+import { CHUNK_SIZE } from '../../core/model/game-profile';
 
 const CHUNK_PX = CHUNK_SIZE * TILE_SIZE;
 const MARGIN = 8 * TILE_SIZE;

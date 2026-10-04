@@ -4,7 +4,7 @@
  * touched cell, and tributaries commit only when they rejoin. Richness changes length and feature
  * count. The result is pure and deterministic for its terrain, masks, and seed.
  */
-import { distanceField, flatIndex } from '../../../../core/model/grid-model';
+import { distanceField, flatIndex, NEIGHBORS4_ESWN, getFootprint } from '../../../../core/model/grid-model';
 import type { MacroCoord, Rect } from '../../../../core/model/types';
 import type { TerrainPlan } from '../../core/types';
 import type { MovementLine } from '../composition/movement-line';
@@ -27,8 +27,8 @@ const BAY_WIDTH = 5;
 const BAY_RUN = 5;
 const BAY_GAP = 16;
 /** How often the course turns: a sharp bend every `TURN_EVERY` steps or so, a gentle drift between.
- *  The supplement asks for both and rules out a long straight run, and `STRAIGHT_MAX` is the bound
- *  the eval then holds the finished course to. */
+ *  A long straight run is ruled out, and `STRAIGHT_MAX` is the bound the eval holds the finished
+ *  course to. */
 const TURN_EVERY = { min: 5, max: 12 } as const;
 /** How far a bend runs before the head returns to the flow: the amplitude of the meander. */
 const BEND_RUN = { min: 3, max: 7 } as const;
@@ -67,14 +67,14 @@ const TRIBUTARY_FROM = 0.4;
 export type PondShape = 'lozenge' | 'u-moat' | 'islet' | 'diamond';
 
 /** One run of the course along a single terrace. */
-export interface StoryReach {
+interface StoryReach {
   tier: number;
   cells: MacroCoord[];
 }
 
 /** One fall, cut on the lip of a terrace step. `main` is the course's own; the companions are the
  *  narrower staggered ones beside it. */
-export interface StoryFall {
+interface StoryFall {
   rect: Rect;
   tier: number;
   /** The level the water lands on: one tier down for a step, further for a plunge. */
@@ -82,7 +82,7 @@ export interface StoryFall {
   main: boolean;
 }
 
-export interface StoryPond {
+interface StoryPond {
   shape: PondShape;
   rect: Rect;
   tier: number;
@@ -107,7 +107,7 @@ export interface WaterStory {
   cells: MacroCoord[];
 }
 
-export interface StoryInput {
+interface StoryInput {
   t: TerrainPlan;
   grass: Uint8Array;
   flat: Uint8Array;
@@ -130,7 +130,6 @@ export interface StoryInput {
 
 type Vec = readonly [number, number];
 
-const DIRS: readonly Vec[] = [[1, 0], [0, 1], [-1, 0], [0, -1]];
 const left = (d: Vec): Vec => [d[1], -d[0]];
 const right = (d: Vec): Vec => [-d[1], d[0]];
 const perp = left;
@@ -175,8 +174,7 @@ function walkField(input: StoryInput): Int16Array | null {
   return distanceField(trace.map((c) => flatIndex(c.x, c.y, W)), W, H, true);
 }
 
-/** The supplement's own rule for a stream's width: narrow beside homes, widening into a bay in a
- *  park. Every other place leaves it as it runs. */
+/** A stream's width rule: narrow beside homes, widening into a bay in a park. Every other place leaves it as it runs. */
 const WIDE_THEMES: ReadonlySet<ThemeId> = new Set<ThemeId>([
   'park', 'garden', 'lake-fountain', 'waterside-deck', 'panorama-deck', 'flower-field',
 ]);
@@ -219,7 +217,7 @@ function springs(input: StoryInput, walk: Int16Array | null): { at: MacroCoord; 
       if (!hasFallAway(t, grass, x, y, tier)) continue;
       const rect: Rect = { x: x - half, y: y - half, w: SPRING_SIDE, h: SPRING_SIDE };
       if (!atTier(t, grass, flat, rect, tier)) continue;
-      if (!cellsFit(t, grass, flat, rectCells(rect), tier)) continue;
+      if (!cellsFit(t, grass, flat, getFootprint(rect.x, rect.y, rect.w, rect.h), tier)) continue;
       const near = walk ? Math.min(40, walk[i]!) : 0;
       // A spring wants HEIGHT first, then the walk passing near, then room around it: one on the
       // coastal rim has the drop of the sea beside it and nowhere at all to run.
@@ -249,7 +247,7 @@ function inlandField(t: TerrainPlan, grass: Uint8Array): Int16Array {
  *  going to look for. The sea is not one — a spring on the coastal rim would find the drop off the
  *  map edge and have nowhere to run. */
 function hasFallAway(t: TerrainPlan, grass: Uint8Array, x: number, y: number, tier: number): boolean {
-  for (const d of DIRS) {
+  for (const d of NEIGHBORS4_ESWN) {
     for (let k = 2; k <= FALL_LOOKAHEAD; k++) {
       const nx = x + d[0] * k, ny = y + d[1] * k;
       if (nx < 0 || ny < 0 || nx >= t.width || ny >= t.height) break;
@@ -271,7 +269,7 @@ function runCourse(
   // A MOUTH IS ALREADY WATER, so its own cell is the course's first: it is counted in, which is what
   // makes the join between the stair above and the course below one body rather than two that touch.
   const pool = spring.pool
-    ? rectCells({ x: spring.at.x - half, y: spring.at.y - half, w: SPRING_SIDE, h: SPRING_SIDE })
+    ? getFootprint(spring.at.x - half, spring.at.y - half, SPRING_SIDE, SPRING_SIDE)
     : [spring.at];
   if (spring.pool && !cellsFit(t, grass, flat, pool, spring.tier)) return null;
   floodCells(t, pool, spring.tier);
@@ -378,6 +376,8 @@ function runCourse(
   }
 
   if (cells.length < COURSE_MIN) return null;
+  // A wide spring can meet the area floor before the course has travelled beyond its own banks.
+  if (falls.length === 0 && spine.length <= width * 2) return null;
 
   // The arrival. A course that ran out at the coast has one; every other course is given the pond it
   // was heading for, and a course that gets neither is not a story.
@@ -412,7 +412,7 @@ function runCourse(
  */
 function downhill(t: TerrainPlan, grass: Uint8Array, at: MacroCoord, tier: number, prefer?: Vec): Vec {
   let best: Vec | null = null, bestAt = DOWNHILL_LOOK + 1;
-  for (const d of DIRS) {
+  for (const d of NEIGHBORS4_ESWN) {
     const p = perp(d);
     for (let k = 1; k <= DOWNHILL_LOOK && k <= bestAt; k++) {
       // A CONE, not a ray: the lower ground a course is heading for is rarely straight ahead, and a
@@ -433,7 +433,7 @@ function downhill(t: TerrainPlan, grass: Uint8Array, at: MacroCoord, tier: numbe
       break;
     }
   }
-  return best ?? prefer ?? DIRS[1]!;
+  return best ?? prefer ?? NEIGHBORS4_ESWN[1]!;
 }
 
 interface AdvanceInput {
@@ -510,8 +510,8 @@ function detour(
 }
 
 /** The width the districts under the head ask for: narrow beside a home, a BAY where a park stands
- *  and one is due, and a one-cell wander between districts — the local narrowing and widening the
- *  supplement asks for, and what the eval reads as width variance. */
+ *  and one is due, and a one-cell wander between districts: the local narrowing and widening the eval
+ *  reads as width variance. */
 function widthWanted(
   shape: Int8Array, W: number, at: MacroCoord, width: number, sinceBay: number, bayLeft: number,
   seed: number, step: number,
@@ -595,11 +595,11 @@ function capsAt(t: TerrainPlan, grass: Uint8Array, c: MacroCoord, tier: number):
 }
 
 /**
- * The narrower fall beside the main one (一个主瀑布加一个较窄的小瀑布).
+ * The narrower fall beside the main one (one main waterfall with a narrower one beside it).
  *
  * It is cut AFTER the course, along the same lip and staggered a few cells to one side, and only
- * where it pours straight into water the course already laid — a fall onto nothing is the one thing
- * the supplement rules out. One cell wide, so it reads as the companion rather than as a second main
+ * where it pours straight into water the course already laid, because a fall onto nothing is ruled
+ * out. One cell wide, so it reads as the companion rather than as a second main
  * fall.
  */
 function companionFalls(input: StoryInput, mains: readonly StoryFall[]): StoryFall[] {
@@ -732,7 +732,7 @@ const POND_SHAPES: readonly PondShape[] = ['lozenge', 'u-moat', 'islet', 'diamon
 /** Whether a candidate pond cell is 4-adjacent to water the course already laid, so the pond and the
  *  stream come out as ONE body rather than as a pond beside a stream. */
 function touchesCourse(t: TerrainPlan, c: MacroCoord, tier: number): boolean {
-  for (const d of DIRS) {
+  for (const d of NEIGHBORS4_ESWN) {
     const x = c.x + d[0], y = c.y + d[1];
     if (x < 0 || y < 0 || x >= t.width || y >= t.height) continue;
     if (t.water[flatIndex(x, y, t.width)] === tier) return true;
@@ -772,7 +772,7 @@ export function pondCells(shape: PondShape, rect: Rect): MacroCoord[] {
 // --- the tributary ------------------------------------------------------------------------------
 
 /**
- * A short branch that leaves the course and rejoins it (一条主河可以分出短小支流，再汇回去).
+ * A short branch that leaves the course and rejoins it (a main river may split off a short branch that flows back in).
  *
  * It is 1 wide and it is kept only where it REJOINS: a branch that wanders off and stops is a second
  * body dressed as a story. So the cells are gathered first and flooded only once the join is found.
@@ -787,7 +787,7 @@ function cutTributary(
   const start = spine[Math.max(1, Math.floor(spine.length * 0.35))]!;
   const tier = reaches.find((r) => r.cells.some((c) => c.x === start.x && c.y === start.y))?.tier
     ?? reaches[0]!.tier;
-  for (const firstDir of DIRS) {
+  for (const firstDir of NEIGHBORS4_ESWN) {
     let at = { x: start.x + firstDir[0], y: start.y + firstDir[1] };
     let dir = firstDir;
     const branch: MacroCoord[] = [];
@@ -832,14 +832,6 @@ function fitsBeside(
 }
 
 // --- small helpers ------------------------------------------------------------------------------
-
-function rectCells(rect: Rect): MacroCoord[] {
-  const out: MacroCoord[] = [];
-  for (let y = rect.y; y < rect.y + rect.h; y++) {
-    for (let x = rect.x; x < rect.x + rect.w; x++) out.push({ x, y });
-  }
-  return out;
-}
 
 /** A stable value in [0,1) per (seed, index). */
 function hash01(seed: number, i: number): number {

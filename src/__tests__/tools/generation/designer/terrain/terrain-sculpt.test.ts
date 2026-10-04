@@ -69,7 +69,7 @@ function build(seed: number, template: MapTemplate, richness = 0.5): Run {
       seed, richness, maxElevation: 8,
     });
   });
-  return { state, outcome: outcome!, violations: exec.commitStrokeGroup(exec.getUndoStackSize()) };
+  return { state, outcome: outcome!, violations: exec.commitStroke(exec.getUndoStackSize()) };
 }
 
 describe('the ground is the composition, realized', () => {

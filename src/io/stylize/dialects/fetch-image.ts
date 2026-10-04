@@ -40,6 +40,20 @@ async function readBounded(res: Response): Promise<Uint8Array> {
   return bytes;
 }
 
+/** The `data` array an OpenAI-style image endpoint answers with. */
+export interface ImageDataReply { data?: Array<{ b64_json?: string; url?: string }> }
+
+/** The first image an OpenAI-style reply carries, as a data URL. A `url` is short-lived, so it is
+ *  fetched now and re-encoded rather than kept as a remote reference (the caller holds the result
+ *  for the whole session). Throws `StylizeError`. */
+export async function firstReplyImage(json: unknown, signal?: AbortSignal): Promise<string> {
+  const item = (json as ImageDataReply).data?.[0];
+  if (!item) throw new StylizeError('bad_response');
+  if (item.b64_json) return `data:image/png;base64,${item.b64_json}`;
+  if (item.url) return fetchProviderImage(item.url, signal);
+  throw new StylizeError('bad_response');
+}
+
 /** Fetch a provider image URL and re-encode it as a data URL. Throws `StylizeError`. */
 export async function fetchProviderImage(url: string, signal?: AbortSignal): Promise<string> {
   if (!isHttps(url)) throw new StylizeError('bad_response');

@@ -61,6 +61,20 @@ describe('mapSummary / selectionContext', () => {
     expect(s).toContain('elev 2: 1');
   });
 
+  it('names only regions near the limit, by their UI names', () => {
+    const state = makeState(48, 32);
+    for (let i = 0; i < 85; i++) {
+      const o = { ...makeObject('flower-protea', 16 + (i % 16), 16 + Math.floor(i / 16)), id: `full-${i}` };
+      state.objects.set(o.id, o);
+    }
+    state.objects.set('light', { ...makeObject('flower-protea', 2, 2), id: 'light' });
+    const s = mapSummary(state);
+    expect(s).toContain('B2 load=8500 remaining=1500');
+    expect(s).not.toContain('A1 load');
+    expect(s).toContain('Occupied regions below that share: 1.');
+    expect(s).not.toMatch(/\(\d+,\d+\): load/);
+  });
+
   it('describes the selection bbox', () => {
     const ctx = selectionContext([{ x: 2, y: 3 }, { x: 4, y: 5 }]);
     expect(ctx).toContain('(2,3)');

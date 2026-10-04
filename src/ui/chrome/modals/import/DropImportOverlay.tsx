@@ -39,7 +39,8 @@ const cardStyle: CSSProperties = { ...windowCard, padding: IMPORT_CARD_PADDING, 
 const ESTIMATE_HEIGHT = 200;
 
 export function DropImportOverlay() {
-  const importModalOpen = useEditorStore((s) => s.modals.import);
+  // Import planet's window takes its own drops, a video's among them.
+  const importModalOpen = useEditorStore((s) => s.modals.import || s.modals.planetImport);
   const gridState = useEditorStore((s) => s.gridState);
   const [phase, setPhase] = useState<DropPhase>({ kind: 'idle' });
   const depthRef = useRef(0); // net dragenter - dragleave over the window, incl. all children
@@ -102,11 +103,14 @@ export function DropImportOverlay() {
 
   useEffect(() => {
     const carriesFiles = (e: DragEvent) => Array.from(e.dataTransfer?.types ?? []).includes('Files');
+    // A planet session's canvas is not a map a file can replace. The drag is still claimed, so the
+    // browser does not open the file in place of the app.
+    const inSession = () => useEditorStore.getState().planetSession !== null;
 
     const onDragEnter = (e: DragEvent) => {
       if (!carriesFiles(e)) return; // ignore an in-page text/element drag
       e.preventDefault();
-      if (importModalOpen) return; // the modal's own drop zone owns this drag
+      if (importModalOpen || inSession()) return; // the modal's own drop zone owns this drag
       depthRef.current += 1;
       if (phaseRef.current.kind === 'idle') setPhaseBoth({ kind: 'hover' });
     };
@@ -124,6 +128,7 @@ export function DropImportOverlay() {
       e.preventDefault();
       depthRef.current = 0;
       if (importModalOpen) return; // avoid importing twice — see file header
+      if (inSession()) { if (phaseRef.current.kind === 'hover') setPhaseBoth({ kind: 'idle' }); return; }
       // A decision is already pending or an import is already running — see REENTRANCY above.
       if (phaseRef.current.kind !== 'idle' && phaseRef.current.kind !== 'hover') return;
       const file = e.dataTransfer?.files?.[0];

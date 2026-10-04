@@ -7,7 +7,7 @@ const WORD = /[\p{L}\p{N}\p{M}]/u;
 const DIGIT = /\p{N}/u;
 const SEPARATOR = /[\p{P}\p{S}]/u;
 
-/** Letter entries match complete words, digits and single characters complete tokens (24小时 and P图 are one token), Han phrases await the caller's segmentation check, and punctuated or other unspaced-script entries match anywhere. */
+/** Letter entries match complete words, digits and single characters complete tokens (a digit or Latin letter fused to a Han character is one token), Han phrases await the caller's segmentation check, and punctuated or other unspaced-script entries match anywhere. */
 export function literalKind(word: string): LiteralKind {
   if (!/^[\p{L}\p{N}]+$/u.test(word)) return 'anywhere';
   if (/^\p{N}+$/u.test(word) || [...word].length === 1) return 'token';

@@ -14,9 +14,6 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 
 import { HEADERS_POLICY, toEsaDoc, toNetlifyHeaders, toVercelJson, type VercelJsonLike } from '../security/headers-policy';
-// The site's domains live in the legal config (the single source for canonicalOrigin);
-// the ESA runbook lists the legacy-domain 301s from there rather than repeating them.
-import { DEPLOY_TARGETS } from '../src/legal/deploy-targets';
 import { rewriteIndexHtmlCsp, stringifyVercelJson } from './generate-headers-core.mts';
 
 declare const process: { argv: string[]; cwd(): string; exitCode?: number };
@@ -50,9 +47,7 @@ async function main(): Promise<void> {
 
   // Deployment-operator copy of the ESA headers.
   const esaPath = join(rootDir, 'docs', 'internal', 'deployment', 'esa-headers.md');
-  writeIfChanged(esaPath, toEsaDoc(HEADERS_POLICY, {
-    canonicalOrigin: DEPLOY_TARGETS.cn.canonicalOrigin, legacyOrigins: DEPLOY_TARGETS.cn.legacyOrigins,
-  }), drift, check);
+  writeIfChanged(esaPath, toEsaDoc(HEADERS_POLICY), drift, check);
 
   // index.html — surgical CSP <meta> (+ comment) rewrite only.
   const indexPath = join(rootDir, 'index.html');

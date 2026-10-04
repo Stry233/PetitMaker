@@ -1,3 +1,4 @@
+import { Pill } from '../primitives/Pill';
 /*
  * Terminal card for answer-only and quiet jobs, as classified by `JobView.kind`. It presents model
  * text as the primary result, summarizes read-only operations in one line and keeps reasoning below
@@ -5,7 +6,7 @@
  * panel-authored fallback copy rather than attributing words to the model.
  */
 import { useState, type CSSProperties } from 'react';
-import { Pill } from './atoms';
+
 import { ArchiveFoot } from './FlipTicket';
 import { ASK_SPINE, QuickRow } from './GateBlock';
 import { readCount } from './dock-face';
@@ -14,13 +15,13 @@ import { ModelProse } from './model-prose';
 import { ThoughtRow } from './ThoughtsBox';
 import { edge } from './tokens';
 import { ACTIVE, INSET, PLATE, PLATE_INK } from '../design/tokens';
-import { colors, font } from '../design/styles';
+import { colors, font, radii } from '../design/styles';
 import { roleFont } from '../design/text-weight';
 import { useT } from '../../i18n/context';
 import type { JobView } from '../../agent/core/project-view';
 
 /** What the paper's quiet stamp says the job was. */
-export type AnswerStamp = 'answered' | 'asking' | 'ended';
+type AnswerStamp = 'answered' | 'asking' | 'ended';
 
 /** Whether the terminal card for this job is the PAPER rather than the build receipt. */
 export function isAnswerJob(job: JobView): boolean {
@@ -61,7 +62,7 @@ const STAMP: CSSProperties = {
   alignItems: 'center',
   gap: 6,
   background: PLATE,
-  borderRadius: 999,
+  borderRadius: radii.pill,
   padding: '4px 11px',
   color: colors.brownText,
   ...roleFont('small'),
@@ -220,8 +221,7 @@ export function AnswerPaper({
           {...(onClear ? { onClear } : {})}
         />
       ) : (
-        /* Standing questions use the panel’s shared Cancel task action. */
-        !asking && onFileAway && (
+        onFileAway && (
           <div style={FOOT}>
             <Pill variant="quiet" on="inset" data-testid="answer-file-away" onClick={() => onFileAway(job.orderSeq)}>
               {t('agent3.action_file_away')}

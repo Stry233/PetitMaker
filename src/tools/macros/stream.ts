@@ -14,14 +14,15 @@
  *
  * The body runs INSIDE the caller's stroke group and pushes no provenance of its own (see patch.ts).
  */
-import { NEIGHBORS4, NEIGHBORS8, cellKey, getCell, isBuildableZone } from '../../core/model/grid-model';
+import { NEIGHBORS4, NEIGHBORS8, cellKey, getCell, isBuildableZone, isGrassZone } from '../../core/model/grid-model';
 import { makeRng, type Rng } from '../../core/model/rng';
-import { CellZone, TerrainType, type GridState, type MacroCoord } from '../../core/model/types';
+import { TerrainType, type GridState, type MacroCoord } from '../../core/model/types';
 import type { MacroContext } from './context';
 import { cellsChanged } from './measure';
 import {
   WATER_CEILING, canBuildAt, isClean, isInterior, isWaterAt, paint, setMountain, surfaceAt,
 } from './terrain';
+import { BASE_SUPPORT } from '../../core/model/game-profile';
 
 /** A course of more hops than this has walked further than a point macro should. */
 const MAX_FALLS = 6;
@@ -36,10 +37,10 @@ const DROP_TRIES = 6;
 /** How far a channel may look for a cell it can start from when the course's foot itself cannot
  *  hold water. */
 const ORIGIN_REACH = 3;
-/** The tier from which a mountain owes V-MTN-03 a 3x3 base. */
-const TALL_MOUNTAIN = 4;
+/** The tier from which a mountain owes V-MTN-03 a base. */
+const TALL_MOUNTAIN = BASE_SUPPORT.fromLayer;
 
-export interface StreamInput {
+interface StreamInput {
   at: MacroCoord;
   radius: number;
   seed: number;
@@ -214,7 +215,7 @@ function atMouth(state: GridState, c: MacroCoord): boolean {
 
 function isCoast(state: GridState, c: MacroCoord): boolean {
   const zone = getCell(state.cells, c.x, c.y)?.zone;
-  return zone === CellZone.Void || zone === CellZone.Beach || zone === CellZone.Boundary;
+  return zone !== undefined && !isGrassZone(zone);
 }
 
 /**

@@ -2,8 +2,7 @@
  * V-PLACE-MAX: per-item placement cap (pre-command).
  *
  * An item with `maxCount` set may exist on the map at most that many times.
- * Used for one-of-a-kind facilities/buildings (e.g. the neighbour center,
- * My House, each unique cabin) which set maxCount: 1. Items without the field
+ * Used for one-of-a-kind items, which set maxCount: 1. Items without the field
  * are unlimited. Validation runs before the object is added, so the new object
  * is NOT yet in state.objects — reject once the existing count reaches the cap.
  */
@@ -21,7 +20,7 @@ import { getObjectIndex } from '../state/object-index';
 
 export const placementMaxCountRule: PreCommandRule = {
   id: 'V-PLACE-MAX',
-  agentHint: 'Items with maxCount are limited. EVERY cabin/house building is UNIQUE (max=1) — a village uses ONE of each DIFFERENT cabin (see CATALOG for the list) plus building-stall, the only repeatable building, for extras. Never place the same building id twice; never batch identical houses.',
+  agentHint: 'An item listed with max=N in CATALOG may stand at most N times on the map. A village of capped buildings uses DIFFERENT building ids (CATALOG shows which carry max) and adds extras only from buildings without max. Never place a capped id past its max; never batch identical capped houses.',
   phase: 'pre-command',
   appliesTo: [CommandType.PlaceObject],
 

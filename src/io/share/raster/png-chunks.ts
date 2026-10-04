@@ -1,4 +1,3 @@
-// src/io/share/raster/png-chunks.ts
 // Generic PNG chunk primitives for the raster codec: signature check, CRC-validated chunk
 // reader, chunk builder.
 import { crc32 } from '../crypto/crc32';

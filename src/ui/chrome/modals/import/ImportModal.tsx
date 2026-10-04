@@ -1,4 +1,4 @@
-import { IS_LITE } from '../../../../core/runtime/edition';
+import { SUPPORTS_CLIPBOARD, SUPPORTS_JSON_FILES } from '../../../../core/runtime/edition';
 import { useCallback, useEffect, useState, useRef } from 'react';
 import { windowCard, windowTitle } from '../../../design/window-skin';
 import { useT } from '../../../../i18n/context';
@@ -63,7 +63,7 @@ export function ImportModal() {
 
   // Accept a pasted image while the modal is open.
   useEffect(() => {
-    if (IS_LITE || !open) return;
+    if (!SUPPORTS_CLIPBOARD || !open) return;
     const onPaste = (e: ClipboardEvent) => {
       const item = Array.from(e.clipboardData?.items ?? []).find((i) => i.type.startsWith('image/'));
       const file = item?.getAsFile();
@@ -79,7 +79,7 @@ export function ImportModal() {
 
   return (
     <ModalShell helpTarget={{ page: 'share', anchor: 'share-import' }} open={open} onClose={() => close(false)} width={IMPORT_CARD_WIDTH} maxVwPct={92} maxVh={92} cardStyle={{ ...windowCard, padding: IMPORT_CARD_PADDING, overflowY: 'auto' }} ariaLabel={t('import.title')}>
-      <input ref={inputRef} type="file" hidden accept={IS_LITE ? 'image/png,image/jpeg,image/webp' : 'image/png,image/jpeg,image/webp,.json,application/json'} onChange={(e) => { const f = e.currentTarget.files?.[0]; if (f) void handleFile(f, f.name); }} />
+      <input ref={inputRef} type="file" hidden accept={SUPPORTS_JSON_FILES ? 'image/png,image/jpeg,image/webp,.json,application/json' : 'image/png,image/jpeg,image/webp'} onChange={(e) => { const f = e.currentTarget.files?.[0]; if (f) void handleFile(f, f.name); }} />
       {pending ? (
         <ImportConfirm
           preview={pending.inspection.preview}

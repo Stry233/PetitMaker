@@ -470,7 +470,7 @@ const JUDGE_SCALE = 4;
 /** Fitting and preview share the same geometry verdict. */
 const survives = new Map<string, GlyphVerdict>();
 
-export interface GlyphVerdict extends GlyphReading { ok: boolean }
+interface GlyphVerdict extends GlyphReading { ok: boolean }
 
 export function glyphSurvives(text: string, box: StencilBox): GlyphVerdict {
   const key = `${text}\u0000${box.width}x${box.height}`;

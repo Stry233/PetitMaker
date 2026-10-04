@@ -1,5 +1,5 @@
 /*
- * tokens.ts — the agent panel's SEMANTIC MAP over the shared design layer, and nothing more.
+ * The agent panel's SEMANTIC MAP over the shared design layer, and nothing more.
  *
  * The panel is not a special module: it owns no palette, no radius and no curve of its own. Every
  * name below resolves to `ui/design/styles.ts` / `ui/design/tokens.ts`, to a measurement the frame
@@ -42,7 +42,7 @@ export const statePaper: Record<PaperState, string> = {
  * a colour of its own: an op that did what it was asked has nothing to report but that it is done,
  * and only the two outcomes the user has to act on carry a hue.
  */
-export type TickOutcome = 'ok' | 'revert' | 'error';
+type TickOutcome = 'ok' | 'revert' | 'error';
 
 export const tickInk: Record<TickOutcome, string> = {
   ok: INK,
@@ -125,26 +125,16 @@ export const POSTCARD = {
  * site here.
  */
 
-/**
- * A panel colour at partial alpha.
- *
- * Derived rather than written out, so changing the ink reaches every tint of it and the two cannot
- * drift into disagreeing about what the panel's brown is.
- */
-function tintOf(hex: string, alpha: number): string {
-  const channels = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16)).join(',');
-  return `rgba(${channels},${alpha})`;
-}
-
-/** The ink tints the panel paints, each named for what wears it rather than for its alpha. */
-export const inkTint = {
+/** The ink tints the panel paints, each named for what wears it rather than for its alpha, derived
+ *  from the ink so changing it reaches every tint. */
+export const panelTint = {
   /** A chip plate on the dock's own paper: present, but not a second surface. */
-  chip: tintOf(INK, 0.08),
+  chip: withAlpha(INK, 0.08),
   /** An unlit segment of the turn-budget meter, and any other empty groove on paper. */
-  groove: tintOf(INK, 0.16),
+  groove: withAlpha(INK, 0.16),
   /** An attempt not yet made. */
-  pending: tintOf(INK, 0.18),
+  pending: withAlpha(INK, 0.18),
   /** An attempt already spent. */
-  spent: tintOf(INK, 0.55),
+  spent: withAlpha(INK, 0.55),
 } as const;
 

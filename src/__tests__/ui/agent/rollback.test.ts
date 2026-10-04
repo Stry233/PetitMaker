@@ -1,5 +1,5 @@
 /**
- * rollback.test.ts — THE ONE SAFETY MODEL every take-back in the panel reads.
+ * THE ONE SAFETY MODEL every take-back in the panel reads.
  *
  * The defect this pins: "Rewind to start" popped the undo stack down to a DEPTH and took the user's
  * own later edits with it, saying nothing. The model's whole job is to state what a press costs and

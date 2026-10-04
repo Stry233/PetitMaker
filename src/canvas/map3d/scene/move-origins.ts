@@ -1,3 +1,4 @@
+import type { GlQuality } from '../../../core/runtime/device-quality';
 import * as THREE from 'three';
 import type { GridState } from '../../../core/model/types';
 import { getPlacedObjectSize } from '../../../state/object-geometry';
@@ -7,7 +8,7 @@ import { modelGeometry } from '../models/build-model';
 import { dashedContourTriangles, silhouetteContours } from '../build/move-silhouette';
 import type { ArchetypeKey } from '../core/types';
 import { mapCenterOffset, surfaceY } from '../core/coords';
-import { isMotionReduced } from '../../map2d/motion-state';
+import { isMotionReduced } from '../../../core/runtime/motion-state';
 
 interface Outline {
   mesh: THREE.Mesh<THREE.BufferGeometry, THREE.MeshBasicMaterial>;
@@ -37,6 +38,7 @@ export class MoveOrigins3D {
     private camera?: THREE.Camera,
     private viewport: () => { width: number; height: number } = () => ({ width: 1024, height: 768 }),
     private nowMs: () => number = () => performance.now(),
+    private modelQuality: () => GlQuality = () => 'full',
   ) {}
 
   show(state: GridState, ids: readonly string[]): void {
@@ -46,7 +48,7 @@ export class MoveOrigins3D {
     for (const id of ids) {
       const obj = state.objects.get(id);
       if (!obj) continue;
-      const pose = JSON.stringify(obj);
+      const pose = `${this.modelQuality()}:${JSON.stringify(obj)}`;
       const existing = this.outlines.get(id);
       if (existing?.pose === pose) { this.fade(existing, OPACITY); continue; }
       if (existing) this.remove(id, existing);
@@ -55,7 +57,7 @@ export class MoveOrigins3D {
       if (resolved) {
         const { groupKey, inst } = resolved;
         const source = groupKey.startsWith('m:')
-          ? modelGeometry(groupKey.slice(2))
+          ? modelGeometry(groupKey.slice(2), this.modelQuality())
           : archetypeGeometry(groupKey.slice(2) as ArchetypeKey);
         if (!source) continue;
         geometry = source.index ? source.toNonIndexed() : source.clone();

@@ -4,13 +4,13 @@
  * ramp flights reconnect street segments across tiers, while entry flights serve otherwise isolated
  * districts. The plan is pure and deterministic and is committed by later stages.
  */
-import { flatIndex } from '../../../../core/model/grid-model';
+import { flatIndex, isBuildableZone, NEIGHBORS4, rectContains, indexBounds } from '../../../../core/model/grid-model';
 import { makeRng, type Rng } from '../../../../core/model/rng';
-import { CellZone, ItemCategory, type MapTemplate, type Rect } from '../../../../core/model/types';
+import { ItemCategory, type MapTemplate, type Rect, type Rotation } from '../../../../core/model/types';
 import { getPlaceableByCategory } from '../../../../state/catalog';
 import { cellTiers, plazaRect, type CompositionPlan } from '../composition/composition';
 import { LINE_W, type MovementLine } from '../composition/movement-line';
-import { RAMP_RUN, type SeedInfo } from '../types';
+import type { SeedInfo } from '../types';
 
 // --- the road facts the whole generator reads ------------------------------------------------------
 
@@ -20,7 +20,7 @@ export const BRANCH_W = 2;
 
 /** Plain network surface plus three restrained accent materials. */
 export const ROAD_DOMINANT = 'path-rustic-dirt';
-export const ROAD_ACCENTS = ['path-garden-stone', 'path-lattice-red-brick', 'path-urban-asphalt'] as const;
+const ROAD_ACCENTS = ['path-garden-stone', 'path-lattice-red-brick', 'path-urban-asphalt'] as const;
 /** One material carries 87 to 95% of the pavement on both references. */
 export const DOMINANT_SHARE = 0.87;
 
@@ -28,13 +28,13 @@ export const DOMINANT_SHARE = 0.87;
 
 /** The two street ranks, plus the apron ring the plaza wears (trunk width, its own rank because it
  *  belongs to the hub rather than to any one street). */
-export type RoadRank = 'apron' | 'trunk' | 'branch';
+type RoadRank = 'apron' | 'trunk' | 'branch';
 
 /** One paved macro cell: where it is, which rank claimed it, and what it is paved with. */
-export interface RoadCell { x: number; y: number; rank: RoadRank; material: string }
+interface RoadCell { x: number; y: number; rank: RoadRank; material: string }
 
 /** One straight street: a line at one coordinate, laid over a contiguous stretch of the planet. */
-export interface StreetRun {
+interface StreetRun {
   rank: 'trunk' | 'branch';
   /** The axis the street RUNS along: 'y' is a vertical street (its line is an x coordinate). */
   axis: 'x' | 'y';
@@ -58,7 +58,7 @@ export interface StreetRun {
 export interface RampSpec {
   catalogId: string;
   position: { x: number; y: number };
-  rotation: 0 | 90 | 180 | 270;
+  rotation: Rotation;
   /** The high end the ramp reaches, which is what a placed ramp stores. */
   elevation: number;
   footprint: Rect;
@@ -67,7 +67,7 @@ export interface RampSpec {
 /** A street's crossing of one tier step: one ramp per tier, plus the terrace landings the sculptor
  *  must carve between them (the last flight of steps lands on the low plate's own surface, so it
  *  needs no landing of its own). */
-export interface RampFlight {
+interface RampFlight {
   /** Index into `StreetPlan.streets`: the street the flight carries, or the one it climbs off. */
   street: number;
   /** An ENTRY flight climbs off a street at right angles onto the terrace beside it, and has
@@ -108,7 +108,7 @@ export interface District {
  * pavement immediately west or north of a hole can never be laid, and the gap has to hold that cell
  * as well or the street beside it is a road the rules refuse.
  */
-export interface LineCrossing {
+interface LineCrossing {
   kind: 'water' | 'gorge';
   gap: Rect;
   open: Rect;
@@ -144,7 +144,7 @@ const SPACING = { low: 20, high: 24 } as const;
  *  pavement share (the garden town's median block is half its mean), so the gaps vary widely. */
 const SPACING_SPREAD = 0.45;
 /** How much each gap grows over the one inside it. The blocks by the plaza are the town's and the
- *  ones at the rim are its fields, which is the game's own 中心 -> 四周 read as block size, and it is what
+ *  ones at the rim are its fields, which is the game's own centre-to-rim gradient read as block size, and it is what
  *  gives a map the references' spread of block areas at one pavement share. */
 const SPACING_GROWTH = 0.26;
 /** How far a line may be nudged off its nominal coordinate to find ground it can actually run on. */
@@ -369,7 +369,6 @@ interface Board {
 
 const RANK_CODE: Record<'trunk' | 'branch', number> = { trunk: 1, branch: 2 };
 const RANK_OF = ['', 'trunk', 'branch'] as const;
-const NB4 = [[1, 0], [-1, 0], [0, 1], [0, -1]] as const;
 
 function makeBoard(template: MapTemplate, composition: CompositionPlan): Board {
   const W = template.width, H = template.height, N = W * H;
@@ -380,7 +379,8 @@ function makeBoard(template: MapTemplate, composition: CompositionPlan): Board {
   const realized = cellTiers(template, composition);
   for (let y = 0; y < H; y++) {
     for (let x = 0; x < W; x++) {
-      if (template.zones[y]?.[x] !== CellZone.Grass) continue;
+      const zone = template.zones[y]?.[x];
+      if (zone === undefined || !isBuildableZone(zone)) continue;
       const i = flatIndex(x, y, W);
       land[i] = 1;
       tier[i] = realized[i]!;
@@ -402,7 +402,7 @@ function makeBoard(template: MapTemplate, composition: CompositionPlan): Board {
   for (let y = 0; y + 1 < H; y++) {
     for (let x = 0; x + 1 < W; x++) {
       const i = flatIndex(x, y, W);
-      if (!land[i] || inRect(plaza, x, y)) continue;
+      if (!land[i] || rectContains(plaza, x, y)) continue;
       const t = tier[i]!;
       let ok = true;
       for (let dy = 0; dy <= 1 && ok; dy++) {
@@ -421,9 +421,6 @@ function makeBoard(template: MapTemplate, composition: CompositionPlan): Board {
     rankAt: new Uint8Array(N), reserved: new Uint8Array(N), stopAt: new Uint8Array(N),
   };
 }
-
-const inRect = (r: Rect, x: number, y: number): boolean =>
-  x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h;
 
 /** The square a width-`w` street paves when its skeleton stands at `(x, y)`. Odd widths centre on the
  *  skeleton, even ones sit down-right of it, so a 2-wide street reserved at `y` comes out on exactly the
@@ -468,7 +465,7 @@ interface Piece { spec: LineSpec; from: number; to: number }
  * The four TRUNKS are the plaza's own cross: two vertical lines tangent to the plaza's west and east
  * faces and two horizontal ones tangent to its north and south, each spanning the planet. They meet
  * at four corners, so the ring the game's guidance asks for around the hub and the four outward spines
- * its 中心 → 四周 asks for are the same four lines; they are laid in a turning order, so each one
+ * its centre-to-rim gradient asks for are the same four lines; they are laid in a turning order, so each one
  * crosses the one before it.
  *
  * A line is cut into the maximal pieces its ground allows, and EVERY piece is laid. Connectivity is
@@ -558,7 +555,7 @@ function layStraight(board: Board, spec: LineSpec, out: StreetRun[]): void {
 }
 
 /**
- * ONE LINE, BROKEN INTO THE LEGS A STAGGERED STREET WALKS (the supplement's OFFSET crossing).
+ * ONE LINE, BROKEN INTO THE LEGS A STAGGERED STREET WALKS (the OFFSET crossing).
  *
  * The line is walked from one end; every stretch where it lies over a street of the other axis is a
  * CROSSING it could stagger at. It staggers once it has run `STAGGER_EVERY` cells since its last step
@@ -616,9 +613,9 @@ function staggered(
       postpone = 0;
       continue;
     }
-    // THE STREET IS DUE A TURN AND NOTHING CROSSES IT (the supplement's 弯折的道路, its fourth
-    // junction form). The two legs are joined by a short link across the step, so the bend is one
-    // walk with a corner in it rather than two streets that happen to be near each other.
+    // THE STREET IS DUE A TURN AND NOTHING CROSSES IT (the bent road, the fourth junction form). The
+    // two legs are joined by a short link across the step, so the bend is one walk with a corner in
+    // it rather than two streets that happen to be near each other.
     //
     // A REFUSED BEND IS POSTPONED, NOT ABANDONED. Giving up on the line the first time its ground,
     // its hub ring or its crown said no let the rest of it run straight to the coast, which is the
@@ -697,7 +694,7 @@ function linkable(board: Board, spec: LineSpec, from: number, to: number, at: nu
  * own ring.
  *
  * The four trunks are tangent to the plaza's four faces and meet at its corners, so the ring asked for
- * around the hub and the four spines of 中心 → 四周 are the same four lines. A ring that steps aside at
+ * around the hub and the four spines of the centre-to-rim gradient are the same four lines. A ring that steps aside at
  * its own corner does not close: one seed comes back with a third of its pavement gone, every street
  * beyond the broken corner pruned for being unreachable from a plaza no street touched. So the anti-grid
  * rule starts outside the hub.
@@ -1061,8 +1058,8 @@ function erase(board: Board, run: StreetRun, index: number, from: number, to: nu
 
 // --- flights -------------------------------------------------------------------------------------
 
-/** One ramp item as this planner reads it: which catalog id, and how wide across the street. */
-interface RampStyle { id: string; width: number }
+/** Catalog geometry for one offered ramp style. */
+interface RampStyle { id: string; width: number; run: number }
 
 /**
  * A climb a flight COULD take, in the two shapes a flight comes in.
@@ -1362,7 +1359,7 @@ function crossingGround(board: Board, gap: Rect): number {
       if (x < 1 || y < 1 || x >= board.W - 1 || y >= board.H - 1) return -1;
       const i = flatIndex(x, y, board.W);
       if (!board.land[i] || board.reserved[i]) return -1;
-      if (inRect(board.plaza, x, y)) return -1;
+      if (rectContains(board.plaza, x, y)) return -1;
       if (tier < 0) tier = board.tier[i]!;
       else if (board.tier[i] !== tier) return -1;
     }
@@ -1420,7 +1417,7 @@ function enteredOnTheLevel(board: Board, block: District): boolean {
   for (const i of block.cells) {
     const x = i % board.W, y = (i / board.W) | 0;
     const tier = board.tier[i]!;
-    for (const [dx, dy] of NB4) {
+    for (const [dx, dy] of NEIGHBORS4) {
       const nx = x + dx, ny = y + dy;
       if (nx < 0 || ny < 0 || nx >= board.W || ny >= board.H) continue;
       const j = flatIndex(nx, ny, board.W);
@@ -1438,7 +1435,7 @@ function entryCandidates(board: Board, block: District): FlightCandidate[] {
   const seen = new Set<string>();
   for (const i of block.cells) {
     const x = i % board.W, y = (i / board.W) | 0;
-    for (const [dx, dy] of NB4) {
+    for (const [dx, dy] of NEIGHBORS4) {
       // The gap cell the flat trait leaves, and the street's pavement one further out.
       const gx = x + dx, gy = y + dy;
       const px = x + 2 * dx, py = y + 2 * dy;
@@ -1491,7 +1488,7 @@ function runCutBy(board: Board, flight: RampFlight): number {
   const r = flight.corridor;
   for (let y = r.y - 1; y <= r.y + r.h; y++) {
     for (let x = r.x - 1; x <= r.x + r.w; x++) {
-      if (x < 0 || y < 0 || x >= board.W || y >= board.H || inRect(r, x, y)) continue;
+      if (x < 0 || y < 0 || x >= board.W || y >= board.H || rectContains(r, x, y)) continue;
       const i = flatIndex(x, y, board.W);
       if (board.paved[i] && board.owner[i]! >= 0) return board.owner[i]!;
     }
@@ -1575,16 +1572,7 @@ function tierAt(board: Board, run: StreetRun, t: number): number {
   return board.tier[flatIndex(x, y, board.W)]!;
 }
 
-/**
- * The flight itself: one ramp per tier, stepping four cells of run each, plus the landings between
- * them.
- *
- * The heightDrop trait resolves a ramp from the cliff it finds, and the two facings it resolves to
- * are not symmetric: a ramp facing +y or +x stores its footprint FROM the high cell (the high row is
- * under the ramp), one facing -y or -x stores it from four cells back (the high row is not). The
- * geometry here is written the trait's way so the footprint in the plan is the footprint the engine
- * will hold, which is what makes the no-pavement-under-a-ramp promise checkable.
- */
+/** Each tier uses the selected catalog ramp's run, including its high-side half-cell overlap. */
 function buildFlight(
   board: Board, streets: readonly StreetRun[], c: FlightCandidate, styles: readonly RampStyle[], salt: number,
 ): RampFlight | null {
@@ -1592,7 +1580,7 @@ function buildFlight(
   const fits = styles.filter((s) => s.width <= c.span);
   const item = fits[Math.floor(hash01(salt ^ c.street, c.step) * fits.length)];
   if (!item) return null;
-  const width = item.width;
+  const { width, run } = item;
   // The CORRIDOR is one cell wider than the ramp where the street itself is not: a whole-anchored
   // footprint is read by the trait one cell past its own width (terrain renders half a cell up-left),
   // and every cell the trait reads has to be terrace the sculptor may carve, not somebody's pavement.
@@ -1603,15 +1591,15 @@ function buildFlight(
   const landings: { rect: Rect; tier: number }[] = [];
   for (let k = 0; k < tiers; k++) {
     // The high cell of this step, walking down the flight.
-    const high = c.step + c.down * RAMP_RUN * k;
+    const high = c.step + c.down * run * k;
     const low0 = high + c.down;
-    const lowLast = high + c.down * RAMP_RUN;
+    const lowLast = high + c.down * run;
     const highTier = c.highTier - k;
     // The trait reads the high cell plus the whole run below it, so the ground it needs is one cell
     // longer than the footprint.
     const lo = Math.min(high, lowLast), hi = Math.max(high, lowLast);
     if (!clearRunway(board, streets, c, across, spread, lo, hi)) return null;
-    ramps.push(rampSpec(c.axis, c.down, across, high, width, item.id, highTier));
+    ramps.push(rampSpec(c.axis, c.down, across, high, width, run, item.id, highTier));
     // The last flight of steps lands on the low plate's own surface; every one before it lands on a
     // terrace the sculptor carves.
     if (k < tiers - 1) {
@@ -1621,7 +1609,7 @@ function buildFlight(
       });
     }
   }
-  if (!landsOnTheLowPlate(board, c, across, spread, tiers)) return null;
+  if (!landsOnTheLowPlate(board, c, across, spread, tiers, run)) return null;
   const along = ramps.flatMap((r) => (c.axis === 'y'
     ? [r.footprint.y, r.footprint.y + r.footprint.h - 1]
     : [r.footprint.x, r.footprint.x + r.footprint.w - 1]));
@@ -1636,12 +1624,12 @@ function buildFlight(
  *  lands on a terrace the sculptor carves, but the last one has nothing under it to carve: its run
  *  has to be the plate the street continues on, or the flight ends in mid-air. */
 function landsOnTheLowPlate(
-  board: Board, c: FlightCandidate, across: number, spread: number, tiers: number,
+  board: Board, c: FlightCandidate, across: number, spread: number, tiers: number, run: number,
 ): boolean {
-  const last = c.step + c.down * RAMP_RUN * (tiers - 1);
+  const last = c.step + c.down * run * (tiers - 1);
   const rect = alongRect(
     c.axis, across, spread,
-    Math.min(last + c.down, last + c.down * RAMP_RUN), Math.max(last + c.down, last + c.down * RAMP_RUN),
+    Math.min(last + c.down, last + c.down * run), Math.max(last + c.down, last + c.down * run),
   );
   for (let y = rect.y; y < rect.y + rect.h; y++) {
     for (let x = rect.x; x < rect.x + rect.w; x++) {
@@ -1661,17 +1649,17 @@ function alongRect(axis: 'x' | 'y', across: number, width: number, lo: number, h
 
 /** One ramp, positioned and rotated the way the heightDrop trait resolves the cliff it stands at. */
 function rampSpec(
-  axis: 'x' | 'y', down: 1 | -1, across: number, high: number, width: number,
+  axis: 'x' | 'y', down: 1 | -1, across: number, high: number, width: number, run: number,
   catalogId: string, elevation: number,
 ): RampSpec {
   // Descending as the along-coordinate grows: the ramp faces +y (or +x) and its footprint starts at
   // the high cell. Descending the other way it faces -y (-x) and its footprint ends one short of it.
-  const rotation: 0 | 90 | 180 | 270 = axis === 'y' ? (down === 1 ? 0 : 180) : (down === 1 ? 90 : 270);
-  const startAlong = down === 1 ? high : high - RAMP_RUN;
+  const rotation: Rotation = axis === 'y' ? (down === 1 ? 0 : 180) : (down === 1 ? 90 : 270);
+  const startAlong = down === 1 ? high : high - run;
   const position = axis === 'y' ? { x: across, y: startAlong } : { x: startAlong, y: across };
   const footprint = axis === 'y'
-    ? { x: across, y: startAlong, w: width, h: RAMP_RUN }
-    : { x: startAlong, y: across, w: RAMP_RUN, h: width };
+    ? { x: across, y: startAlong, w: width, h: run }
+    : { x: startAlong, y: across, w: run, h: width };
   return { catalogId, position, rotation, elevation, footprint };
 }
 
@@ -1693,7 +1681,7 @@ function clearRunway(
     for (let x = rect.x; x < rect.x + rect.w; x++) {
       if (x < 0 || y < 0 || x >= board.W || y >= board.H) return false;
       const i = flatIndex(x, y, board.W);
-      if (!board.land[i] || board.reserved[i] || inRect(board.plaza, x, y)) return false;
+      if (!board.land[i] || board.reserved[i] || rectContains(board.plaza, x, y)) return false;
       // A flight belongs to the two plates it joins. Where a third one crosses the runway higher
       // than the flight's own top or lower than its foot, the terrace the sculptor would have to
       // carve is not between the two surfaces the ramps run on.
@@ -1746,7 +1734,7 @@ function reserveMargin(board: Board, flight: RampFlight): void {
   const r = flight.corridor;
   const tierAtCell = (x: number, y: number): number => {
     for (const landing of flight.landings) {
-      if (inRect(landing.rect, x, y)) return landing.tier;
+      if (rectContains(landing.rect, x, y)) return landing.tier;
     }
     return board.tier[flatIndex(x, y, board.W)]!;
   };
@@ -1756,7 +1744,7 @@ function reserveMargin(board: Board, flight: RampFlight): void {
       const level = tierAtCell(x, y);
       for (const [dx, dy] of [[-1, 0], [0, -1], [-1, -1]] as const) {
         const mx = x + dx, my = y + dy;
-        if (inRect(r, mx, my)) continue;
+        if (rectContains(r, mx, my)) continue;
         const m = flatIndex(mx, my, board.W);
         if (board.tier[m] === level) continue;
         board.paved[m] = 0; board.owner[m] = -1; board.rankAt[m] = 0;
@@ -1781,7 +1769,7 @@ function componentsOf(board: Board): {
     while (stack.length) {
       const p = stack.pop()!;
       const x = p % board.W, y = (p / board.W) | 0;
-      for (const [dx, dy] of NB4) {
+      for (const [dx, dy] of NEIGHBORS4) {
         const nx = x + dx, ny = y + dy;
         if (nx < 0 || ny < 0 || nx >= board.W || ny >= board.H) continue;
         const j = flatIndex(nx, ny, board.W);
@@ -1847,7 +1835,7 @@ function reachable(board: Board, flights: readonly RampFlight[]): Uint8Array {
   while (stack.length) {
     const p = stack.pop()!;
     const x = p % board.W, y = (p / board.W) | 0;
-    for (const [dx, dy] of NB4) {
+    for (const [dx, dy] of NEIGHBORS4) {
       const nx = x + dx, ny = y + dy;
       if (nx < 0 || ny < 0 || nx >= board.W || ny >= board.H) continue;
       const j = flatIndex(nx, ny, board.W);
@@ -1873,7 +1861,7 @@ function largestPiece(board: Board, conduct: Uint8Array): number[] {
       const p = stack.pop()!;
       cells.push(p);
       const x = p % board.W, y = (p / board.W) | 0;
-      for (const [dx, dy] of NB4) {
+      for (const [dx, dy] of NEIGHBORS4) {
         const nx = x + dx, ny = y + dy;
         if (nx < 0 || ny < 0 || nx >= board.W || ny >= board.H) continue;
         const j = flatIndex(nx, ny, board.W);
@@ -1889,7 +1877,7 @@ function largestPiece(board: Board, conduct: Uint8Array): number[] {
 // --- tails ---------------------------------------------------------------------------------------
 
 /**
- * NO STREET ENDS AT NOTHING (不留断头路), read the way a person reads it.
+ * NO STREET ENDS AT NOTHING (no dead ends), read the way a person reads it.
  *
  * `trimTails` cuts a tail back to the last CROSSING, which is the rule as the network sees it. This is
  * the rule as a walker sees it, and the two are not the same: a street whose last crossing is one cell
@@ -1948,10 +1936,10 @@ function flanksServed(board: Board, run: StreetRun, tip: number): boolean {
       const i = flatIndex(x, y, board.W);
       if (!board.land[i] || board.paved[i] || board.reserved[i]) continue;
       let served = false;
-      for (const [dx, dy] of NB4) {
+      for (const [dx, dy] of NEIGHBORS4) {
         const nx = x + dx, ny = y + dy;
         if (nx < 0 || ny < 0 || nx >= board.W || ny >= board.H) continue;
-        if (inRect(s, nx, ny)) continue;
+        if (rectContains(s, nx, ny)) continue;
         const j = flatIndex(nx, ny, board.W);
         if (board.reserved[j] || board.paved[j]) { served = true; break; }
       }
@@ -1966,8 +1954,8 @@ function flanksServed(board: Board, run: StreetRun, tip: number): boolean {
  * at within `ARRIVE_REACH`: the coast, the map's edge, the plaza, a flight's corridor, a crossing's
  * channel — or ANOTHER STREET, which is the junction grammar's own answer.
  *
- * A street that stops against another street has arrived: it is a T-junction, and a T is what the
- * supplement asks the network to be made of. Without this reading a staggered leg would be eroded
+ * A street that stops against another street has arrived: it is a T-junction, and the network is
+ * made of T's. Without this reading a staggered leg would be eroded
  * off the very street it steps across at, and the two halves of one line would part company.
  *
  * The street test starts AT the tip and not ahead of it: a leg laid up to a crossing ends INSIDE the
@@ -1990,7 +1978,7 @@ function arrivesFrom(
       if (x < 0 || y < 0 || x >= board.W || y >= board.H) return true;
       const i = flatIndex(x, y, board.W);
       if (!board.land[i]) return true;
-      if (board.stopAt[i] || inRect(board.plaza, x, y)) return true;
+      if (board.stopAt[i] || rectContains(board.plaza, x, y)) return true;
     }
   }
   return false;
@@ -2073,7 +2061,7 @@ function joinNearMisses(board: Board, streets: StreetRun[], reach: Uint8Array): 
 }
 
 /**
- * Trims a street's tail beyond its last junction (不留断头路).
+ * Trims a street's tail beyond its last junction (no dead ends).
  *
  * A tail is kept where it ends at the coast or at a flight, which are termini a walker understands.
  * A tail that simply stops in the middle of open ground is pavement leading nowhere, and it is cut
@@ -2326,7 +2314,7 @@ function flightIsUsed(board: Board, flight: RampFlight): boolean {
   for (let y = r.y - 1; y <= r.y + r.h; y++) {
     for (let x = r.x - 1; x <= r.x + r.w; x++) {
       if (x < 0 || y < 0 || x >= board.W || y >= board.H) continue;
-      if (inRect(r, x, y) || !board.paved[flatIndex(x, y, board.W)]) continue;
+      if (rectContains(r, x, y) || !board.paved[flatIndex(x, y, board.W)]) continue;
       if (flight.entry) return true;
       const along = flight.axis === 'y' ? y : x;
       if (along < (flight.axis === 'y' ? r.y : r.x)) low = true;
@@ -2351,7 +2339,7 @@ function cutDistricts(board: Board, composition: CompositionPlan): District[] {
   for (let i = 0; i < N; i++) {
     if (!board.land[i] || board.paved[i] || board.reserved[i]) continue;
     const x = i % board.W, y = (i / board.W) | 0;
-    if (!inRect(board.plaza, x, y)) open[i] = 1;
+    if (!rectContains(board.plaza, x, y)) open[i] = 1;
   }
   const seen = new Uint8Array(N);
   const out: District[] = [];
@@ -2364,7 +2352,7 @@ function cutDistricts(board: Board, composition: CompositionPlan): District[] {
       const p = stack.pop()!;
       cells.push(p);
       const x = p % board.W, y = (p / board.W) | 0;
-      for (const [dx, dy] of NB4) {
+      for (const [dx, dy] of NEIGHBORS4) {
         const nx = x + dx, ny = y + dy;
         if (nx < 0 || ny < 0 || nx >= board.W || ny >= board.H) continue;
         const j = flatIndex(nx, ny, board.W);
@@ -2374,7 +2362,7 @@ function cutDistricts(board: Board, composition: CompositionPlan): District[] {
     }
     cells.sort((a, b) => a - b);
     out.push({
-      id: out.length, cells, rect: boundsOf(cells, board.W),
+      id: out.length, cells, rect: indexBounds(cells, board.W),
       tier: plate >= 0 ? composition.plates[plate]!.tier : 0,
       served: servedBy(board, cells),
     });
@@ -2386,7 +2374,7 @@ function cutDistricts(board: Board, composition: CompositionPlan): District[] {
 function servedBy(board: Board, cells: readonly number[]): boolean {
   for (const i of cells) {
     const x = i % board.W, y = (i / board.W) | 0;
-    for (const [dx, dy] of NB4) {
+    for (const [dx, dy] of NEIGHBORS4) {
       const nx = x + dx, ny = y + dy;
       if (nx < 0 || ny < 0 || nx >= board.W || ny >= board.H) continue;
       const j = flatIndex(nx, ny, board.W);
@@ -2394,19 +2382,6 @@ function servedBy(board: Board, cells: readonly number[]): boolean {
     }
   }
   return false;
-}
-
-function boundsOf(cells: readonly number[], W: number): Rect {
-  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
-  for (const i of cells) {
-    const x = i % W, y = (i / W) | 0;
-    if (x < x0) x0 = x;
-    if (x > x1) x1 = x;
-    if (y < y0) y0 = y;
-    if (y > y1) y1 = y;
-  }
-  if (!Number.isFinite(x0)) return { x: 0, y: 0, w: 0, h: 0 };
-  return { x: x0, y: y0, w: x1 - x0 + 1, h: y1 - y0 + 1 };
 }
 
 // --- materials ---------------------------------------------------------------------------------
@@ -2474,7 +2449,7 @@ function readCells(board: Board, byStreet: (string | undefined)[]): RoadCell[] {
 /** The ramp styles one map draws from: a seeded few out of the catalog, the way the terraced
  *  reference uses four rather than one. */
 function pickStyles(rng: Rng): RampStyle[] {
-  const items = getPlaceableByCategory(ItemCategory.Ramp).map((i) => ({ id: i.id, width: i.width }));
+  const items = getPlaceableByCategory(ItemCategory.Ramp).map((i) => ({ id: i.id, width: i.width, run: i.height }));
   return shuffled(rng, items).slice(0, Math.min(RAMP_STYLES, items.length));
 }
 

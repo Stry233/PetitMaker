@@ -6,15 +6,14 @@
  *
  * SECURITY: `parseLegalMarkdown` deliberately does NOT escape text or hrefs
  * (see markdown.ts doc comment) — this is the one place that must. Every
- * text node and every attribute value flows through the single `esc()`
+ * text node and every attribute value flows through the single `escapeHtml()`
  * below; there is no other path that writes into the output string.
  */
 
 import { headingSlug, inlineText, type Inline, type MdNode } from './markdown';
 
-// One escaper for both text content and attribute values: a single
-// security-reviewed path rather than two that could drift.
-function esc(s: string): string {
+/** The one HTML escaper for text content and attribute values, here and in the static page shell. */
+export function escapeHtml(s: string): string {
   return s
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
@@ -26,19 +25,19 @@ function esc(s: string): string {
 function renderInlineOne(node: Inline): string {
   switch (node.t) {
     case 'text':
-      return esc(node.text);
+      return escapeHtml(node.text);
     case 'strong':
-      return `<strong>${esc(node.text)}</strong>`;
+      return `<strong>${escapeHtml(node.text)}</strong>`;
     case 'em':
-      return `<em>${esc(node.text)}</em>`;
+      return `<em>${escapeHtml(node.text)}</em>`;
     case 'code':
-      return `<code>${esc(node.text)}</code>`;
+      return `<code>${escapeHtml(node.text)}</code>`;
     case 'link': {
       // On an external link: noopener blocks window.opener reverse-tabnabbing
       // and noreferrer drops the referrer. Internal (relative/fragment) links
       // open in place and get neither.
       const rel = node.external ? ' target="_blank" rel="noopener noreferrer"' : '';
-      return `<a href="${esc(node.href)}"${rel}>${esc(node.text)}</a>`;
+      return `<a href="${escapeHtml(node.href)}"${rel}>${escapeHtml(node.text)}</a>`;
     }
   }
 }
@@ -51,7 +50,7 @@ function renderBlock(node: MdNode): string {
   switch (node.t) {
     case 'h': {
       const id = headingSlug(inlineText(node.children));
-      return `<h${node.level} id="${esc(id)}">${renderInline(node.children)}</h${node.level}>`;
+      return `<h${node.level} id="${escapeHtml(id)}">${renderInline(node.children)}</h${node.level}>`;
     }
     case 'p':
       return `<p>${renderInline(node.children)}</p>`;
@@ -80,7 +79,7 @@ function renderBlock(node: MdNode): string {
 
 /** Renders a node tree to a static HTML string (no wrapping element — the
  * caller supplies the page/section shell). Escapes all text and attribute
- * values; see `esc()` above. */
+ * values; see `escapeHtml()` above. */
 export function renderHtml(nodes: MdNode[]): string {
   return nodes.map(renderBlock).join('');
 }

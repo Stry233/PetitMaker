@@ -1,7 +1,7 @@
 /** Each map owns its versioned routing cache; only road style also depends on pointer location. */
-import { cellOverlapsRect } from '../../core/model/grid-model';
-import { isCoating } from '../../core/model/traits';
-import { ItemCategory, type GridState, type MacroCoord } from '../../core/model/types';
+import { cellOverlapsRect, mapVersionKey } from '../../core/model/grid-model';
+import { isCoatingItem, isCrossing } from '../../core/model/traits';
+import { type GridState, type MacroCoord } from '../../core/model/types';
 import { getCatalogItem } from '../../state/catalog';
 import { objectRect } from '../../state/object-geometry';
 import { analyzeTerrain } from '../placement/analysis';
@@ -26,7 +26,7 @@ export function routeWorld(
   ctx: MacroContext, opts: { seed: number; region?: readonly MacroCoord[]; near?: MacroCoord },
 ): RouteWorld {
   const { state } = ctx;
-  const key = `${state.cellsVersion ?? 0}|${state.objectsVersion ?? 0}|${[...state.lockedLayers].sort().join(',')}|${regionKey(opts.region)}`;
+  const key = `${mapVersionKey(state)}|${regionKey(opts.region)}`;
   // Style depends on `near`, so read it from the live state even when the structural cache hits.
   const style = readRoadStyle(state, opts.near);
 
@@ -55,16 +55,17 @@ export function routeWorld(
   const deck = new Set<number>();
   for (const o of state.objects.values()) {
     const item = getCatalogItem(o.catalogId);
-    if (item && isCoating(item)) forEachFootprintCell(o, (x, y) => road.add(y * W + x));
+    const coating = isCoatingItem(item);
+    if (coating) forEachFootprintCell(o, (x, y) => road.add(y * W + x));
     if (o.locked) continue;
-    if (item?.category === ItemCategory.Road) continue;
+    if (coating) continue;
     const r = objectRect(o);
     const x0 = Math.floor(r.x - 0.5), x1 = Math.ceil(r.x + r.w + 0.5);
     const y0 = Math.floor(r.y - 0.5), y1 = Math.ceil(r.y + r.h + 0.5);
     for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
       if (inB(x, y) && cellOverlapsRect(r, x, y, -0.5)) occupied.add(y * W + x);
     }
-    if (item?.category !== ItemCategory.Bridge && item?.category !== ItemCategory.Ramp) continue;
+    if (!isCrossing(item)) continue;
     for (let y = Math.floor(r.y); y < r.y + r.h; y++) for (let x = Math.floor(r.x); x < r.x + r.w; x++) {
       if (inB(x, y)) deck.add(y * W + x);
     }

@@ -1,3 +1,4 @@
+import { framerMotion } from '../../../design/motion';
 import { prepareOwnImageReceipt } from '../../../../io/image-ownership';
 import { useAttribution } from './use-attribution';
 import { protectedImageNotes } from '../../../../core/provenance/image-attribution';
@@ -6,7 +7,7 @@ import { SUPPORTS_DOWNLOADS } from '../../../../core/runtime/edition';
 import { MapReviewStatus } from './review/MapReviewStatus';
 import { useExportNotice } from './review/ExportNotice';
 import { useEffect, useMemo, useRef, useState, type HTMLAttributes } from 'react';
-import { motion, AnimatePresence, useReducedMotionConfig } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { radii, font, buttonMotion, cursors } from '../../../design/styles';
 import { skin, windowCard, windowFooterGhost, windowFooterPrimary, windowTitle } from '../../../design/window-skin';
 import { roleFont } from '../../../design/text-weight';
@@ -18,7 +19,7 @@ import type { ExportOptions } from '../../../../io/export/types';
 import { ExportControls } from './ExportControls';
 import { ExportPreview } from './ExportPreview';
 import { footerTokenValues } from './render-preview-bridge';
-import { ModalShell } from '../../../primitives/ModalShell';
+import { ModalShell, useModalEntered } from '../../../primitives/ModalShell';
 import { host } from '../../../../kit/host';
 import { paintComposition, CARD_3D_CELL_ASPECT, type CompositionAssets } from '../../../../io/export/paint';
 import { brandInfo, loadBrandLockup } from './brand';
@@ -42,14 +43,12 @@ import { selectedVersion } from './stylize/use-stylize-versions';
 import { composeStylizedBaseMap } from './stylize/compose-stylized';
 import { exportText, type ReviewProgress, type ReviewResult } from '../../../../io/moderation/text/policy';
 import { Expand } from '../../../primitives/Expand';
+import { shownPlanetName } from '../../../../io/planet-library';
+import { REVIEW_FIELD_LABEL } from './review/review-fields';
 
 /** What either baseMap producer (a real capture, or a stylized composite) actually is — narrower
  *  than `CanvasImageSource` so `.width`/`.height` stay plain numbers downstream. */
 type BaseMapSource = HTMLImageElement | HTMLCanvasElement;
-
-/** Exported: the Help Center's share figure pictures the window under these same defaults. */
-/** How long the shell's opening spring (`springs.stiff`) takes to come to rest, in ms. */
-const ENTRANCE_SETTLE_MS = 360;
 
 export const DEFAULT_OPTIONS: ExportOptions = { title: '', description: '', preset: 'share', importable: true, showBadge: true, layerPreview: true, card3d: false, grid: true, footer: true, annotations: true, footerTemplate: DEFAULT_FOOTER, resolution: 'standard' };
 
@@ -68,7 +67,7 @@ function footerDimsSample(res: ExportOptions['resolution']): string {
  *  before a heavy synchronous step runs — double rAF guarantees one composited frame. */
 const nextFrame = (): Promise<void> => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
 
-export interface ImageDelivery {
+interface ImageDelivery {
   id: string;
   label: string;
   available: boolean;
@@ -76,9 +75,10 @@ export interface ImageDelivery {
 }
 
 /** The share-picture controls on their own, so the "save and share" window can carry them as one
- *  of its three sections. Everything expensive here is gated on `open` — the provenance summary,
- *  the share-code build, the preview's captures — so a mounted-but-hidden section costs nothing. */
-export function ExportPanel({ open, onDone, deliveries }: { open: boolean; onDone: () => void; deliveries?: readonly ImageDelivery[] }) {
+ *  of its sections. Everything expensive here is gated on `open` — the provenance summary,
+ *  the share-code build, the preview's captures — so a mounted-but-hidden section costs nothing.
+ *  `entered` is the host shell's `useModalEntered` answer: the picture waits for the card to settle. */
+export function ExportPanel({ open, entered, onDone, deliveries }: { open: boolean; entered: boolean; onDone: () => void; deliveries?: readonly ImageDelivery[] }) {
   const t = useT();
   const busy = useCursorCss('busy');
   // Gated on `open`: this selector runs on EVERY store update, and the provenance
@@ -115,15 +115,8 @@ export function ExportPanel({ open, onDone, deliveries }: { open: boolean; onDon
 
   // THE ENTRANCE COMES FIRST. The preview's capture, its paint and the share-code encode are all
   // synchronous main-thread work that would land inside the card's opening spring and stall it, so
-  // the picture starts once the spring has settled; a reduced-motion open has no spring to protect.
-  const reduced = useReducedMotionConfig() === true;
-  const [settled, setSettled] = useState(false);
-  useEffect(() => {
-    if (!open) { setSettled(false); return; }
-    if (reduced) { setSettled(true); return; }
-    const id = setTimeout(() => setSettled(true), ENTRANCE_SETTLE_MS);
-    return () => clearTimeout(id);
-  }, [open, reduced]);
+  // the picture starts once the host's shell reports the card has entered (at once under reduced motion).
+  const settled = open && entered;
   const mapReview = useMapReview(open, settled, true);
   useEffect(() => { cancelExport(); }, [gridState, mapReview.revision]);
   const ready = open && settled && mapReview.previewReady;
@@ -228,7 +221,7 @@ export function ExportPanel({ open, onDone, deliveries }: { open: boolean; onDon
 
       // A selected stylize version REPLACES the map bitmap: the map itself is never captured, and
       // the user's own ink (if any) is composed back over the generated picture at its own rect.
-      // 原图 (no selection) keeps today's plain capture path byte for byte.
+      // With no selection the plain capture path runs unchanged.
       let baseImg: BaseMapSource | TiledMap;
       let mapAspect: number;
       let mapPx: { w: number; h: number };
@@ -276,7 +269,7 @@ export function ExportPanel({ open, onDone, deliveries }: { open: boolean; onDon
           codeTooSmall = true; // chosen Size can't host a legible code (Compact)
         } else if (comp.codeBand) {
           // Reuse the previewed asset only when its pixel width and payload inputs match this slot.
-          if (codeAsset && codeAsset.canvas.width === comp.codeBand.w && codeAsset.builtKey === shareCodeKey(comp.codeBand.w, createdAt)) {
+          if (codeAsset && codeAsset.canvas.width === comp.codeBand.w && codeAsset.builtKey === shareCodeKey(comp.codeBand.w, createdAt, shownPlanetName(gridState.template, store.locale))) {
             codeImg = codeAsset.canvas;
             codeNotice = codeAsset.notice;
           } else {
@@ -415,7 +408,7 @@ export function ExportPanel({ open, onDone, deliveries }: { open: boolean; onDon
         {exporting && (
           <motion.div
             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            transition={{ duration: 0.15 }}
+            transition={framerMotion('control.detail')}
             style={{ position: 'absolute', inset: 0, zIndex: 20, background: 'rgba(253,251,224,0.82)', backdropFilter: 'blur(2px)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 14, borderRadius: radii.lg }}
           >
             <Spinner size={38} thickness={4} />
@@ -448,7 +441,7 @@ export function ExportPanel({ open, onDone, deliveries }: { open: boolean; onDon
           <div style={{ margin: '0 -12px' }}>
             <Expand open={!!issue || textReview.paused}>
               <div role={issue ? "alert" : undefined} style={{ padding: 12, color: skin.ink, ...roleFont('caption'), lineHeight: 1.5 }}>
-                {issue === 'unavailable' ? t('export.review.unavailable') : issue === 'too-long' ? t('export.review.too_long') : issue ? t('export.review.content', { fields: issue.fields.map((field) => t(field === 'title' ? 'export.field_title' : field === 'description' ? 'export.field_desc' : 'export.opt_footer')).join(', ') }) : ''}
+                {issue === 'unavailable' ? t('export.review.unavailable') : issue === 'too-long' ? t('export.review.too_long') : issue ? t('export.review.content', { fields: issue.fields.map((field) => t(REVIEW_FIELD_LABEL[field])).join(', ') }) : ''}
                 {(textReview.paused || issue === 'unavailable') && <button style={{ ...windowFooterGhost, marginTop: 8, width: '100%' }} onClick={() => { setReviewIssue(null); textReview.retry(); }}>{t('export.review.retry')}</button>}
                 {issue && !attribution.locked && <motion.button disabled={textlessExportDisabled} style={{ ...windowFooterGhost, marginTop: 8, width: '100%', opacity: textlessExportDisabled ? 0.6 : 1 }} onClick={() => void handleExport(true)} {...(textlessExportDisabled ? {} : buttonMotion)}>{t('export.review.without_text')}</motion.button>}
               </div>
@@ -476,10 +469,12 @@ export function ExportModal() {
   const open = useEditorStore((s) => s.modals.export);
   const setModal = useEditorStore((s) => s.setModal);
   const close = () => setModal('export', false);
+  const { entered, onEntered } = useModalEntered(open);
   return (
     <ModalShell helpTarget={{ page: 'share' }}
       open={open}
       onClose={close}
+      onEntered={onEntered}
       width={980}
       maxVwPct={94}
       height={848}
@@ -488,7 +483,7 @@ export function ExportModal() {
       ariaLabel={t('export.title')}
     >
       <div style={{ ...windowTitle, marginBottom: 4 }}>{t('export.title')}</div>
-      <ExportPanel open={open} onDone={close} />
+      <ExportPanel open={open} entered={entered} onDone={close} />
     </ModalShell>
   );
 }

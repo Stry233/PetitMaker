@@ -1,5 +1,5 @@
 /**
- * What a THEME KIT is (区域类型 vs 元素): a region type says what kind of place to build,
+ * What a THEME KIT is (region type versus element): a region type says what kind of place to build,
  * and the kit is the box of elements it is built out of. An element is never a region — a bed, an
  * orchard lattice, a border run, a water bed are the blocks, and the kit is the recipe that says
  * which blocks this kind of place is made of.
@@ -56,10 +56,10 @@ export interface KitStyle {
   /** Water beds cut into the region's own platform, framed by its terrace: the reference's parterre
    *  pools are rectangles cut into a terrace, not pools with flower rings. */
   pools?: number;
-  /** A court dropped one tier below the region's platform (竹林下沉庭院). */
+  /** A court dropped one tier below the region's platform (the sunken bamboo courtyard). */
   sunken?: boolean;
   /** A one-layer terrace ring inside the lot's border, open at the entry side: the shop complex
-   *  (商店周围一圈一层山体). */
+   *  (a one-layer mountain ring around the shops). */
   ring?: boolean;
 }
 
@@ -91,8 +91,5 @@ export interface KitCanvas {
   palette: RegionPalette;
   rng: Rng;
 }
-
-/** A theme family's kit: the style each of its themes is built in. */
-export type KitStyleFor<T extends string> = (theme: T, rng: Rng) => KitStyle;
 
 export const inCanvas = (c: KitCanvas, x: number, y: number): boolean => c.cells.has(y * c.W + x);

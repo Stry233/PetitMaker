@@ -1,3 +1,4 @@
+import { cssMotion, amplitude, framerMotion, seconds } from '../../design/motion';
 /**
  * Owns the app-wide character's pose and badge choreography; placement belongs to `seat.ts`. Badge
  * swaps cancel existing Web Animations before mounting the next badge because a completed
@@ -14,9 +15,9 @@ import { DREAM } from '../sketchbook/sketch-motion';
 import { Badge, type BadgeId } from './badges';
 import { EYE_DOTS, lashWidth, lidBox } from './face';
 import { CURVES, MICRO, POSE_DWELL, POSES, PRESS_SQUASH, PUFF, WAKE_BEAT, type BodyPart, type PoseKeyframe, type PoseName, type PoseTimer, type PoseTrack } from './poses';
-import { amplitude, framerMotion, seconds } from '../motion';
 import { cursors } from '../../design/styles';
 import { useUiPreview } from '../../primitives/ui-preview';
+import { createSignal } from '../../../core/runtime/signal';
 
 export interface CharacterHandle {
   el: HTMLDivElement;
@@ -54,24 +55,20 @@ let liveHandle: CharacterHandle | null = null;
  * `'off'` (no dream badge at all), `'zzz'` (she is sleeping), or the glyph of the order she is
  * dreaming.
  */
-export type DreamBadge = 'off' | 'zzz' | IconId;
+type DreamBadge = 'off' | 'zzz' | IconId;
 
-let dreamBadge: DreamBadge = 'off';
-const dreamListeners = new Set<() => void>();
+const dreamBadge = createSignal<DreamBadge>('off');
 
 export function setDreamBadge(next: DreamBadge): void {
-  if (next === dreamBadge) return;
-  dreamBadge = next;
-  for (const listener of dreamListeners) listener();
+  if (next !== dreamBadge.get()) dreamBadge.emit(next);
 }
 
 function subscribeDream(listener: () => void): () => void {
-  dreamListeners.add(listener);
-  return () => { dreamListeners.delete(listener); };
+  return dreamBadge.subscribe(listener);
 }
 
 function useDreamBadge(): DreamBadge {
-  return useSyncExternalStore(subscribeDream, () => dreamBadge, () => 'off' as const);
+  return useSyncExternalStore(subscribeDream, dreamBadge.get, () => 'off' as const);
 }
 
 /** The one live Character instance, for `seat.ts` to place. Null before the first mount
@@ -103,7 +100,7 @@ const BADGE_POP_IN_MS = seconds('panel.badge.pop') * 1000;
  * coordinates, and her own placement is `left`/`top`. Framer drops a scale under reduced motion, the
  * same as it does for the blocks.
  */
-export interface CharacterPress {
+interface CharacterPress {
   onPress(): void;
   /** Whether the panel she opens is standing, for the block below to agree with. */
   open: boolean;
@@ -493,7 +490,7 @@ function lidStyle(side: 'l' | 'r', size: number): CSSProperties {
     boxSizing: 'border-box',
     borderRadius: '50%', background: LID_SKIN,
     borderBottom: `${lashWidth(size)}px solid ${LID_LASH_INK}`,
-    transform: 'scaleY(0)', transformOrigin: '50% 20%', transition: 'transform 70ms ease-out',
+    transform: 'scaleY(0)', transformOrigin: '50% 20%', transition: cssMotion('character.blink.lid', ['transform']),
   };
 }
 

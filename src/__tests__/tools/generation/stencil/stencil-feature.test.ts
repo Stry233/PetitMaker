@@ -19,7 +19,7 @@ import { CommandExecutor } from '../../../../core/commands/command-executor';
 import { EventBus } from '../../../../core/commands/event-bus';
 import { createDefaultRegistry } from '../../../../rules';
 import { roadLookup } from '../../../../state/object-index';
-import { type EditorEvents, type GridState, type Stencil, type StencilPlan } from '../../../../core/model/types';
+import { CommandType, type EditorEvents, type GridState, type Stencil, type StencilPlan } from '../../../../core/model/types';
 import { makeState } from '../../../rules/_helpers';
 import { getCatalogItem } from '../../../../state/catalog';
 import { ELEVATION_COLORS } from '../../../../core/model/constants';
@@ -141,7 +141,7 @@ describe('the features a small box spends its decoration on', () => {
     expect(detectFeatures(s, covered(s), RAMP, ACCENT)).toEqual([]);
   });
 
-  it('is one answer per picture, asked twice', () => {
+  it('detectFeatures is one answer per picture, asked twice', () => {
     const s = face();
     const read = (): string => JSON.stringify(detectFeatures(s, covered(s), RAMP, ACCENT));
     expect(read()).toBe(read());
@@ -227,6 +227,32 @@ describe('what the decoration lays on the map', () => {
       expect(near.has(i)).toBe(true);
     }
     expect(e.commitStroke(0)).toEqual([]);
+  });
+
+  it.each([['on', false], ['off', true]] as const)('keeps the base object under a refused mark with the load limit %s', (_, ignoreChunkLoad) => {
+    const state = makeState(30, 30);
+    state.ignoreChunkLoad = ignoreChunkLoad;
+    const e = exec(state);
+    const s = face();
+    const base = new Set<string>();
+    for (let y = 0; y < s.height; y++) {
+      for (let x = 0; x < s.width; x++) {
+        if (!covered(s)(y * s.width + x)) continue;
+        const id = `base-${x}-${y}`;
+        expect(e.execute({ type: CommandType.PlaceObject, timestamp: 0, object: { id, catalogId: 'path-cobblestone', position: { x: 5 + x, y: 5 + y }, rotation: 0, elevation: 0 } }).success).toBe(true);
+        base.add(id);
+      }
+    }
+    const accents = new Set(ACCENT.map((a) => a.catalogId));
+    const res = layStencilDecor(
+      state, { origin: { x: 5, y: 5 }, stencil: s }, { palette: ACCENT },
+      (c) => (c.type === CommandType.PlaceObject && accents.has(c.object.catalogId)
+        ? { success: false, errors: [] }
+        : e.execute(c)),
+      base, RAMP,
+    );
+    expect(res.placed).toBe(0);
+    for (const id of base) expect(state.objects.has(id), id).toBe(true);
   });
 
   it('lays nothing on a picture whose colours the ramp can say, however detailed it is', () => {

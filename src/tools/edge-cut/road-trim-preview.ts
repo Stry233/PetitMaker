@@ -1,5 +1,5 @@
 /*
- * road-trim-preview.ts — what auto-trim WILL do to a road stroke, worked out before the stroke.
+ * What auto-trim WILL do to a road stroke, worked out before the stroke.
  *
  * The terrain twin of this (`trim-preview.ts`) runs the real trim pass over a scratch copy of the
  * CELLS. A road is not a cell: it is an object carrying a `surfaceCoating` trait, and every

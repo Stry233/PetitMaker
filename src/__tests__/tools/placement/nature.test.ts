@@ -16,7 +16,7 @@ function run(nature: number, seed = 7) {
   const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
   const ctx = makeCtx(state, (c) => exec.execute(c), exec.getRegistry(), seed);
   placeNature(ctx, analyzeTerrain(state), nature, new Set());
-  exec.commitStrokeGroup(0);
+  exec.commitStroke(0);
   return [...state.objects.values()];
 }
 

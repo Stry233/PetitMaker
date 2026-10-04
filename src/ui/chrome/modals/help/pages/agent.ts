@@ -1,5 +1,5 @@
 /*
- * pages/agent.ts — the 助手 group: what the assistant is, connecting a key, ordering and oversight,
+ * The Agent group: what the assistant is, connecting a key, ordering and oversight,
  * the working record, the region lock, trouble and limits, undo.
  *
  * Descriptor data only: copy uses full i18n key literals, key tables name command ids and figures
@@ -10,6 +10,7 @@ import type { HelpPage } from '../page-schema';
 export const AGENT_PAGES: readonly HelpPage[] = [
   {
     id: 'agent-intro',
+    lite: false,
     group: 'agent',
     titleKey: 'help.agentintro.title',
     navKey: 'help.agentintro.nav',
@@ -34,6 +35,7 @@ export const AGENT_PAGES: readonly HelpPage[] = [
   },
   {
     id: 'agent-setup',
+    lite: false,
     group: 'agent',
     titleKey: 'help.agentsetup.title',
     ledeKey: 'help.agentsetup.lede',
@@ -75,6 +77,7 @@ export const AGENT_PAGES: readonly HelpPage[] = [
   },
   {
     id: 'agent-run',
+    lite: false,
     group: 'agent',
     titleKey: 'help.agentrun.title',
     ledeKey: 'help.agentrun.lede',
@@ -98,6 +101,7 @@ export const AGENT_PAGES: readonly HelpPage[] = [
   },
   {
     id: 'agent-trail',
+    lite: false,
     group: 'agent',
     titleKey: 'help.agenttrail.title',
     navKey: 'help.agenttrail.nav',
@@ -122,6 +126,7 @@ export const AGENT_PAGES: readonly HelpPage[] = [
   },
   {
     id: 'agent-region',
+    lite: false,
     group: 'agent',
     titleKey: 'help.agentregion.title',
     ledeKey: 'help.agentregion.lede',
@@ -145,6 +150,7 @@ export const AGENT_PAGES: readonly HelpPage[] = [
   },
   {
     id: 'agent-trouble',
+    lite: false,
     group: 'agent',
     titleKey: 'help.agenttrouble.title',
     navKey: 'help.agenttrouble.nav',
@@ -168,6 +174,7 @@ export const AGENT_PAGES: readonly HelpPage[] = [
   },
   {
     id: 'agent-undo',
+    lite: false,
     group: 'agent',
     titleKey: 'help.agentundo.title',
     ledeKey: 'help.agentundo.lede',

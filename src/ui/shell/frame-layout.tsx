@@ -2,7 +2,8 @@ import { createContext, useContext, useMemo, useState, type ReactNode } from 're
 import { useDockRef, useFitFloor, useViewportSize } from '../design/scale';
 import { useAnimatedUiZoom } from '../design/ui-zoom-anim';
 import { useUiPreviewPose } from '../primitives/ui-preview';
-import { planFrame, railClearanceFor, type FrameLayout, type LayerMode } from './frame';
+import { cornerArt, planFrame, railClearanceFor, sessionModes, type FrameLayout, type LayerMode } from './frame';
+import { useEditorStore } from '../../state/store';
 import { useFrameZoom } from './use-frame-zoom';
 import { PLATE_MIN_WIDTH, plateDepth, plateMinDepth } from './windows/LayerPanel';
 import { ZOOM } from './units';
@@ -35,6 +36,11 @@ export function FrameLayoutProvider({ children }: { children: ReactNode }) {
   const { aside } = useDockStage();
   const uiZoom = useAnimatedUiZoom();
   const floor = useFitFloor();
+  // The mode row and corner a planet session reduces to, so its menu stays beside the modes as
+  // long as the controls that show allow.
+  const planetSession = useEditorStore((s) => s.planetSession);
+  const modes = sessionModes(planetSession).length;
+  const corner = cornerArt(planetSession !== null);
   let width = viewport.w / zoom - dock / ZOOM;
   let height = viewport.h / zoom;
   // Reserve the tighter endpoint during a slide without subscribing React to its individual frames.
@@ -45,8 +51,8 @@ export function FrameLayoutProvider({ children }: { children: ReactNode }) {
     height = Math.min(viewport.h / free, viewport.h / pinned);
   }
   const value = useMemo(() => ({
-    ...planFrame(width, height, { open: layerMode !== 'pill', plateDepth: plateDepth(layerMode), plateMinDepth: plateMinDepth(layerMode), plateMinWidth: PLATE_MIN_WIDTH }),
+    ...planFrame(width, height, { open: layerMode !== 'pill', plateDepth: plateDepth(layerMode), plateMinDepth: plateMinDepth(layerMode), plateMinWidth: PLATE_MIN_WIDTH, modes, corner }),
     layerMode, setLayerMode,
-  }), [width, height, layerMode]);
+  }), [width, height, layerMode, modes, corner]);
   return <FrameLayoutContext.Provider value={value}>{children}</FrameLayoutContext.Provider>;
 }

@@ -1,3 +1,4 @@
+import type { GlQuality } from '../../../core/runtime/device-quality';
 /**
  * The 3D ToolOverlay: every piece of tool feedback the 2D OverlayLayer draws,
  * as surface-draped decals in one scene group. Ghost updates are rAF-coalesced
@@ -5,40 +6,46 @@
  * move); flashes decay through tick(). Colors arrive as the same 0xRRGGBB
  * numbers the 2D overlay uses, so validity tints match across views.
  */
+import { cellEdges, dimensionDrawing } from '../../../core/model/annotation-dimensions';
+import { LOSS_COLOR } from '../../../core/model/constants';
+import { hexStringToNumber } from '../../../core/model/colors';
+import { Annotations3D } from './annotations3d';
 import * as THREE from 'three';
 import { MoveOrigins3D } from './move-origins';
-import type { Corners, GridState, MacroCoord, ValidationError } from '../../../core/model/types';
+import { getPlacedObjectSize } from '../../../state/object-geometry';
+import { setHoverTarget } from '../../hover-target';
+import type { Corners, GridState, MacroCoord, ValidationError, Rotation } from '../../../core/model/types';
 import type { ToolOverlay } from '../../view-projection';
 import type { MacroRect } from '../../interaction/marquee';
-import { filletOnly, type RowSpan } from '../../map2d/layers/ghost-geometry';
+import { filletOnly, type RowSpan } from '../../ghost-geometry';
 import type { TrimmedCell } from '../../../tools/edge-cut';
 import { cellDecals, rectDecals, DECAL_LIFT, type DecalTrim } from '../build/overlay-decals';
 import { spanCellCentres } from '../build/surface-pieces';
 import { surfaceHeightAt } from '../interaction/pick';
 import { mapCenterOffset } from '../core/coords';
-import { resolveErrorFlashCells, resolveErrorFlashRects, errorFlashSignature, shouldFlashErrors, flashDecay, type ErrorFlashGate, type ErrorFlashRect } from '../../map2d/layers/error-flash';
-import { isMotionReduced } from '../../map2d/motion-state';
+import { resolveErrorFlashCells, resolveErrorFlashRects, errorFlashSignature, shouldFlashErrors, flashDecay, type ErrorFlashGate, type ErrorFlashRect } from '../../error-flash';
+import { isMotionReduced } from '../../../core/runtime/motion-state';
 import { animConfig } from '../../../core/runtime/anim-config';
 import {
-  CURVE_FOOTPRINT, boundsOfCells, isPreviewCell, previewDots, previewIconRect, previewPalette,
-  type GhostPaint, type PreviewCell, type PreviewIcon, type PreviewPalette,
+  CURVE_FOOTPRINT, isPreviewCell, previewDots, previewIconRect, previewPalette,
+  type GhostPaint, type PreviewCell, type PreviewIcon, type PreviewPalette, ROUTE_TINT, BAND_COLOR,
 } from '../../../core/runtime/preview-cell';
 import { HATCH_CELLS, previewHatchCanvas, previewIconCanvas } from '../../preview-cell-raster';
 import { objectInstance } from '../build/object-meshes';
-import { getPlacedObjectSize } from '../../../state/object-geometry';
 import { modelGeometry } from '../models/build-model';
 import { archetypeGeometry } from '../build/object-archetypes';
 import { type PlacedObject } from '../../../core/model/types';
 import type { ArchetypeKey } from '../core/types';
+import { cellsBounds } from '../../../core/model/grid-model';
+import { MAP_TEXT, MAP_INK } from '../../../core/runtime/brand-palette';
 
 type PendingGhost =
   | { kind: 'cells'; cells: MacroCoord[]; paint: GhostPaint; terrainGrid: boolean; trim?: readonly TrimmedCell[]; losses?: readonly MacroCoord[] }
   | { kind: 'spans'; spans: RowSpan[]; paint: GhostPaint; terrainGrid: boolean; trim?: readonly TrimmedCell[] }
   | { kind: 'clear' };
 
-/** A ghost's `losses` wash: the same warning red `ghostMaterial(false)` already uses for an invalid
- *  placement, so one tint means one thing across the whole overlay. */
-const GHOST_LOSS = 0xe2574c;
+/** A ghost's `losses` wash. */
+const GHOST_LOSS = hexStringToNumber(LOSS_COLOR);
 
 interface Flash { mesh: THREE.Mesh; geo: THREE.BufferGeometry; mat: THREE.MeshBasicMaterial; bornMs: number; lifeMs: number; peak: number }
 
@@ -112,6 +119,15 @@ function cardBackground(palette: PreviewPalette, geo: THREE.BufferGeometry): THR
   return mat;
 }
 
+/** A selected terrain cell's box: the map-label ink. */
+const SELECTION_CREAM = hexStringToNumber(MAP_TEXT);
+/** The ground shadow under a hovered or selected item: the glyph ink. */
+const GROUND_SHADOW = hexStringToNumber(MAP_INK);
+const SHADOW_FILL = 0.34;
+const SHADOW_EDGE = 0.8;
+/** Past this many selected members only the interface's marks are drawn. */
+const SHADOW_LIMIT = 200;
+
 export class Overlay3D implements ToolOverlay {
   readonly group = new THREE.Group();
 
@@ -123,14 +139,13 @@ export class Overlay3D implements ToolOverlay {
   private ghost: { mesh: THREE.Mesh; geo: THREE.BufferGeometry; mat: THREE.MeshBasicMaterial } | null = null;
   /** The `losses` half of the ghost: its own body, its own material, disposed alongside `ghost`. */
   private lossGhost: { mesh: THREE.Mesh; geo: THREE.BufferGeometry; mat: THREE.MeshBasicMaterial } | null = null;
-  // One box per SELECTED member: a group selection appends into this array.
-  private selection: Array<{ mesh: THREE.Mesh; edge: THREE.LineSegments }> = [];
-  private hover: { mesh: THREE.Mesh; edge: THREE.LineSegments } | null = null;
+
   private band: { mesh: THREE.Mesh; edge: THREE.LineSegments } | null = null;
   private buildable: { mesh: THREE.Mesh; geo: THREE.BufferGeometry; mat: THREE.MeshBasicMaterial } | null = null;
   /** What the buildable drape was last asked to show. Kept because the decal is baked at each cell's
    *  SURFACE HEIGHT, so a generation under it leaves the mesh describing terrain that is gone. */
-  private buildableAsk: { cells: MacroCoord[]; terrainMode: boolean } | null = null;
+  private buildableAsk: { cells: MacroCoord[]; terrainMode: boolean; dimensionScale?: number } | null = null;
+  private readonly regionDimensions = new Annotations3D();
   private flashes: Flash[] = [];
   private errorGate: ErrorFlashGate | null = null;
   /**
@@ -154,7 +169,9 @@ export class Overlay3D implements ToolOverlay {
     private moveObjects: (destinations: readonly PlacedObject[]) => void = () => {},
     private camera?: THREE.Camera,
     private viewport?: () => { width: number; height: number },
+    private modelQuality: () => GlQuality = () => 'full',
   ) {
+    this.group.add(this.regionDimensions.group);
     this.group.renderOrder = 50; // over terrain and water, under nothing that matters
   }
 
@@ -171,13 +188,13 @@ export class Overlay3D implements ToolOverlay {
   }
 
   showObjectMove(destinations: readonly PlacedObject[], _valid: boolean): void {
-    this.moveOrigins ??= new MoveOrigins3D(this.group, this.camera, this.viewport, this.nowMs);
+    this.moveOrigins ??= new MoveOrigins3D(this.group, this.camera, this.viewport, this.nowMs, this.modelQuality);
     this.moveOrigins.show(this.state(), destinations.map(obj => obj.id));
     this.moving = true;
     this.dropPlacementGhost();
     this.clearGroupPlacementGhost();
     this.clearHover();
-    for (const box of this.selection) { box.mesh.visible = false; box.edge.visible = false; }
+    for (const shadow of this.selectionShadows) shadow.mesh.visible = shadow.edge.visible = false;
     this.moveObjects(destinations);
     this.requestRender();
   }
@@ -187,7 +204,7 @@ export class Overlay3D implements ToolOverlay {
     if (this.moving) {
       this.moving = false;
       this.moveObjects([]);
-      for (const box of this.selection) { box.mesh.visible = true; box.edge.visible = true; }
+      for (const shadow of this.selectionShadows) shadow.mesh.visible = shadow.edge.visible = true;
     }
     this.pendingGhost = { kind: 'clear' };
     this.dropPlacementGhost();
@@ -213,9 +230,9 @@ export class Overlay3D implements ToolOverlay {
     if (!this.ghostMat.valid) {
       // Warm yellow, not green: the ghost is a flat-colour mesh, and a green one disappears
       // against the mountain strata it most often previews over (a ramp against a high cliff).
-      // Same family as the route drape, warmer than the 0xffb347 selection amber.
-      this.ghostMat.valid = makeMat(0xffd75e, 0.55);
-      this.ghostMat.invalid = makeMat(0xe2574c, 0.55);
+      // Same family as the route drape.
+      this.ghostMat.valid = makeMat(ROUTE_TINT, 0.55);
+      this.ghostMat.invalid = makeMat(GHOST_LOSS, 0.55);
     }
     return valid ? this.ghostMat.valid! : this.ghostMat.invalid!;
   }
@@ -251,11 +268,11 @@ export class Overlay3D implements ToolOverlay {
     const m = b.mesh;
     const resolved = objectInstance(this.state(), {
       id: '__ghost__', catalogId, position: { x, y },
-      rotation: (rotation as PlacedObject['rotation']), elevation,
+      rotation: (rotation as Rotation), elevation,
     });
     if (!resolved) return false;
     const isModel = resolved.groupKey.startsWith('m:');
-    const geo = isModel ? modelGeometry(resolved.groupKey.slice(2)) : archetypeGeometry(resolved.groupKey.slice(2) as ArchetypeKey);
+    const geo = isModel ? modelGeometry(resolved.groupKey.slice(2), this.modelQuality()) : archetypeGeometry(resolved.groupKey.slice(2) as ArchetypeKey);
     if (!geo) return false;
     m.geometry = geo; // shared caches own the geometry — never disposed here
     b.depth.geometry = geo;
@@ -310,10 +327,18 @@ export class Overlay3D implements ToolOverlay {
       const ids = this.pendingSelectionIds;
       this.pendingSelectionIds = [];
       this.unresolved = [];
-      for (const id of ids) this.buildObjectSelection(id);
-    }
-    if (this.moving) {
-      for (const box of this.selection) { box.mesh.visible = false; box.edge.visible = false; }
+      const state = this.state();
+      for (const id of ids) {
+        const obj = state.objects.get(id);
+        if (!obj) { if (!this.objectBox(id)) this.unresolved.push(id); continue; }
+        // A selected item keeps its footprint shadow on the ground, so its placement area stays in view.
+        if (this.selectionShadows.length < SHADOW_LIMIT) {
+          const size = getPlacedObjectSize(obj);
+          const shadow = this.makeBox(obj.position.x, obj.position.y, size.w, size.h, false, GROUND_SHADOW, SHADOW_FILL, SHADOW_EDGE);
+          shadow.mesh.visible = shadow.edge.visible = !this.moving;
+          this.selectionShadows.push(shadow);
+        }
+      }
     }
     const pending = this.pendingGhost;
     if (!pending) return;
@@ -381,7 +406,7 @@ export class Overlay3D implements ToolOverlay {
   private buildCard(
     cells: readonly MacroCoord[], terrainGrid: boolean, card: PreviewCell, palette: PreviewPalette,
   ): void {
-    const bounds = boundsOfCells(cells);
+    const bounds = cellsBounds(cells);
     if (!bounds) return;
     const s = this.state();
     const off = mapCenterOffset(s.template.width, s.template.height);
@@ -453,21 +478,25 @@ export class Overlay3D implements ToolOverlay {
 
   // ── selection / hover boxes ────────────────────────────────────────────────
 
-  /** `append` pushes this box onto the group instead of replacing it (see the ToolOverlay
-   *  contract). Only ever true here for a footprint fallback, since terrain never multi-selects. */
-  showSelection(x: number, y: number, w = 1, h = 1, _elevation?: number, terrainMode = false, append = false): void {
-    if (!append) this.clearSelection();
-    this.selection.push(this.makeBox(x, y, w, h, terrainMode, 0xffb347, 0.18, 0.95));
+  /** Objects are marked in screen space by the interface, over their projected bodies. A terrain
+   *  cell or a lone road (`exact`) is regular, so its mark is the exact box draped on its surface. */
+  showSelection(x: number, y: number, w = 1, h = 1, _elevation?: number, terrainMode = false, _append?: boolean, exact = false): void {
+    this.clearTerrainSelection();
+    if (terrainMode || exact) this.terrainSelection = this.makeBox(x, y, w, h, terrainMode, SELECTION_CREAM, 0.18, 1);
   }
 
-  /** The selection ring as a wireframe around the object's rendered BODY — bounding the mesh, not the
-   *  ground footprint. An object with no instanced body (a trimmed road, meshed into the road-trim
-   *  mesh) falls back to its MODEL footprint box, so no representation split can cost it a ring. */
+  private terrainSelection: { mesh: THREE.Mesh; edge: THREE.LineSegments } | null = null;
+  private selectionShadows: { mesh: THREE.Mesh; edge: THREE.LineSegments }[] = [];
+
+  private clearTerrainSelection(): void {
+    if (this.terrainSelection) this.dropBox(this.terrainSelection);
+    this.terrainSelection = null;
+  }
+
+  /** Recorded so a member the map no longer holds is reported (see `unresolvedSelections`). */
   showObjectSelection(objectId: string, append = false): void {
-    // Deferred to flush(): selection repaints ride objects-changed, whose
-    // handlers can run BEFORE the scene updated the instance — computing now
-    // would bound the stale transform. Clearing the OLD boxes needs no fresh instance data, so
-    // only the new ones wait.
+    // Deferred to flush(): selection repaints ride objects-changed, whose handlers can run BEFORE
+    // the scene updated the instance.
     if (!append) this.clearSelection();
     this.pendingSelectionIds.push(objectId);
     this.requestRender();
@@ -504,63 +533,42 @@ export class Overlay3D implements ToolOverlay {
     return mat;
   }
 
-  private buildObjectSelection(objectId: string): void {
-    const box = this.objectBox(objectId);
-    if (!box) {
-      // No instanced body: bound the MODEL footprint instead (state/object-geometry is the catalog-aware
-      // authority), which is also what the 2D view rings.
-      const obj = this.state().objects.get(objectId);
-      if (!obj) { this.unresolved.push(objectId); return; }
-      const size = getPlacedObjectSize(obj);
-      this.selection.push(this.makeBox(obj.position.x, obj.position.y, size.w, size.h, false, 0xffb347, 0.18, 0.95));
-      return;
-    }
-    const size = new THREE.Vector3();
-    const center = new THREE.Vector3();
-    box.getSize(size);
-    box.getCenter(center);
-    const geo = new THREE.BoxGeometry(Math.max(size.x, 0.05), Math.max(size.y, 0.05), Math.max(size.z, 0.05));
-    geo.translate(center.x, center.y, center.z);
-    const edgeGeo = new THREE.EdgesGeometry(geo);
-    geo.dispose();
-    const edge = new THREE.LineSegments(edgeGeo, this.boxEdge(0xffb347, 0.95));
-    const fillMat = this.boxFill(0xffb347, 0.06);
-    const fill = new THREE.Mesh(new THREE.BoxGeometry(Math.max(size.x, 0.05), Math.max(size.y, 0.05), Math.max(size.z, 0.05)).translate(center.x, center.y, center.z), fillMat);
-    this.group.add(fill, edge);
-    this.selection.push({ mesh: fill, edge });
-    this.requestRender();
-  }
-
   clearSelection(): void {
     this.pendingSelectionIds = [];
     this.unresolved = [];
-    for (const box of this.selection) this.dropBox(box);
-    this.selection = [];
+    this.clearTerrainSelection();
+    for (const shadow of this.selectionShadows) this.dropBox(shadow);
+    this.selectionShadows = [];
   }
 
   private lastHoverKey = '';
+  private hover: { mesh: THREE.Mesh; edge: THREE.LineSegments } | null = null;
 
-  /** Keyed so a stationary hover — pointermove fires per pixel — doesn't rebuild geometry. The
-   *  sampled surface top rides in the key, so a terrain edit under a still cursor still rebuilds. */
+  /** The hover preview: a shadow over the target's footprint, draped on the ground so it shows the
+   *  area the item stands on. The interface outlines an object's projected body around it. Keyed so a
+   *  stationary hover (pointermove fires per pixel) does not rebuild geometry; the sampled surface top
+   *  rides in the key, so a terrain edit under a still cursor still rebuilds. */
   showHover(x: number, y: number, w = 1, h = 1, terrainMode = false): void {
+    setHoverTarget({ x, y, w, h, terrainMode });
     const top = this.surfaceTop(x, y, w, h, terrainMode);
     const key = `${x},${y},${w},${h},${terrainMode ? 1 : 0},${top}`;
     if (this.hover && key === this.lastHoverKey) return;
     this.lastHoverKey = key;
-    this.clearHover();
-    this.hover = this.makeBox(x, y, w, h, terrainMode, 0xf5f5f5, 0.08, 0.5, top);
+    if (this.hover) this.dropBox(this.hover);
+    this.hover = this.makeBox(x, y, w, h, terrainMode, GROUND_SHADOW, SHADOW_FILL, SHADOW_EDGE, top);
   }
 
   clearHover(): void {
+    setHoverTarget(null);
     if (this.hover) this.dropBox(this.hover);
     this.hover = null;
   }
 
-  /** The Ctrl+drag rubber band: the same surface-draped box geometry as hover/selection, so it
-   *  drapes over terrain identically. No terrainMode shift, since a band only selects objects. */
+  /** The Ctrl+drag rubber band: surface-draped box geometry, so it drapes over terrain. No
+   *  terrainMode shift, since a band only selects objects. */
   showBand(rect: MacroRect): void {
     this.clearBand();
-    this.band = this.makeBox(rect.x, rect.y, rect.w, rect.h, false, 0x4da6ff, 0.08, 0.7);
+    this.band = this.makeBox(rect.x, rect.y, rect.w, rect.h, false, BAND_COLOR, 0.08, 0.7);
   }
 
   clearBand(): void {
@@ -694,9 +702,15 @@ export class Overlay3D implements ToolOverlay {
 
   // ── buildable region ───────────────────────────────────────────────────────
 
-  showBuildableRegion(cells: MacroCoord[], terrainMode: boolean): void {
-    this.clearBuildableRegion();
-    this.buildableAsk = { cells: [...cells], terrainMode };
+  showBuildableRegion(cells: MacroCoord[], terrainMode: boolean, dimensionScale?: number): void {
+    this.dropBuildableRegion();
+    this.buildableAsk = { cells: [...cells], terrainMode, dimensionScale };
+    const bounds = dimensionScale === undefined ? null : cellEdges(cells);
+    if (bounds && dimensionScale !== undefined) {
+      const offset = terrainMode ? 0 : 0.5;
+      const shifted = { left: bounds.left + offset, right: bounds.right + offset, top: bounds.top + offset, bottom: bounds.bottom + offset };
+      this.regionDimensions.update(this.state(), null, { draft: null, tagLabel: () => '', dimensions: dimensionDrawing(shifted, dimensionScale) });
+    } else this.regionDimensions.update(this.state(), null, { draft: null, tagLabel: () => '' });
     const data = cellDecals(this.state(), cells, terrainMode);
     if (!data.positions.length) return;
     const geo = toGeo(data);
@@ -721,7 +735,7 @@ export class Overlay3D implements ToolOverlay {
   refreshBuildable(): void {
     const ask = this.buildableAsk;
     if (!ask) return;
-    this.showBuildableRegion(ask.cells, ask.terrainMode);
+    this.showBuildableRegion(ask.cells, ask.terrainMode, ask.dimensionScale);
   }
 
   /** The pulse in flight: when it started, how long it runs and how far the drape dips. */
@@ -763,6 +777,12 @@ export class Overlay3D implements ToolOverlay {
   }
 
   clearBuildableRegion(): void {
+    this.regionDimensions.update(this.state(), null, { draft: null, tagLabel: () => '' });
+    this.dropBuildableRegion();
+    this.requestRender();
+  }
+
+  private dropBuildableRegion(): void {
     this.endRegionPulse();
     this.buildableAsk = null;
     if (!this.buildable) return;
@@ -805,7 +825,7 @@ export class Overlay3D implements ToolOverlay {
     const data = cellDecals(this.state(), cells, true);
     if (!data.positions.length) return;
     const geo = toGeo(data);
-    const mat = makeMat(0xffd75e, 0.55);
+    const mat = makeMat(ROUTE_TINT, 0.55);
     const mesh = new THREE.Mesh(geo, mat);
     this.group.add(mesh);
     this.route = { mesh, geo, mat };
@@ -840,6 +860,7 @@ export class Overlay3D implements ToolOverlay {
     this.clearHover();
     this.clearBand();
     this.clearBuildableRegion();
+    this.regionDimensions.dispose();
     this.clearRoute();
     for (const f of this.flashes) {
       this.group.remove(f.mesh);

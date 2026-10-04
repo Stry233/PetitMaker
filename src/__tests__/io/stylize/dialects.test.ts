@@ -165,6 +165,24 @@ describe('DIALECTS', () => {
 
 /* ── gemini: request shape, wire placement, listModels, judge ────────────────────────────────── */
 
+describe.each([
+  ['openai-images', openaiImagesDialect],
+  ['openai-compatible', openaiCompatibleDialect],
+  ['ark-images', arkImagesDialect],
+  ['stepfun-images', stepfunImagesDialect],
+] as const)('the %s dialect\'s reply', (_name, dialect) => {
+  it('accepts a url reply and re-encodes it to a data URL', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(jsonResponse(200, { data: [{ url: 'https://cdn.example/out.png' }] }))
+      .mockResolvedValueOnce(new Response(new Uint8Array([0x89, 0x50, 0x4e, 0x47]), { status: 200, headers: { 'content-type': 'image/png' } }));
+    vi.stubGlobal('fetch', fetchMock);
+    const result = await dialect.generate(
+      cfg(), { images: [{ role: 'source', dataUrl: SOURCE_DATA_URL }], prompt: 'p', aspectId: '1:1' },
+    );
+    expect(result.startsWith('data:image/png;base64,')).toBe(true);
+  });
+});
+
 describe('gemini dialect', () => {
   it('POSTs generateContent with the key header, source LAST among the image parts, and the prompt verbatim', async () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, {
@@ -292,18 +310,6 @@ describe('openai-images dialect', () => {
     expect(firstBuf).toEqual(expectedBuf);
   });
 
-  it('accepts a url reply and re-encodes it to a data URL', async () => {
-    const fetchMock = vi.fn()
-      .mockResolvedValueOnce(jsonResponse(200, { data: [{ url: 'https://cdn.example/out.png' }] }))
-      .mockResolvedValueOnce(new Response(new Uint8Array([0x89, 0x50, 0x4e, 0x47]), { status: 200, headers: { 'content-type': 'image/png' } }));
-    vi.stubGlobal('fetch', fetchMock);
-
-    const result = await openaiImagesDialect.generate(
-      cfg(), { images: [{ role: 'source', dataUrl: SOURCE_DATA_URL }], prompt: 'p', aspectId: '1:1' },
-    );
-    expect(result.startsWith('data:image/png;base64,')).toBe(true);
-  });
-
   it('listModels keeps only gpt-image/dall-e ids, newest first', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(200, {
       data: [{ id: 'gpt-image-1' }, { id: 'dall-e-3' }, { id: 'gpt-4o' }, { id: 'gpt-image-2' }],
@@ -356,17 +362,6 @@ describe('openai-compatible dialect', () => {
     const body = JSON.parse(fetchMock.mock.calls[0]![1].body as string);
     expect('image2' in body).toBe(false);
     expect('image3' in body).toBe(false);
-  });
-
-  it('accepts a url reply and re-encodes it to a data URL', async () => {
-    const fetchMock = vi.fn()
-      .mockResolvedValueOnce(jsonResponse(200, { data: [{ url: 'https://cdn.example/out.png' }] }))
-      .mockResolvedValueOnce(new Response(new Uint8Array([0x89, 0x50, 0x4e, 0x47]), { status: 200, headers: { 'content-type': 'image/png' } }));
-    vi.stubGlobal('fetch', fetchMock);
-    const result = await openaiCompatibleDialect.generate(
-      cfg(), { images: [{ role: 'source', dataUrl: SOURCE_DATA_URL }], prompt: 'p', aspectId: '1:1' },
-    );
-    expect(result.startsWith('data:image/png;base64,')).toBe(true);
   });
 
   it('listModels returns every id the endpoint lists, uncurated', async () => {
@@ -423,17 +418,6 @@ describe('ark-images dialect', () => {
     const body = JSON.parse(fetchMock.mock.calls[0]![1].body as string) as Record<string, unknown>;
     expect(body.image).toBe(SOURCE_DATA_URL);
     expect(body.size).toBe('2048x2048');
-  });
-
-  it('accepts a url reply and re-encodes it to a data URL', async () => {
-    const fetchMock = vi.fn()
-      .mockResolvedValueOnce(jsonResponse(200, { data: [{ url: 'https://cdn.example/out.png' }] }))
-      .mockResolvedValueOnce(new Response(new Uint8Array([0x89, 0x50, 0x4e, 0x47]), { status: 200, headers: { 'content-type': 'image/png' } }));
-    vi.stubGlobal('fetch', fetchMock);
-    const result = await arkImagesDialect.generate(
-      cfg(), { images: [{ role: 'source', dataUrl: SOURCE_DATA_URL }], prompt: 'p', aspectId: '1:1' },
-    );
-    expect(result.startsWith('data:image/png;base64,')).toBe(true);
   });
 
   it('listModels keeps seedream/seededit ids, newest first, and answers null on a refused list', async () => {
@@ -498,17 +482,6 @@ describe('stepfun-images dialect', () => {
     const sent = await readBlobBytes(form.get('image') as Blob);
     const expectedBuf = Uint8Array.from(atob(TINY_PNG_B64), (c) => c.charCodeAt(0));
     expect(sent).toEqual(expectedBuf);
-  });
-
-  it('accepts a url reply and re-encodes it to a data URL', async () => {
-    const fetchMock = vi.fn()
-      .mockResolvedValueOnce(jsonResponse(200, { data: [{ url: 'https://cdn.example/out.png' }] }))
-      .mockResolvedValueOnce(new Response(new Uint8Array([0x89, 0x50, 0x4e, 0x47]), { status: 200, headers: { 'content-type': 'image/png' } }));
-    vi.stubGlobal('fetch', fetchMock);
-    const result = await stepfunImagesDialect.generate(
-      cfg(), { images: [{ role: 'source', dataUrl: SOURCE_DATA_URL }], prompt: 'p', aspectId: '1:1' },
-    );
-    expect(result.startsWith('data:image/png;base64,')).toBe(true);
   });
 
   it('listModels keeps ids matching step*(image|1x), newest first', async () => {

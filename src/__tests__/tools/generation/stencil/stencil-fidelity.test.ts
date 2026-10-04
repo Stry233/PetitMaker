@@ -193,7 +193,7 @@ describe('a small region reproduces a picture', () => {
     expect(Math.abs(mean(mixed) - 0x80)).toBeLessThan(12);
   });
 
-  it('is deterministic, twice over the same picture', () => {
+  it('reproduce is deterministic, twice over the same picture', () => {
     const src = pixels(HEART, 5);
     const box = { width: 22, height: 22 };
     const once = reproduce(sampled(src, box), ITEMS, true);

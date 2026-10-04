@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { hexToRgb01, terrainColor, waterColor, objectColor } from '../../canvas/map3d/core/palette';
 import { ELEVATION_COLORS, WATER_COLOR } from '../../core/model/constants';
 import { ItemCategory } from '../../core/model/types';
-import { animConfig } from '../../core/runtime/anim-config';
+import { CATEGORY_BY_ID } from '../../config/catalog/categories';
 
 describe('preview3d/core/palette', () => {
   it('parses #rrggbb into 0..1 rgb', () => {
@@ -22,7 +22,7 @@ describe('preview3d/core/palette', () => {
 
   it('an object with no own color falls back to its catalog category tint', () => {
     const c = objectColor({ color: undefined }, { category: ItemCategory.Tree, color: undefined });
-    const expected = hexToRgb01('#' + animConfig.categoryColor[ItemCategory.Tree].toString(16).padStart(6, '0'));
+    const expected = hexToRgb01('#' + CATEGORY_BY_ID.get(ItemCategory.Tree)!.tint.toString(16).padStart(6, '0'));
     expect(c).toEqual(expected);
   });
 

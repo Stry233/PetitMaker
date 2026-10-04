@@ -5,6 +5,8 @@
 // that decision is pure. The map half asserts the two things a composition can only be judged on
 // once it is down: the rules accepted every mark (a refused plant is a hole in a mirror), and the
 // finished map scores in the reference maps' own bands for symmetry, unity and density.
+import { CHUNK_LOAD_LIMIT } from '../../../../../core/model/game-profile';
+import { getMapStats } from '../../../../../state/map-stats';
 import { describe, it, expect, vi } from 'vitest';
 
 // Synchronous generation batch; tens of seconds on an idle machine.
@@ -200,9 +202,9 @@ describe('a kit fills its lot', () => {
 
 interface Run { state: GridState; outcome: DesignedOutcome }
 
-function build(seed: number, template: MapTemplate, richness = 0.5): Run {
+function build(seed: number, template: MapTemplate, richness = 0.5, ignoreChunkLoad = false): Run {
   const state: GridState = {
-    template, cells: createGrid(template), objects: new Map(), lockedLayers: new Set(),
+    template, cells: createGrid(template), objects: new Map(), lockedLayers: new Set(), ignoreChunkLoad,
   };
   const plaza = createPlazaObject(template);
   if (plaza) state.objects.set(plaza.id, plaza);
@@ -213,17 +215,23 @@ function build(seed: number, template: MapTemplate, richness = 0.5): Run {
       state, execute: (c: Command) => exec.execute(c), reg: exec.getRegistry(), seed, richness,
     });
   });
-  exec.commitStrokeGroup(exec.getUndoStackSize());
+  exec.commitStroke(exec.getUndoStackSize());
+  if (!ignoreChunkLoad) {
+    for (const [key, chunk] of getMapStats(state).chunks) {
+      expect(chunk.load, `${template.id}/${seed} region ${key}`).toBeLessThanOrEqual(CHUNK_LOAD_LIMIT);
+    }
+  }
   return { state, outcome: outcome! };
 }
 
 describe('the dressed map', () => {
-  it('has every composed mark accepted by the rules', () => {
+  it.each([['on', false], ['off', true]] as const)('has every composed mark accepted by the rules with the load limit %s', (_, ignoreChunkLoad) => {
     for (const template of [HEXIA, TAFA]) {
       for (const seed of SEEDS) {
-        const { outcome } = build(seed, template);
+        const { outcome } = build(seed, template, 0.5, ignoreChunkLoad);
         expect(outcome.dressing.refused, `${template.id}/${seed}`).toBe(0);
         expect(outcome.dressing.planted, `${template.id}/${seed}`).toBeGreaterThan(400);
+        if (ignoreChunkLoad) expect(outcome.dressing.overBudget, `${template.id}/${seed}`).toBe(0);
       }
     }
   });

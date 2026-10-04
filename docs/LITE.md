@@ -1,6 +1,6 @@
 # PetitMaker (Lite) for Xiaohongshu
 
-PetitMaker (Lite) (谷地工坊 (Lite)) is an offline edition for Xiaohongshu’s 小工具 container. It shares PetitMaker’s map rules, terrain and object tools, annotations, undo and redo, local autosave, seven interface languages, and 2D and supported-device 3D views.
+PetitMaker (Lite) (谷地工坊 (Lite)) is an offline edition for Xiaohongshu’s 小工具 container. It shares PetitMaker’s map rules, terrain and object tools, custom planets, annotations, undo and redo, local autosave, seven interface languages, and 2D and supported-device 3D views.
 
 ## Build and preview
 
@@ -24,7 +24,7 @@ The ZIP has one `index.html` at its root and relative references to its bundled 
 
 | Area | Lite behavior |
 | --- | --- |
-| Editing | Terrain, roads, objects, layers, annotations, undo and redo use the shared editor and game rules. |
+| Editing | Terrain, roads, objects, layers, annotations, undo and redo use the shared editor and game rules. Change a planet offers the built-in planets and My planets, including drawing your own planet; planet file import and export are omitted along with JSON files. |
 | Viewing | 2D works with WebGL or the Canvas2D fallback. 3D requires WebGL2. Settings retains Auto, Full and Light. Auto starts with shadows and multisampling disabled; Full uses a 1024-pixel shadow map and bounded 2-sample antialiasing. Drawing buffers start at at most 1× density and approximately one million pixels. On hardware with sustained rendering headroom, Auto and Full raise clarity up to the web edition’s device-density cap of 2×, with an eight-million-pixel ceiling. Light stays conservative. Sustained slowdown reduces effects and resolution, and stops further increases for that scene. Resource pressure lowers quality when frames exceed the rendering time budget. Only sustained slow rendering after reaching the minimum quality returns to 2D; cursor redraws and scene complexity alone do not force that fallback. |
 | Saving | Local autosave restores the map and available undo history on the same device. Container data can be cleared, so this is not a portable backup. |
 | Pictures | The shared image composer provides title and description fields, four output sizes, layer previews, editable 3D shots, grid and annotation controls, and a customizable footer. Lite’s Share Image and Plain Image presets set presentation defaults; Share Image enables PetitGlyph by default so the picture can carry an editable map. Plain Image leaves it out by default. Save to album and Create a note use the injected Xiaohongshu SDK after the export acknowledgement. Opening the composer does not publish the note. |

@@ -49,7 +49,7 @@ describe('V-MTN-03: 3x3 Base Support', () => {
 
   it('a water cell in the 3x3 window supports like the block it replaced', () => {
     // The game forms waterfalls by CONVERTING a mountain block to water among its standing
-    // neighbours (游戏内建造规则 rule 8), so the conversion must be support-neutral: water at N
+    // neighbours, so the conversion must be support-neutral: water at N
     // fills its cell to N in a neighbour's window, even though nothing may be built ON it.
     const state = makeState();
     for (let dy = -1; dy <= 1; dy++)
@@ -233,5 +233,23 @@ describe('V-MTN-03: an elevated pond survives its own rim (real commands)', () =
     for (let e = 1; e <= 5; e++) ex.execute(paintCmd([{ x: 14, y: 14 }], TerrainType.Mountain, e));
     expect(ex.commitStroke(0).some(e => e.ruleId === 'V-MTN-03')).toBe(true);
     expect(state.cells[14]![14]!.terrain?.elevation ?? 0).toBeLessThan(4);
+  });
+});
+
+describe('V-MTN-03: a 3x3 block is not its own base', () => {
+  // Side view:
+  // M M M   (layer 4)
+  // M M M   (layer 3)
+  // M M M   (layer 2)
+  // M M M   (layer 1)
+  // .........
+  // The edge blocks at layer 4 have no 3x3 base of mountain at elev >= 1
+  it('rejects 3x3 layer-4 block without proper lower base', () => {
+    const state = makeState(10, 10);
+    for (let dy = -1; dy <= 1; dy++)
+      for (let dx = -1; dx <= 1; dx++)
+        setTerrain(state, 5 + dx, 5 + dy, TerrainType.Mountain, 4);
+    const errors = baseSupportRule.validate(state);
+    expect(errors.length).toBeGreaterThan(0);
   });
 });

@@ -25,15 +25,15 @@ import a397542864 from '../assets/team/397542864.jpg';
 import a671142687 from '../assets/team/671142687.jpg';
 
 // Keyed by Bilibili MID (the numeric id in space.bilibili.com/<mid>), which is
-// also the `avatar` field on each LEGAL.team entry.
+// also the `avatar` field on each LEGAL.team entry; config.ts owns the names.
 export const TEAM_AVATARS: Record<string, string> = {
-  '25599535': a25599535, // 镜喵MirrorCat
-  '3632319829116985': a3632319829116985, // 鱼松吃点吗
-  '16699168': a16699168, // 火山野牛王
-  '3546659724200757': a3546659724200757, // Selka
-  '215541807': a215541807, // 晶焰EXFire
-  '397542864': a397542864, // 奕言君
-  '671142687': a671142687, // 星灭散落
+  '25599535': a25599535,
+  '3632319829116985': a3632319829116985,
+  '16699168': a16699168,
+  '3546659724200757': a3546659724200757,
+  '215541807': a215541807,
+  '397542864': a397542864,
+  '671142687': a671142687,
 };
 
 /** Resolve a team member's bundled avatar URL from its MID, or undefined. */

@@ -1,10 +1,10 @@
 import type { MacroCoord, MicroCoord } from '../../core/model/types';
 import { ToolType } from '../../core/model/types';
-import { isBuildableZone } from '../../core/model/grid-model';
+import { isBuildableZone, mapVersionKey } from '../../core/model/grid-model';
 import type { CursorId } from '../../core/runtime/cursor-spec';
 import { showToast } from '../../core/runtime/toast-bus';
 import type { Tool, ToolContext } from '../runtime/types';
-import { applyMacro, applyMacroAsync, hasMacroBuildRunner, MACRO_IDS, patchScope, type MacroId, type MacroOutcome } from './run';
+import { applyMacro, applyMacroAsync, hasMacroBuildRunner, MACRO_IDS, MACROS, patchScope, type MacroId, type MacroOutcome } from './run';
 import { previewMacroAsync } from './preview';
 import { SmartDrag } from './drag-tool';
 import { MountainSpray } from './spray-tool';
@@ -16,7 +16,6 @@ const SPRAY_STEP = 3;
 export function armedMacroId(ctx: ToolContext): MacroId | null {
   return ctx.armedMacro !== null && (MACRO_IDS as readonly string[]).includes(ctx.armedMacro) ? ctx.armedMacro as MacroId : null;
 }
-
 
 interface Spray {
   id: MacroId;
@@ -49,7 +48,7 @@ export class MacroTool implements Tool {
   private previewing = false;
   private wanted: { coord: MacroCoord; key: string; ctx: ToolContext; id: MacroId; seed: number; radius: number } | null = null;
 
-  terrainGrid(ctx: ToolContext): boolean { return ctx.armedMacro === 'raise' || ctx.armedMacro === 'stream'; }
+  terrainGrid(ctx: ToolContext): boolean { const id = armedMacroId(ctx); return id !== null && MACROS[id].grid === 'terrain'; }
 
   canActAt(coord: MacroCoord, ctx: ToolContext): boolean {
     const cell = ctx.gridState.cells[coord.y]?.[coord.x];
@@ -99,11 +98,28 @@ export class MacroTool implements Tool {
       spray.changes += outcome.changes; spray.pending--;
       if (spray.done && spray.pending === 0) this.settleSpray(spray);
     };
-    if (!hasMacroBuildRunner()) { after(applyMacro(ctx.macroContext, spray.id, opts)); return; }
+    if (!hasMacroBuildRunner()) {
+      let outcome: MacroOutcome;
+      try { outcome = applyMacro(ctx.macroContext, spray.id, opts); } catch (error) { this.failSpray(spray, error); return; }
+      after(outcome);
+      return;
+    }
     this.applying = this.applying.then(async () => {
-      try { after(await applyMacroAsync(ctx.macroContext, spray.id, opts)); }
-      catch (error) { console.error('[macro] landing failed', error); after({ changes: 0 }); }
+      let outcome: MacroOutcome;
+      try { outcome = await applyMacroAsync(ctx.macroContext, spray.id, opts); } catch (error) { this.failSpray(spray, error); return; }
+      after(outcome);
     });
+  }
+
+  /** A landing that throws has rolled its own run back; the spray stops there and settles what
+   *  earlier bursts planted as its one undo step. */
+  private failSpray(spray: Spray, error: unknown): void {
+    console.error('[macro] landing failed', error);
+    if (this.spray === spray) this.spray = null;
+    clearInterval(spray.timer);
+    spray.done = true;
+    spray.pending--;
+    if (spray.pending === 0) this.settleSpray(spray);
   }
 
   private finishSpray(): void {
@@ -128,9 +144,8 @@ export class MacroTool implements Tool {
       if (Math.hypot(coord.x - this.spray.last.x, coord.y - this.spray.last.y) >= SPRAY_STEP && this.spray.pending === 0) this.burst(coord);
       return;
     }
-    const { cellsVersion = 0, objectsVersion = 0 } = ctx.gridState;
     const radius = sprayRadius(ctx.brushSize);
-    const key = [id, this.seed, radius, coord.x, coord.y, cellsVersion, objectsVersion, [...ctx.gridState.lockedLayers].join(',')].join('|');
+    const key = [id, this.seed, radius, coord.x, coord.y, mapVersionKey(ctx.gridState)].join('|');
     if (key === this.ghostKey) { this.wanted = null; return; }
     this.wanted = { coord, key, ctx, id, seed: this.seed, radius }; this.pumpGhost();
   }

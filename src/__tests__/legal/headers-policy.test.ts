@@ -168,6 +168,14 @@ describe('fullCspString() / headerEntries() — the header-adapter view', () => 
     expect(fullCspString()).toContain("frame-ancestors 'none'");
   });
 
+  it('emits every directive in declaration order, including one added later', () => {
+    const policy = { ...HEADERS_POLICY, cspDirectives: { ...HEADERS_POLICY.cspDirectives, 'worker-src': ["'self'"] } };
+    const names = fullCspString(policy).split('; ').map((part) => part.split(' ')[0]);
+    expect(names).toEqual(Object.keys(policy.cspDirectives));
+    const meta = toCspMeta(policy).split('; ').map((part) => part.split(' ')[0]);
+    expect(meta).toEqual(Object.keys(policy.cspDirectives).filter((name) => !policy.headerOnlyDirectives.includes(name)));
+  });
+
   it('headerEntries lists CSP first, then every static header', () => {
     const entries = headerEntries();
     expect(entries[0]?.[0]).toBe('Content-Security-Policy');

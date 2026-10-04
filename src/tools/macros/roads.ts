@@ -38,6 +38,7 @@ import type { MacroRefusal } from './run';
 import { objectsChanged } from './measure';
 import { floodFrom, networkCells } from './walkable';
 import { beautifyRoads, ensureGateTerminals, ringCells, standingNodes, widenRoads } from './road-paving';
+import { isCoatingItem } from '../../core/model/traits';
 
 /** The router's `settlement` knob. The macro connects what is there rather than sizing a village,
  *  so it runs at the generator's own midpoint and lets the node list decide the extent. */
@@ -143,7 +144,7 @@ function allHamletsReached(reach: Uint8Array, W: number, nodes: readonly Node[])
   return hamlets.every((n) => reach[n.pos.y * W + n.pos.x] === 1);
 }
 
-/** Every unlocked building on the map that HAS a door (`hasGate`: a Building of 2x2 or more), with
+/** Every unlocked building on the map that HAS a door (`hasGate`), with
  *  the cell a road is supposed to meet it at. */
 function gatedBuildings(state: GridState, W: number, H: number): { obj: PlacedObject; approach: MacroCoord }[] {
   const out: { obj: PlacedObject; approach: MacroCoord }[] = [];
@@ -265,7 +266,7 @@ export function layRoadNetwork(ctx: MacroContext, input: RoadNetworkInput): Road
   let narrowedByPlanting = 0;
   if (width > 1 && materialId) {
     const fresh = [...state.objects.values()]
-      .filter((o) => !before.has(o.id) && getCatalogItem(o.catalogId)?.category === ItemCategory.Road);
+      .filter((o) => !before.has(o.id) && isCoatingItem(getCatalogItem(o.catalogId)));
     narrowedByPlanting = widenRoads(ctx, materialId, width, fresh);
   }
   // GATES ARE THE TERMINALS HERE TOO, and asserted rather than hoped for: `ensureGateTerminals`'
@@ -291,7 +292,7 @@ export function layRoadNetwork(ctx: MacroContext, input: RoadNetworkInput): Road
   // exactly as `road-link` runs it: a smart press has always laid square corners while a brush
   // stroke beside it got them cut, which read as two different road tools.
   const allFresh = [...state.objects.values()]
-    .filter((o) => !before.has(o.id) && getCatalogItem(o.catalogId)?.category === ItemCategory.Road)
+    .filter((o) => !before.has(o.id) && isCoatingItem(getCatalogItem(o.catalogId)))
     .map((o) => o.position);
   beautifyRoads(ctx, allFresh, input.trim ?? 'off');
 

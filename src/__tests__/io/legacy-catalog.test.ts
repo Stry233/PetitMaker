@@ -8,7 +8,7 @@ import { serialize, deserialize } from '../../io/json-codec';
 import { decodeHistory, encodeHistory } from '../../io/history-codec';
 import { RETIRED_CATALOG_IDS, currentCatalogId } from '../../io/legacy-catalog';
 import { encodeMapPayload, decodeMapPayload } from '../../io/share/codec/payload';
-import { createBlankGridState } from '../../io/share/codec/blank-grid';
+import { createGridState } from '../../core/model/planet';
 import { toSaveJSON } from '../../io/share/canonical';
 import { SHARE_CATALOG_ORDER } from '../../io/share/codec/catalog-order';
 import { getMapTemplate } from '../../config/maps';
@@ -102,7 +102,7 @@ describe('a share code written before the retirement', () => {
   /** A frame coded with a retired id, exactly as an already-shared image carries it: the wire order
    *  still holds the name at its old index, so the encoder writes the index it always wrote. */
   async function legacyFrame(): Promise<Uint8Array> {
-    const s = createBlankGridState('hexia') as GridState;
+    const s = createGridState(getMapTemplate('hexia')) as GridState;
     s.objects.set('r', { id: 'r', catalogId: 'road-dirt', position: { x: 20, y: 20 }, rotation: 0, elevation: 0 });
     s.objects.set('t', { id: 't', catalogId: 'tree-ginkgo', position: { x: 24, y: 20 }, rotation: 0, elevation: 0 });
     return encodeMapPayload(s, null, { appVersion: 'retired-pin', saveVersion: 1 });

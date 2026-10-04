@@ -43,8 +43,8 @@ describe('the anchor set', () => {
     expect(list.some((r) => r.kind === 'shop')).toBe(true);
   });
 
-  // ONE HOME, ONE REGION. Gathering homes into clusters of two to four is a fair reading of the PDF's
-  // 住宅区 and not what either reference map does: every one of the style target's twelve buildings
+  // ONE HOME, ONE REGION. Gathering homes into clusters of two to four is a fair reading of the
+  // methodology's residential district and not what either reference map does: every one of the style target's twelve buildings
   // stands in a neighbourhood of its own. A region per home is what gives each its own palette and its
   // own composed surroundings, and what lets the layout spread them across the planet.
   it('gives every home its own region', () => {
@@ -63,7 +63,7 @@ describe('the anchor set', () => {
     for (const item of anchorCatalogItems()) expect(rows.has(item.id), item.id).toBe(true);
   });
 
-  it('routes the museum stand-in and the shop to their own anchors', () => {
+  it('routes the Omni-Gallery and the shop to their own anchors', () => {
     const pavilion = getPlaceableByCategory(ItemCategory.Facility).find((i) => i.id === 'facility-pavilion');
     const shop = getPlaceableByCategory(ItemCategory.Facility).find((i) => i.id === 'facility-shop');
     expect(pavilion && anchorRoleOf(pavilion)).toBe('museum');

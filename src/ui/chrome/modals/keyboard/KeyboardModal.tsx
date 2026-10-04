@@ -1,4 +1,8 @@
-import { TOOLBAR_CONTEXTS, toolbarLabel, type ToolbarContext } from '../../../../core/runtime/toolbar-bindings';
+import { cssMotion, framerMotion } from '../../../design/motion';
+import { BOARD_IN, CLUSTER_IN, ROW_IN, ROW_IN_REDUCED } from './motion';
+import { interactionProfiles, font, radii, inkTint, springs, buttonMotion, cursors } from '../../../design/styles';
+import { useChromeScale } from '../../../design/scale';
+import { toolbarLabel } from '../../../../core/runtime/toolbar-bindings';
 import { useToolbarContext } from '../../../shell/use-toolbar-context';
 import { clientPoint } from '../../../../core/runtime/viewport-space';
 /*
@@ -10,11 +14,10 @@ import { clientPoint } from '../../../../core/runtime/viewport-space';
  * bindable here, no per-command wiring. Fully DOM, so it is verifiable via the headless-Firefox
  * screenshot loop.
  */
-import { IS_LITE } from '../../../../core/runtime/edition';
+import { SUPPORTS_JSON_FILES } from '../../../../core/runtime/edition';
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from 'react';
-import { motion, AnimatePresence, useReducedMotionConfig, type Variants } from 'framer-motion';
+import { motion, AnimatePresence, useReducedMotionConfig } from 'framer-motion';
 import { useT } from '../../../../i18n/context';
-import { font, radii, inkTint, springs, buttonMotion, cursors } from '../../../design/styles';
 import {
   skin, windowCard, windowInset, windowMenu, windowMenuItem, windowMenuItemHover, windowPill,
   windowTitle, type WindowSurface,
@@ -35,7 +38,7 @@ import {
 } from './layout';
 import { visualRect } from '../../../design/visual-rect';
 
-export interface KeyboardModalProps { open?: boolean; onClose: () => void }
+interface KeyboardModalProps { open?: boolean; onClose: () => void }
 
 // Keycap metrics. Sized so the labels stay legible after the chrome zoom shrinks the card on a short
 // viewport, and so keycap type sits in the same range as the rest of the chrome (the board simply gets
@@ -151,7 +154,7 @@ function BoardHBar({ left, vw, cw, label, onScrollTo }: {
           position: 'absolute', top: (HBAR_H - HBAR_THUMB) / 2, height: HBAR_THUMB,
           left: `${posFrac * (1 - thumbFrac) * 100}%`, width: `${thumbFrac * 100}%`,
           borderRadius: radii.pill, background: hover ? HBAR_FILL_HOVER : HBAR_FILL,
-          transition: 'background-color 0.15s ease',
+          transition: cssMotion('control.paint', ['background-color']),
         }}
       />
     </div>
@@ -169,7 +172,7 @@ const closeStyle: CSSProperties = {
  *  whatever the key count, so widths are summed, and the widest main row sets the board. */
 const clusterW = (units: number): number => units * UNIT + (units - 1) * GAP;
 const BOARD_UNITS = Math.max(...KEY_ROWS.map((r) => r.reduce((s, k) => s + (k.w ?? 1), 0)));
-export const KEYBOARD_W = clusterW(BOARD_UNITS) + BOARD_GAP * 2 + clusterW(NAV_COLS) + clusterW(NUMPAD_COLS);
+const KEYBOARD_W = clusterW(BOARD_UNITS) + BOARD_GAP * 2 + clusterW(NAV_COLS) + clusterW(NUMPAD_COLS);
 const KEYBOARD_H = KEY_ROWS.length * KEY_H + (KEY_ROWS.length - 1) * GAP;
 
 // The window pill, at this page's own size (its rows are denser than Settings'). `primary` is the
@@ -213,25 +216,11 @@ function menuItem(active: boolean): CSSProperties {
  * settles, so the eye follows it coming together instead of being handed all ~100 keys at once.
  * One short cascade (~0.3s total), spring physics, and no movement at all under reduced motion.
  */
-const BOARD_IN: Variants = { hidden: {}, show: { transition: { delayChildren: 0.05, staggerChildren: 0.045 } } };
-const CLUSTER_IN: Variants = { hidden: {}, show: { transition: { staggerChildren: 0.028 } } };
-const ROW_IN: Variants = {
-  hidden: { opacity: 0, y: 10 },
-  show: { opacity: 1, y: 0, transition: { type: 'spring', stiffness: 520, damping: 34, mass: 0.6 } },
-};
-/** Reduced motion keeps the cascade's ORDER but drops the travel, so nothing slides. */
-const ROW_IN_REDUCED: Variants = {
-  hidden: { opacity: 0 },
-  show: { opacity: 1, transition: { duration: 0.12 } },
-};
-
 /* ── component ────────────────────────────────────────────────────────────── */
 
 export function KeyboardModal({ open = true, onClose }: KeyboardModalProps) {
   const t = useT();
-  const activeToolbar = useToolbarContext();
-  const [toolbar, setToolbar] = useState<ToolbarContext>(activeToolbar);
-  useEffect(() => { if (open) setToolbar(activeToolbar); }, [open, activeToolbar]);
+  const toolbar = useToolbarContext();
   const overrides = useKeybinds((s) => s.overrides);
   const rebind = useKeybinds((s) => s.rebind);
   const clear = useKeybinds((s) => s.clear);
@@ -252,7 +241,7 @@ export function KeyboardModal({ open = true, onClose }: KeyboardModalProps) {
   const kbdFade = useScrollFadeBoth(kbdRef);
   // When the window is short enough that only sideways travel remains, a mouse's vertical
   // notches drive it; with vertical room the hook stands aside and the wheel scrolls as usual.
-  useWheelToHorizontal(kbdRef);
+  useWheelToHorizontal(kbdRef, { zoom: useChromeScale() });
 
   // The board region's live scroll geometry, feeding the drawn horizontal bar below it and the
   // board's own zoom.
@@ -397,9 +386,9 @@ export function KeyboardModal({ open = true, onClose }: KeyboardModalProps) {
         onClick={onClick}
         title={cmd ? label(cmd.id) : undefined}
         animate={{ backgroundColor: bg }}
-        whileHover={interactive ? { y: -2 } : undefined}
-        whileTap={interactive ? { scale: 0.93 } : undefined}
-        transition={{ default: springs.stiff, backgroundColor: { duration: 0.18, ease: 'easeOut' } }}
+        whileHover={interactive ? interactionProfiles.keyboardKey.whileHover : undefined}
+        whileTap={interactive ? interactionProfiles.keyboardKey.whileTap : undefined}
+        transition={{ default: springs.stiff, backgroundColor: framerMotion('control.tint') }}
       >
         {/* The engraved glyph never changes with the layer, so it stays put and is not animated. */}
         <span style={{ position: 'absolute', top: 4, left: 6, ...roleFont('small'), color: inkTint(key.fixed ? 0.55 : 0.5) }}>
@@ -416,7 +405,7 @@ export function KeyboardModal({ open = true, onClose }: KeyboardModalProps) {
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
-                transition={{ duration: 0.16, ease: 'easeOut' }}
+                transition={framerMotion('control.hint')}
                 style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
               >
                 {/* clamped INSIDE the centred fader, so a long label still ellipsizes at two lines */}
@@ -503,19 +492,6 @@ export function KeyboardModal({ open = true, onClose }: KeyboardModalProps) {
         </motion.button>
       </div>
 
-      <div data-shortcut-recording={recording || undefined} style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 10, marginBottom: 12, flexShrink: 0 }}>
-        <label style={{ ...roleFont('body'), color: skin.ink }}>
-          {t('kbd.toolbar_view')}{' '}
-          <select value={toolbar} onChange={e => { setToolbar(e.target.value as ToolbarContext); setRecording(false); setNote(null); }}
-            style={{ ...pill('quiet'), fontFamily: 'inherit' }}>
-            {TOOLBAR_CONTEXTS.map(context => <option key={context} value={context}>
-              {context === 'terrain' ? t('kbd.toolbar_terrain') : `${t('annot.layer')} (${t(context === 'notes-zone' ? 'terrain.brush' : context === 'notes-chip' ? 'annot.chip' : context === 'notes-route' ? 'annot.route' : 'annot.measure')})`}
-            </option>)}
-          </select>
-        </label>
-        <span style={{ ...roleFont('caption'), color: skin.muted, flex: '1 1 360px' }}>{t('kbd.toolbar_hint')}</span>
-      </div>
-
       {/* search (left) + reset-all (right), the same two ends the modifier row below hangs its own
           controls from. The field is a READING width rather than the board's: a search box a metre
           wide is a metre of empty paper, and its results list would inherit that span. */}
@@ -547,7 +523,7 @@ export function KeyboardModal({ open = true, onClose }: KeyboardModalProps) {
                       key={c.id}
                       onClick={() => { pick(c.id); setSearch(''); }}
                       whileHover={{ backgroundColor: windowMenuItemHover(false) }}
-                      whileTap={{ scale: 0.97 }}
+                      whileTap={interactionProfiles.toggleTap.whileTap}
                       style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', border: 'none', background: windowMenuItem(false).background, borderRadius: radii.md, padding: '9px 14px', cursor: cursors.clickable }}
                     >
                       <span style={{ width: 11, height: 11, borderRadius: 3, background: CATEGORY_COLOR[c.category], flex: '0 0 auto' }} />
@@ -577,7 +553,7 @@ export function KeyboardModal({ open = true, onClose }: KeyboardModalProps) {
           <motion.button {...buttonMotion} onClick={() => setPresetOpen((o) => !o)} style={{ ...pill('quiet'), display: 'inline-flex', alignItems: 'center', gap: 7 }}>
             <span style={{ color: skin.muted }}>{t('kbd.preset')}</span>
             {activePreset === 'custom' ? t('kbd.preset.custom') : t(PRESETS.find((p) => p.id === activePreset)!.labelKey)}
-            <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden style={{ transition: 'transform 0.18s ease', transform: presetOpen ? 'rotate(180deg)' : 'none' }}>
+            <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden style={{ transition: cssMotion('control.fade', ['transform']), transform: presetOpen ? 'rotate(180deg)' : 'none' }}>
               <path d="M2 3.5 L5 6.5 L8 3.5" fill="none" stroke={skin.ink} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
           </motion.button>
@@ -593,7 +569,7 @@ export function KeyboardModal({ open = true, onClose }: KeyboardModalProps) {
                     key={p.id}
                     onClick={() => { applyBinds(p.binds); setSelectedId(null); setPresetOpen(false); }}
                     whileHover={{ backgroundColor: windowMenuItemHover(activePreset === p.id) }}
-                    whileTap={{ scale: 0.97 }}
+                    whileTap={interactionProfiles.toggleTap.whileTap}
                     style={menuItem(activePreset === p.id)}
                   >
                     {t(p.labelKey)}
@@ -605,7 +581,7 @@ export function KeyboardModal({ open = true, onClose }: KeyboardModalProps) {
           </AnimatePresence>
         </div>
 
-        {!IS_LITE && <>
+        {SUPPORTS_JSON_FILES && <>
           <motion.button {...buttonMotion} style={pill('quiet')} onClick={() => fileRef.current?.click()}>{t('kbd.import')}</motion.button>
           <motion.button {...buttonMotion} style={pill('quiet')} onClick={onExport}>{t('kbd.export')}</motion.button>
           <input ref={fileRef} type="file" accept="application/json,.json" onChange={onImportFile} style={{ display: 'none' }} />
@@ -647,8 +623,8 @@ export function KeyboardModal({ open = true, onClose }: KeyboardModalProps) {
 
       {/* detail strip — the hint when nothing is selected, else the selected command's
           record / clear / reset controls. Pinned (always visible) below the scrolling board. */}
-      <div style={{ ...windowInset, marginTop: 16, flexShrink: 0, minHeight: 44, display: 'flex', alignItems: 'center', padding: '11px 16px' }}>
-        <motion.div key={selectedId ?? 'hint'} initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.15 }} style={{ width: '100%' }}>
+      <div data-shortcut-recording={recording || undefined} style={{ ...windowInset, marginTop: 16, flexShrink: 0, minHeight: 44, display: 'flex', alignItems: 'center', padding: '11px 16px' }}>
+        <motion.div key={selectedId ?? 'hint'} initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} transition={framerMotion('control.detail')} style={{ width: '100%' }}>
           {detail}
         </motion.div>
       </div>

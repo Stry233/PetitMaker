@@ -12,13 +12,14 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 // @ts-ignore - node:fs is untyped here (no @types/node)
 import { readFileSync } from 'node:fs';
-import { renderHook, render, screen, act, cleanup, fireEvent } from '@testing-library/react';
+import { renderHook, render, screen, act, cleanup, fireEvent, waitFor, within } from '@testing-library/react';
 import { MotionConfig } from 'framer-motion';
 import { useMotionEnabled } from '../../ui/hooks/useMotionEnabled';
 import { useEditorStore } from '../../state/store';
-import { isMotionReduced, __resetMotionState } from '../../canvas/map2d/motion-state';
+import { isMotionReduced, __resetMotionState } from '../../core/runtime/motion-state';
 import { I18nProvider } from '../../i18n/context';
 import { HintPanel } from '../../ui/hints/HintPanel';
+import { SettingsModal } from '../../ui/chrome/modals/SettingsModal';
 import { ToolType } from '../../core/model/types';
 
 /** Pretend the OS asks (or doesn't ask) for reduced motion. */
@@ -69,6 +70,31 @@ describe('useMotionEnabled publishes the effective preference', () => {
     renderHook(() => useMotionEnabled());
     expect(isMotionReduced()).toBe(false);
     expect(attr()).toBe('0');
+  });
+
+  it('updates the effective value when the OS setting changes while the app is open', () => {
+    let reduce = false;
+    const listeners = new Set<() => void>();
+    vi.stubGlobal('matchMedia', (q: string) => ({
+      get matches() { return reduce && q.includes('prefers-reduced-motion'); },
+      media: q,
+      addEventListener: (_: string, fn: () => void) => listeners.add(fn),
+      removeEventListener: (_: string, fn: () => void) => listeners.delete(fn),
+    }));
+    useEditorStore.setState({ motionPref: 'system' });
+    const hook = renderHook(() => useMotionEnabled());
+    expect(hook.result.current).toBe(false);
+
+    act(() => { reduce = true; listeners.forEach((fn) => fn()); });
+    expect(hook.result.current).toBe(true);
+    expect(isMotionReduced()).toBe(true);
+    expect(attr()).toBe('1');
+
+    act(() => useEditorStore.setState({ motionPref: 'full' }));
+    expect(hook.result.current).toBe(false);
+    expect(attr()).toBe('0');
+    hook.unmount();
+    expect(listeners.size).toBe(0);
   });
 });
 
@@ -170,4 +196,54 @@ describe('the hint panel branches its own swap on the Framer gate', () => {
     expect(shell().style.transform).toContain('scale');
     expect(shell().style.transformOrigin).toBe('100% 100%');
   });
+});
+
+/**
+ * Each motion option's sample shows its own level under every preference, so the row still
+ * explains the choice after Reduced is picked. The registry suite pins that nothing else lifts the
+ * gate.
+ */
+describe('the motion setting samples', () => {
+  afterEach(cleanup);
+
+  function mountSettings(appReduces: boolean, osReduces: boolean) {
+    mockOsPrefers(osReduces);
+    useEditorStore.setState({ locale: 'en' });
+    const noop = () => {};
+    render(
+      <MotionConfig reducedMotion={appReduces ? 'always' : 'never'}>
+        <I18nProvider>
+          <SettingsModal
+            locale="en" showGrid={false} showChunks={false} motionPref={appReduces ? 'reduced' : 'full'}
+            systemCursors={false} quality3d="auto" onQuality3dChange={noop} onLocaleChange={noop}
+            onShowGridChange={noop} onShowChunksChange={noop} onMotionPrefChange={noop}
+            onSystemCursorsChange={noop} onAbout={noop} onClose={noop}
+          />
+        </I18nProvider>
+      </MotionConfig>,
+    );
+    const group = screen.getByRole('radiogroup', { name: 'Motion' });
+    const sampleOf = (name: string) =>
+      within(group).getByRole('radio', { name }).querySelector('[data-motion-sample]') as HTMLElement;
+    return { full: sampleOf('Full'), reduced: sampleOf('Reduced'), system: sampleOf('System') };
+  }
+  /** Mid-turn: a gated spin jumps straight to its end angle, a running one passes through others. */
+  const turned = (el: HTMLElement) => {
+    const deg = Number(/rotate\(([-\d.]+)deg\)/.exec(el.style.transform)?.[1] ?? 0);
+    return deg > 0 && deg < 360;
+  };
+
+  it.each([true, false])('spins Full and holds Reduced still when the app reduces motion: %s', async (appReduces) => {
+    const samples = mountSettings(appReduces, false);
+    await waitFor(() => expect(turned(samples.full)).toBe(true));
+    expect(turned(samples.system)).toBe(true);
+    expect(turned(samples.reduced)).toBe(false);
+  });
+
+  it('holds System still when the device asks for reduced motion', async () => {
+    const samples = mountSettings(true, true);
+    await waitFor(() => expect(turned(samples.full)).toBe(true));
+    expect(turned(samples.system)).toBe(false);
+  });
+
 });

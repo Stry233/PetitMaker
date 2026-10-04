@@ -4,7 +4,8 @@
  * survive — a browser whose real maximum offset sits short of `scrollWidth - clientWidth`.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { reveal, wheelGlider } from '../../../ui/shell/bars/row-scroll';
+import { reveal } from '../../../ui/shell/bars/row-scroll';
+import { wheelGlider } from '../../../ui/primitives/scroll-input';
 
 let queue: FrameRequestCallback[] = [];
 let now = 0;

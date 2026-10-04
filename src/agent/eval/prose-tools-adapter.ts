@@ -17,7 +17,7 @@ type WireTool = AdapterRequest['tools'][number];
 type DoneEvent = Extract<StreamEvent, { t: 'done' }>;
 
 /** The protocol contract plus every tool's schema, appended to the system prompt of a prose run. */
-export function proseToolsSystemSection(tools: readonly WireTool[]): string {
+function proseToolsSystemSection(tools: readonly WireTool[]): string {
   const lines: string[] = [
     '## Tool calls, in text',
     '',
@@ -50,7 +50,7 @@ export function proseToolsSystemSection(tools: readonly WireTool[]): string {
 }
 
 /** One call, re-rendered the way the model is told to write it, for replayed history. */
-export function renderCallBlock(name: string, args: Record<string, unknown>): string {
+function renderCallBlock(name: string, args: Record<string, unknown>): string {
   return '```' + PROSE_CALL_TAG + '\n' + JSON.stringify({ tool: name, args }) + '\n```';
 }
 
@@ -85,7 +85,7 @@ export function proseMessages(messages: readonly ProviderMessage[]): ProviderMes
  *  result corrects the model through the ordinary tool-result channel. */
 export interface ProseCall { name: string; args?: Record<string, unknown>; rawArgs: string }
 
-export interface ProseParsedTurn { narration: string; calls: ProseCall[] }
+interface ProseParsedTurn { narration: string; calls: ProseCall[] }
 
 const BLOCK_RE = new RegExp('```' + PROSE_CALL_TAG + '[^\\S\\n]*\\n([\\s\\S]*?)```', 'g');
 const SALVAGE_NAME_RE = /"(?:tool|name)"\s*:\s*"([^"]+)"/;

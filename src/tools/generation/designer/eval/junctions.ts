@@ -20,7 +20,8 @@
  * Pure: masks in, numbers out. Both the plan (rasterized) and a finished map are read by the same
  * code, so stage B and the ledger cannot disagree about what a junction is.
  */
-import { NB4, openingWidths } from './grid';
+import { openingWidths } from './grid';
+import { NEIGHBORS4 } from '../../../../core/model/grid-model';
 
 /** How far from a cell the arms are counted. It must exceed the widest street's half-width, or the
  *  street's own width wraps the ring and a straight run reads as one arm; the map's widest pavement
@@ -50,7 +51,7 @@ export const LATTICE_SPAN = 0.8;
 export const LATTICE_SHARE_MAX = 0.02;
 
 /** How far apart two T-junctions may stand along one street and still read as ONE staggered
- *  crossing (the supplement's Z), and how far their centres may sit across it. */
+ *  crossing (a Z), and how far their centres may sit across it. */
 const OFFSET_APART = 16;
 const OFFSET_ACROSS = 3;
 
@@ -177,7 +178,7 @@ function clustersOf(mask: Uint8Array, W: number, H: number): number[][] {
       const p = stack.pop()!;
       cells.push(p);
       const x = p % W, y = (p / W) | 0;
-      for (const [dx, dy] of NB4) {
+      for (const [dx, dy] of NEIGHBORS4) {
         const nx = x + dx, ny = y + dy;
         if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
         const j = ny * W + nx;
@@ -307,7 +308,7 @@ function teesOf(nodes: readonly Node[]): Tee[] {
 
 /**
  * Staggered crossings: two T-junctions on one street whose branches leave on OPPOSITE sides within
- * `OFFSET_APART` of each other, which is the supplement's Z-shaped walk (两条本会相交的路错开成两个丁字口).
+ * `OFFSET_APART` of each other, a Z-shaped walk (two roads that would cross are offset into two T-junctions).
  *
  * Greedy and one pairing per junction, so three T's in a row read as one pair and not as three.
  */
@@ -346,11 +347,10 @@ export interface OneWideReading {
 }
 
 /**
- * THE 1-WIDE RULE, SCOPED TO THE NETWORK (the supplement's third road grade).
+ * THE 1-WIDE RULE, SCOPED TO THE NETWORK (the third road grade).
  *
- * The methodology's hard rule is that no ROAD is one cell wide, and the supplement admits a 小径 —
- * a garden walk inside a region, to a fountain court or along a bed — as a third grade that carries
- * nothing between regions. The two are told apart by what the pavement DOES, not by what laid it: a
+ * The hard rule is that no ROAD is one cell wide, and a path (a garden walk inside a region, to a
+ * fountain court or along a bed) is a third grade that carries nothing between regions. The two are told apart by what the pavement DOES, not by what laid it: a
  * 1-wide cluster is a garden path when it is a LEAF, hanging off exactly one piece of >=2-wide
  * pavement that the plaza can already walk to, and short enough to be a walk inside a place.
  * Anything else — a neck two streets meet through, a thin thread the plaza's only route runs along,
@@ -383,7 +383,7 @@ export function networkOneWide(
     const touches = new Set<number>();
     for (const i of cells) {
       const x = i % W, y = (i / W) | 0;
-      for (const [dx, dy] of NB4) {
+      for (const [dx, dy] of NEIGHBORS4) {
         const nx = x + dx, ny = y + dy;
         if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
         const j = ny * W + nx;
@@ -426,7 +426,7 @@ function plazaReach(
   while (stack.length) {
     const p = stack.pop()!;
     const x = p % W, y = (p / W) | 0;
-    for (const [dx, dy] of NB4) {
+    for (const [dx, dy] of NEIGHBORS4) {
       const nx = x + dx, ny = y + dy;
       if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
       const j = ny * W + nx;

@@ -14,7 +14,8 @@ import { CellZone, TerrainType } from '../../../core/model/types';
 import type { GridState, MacroCoord } from '../../../core/model/types';
 import { getCell } from '../../../core/model/grid-model';
 import { solidTopOf } from '../../../core/edge-cut/terrain-silhouette';
-import { GROUND_SLAB_Y, SEA_Y, layerToY, mapCenterOffset, waterSurfaceY } from '../core/coords';
+import { GROUND_SLAB_Y, LAYER_HEIGHT, TERRAIN_OFFSET, layerToY, mapCenterOffset, waterSurfaceY, groundYForZone } from '../core/coords';
+import { cellSurfacePieces, pieceYAt } from '../build/surface-pieces';
 
 
 export interface Vec3 { x: number; y: number; z: number }
@@ -51,19 +52,23 @@ function surfaceAt(state: GridState, wx: number, wz: number): SurfaceAt | null {
       const h = waterSurfaceY(top);
       best = { h, cell: { x: tx, y: tz }, elevation: top, kind: 'water' };
     }
+    if (t?.corners) {
+      const pieces = cellSurfacePieces(state, tx, tz, tx - off.x + TERRAIN_OFFSET, tz - off.z + TERRAIN_OFFSET)!;
+      const h = pieceYAt(pieces, wx, wz);
+      const tier = Math.max(0, Math.round(h / LAYER_HEIGHT));
+      const water = Math.abs(h - waterSurfaceY(tier)) < 1e-6;
+      best = { h, cell: { x: tx, y: tz }, elevation: tier, kind: water ? 'water' : h > GROUND_SLAB_Y ? 'terrain' : 'ground' };
+    }
   }
   if (inMap) {
     const zone = getCell(state.cells, mx, mz)!.zone;
-    const base: SurfaceAt = zone === CellZone.Void
-      ? { h: SEA_Y, cell: { x: mx, y: mz }, elevation: 0, kind: 'sea' }
-      : { h: GROUND_SLAB_Y, cell: { x: mx, y: mz }, elevation: 0, kind: 'ground' };
-    if (!best || base.h > best.h) best = base;
+    const base: SurfaceAt = { h: groundYForZone(zone), cell: { x: mx, y: mz }, elevation: 0, kind: zone === CellZone.Void ? 'sea' : 'ground' };
+    if (!best) best = base;
   }
   return best;
 }
 
-/** The standable surface height at world (wx, wz) — the slab where nothing
- *  stands taller. Chrome anchoring (cellToScreen) sits labels on this. */
+/** The visible surface height at world (wx, wz), including recessed water and trimmed corners. */
 export function surfaceHeightAt(state: GridState, wx: number, wz: number): number {
   return surfaceAt(state, wx, wz)?.h ?? GROUND_SLAB_Y;
 }

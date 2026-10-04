@@ -1,5 +1,14 @@
 import type { ErrorClass, TurnError } from './types';
 
+/** The rejection an aborted wait settles with: a DOMException named AbortError, or a plain Error of
+ *  that name where the runtime has no DOMException. */
+export function abortError(message = 'The wait was aborted.'): Error {
+  if (typeof DOMException !== 'undefined') return new DOMException(message, 'AbortError');
+  const err = new Error(message);
+  err.name = 'AbortError';
+  return err;
+}
+
 export interface RawFailure { status?: number; message: string; retryAfterMs?: number; aborted?: boolean }
 
 // Provider quota codes and billing-limit messages.

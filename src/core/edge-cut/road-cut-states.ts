@@ -1,5 +1,7 @@
-import type { Corners, CornerTrim, PlacedObject } from '../model/types';
+import type { Corners, CornerTrim, PlacedObject, Rotation } from '../model/types';
 import type { RoadLookup } from '../model/road-lookup';
+import { isSquareCorners } from './corner-index';
+import type { Side } from '../model/grid-model';
 
 // Canonical road states (left-connected form): TL+BL always square, TR+BR get cuts.
 // drawRoadShape + connSide handles rotation for other directions.
@@ -12,24 +14,26 @@ export const CANONICAL_ROAD_STATES: (Corners | undefined)[] = [
   ['square', 'fan', 'square', 'fan'],                // 5: wedge (round)
 ];
 
-export const CONN_SIDES: ('left' | 'right' | 'top' | 'bottom')[] = ['left', 'right', 'top', 'bottom'];
-export const ROTATION_TO_CONN: Record<number, 'left' | 'right' | 'top' | 'bottom'> = {
+/** The side of a road cell its connection runs out of; the canonical road frame is left-connected. */
+export type RoadConnSide = 'left' | 'right' | 'top' | 'bottom';
+export const CONN_SIDES: readonly RoadConnSide[] = ['left', 'right', 'top', 'bottom'];
+export const ROTATION_TO_CONN: Record<Rotation, RoadConnSide> = {
   0: 'left', 90: 'top', 180: 'right', 270: 'bottom',
 };
 
-const TRI_ROTATE: Record<string, Record<string, CornerTrim>> = {
+const TRI_ROTATE: Record<RoadConnSide, Record<string, CornerTrim>> = {
   left:   { 'tri-NW': 'tri-NW', 'tri-NE': 'tri-NE', 'tri-SW': 'tri-SW', 'tri-SE': 'tri-SE' },
   right:  { 'tri-NW': 'tri-NE', 'tri-NE': 'tri-NW', 'tri-SW': 'tri-SE', 'tri-SE': 'tri-SW' },
   top:    { 'tri-NW': 'tri-SW', 'tri-NE': 'tri-NW', 'tri-SW': 'tri-SE', 'tri-SE': 'tri-NE' },
   bottom: { 'tri-NW': 'tri-NE', 'tri-NE': 'tri-SE', 'tri-SW': 'tri-NW', 'tri-SE': 'tri-SW' },
 };
 
-function rotateCornerTrim(trim: CornerTrim, conn: string): CornerTrim {
-  return TRI_ROTATE[conn]?.[trim] ?? trim;
+function rotateCornerTrim(trim: CornerTrim, conn: RoadConnSide): CornerTrim {
+  return TRI_ROTATE[conn][trim] ?? trim;
 }
 
 // Convert canonical (left-connected) corners to actual positions for validation.
-export function canonicalToActual(canonical: Corners, conn: string): Corners {
+export function canonicalToActual(canonical: Corners, conn: RoadConnSide): Corners {
   const r = (t: CornerTrim) => rotateCornerTrim(t, conn);
   switch (conn) {
     case 'left':
@@ -38,7 +42,6 @@ export function canonicalToActual(canonical: Corners, conn: string): Corners {
     case 'right':  return [r(canonical[1]), r(canonical[0]), r(canonical[3]), r(canonical[2])];
     case 'top':    return [r(canonical[2]), r(canonical[0]), r(canonical[3]), r(canonical[1])];
     case 'bottom': return [r(canonical[1]), r(canonical[3]), r(canonical[0]), r(canonical[2])];
-    default:       return canonical;
   }
 }
 
@@ -46,7 +49,7 @@ export function cornersMatch(a: Corners | undefined, b: Corners | undefined): bo
   if (!a && !b) return true;
   if (!a || !b) {
     const c = a ?? b;
-    return !!c && c.every(s => s === 'square');
+    return !!c && isSquareCorners(c);
   }
   return a[0] === b[0] && a[1] === b[1] && a[2] === b[2] && a[3] === b[3];
 }
@@ -62,7 +65,7 @@ export function isRoadNeighbor(roads: RoadLookup, road: PlacedObject, nx: number
   return !!o && o.id !== road.id && o.catalogId === road.catalogId;
 }
 
-export function detectRoadConn(roads: RoadLookup, road: PlacedObject): 'left' | 'right' | 'top' | 'bottom' {
+export function detectRoadConn(roads: RoadLookup, road: PlacedObject): RoadConnSide {
   const { x, y } = road.position;
   if (isRoadNeighbor(roads, road, x - 1, y)) return 'left';
   if (isRoadNeighbor(roads, road, x + 1, y)) return 'right';
@@ -77,9 +80,6 @@ export function countRoadNeighbors(roads: RoadLookup, road: PlacedObject): numbe
     .filter(([nx, ny]) => isRoadNeighbor(roads, road, nx, ny)).length;
 }
 
-export type RoadConnSide = 'left' | 'right' | 'top' | 'bottom';
-export type RoadSide = 'N' | 'E' | 'S' | 'W';
-
 /**
  * The TRUE kept-edge table of each canonical road state, in the CANONICAL (left-connected) frame — derived
  * from drawRoadShape's drawn geometry, which is what actually determines whether two road cells touch:
@@ -93,7 +93,7 @@ export type RoadSide = 'N' | 'E' | 'S' | 'W';
  * SW half of that quadrant), so token-derived coverage under-claims the connected edge for triangles and
  * over-claims the cut edges for fans — enough to fail a triangle where its same-direction fan passes.
  */
-const STATE_KEPT_EDGES: readonly (readonly RoadSide[])[] = [
+const STATE_KEPT_EDGES: readonly (readonly Side[])[] = [
   ['N', 'E', 'S', 'W'], // 0: raw square
   ['W', 'N'],           // 1: BR fan    — cut toward the far bottom
   ['W', 'S'],           // 2: TR fan    — cut toward the far top
@@ -103,7 +103,7 @@ const STATE_KEPT_EDGES: readonly (readonly RoadSide[])[] = [
 ];
 
 /** actual grid side → canonical-frame side, inverting drawRoadShape's txPt per connection side. */
-const TO_CANONICAL_SIDE: Record<RoadConnSide, Record<RoadSide, RoadSide>> = {
+const TO_CANONICAL_SIDE: Record<RoadConnSide, Record<Side, Side>> = {
   left:   { N: 'N', E: 'E', S: 'S', W: 'W' },
   right:  { N: 'N', E: 'W', S: 'S', W: 'E' },
   top:    { N: 'W', E: 'S', S: 'E', W: 'N' },
@@ -121,7 +121,7 @@ export function matchCanonicalRoadState(corners: Corners | undefined): number | 
 /** Which canonical state an ACTUAL-frame corner array is, given the road's connection side (the frame the
  *  validators receive candidates in, via canonicalToActual), or null if it matches no canonical state. */
 export function matchActualRoadState(corners: Corners | undefined, conn: RoadConnSide): number | null {
-  if (!corners || corners.every((c) => c === 'square')) return 0;
+  if (isSquareCorners(corners)) return 0;
   for (let i = 1; i < CANONICAL_ROAD_STATES.length; i++) {
     if (cornersMatch(corners, canonicalToActual([...CANONICAL_ROAD_STATES[i]!], conn))) return i;
   }
@@ -130,16 +130,16 @@ export function matchActualRoadState(corners: Corners | undefined, conn: RoadCon
 
 /** Does canonical road state `stateIdx`, drawn with connection `conn`, keep its FULL edge on grid side
  *  `actualSide`? The geometry-faithful contact question for road seams. */
-export function roadSideKept(stateIdx: number, conn: RoadConnSide, actualSide: RoadSide): boolean {
+export function roadSideKept(stateIdx: number, conn: RoadConnSide, actualSide: Side): boolean {
   return STATE_KEPT_EDGES[stateIdx]?.includes(TO_CANONICAL_SIDE[conn][actualSide]) ?? false;
 }
 
 /** A canonical-frame side placed on the grid for connection `conn` — the inverse of the mapping
  *  `roadSideKept` reads, for callers that start from a canonical fact (which sides a state's
  *  vacated area touches) and need the grid cells behind them. */
-export function fromCanonicalSide(conn: RoadConnSide, canonicalSide: RoadSide): RoadSide {
+export function fromCanonicalSide(conn: RoadConnSide, canonicalSide: Side): Side {
   const row = TO_CANONICAL_SIDE[conn];
-  return (Object.keys(row) as RoadSide[]).find((s) => row[s] === canonicalSide)!;
+  return (Object.keys(row) as Side[]).find((s) => row[s] === canonicalSide)!;
 }
 
 /** Round = fan-based states (BR/TR fan, wedge); direct = triangle-based (\, /). */

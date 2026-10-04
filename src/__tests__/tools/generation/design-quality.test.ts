@@ -14,7 +14,6 @@ import { ItemCategory } from '../../../core/model/types';
 import { generateTerrain } from '../../../tools/generation/terrain-generator';
 import { objectRect } from '../../../state/object-geometry';
 import type { Command, EditorEvents, GenerateConfig, GridState } from '../../../core/model/types';
-import { ELEVATION_MAX } from '../../../core/model/constants';
 import { categoryOf } from '../../../state/catalog';
 import { roadLookup } from '../../../state/object-index';
 import { MAP_TEMPLATES } from '../../../config/maps/index';
@@ -27,6 +26,7 @@ import {
   DEAD_END_MAX, DECOR_DENSITY_BAND, ONE_WIDE_MAX, REACHABLE_MIN, SET_PIECE_CELLS_MIN,
   SET_PIECE_FLOOR, TERRACE_FILL_MAX,
 } from '../../../tools/generation/designer/eval';
+import { ELEVATION_MAX } from '../../../core/model/game-profile';
 
 function designed(seed: number, template: MapTemplate, richness: number): { state: GridState; violations: number; refused: number } {
   const state: GridState = {
@@ -43,7 +43,7 @@ function designed(seed: number, template: MapTemplate, richness: number): { stat
   exec.runSilently(() => {
     refused = generateTerrain(config, state, (c: Command) => exec.execute(c), exec.getRegistry()).skipped;
   });
-  const violations = exec.commitStrokeGroup(exec.getUndoStackSize()).length;
+  const violations = exec.commitStroke(exec.getUndoStackSize()).length;
   return { state, violations, refused };
 }
 
@@ -478,7 +478,7 @@ function designedIn(seed: number, template: MapTemplate, richness: number, regio
     seed, region, richness: richness,
   };
   exec.runSilently(() => { generateTerrain(config, state, (c: Command) => exec.execute(c), exec.getRegistry()); });
-  const violations = exec.commitStrokeGroup(exec.getUndoStackSize()).length;
+  const violations = exec.commitStroke(exec.getUndoStackSize()).length;
   return { state, violations };
 }
 

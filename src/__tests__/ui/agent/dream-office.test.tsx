@@ -1,5 +1,5 @@
 /**
- * dream-office.test.tsx — THE BOARD RESERVES THE TALLEST TRIO ITS OWN ROTATION CAN EVER SHOW, NOT A
+ * THE BOARD RESERVES THE TALLEST TRIO ITS OWN ROTATION CAN EVER SHOW, NOT A
  * UNIFORM PER-ROW CLAMP AND NOT THREE TALL SLIPS THAT NEVER STAND TOGETHER.
  *
  * A slip's height is its own two lines wrapped at the panel's width, so it differs per order and per

@@ -8,22 +8,22 @@ const obj = (id: string, catalogId: string, x = 5, y = 5): PlacedObject =>
   ({ id, catalogId, position: { x, y }, rotation: 0, elevation: 0 });
 
 const place = (o: PlacedObject): PlaceObjectCommand =>
-  ({ type: CommandType.PlaceObject, timestamp: 0, object: o, loadValue: 0 });
+  ({ type: CommandType.PlaceObject, timestamp: 0, object: o });
 
 describe('V-PLACE-MAX: per-item placement cap', () => {
-  it('allows the first placement of a maxCount: 1 item', () => {
+  it('allows the first placement of a capped item', () => {
     const state = makeState(20, 20);
-    expect(getCatalogItem('facility-pavilion')!.maxCount).toBe(1);
     expect(placementMaxCountRule.validate(place(obj('a', 'facility-pavilion')), state)).toHaveLength(0);
   });
 
-  it('rejects a second placement once one already exists, reporting the cap', () => {
+  it('rejects a placement once the cap is reached, reporting the cap', () => {
     const state = makeState(20, 20);
-    state.objects.set('a', obj('a', 'facility-pavilion', 5, 5));
-    const errs = placementMaxCountRule.validate(place(obj('b', 'facility-pavilion', 9, 5)), state);
+    const cap = getCatalogItem('facility-pavilion')!.maxCount!;
+    for (let i = 0; i < cap; i++) state.objects.set(`a${i}`, obj(`a${i}`, 'facility-pavilion', 5 + i * 9, 5));
+    const errs = placementMaxCountRule.validate(place(obj('b', 'facility-pavilion', 5, 12)), state);
     expect(errs).toHaveLength(1);
     expect(errs[0]!.ruleId).toBe('V-PLACE-MAX');
-    expect(errs[0]!.messageParams).toEqual({ n: 1 }); // message interpolates the actual cap
+    expect(errs[0]!.messageParams).toEqual({ n: cap }); // message interpolates the actual cap
   });
 
   it('handles caps > 1 generically (allows up to N, rejects N+1)', () => {

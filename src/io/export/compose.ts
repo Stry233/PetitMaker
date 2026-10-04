@@ -1,6 +1,7 @@
-import { hasShareCode, type Badge, type ExportComposition, type ExportOptions, type Rect, type ResolutionKey } from './types';
+import { hasShareCode, type Badge, type ExportComposition, type ExportOptions, type ResolutionKey } from './types';
 import { canvasFitScale, CANVAS_LIMITS, type CanvasLimits, type PixelSize } from './sizing';
 import { moduleBaseFor, currentBandSize } from '../share/glyph/geometry';
+import type { Rect } from '../../core/model/types';
 export type { ExportComposition, ExportOptions, Rect, ResolutionKey };
 export type { PixelSize } from './sizing';
 

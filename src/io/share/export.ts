@@ -1,5 +1,5 @@
+// Build the visible share-code band for a state (the ONLY carrier).
 import { protectedImageNotes } from '../../core/provenance/image-attribution';
-// src/io/share/export.ts — build the visible share-code band for a state (the ONLY carrier).
 import type { GridState } from '../../core/model/types';
 import type { MapProvenanceSummary } from '../../core/provenance/types';
 import { encodeMapPayload, type ShareCodeMeta } from './codec/payload';

@@ -21,7 +21,19 @@ import {
 } from '../core/model/types';
 import { bodyEvidence, getCell, rectsOverlap } from '../core/model/grid-model';
 import { addedPatchCorners, cornerQuadrantRect } from '../core/edge-cut/patch-corners';
-import { entriesNear, getObjectIndex } from '../state/object-index';
+import { entriesNear, getObjectIndex, type ObjectIndex, type ObjectIndexEntry } from '../state/object-index';
+
+/** The objects standing in the way of terrain at `fp`, a rect on the terrain micro-grid. A coating
+ *  lets the terrain through when `coatingFollows`. */
+function blockersAt(index: ObjectIndex, fp: Rect, coatingFollows: boolean): ObjectIndexEntry[] {
+  return entriesNear(index, fp).filter((e) => rectsOverlap(e.rect, fp) && !(coatingFollows && e.coating));
+}
+
+/** Whether an object blocks a terrain paint or erase of the macro cell at (x, y): the rule's own
+ *  per-cell test against `getObjectIndex(state)`, for planners that must leave such a cell out rather than be refused. */
+export function objectBlocksTerrainCell(index: ObjectIndex, x: number, y: number, coatingFollows: boolean): boolean {
+  return blockersAt(index, { x: x - 0.5, y: y - 0.5, w: 1, h: 1 }, coatingFollows).length > 0;
+}
 
 export const objectBlocksTerrainRule: PreCommandRule = {
   id: 'V-PLACE-BLOCK',
@@ -73,13 +85,7 @@ export const objectBlocksTerrainRule: PreCommandRule = {
     const index = getObjectIndex(state);
     const blockers = new Map<number, Rect>(); // ord → drawn footprint (each blocker once)
     for (const fp of footprints) {
-      const near = entriesNear(index, fp);
-      for (const e of near) {
-        if (blockers.has(e.ord)) continue;
-        if (!rectsOverlap(e.rect, fp)) continue;
-        if (coatingFollows && e.coating) continue; // the road rides the surface change
-        blockers.set(e.ord, e.rect);
-      }
+      for (const e of blockersAt(index, fp, coatingFollows)) if (!blockers.has(e.ord)) blockers.set(e.ord, e.rect);
     }
     if (blockers.size > 0) {
       const rects = [...blockers.keys()].sort((a, b) => a - b).map((ord) => blockers.get(ord)!);

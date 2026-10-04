@@ -50,6 +50,7 @@ export interface AgentPanelSettingsState {
   effort: Record<string, string>;
   /** The `custom` provider's endpoint, already sanitized. Empty means none configured. */
   customBaseUrl: string;
+  customAuth: 'key' | 'none';
   /** Address whose latest completed verification failed, or empty; not persisted. */
   endpointDown: string;
   /** Model cleared by a failed endpoint check and offered after recovery; not persisted. */
@@ -63,13 +64,14 @@ export interface AgentPanelSettingsState {
 
   /** Hydrates non-secret settings and sealed keys while preserving mutations made during the read. */
   hydrate(): Promise<void>;
-  /** Files a key against a provider and arms that provider. The one way a key enters the app. */
+  /** Files a provider credential; a blank custom key explicitly configures an unauthenticated endpoint. */
   connectKey(provider: ProviderId, key: string): void;
   /** Revokes a provider key and aborts work using the armed provider before removal. */
   forgetKey(provider?: ProviderId): void;
   setProvider(provider: ProviderId): void;
   /** Arms and pins an explicitly selected provider. */
   pinProvider(provider: ProviderId): void;
+  clearProviderPin(): void;
   setProviderRegion(provider: ProviderId, region: 0 | 1): void;
   setModel(model: string): void;
   setOversight(oversight: Oversight): void;
@@ -80,20 +82,21 @@ export interface AgentPanelSettingsState {
   recordEndpointCheck(reachable: boolean): void;
 }
 
-/** Whether a key is held for the supplied provider, or the armed provider by default. */
+/** Whether the provider has a credential or an explicitly configured unauthenticated endpoint. */
 export function isConnected(state: AgentPanelSettingsState, provider?: ProviderId): boolean {
-  return state.keyed.includes(provider ?? state.provider);
+  const id = provider ?? state.provider;
+  return state.keyed.includes(id) || (id === 'custom' && state.customAuth === 'none' && state.customBaseUrl !== '');
 }
 
 /** Missing request inputs in setup order: key, custom endpoint, then model. */
-export type ConnectionGap = 'key' | 'endpoint' | 'model';
+type ConnectionGap = 'key' | 'endpoint' | 'model';
 
 export function connectionGaps(
   state: AgentPanelSettingsState, provider?: ProviderId,
 ): readonly ConnectionGap[] {
   const id = provider ?? state.provider;
   const gaps: ConnectionGap[] = [];
-  if (!state.keyed.includes(id)) gaps.push('key');
+  if (!isConnected(state, id)) gaps.push('key');
   if (id === 'custom'
     && (state.customBaseUrl === '' || (state.endpointDown !== '' && state.endpointDown === state.customBaseUrl))) {
     gaps.push('endpoint');
@@ -107,6 +110,26 @@ export function connectionReady(state: AgentPanelSettingsState, provider?: Provi
   return connectionGaps(state, provider).length === 0;
 }
 
+/** A region is known only when its endpoint was explicitly saved. */
+export function providerRegion(provider: ProviderId): 0 | 1 | undefined {
+  const host = carried.regionBaseUrl?.[provider];
+  const index = host ? (QUIRKS[provider].baseUrls ?? []).indexOf(host) : -1;
+  return index === 0 || index === 1 ? index : undefined;
+}
+
+/** Exact local matches reuse one saved destination; duplicates and incomplete routes stay undecided. */
+export function providerForSavedKey(raw: string): ProviderId | 'ambiguous' | null {
+  const key = raw.trim();
+  if (!key) return null;
+  const matches = PROVIDER_IDS.filter(id => keyring[id] === key);
+  if (matches.length > 1) return 'ambiguous';
+  const id = matches[0];
+  if (!id) return null;
+  if (id === 'custom' && !useAgentPanelSettings.getState().customBaseUrl) return 'ambiguous';
+  if ((QUIRKS[id].baseUrls?.length ?? 0) > 1 && providerRegion(id) === undefined) return 'ambiguous';
+  return id;
+}
+
 /** Builds runner connection data and derives a regional-host index from persisted host metadata. */
 export function runnerSettings(state: AgentPanelSettingsState): {
   providerId: ProviderId; apiKey: string; model: string; oversight: Oversight;
@@ -115,15 +138,13 @@ export function runnerSettings(state: AgentPanelSettingsState): {
   const providerId = state.provider;
   const out: ReturnType<typeof runnerSettings> = {
     providerId,
-    apiKey: keyring[providerId] ?? '',
+    apiKey: providerId === 'custom' && state.customAuth === 'none' ? '' : keyring[providerId] ?? '',
     model: state.model[providerId] ?? '',
     oversight: state.oversight,
     effort: state.effort[effortKey(state)],
   };
   if (state.customBaseUrl) out.customBaseUrl = state.customBaseUrl;
-  const host = carried.regionBaseUrl?.[providerId];
-  const index = host ? (QUIRKS[providerId].baseUrls ?? []).indexOf(host) : -1;
-  if (index === 1) out.region = 1;
+  if (providerRegion(providerId) === 1) out.region = 1;
   return out;
 }
 
@@ -149,6 +170,7 @@ function persist(state: AgentPanelSettingsState): void {
   const stored = loadAgentSettings();
   // Preserve fallback keys for other providers, then apply explicit revocations.
   const keys = dropForgotten({ ...stored.keys, ...keyring });
+  if (state.customAuth === 'none') delete keys.custom;
 
   const record: AgentSettings = {
     ...stored,
@@ -160,6 +182,8 @@ function persist(state: AgentPanelSettingsState): void {
     oversight: state.oversight,
     effort: state.effort,
   };
+  if (state.customAuth === 'none') record.customAuth = 'none';
+  else delete record.customAuth;
   if (state.customBaseUrl) record.customBaseUrl = state.customBaseUrl;
   else delete record.customBaseUrl;
   saveAgentSettings(record);
@@ -179,6 +203,7 @@ export const useAgentPanelSettings: UseBoundStore<StoreApi<AgentPanelSettingsSta
       oversight: 'checkpoint',
       effort: {},
       customBaseUrl: '',
+      customAuth: 'key',
       endpointDown: '',
       formerModel: '',
       keyed: [],
@@ -187,6 +212,9 @@ export const useAgentPanelSettings: UseBoundStore<StoreApi<AgentPanelSettingsSta
 
       hydrate: async () => {
         const stored = loadAgentSettings();
+        const customAuth = forgotten.has('custom') || keyring.custom !== undefined
+          ? get().customAuth : stored.customAuth ?? 'key';
+        if (customAuth === 'none') forgotten.add('custom');
         // Live keys win over synchronous fallback keys; explicit revocations apply last.
         keyring = dropForgotten({ ...stored.keys, ...keyring });
         carried = stored.regionBaseUrl ? { regionBaseUrl: stored.regionBaseUrl } : {};
@@ -196,6 +224,7 @@ export const useAgentPanelSettings: UseBoundStore<StoreApi<AgentPanelSettingsSta
           oversight: stored.oversight,
           effort: stored.effort ?? {},
           customBaseUrl: stored.customBaseUrl ?? '',
+          customAuth,
           keyed: keyedFrom(keyring),
         });
 
@@ -211,17 +240,26 @@ export const useAgentPanelSettings: UseBoundStore<StoreApi<AgentPanelSettingsSta
 
       connectKey: (provider, key) => {
         const trimmed = key.trim();
-        if (trimmed === '') return;
+        if (trimmed === '') {
+          if (provider !== 'custom' || get().customBaseUrl === '') return;
+          forgotten.add('custom');
+          const next = { ...keyring };
+          delete next.custom;
+          keyring = next;
+          forgetRosters();
+          commit({ provider, customAuth: 'none', keyed: keyedFrom(keyring) });
+          return;
+        }
         forgotten.delete(provider);
         forgetRosters();
         keyring = { ...keyring, [provider]: trimmed };
-        commit({ provider, keyed: keyedFrom(keyring) });
+        commit({ provider, keyed: keyedFrom(keyring), ...(provider === 'custom' ? { customAuth: 'key' } : {}) });
       },
 
       forgetKey: (provider) => {
         const id = provider ?? get().provider;
         // Before hydration, an absent live key may still exist in persisted storage.
-        if (get().hydrated && keyring[id] === undefined) return;
+        if (get().hydrated && keyring[id] === undefined && !(id === 'custom' && get().customAuth === 'none')) return;
         // Stop only work using the armed provider, before its key disappears.
         if (id === get().provider) stopLiveJob?.();
         forgotten.add(id);
@@ -230,12 +268,13 @@ export const useAgentPanelSettings: UseBoundStore<StoreApi<AgentPanelSettingsSta
         delete next[id];
         keyring = next;
         // Revoking the armed key also releases its transient provider pin.
-        commit({ keyed: keyedFrom(keyring), ...(id === get().provider ? { providerPinned: false } : {}) });
+        commit({ keyed: keyedFrom(keyring), ...(id === 'custom' ? { customAuth: 'key' } : {}), ...(id === get().provider ? { providerPinned: false } : {}) });
       },
 
-      setProvider: (provider) => commit({ provider }),
+      setProvider: (provider) => commit({ provider, providerPinned: false }),
 
       pinProvider: (provider) => commit({ provider, providerPinned: true }),
+      clearProviderPin: () => set({ providerPinned: false }),
 
       setProviderRegion: (provider, region) => {
         const url = QUIRKS[provider].baseUrls?.[region];

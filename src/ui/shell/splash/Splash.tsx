@@ -1,5 +1,5 @@
 /*
- * Splash.tsx — the boot splash: a small map builds itself tile by tile while the art assets
+ * The boot splash: a small map builds itself tile by tile while the art assets
  * download, then the splash slides away and the app slides into place beneath it.
  *
  * Shown only on a build whose assets have not been fetched once already (`shouldShowSplash`), so
@@ -19,13 +19,16 @@
 import { useEffect, useState } from 'react';
 import { motion, useReducedMotionConfig } from 'framer-motion';
 import { useT } from '../../../i18n/context';
-import { colors, font, z } from '../../design/styles';
+import { colors, font, z, radii } from '../../design/styles';
 import { roleWeight, roleFont } from '../../design/text-weight';
 import { MOTIONS } from '../motion/registry';
-import { cssMotion, useMotion, useMotionAllowed } from '../motion/use-motion';
+import { useMotion, useMotionAllowed } from '../motion/use-motion';
+import { cssMotion } from '../../design/motion';
 import { activeTarget } from '../../../legal/deploy-targets';
 import { markSplashDone, preloadAssets } from './preload';
 import { useViewportSize } from '../../design/scale';
+import { ZONE_COLORS, ELEVATION_COLORS, WATER_COLOR } from '../../../core/model/constants';
+import { CellZone } from '../../../core/model/types';
 
 // The SAME URL the boot loader uses (public/, unhashed): the loader has already downloaded its
 // target's masthead by the time this mounts, so the slide-up starts with the art on screen — a
@@ -46,7 +49,7 @@ const ISLAND = [
 ];
 const COLS = ISLAND[0]!.length;
 const HUES: Record<string, string> = {
-  s: '#ffe793', g: '#b1e291', m: '#A3D070', M: '#93c956', p: '#97e1ff',
+  s: ZONE_COLORS[CellZone.Beach]!, g: ZONE_COLORS[CellZone.Grass]!, m: ELEVATION_COLORS[1]!, M: ELEVATION_COLORS[2]!, p: WATER_COLOR,
 };
 
 interface Tile { x: number; y: number; hue: string; order: number }
@@ -84,7 +87,7 @@ export function bannerTravel(fit: number): number {
   return (184 * fit - 63) / fit;
 }
 
-export interface SplashProps {
+interface SplashProps {
   /** Fired when the hand-off STARTS — App slides its content plane on the same clock. */
   onHandoff: () => void;
   /** Fired when the hand-off has finished and the overlay may unmount. */
@@ -118,7 +121,7 @@ export function Splash({ onHandoff, onDone }: SplashProps) {
   /** The fade the map, the pill and the banner share once the logo has landed. */
   const contentStyle = {
     opacity: phase === 'ready' ? 1 : 0,
-    transition: cssMotion('splash.content.fade', 'opacity'),
+    transition: cssMotion('splash.content.fade', ['opacity']),
   } as const;
 
   useEffect(() => {
@@ -223,7 +226,7 @@ export function Splash({ onHandoff, onDone }: SplashProps) {
           position: 'relative',
           width: 236,
           height: 42,
-          borderRadius: 99,
+          borderRadius: radii.pill,
           background: colors.surfacePrimary,
           border: `1.5px solid ${colors.inkBorder}`,
           boxSizing: 'border-box',
@@ -237,8 +240,8 @@ export function Splash({ onHandoff, onDone }: SplashProps) {
             inset: 0,
             width: `${pct}%`,
             background: colors.sliderYellow,
-            borderRadius: 99,
-            transition: cssMotion('splash.pill.fill', 'width'),
+            borderRadius: radii.pill,
+            transition: cssMotion('splash.pill.fill', ['width']),
           }}
         />
         <div

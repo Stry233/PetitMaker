@@ -222,7 +222,7 @@ export const QUIRKS: Record<ProviderId, Quirks> = {
 };
 
 /** Default SDK endpoints that are absent from `QUIRKS.baseUrls`. */
-export const ANTHROPIC_DEFAULT_BASE = 'https://api.anthropic.com';
+const ANTHROPIC_DEFAULT_BASE = 'https://api.anthropic.com';
 export const OPENAI_DEFAULT_BASE = 'https://api.openai.com/v1';
 
 /** Resolve a custom, regional, or single provider URL; undefined uses the SDK default. */

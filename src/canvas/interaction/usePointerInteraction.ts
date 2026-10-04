@@ -1,21 +1,21 @@
 import { clientPoint } from '../../core/runtime/viewport-space';
 import { useEffect, type RefObject } from 'react';
-import { paintRegionCell, finishRegionStroke } from '../../core/runtime/region-brush';
+import { paintRegionCell, previewRegionCell, cancelRegionStroke, finishRegionStroke } from '../../core/runtime/region-brush';
 import { useEditorStore } from '../../state/store';
 import { getActiveToolManager, getActiveView } from '../active-view';
-import type { ToolOverlay, ViewProjection } from '../view-projection';
+import type { ViewProjection } from '../view-projection';
+import { setMapWheelSink } from './map-wheel';
 import { ToolType, CommandType } from '../../core/model/types';
-import type { MacroCoord, GridState, PlacedObject } from '../../core/model/types';
+import type { MacroCoord, PlacedObject } from '../../core/model/types';
 import type { BlockRef } from '../../state/store';
 import { selectedObjectIds } from '../../state/selection';
-import { getCell, getFootprint, microToTerrain } from '../../core/model/grid-model';
+import { getFootprint, microToTerrain } from '../../core/model/grid-model';
 import {
   groupMembers, moveGroup, planObjectMove, previewGroupMove, stripCoatingsFor,
   GHOST_INVALID, GHOST_VALID,
 } from '../../tools/objects';
 import { getPlacedObjectSize, hasHalfStep, resolveAnchor, snapsOwnPlacement } from '../../state/object-geometry';
 import { getCatalogItem } from '../../state/catalog';
-import { arcMotion, arcOffset, type GroupRotation } from '../group-arc';
 import { isDraggableObject, objectUnderPointer, selectionHoverBox } from './selection-hover';
 import { isBrushTool } from '../../core/interaction/tool-modes';
 import {
@@ -24,130 +24,16 @@ import {
 import { isNavButton, PRIMARY_BUTTON } from '../../core/interaction/pointer-buttons';
 import { TouchPinch } from './gestures';
 import { createCameraGestures, DRAG_THRESHOLD } from './camera-gestures';
+import { releaseTextFocus } from './pointer-focus';
 import { noteNavGestureLost } from './nav-gesture-hint';
 import { macroRect, objectsInBand } from './marquee';
 import { annotationsInRect } from '../../core/model/annotations';
 import { installModifierTracking, isPanDragHeld, isMultiSelectHeld, onMultiSelectChange } from '../../core/runtime/modifier-state';
 import { anyOverlayOpen } from '../../core/runtime/overlay-state';
+import { reportRefusal } from '../../core/commands/refusal';
 import {
   setCursorDrag, setCursorForbidden, setCursorOverSelected, setCursorCtrlHint, setCursorPressSelects,
 } from './cursor-controller';
-
-/**
- * Draw (or clear) the selection outline for the whole selection, resolving each
- * member's geometry from the grid. A single member draws a ring plus an optional
- * elevation label and an entrance pop (`append=false`). A GROUP clears once then
- * draws one ring per member with `append=true`: no per-member clear, no label (one
- * label can't speak for N members at possibly different elevations), no pop (it
- * would replay N times). Terrain is never multi-selected, so `refs.length > 1` is
- * all objects by construction.
- *
- * Callers: the pointer machine, plus the PixiCanvas/Editor3DCanvas sync effects
- * (layer-visibility / objects-changed) that re-paint the selection.
- */
-export function paintSelection(
-  overlay: ToolOverlay,
-  gs: GridState,
-  refs: readonly BlockRef[],
-  showNumbers: boolean,
-): void {
-  if (refs.length === 0) { overlay.clearSelection(); return; }
-  if (refs.length === 1) { paintOneBlock(overlay, gs, refs[0]!, showNumbers, false); return; }
-  overlay.clearSelection();
-  for (const block of refs) paintOneBlock(overlay, gs, block, showNumbers, true);
-}
-
-function paintOneBlock(
-  overlay: ToolOverlay,
-  gs: GridState,
-  block: BlockRef,
-  showNumbers: boolean,
-  append: boolean,
-): void {
-  if (block.kind === 'object') {
-    const obj = gs.objects.get(block.id);
-    if (!obj) { if (!append) overlay.clearSelection(); return; }
-    // A view that can bound the rendered body draws the 3D box; the footprint
-    // ring is the universal fallback (and the 2D behavior).
-    if (overlay.showObjectSelection) {
-      overlay.showObjectSelection(obj.id, append);
-      return;
-    }
-    const size = getPlacedObjectSize(obj);
-    overlay.showSelection(
-      obj.position.x, obj.position.y, size.w, size.h,
-      append || showNumbers ? undefined : obj.elevation, false, append,
-    );
-  } else {
-    const cell = getCell(gs.cells, block.x, block.y);
-    overlay.showSelection(
-      block.x, block.y, 1, 1,
-      append || showNumbers ? undefined : (cell?.terrain?.elevation ?? 0), true, append,
-    );
-  }
-}
-
-/**
- * Repaint the selection ring at `eased` through a rotation's sweep — the SAME progress
- * `animateRotation`/`animateGroupRotation` just applied to the icon/instances, so the ring rides one
- * clock instead of computing its own interpolation of the same turn (see `canvas/group-arc.ts`'s file
- * header for why a second interpolation of one motion is exactly the bug class this exists to avoid).
- *
- * `members` carries each ring's live CENTRE offset in cell units (zero for a single spin, which never
- * moves; the group arc's own `arcOffset` for a group turn). The ring's SHAPE always uses the CURRENT
- * (already-committed, post-turn) footprint size: the command applies instantly, so the object's own
- * rendered box is already at that shape by the time any tween frame runs (`objects-changed` rebuilds
- * it synchronously, before the animation is even started) — drawing a ring at any other shape would
- * disagree with what is already on screen. Only the CENTRE travels.
- *
- * At `eased >= 1` this instead repaints through the normal `paintSelection` path: a view with a
- * body-bound box (3D's `showObjectSelection`) gets that back, rather than staying on the plain
- * footprint ring the arc frames use, and a view without one lands on the identical rect either way.
- */
-function paintRotationRing(
-  overlay: ToolOverlay, gs: GridState, members: ReadonlyArray<{ id: string; dx: number; dy: number }>,
-  eased: number, showNumbers: boolean,
-): void {
-  if (eased >= 1) {
-    paintSelection(overlay, gs, members.map((m) => ({ kind: 'object', id: m.id }) as const), showNumbers);
-    return;
-  }
-  const append = members.length > 1;
-  overlay.clearSelection();
-  for (const m of members) {
-    const obj = gs.objects.get(m.id);
-    if (!obj) continue; // a member can vanish mid-flight (undo, delete) — skip, don't abandon the rest
-    const size = getPlacedObjectSize(obj);
-    overlay.showSelection(
-      obj.position.x + m.dx, obj.position.y + m.dy, size.w, size.h,
-      append || showNumbers ? undefined : obj.elevation, false, append,
-    );
-  }
-}
-
-/** `animateRotation`'s onFrame hook: a lone spin never moves or reshapes (see `paintRotationRing`),
- *  so this just keeps the ring painted through the same clock as the icon for API symmetry with the
- *  group hook below — there is nothing for a square item's ring to visibly do, and a non-square
- *  item's ring already holds its final (correct) shape throughout rather than tracking the icon's
- *  own still-turning visual angle. */
-export function paintSpinRing(
-  overlay: ToolOverlay, gs: GridState, id: string, eased: number, showNumbers: boolean,
-): void {
-  paintRotationRing(overlay, gs, [{ id, dx: 0, dy: 0 }], eased, showNumbers);
-}
-
-/** `animateGroupRotation`'s onFrame hook: every member's ring travels the SAME arc its wrapper does
- *  (see `paintRotationRing`), landing back on the plain selection exactly when the sprites do. */
-export function paintGroupRotationArc(
-  overlay: ToolOverlay, gs: GridState, turn: GroupRotation, eased: number, showNumbers: boolean,
-): void {
-  const sweepRad = (turn.sweepDeg * Math.PI) / 180;
-  const members = turn.members.map((m) => {
-    const { dx, dy } = arcOffset(arcMotion(turn.pivot, m.from), sweepRad, eased);
-    return { id: m.id, dx, dy };
-  });
-  paintRotationRing(overlay, gs, members, eased, showNumbers);
-}
 
 /**
  * Non-positional inputs that invalidate hover previews and cursors. Map and tool epochs represent
@@ -162,8 +48,9 @@ function hoverInputs(
 ): HoverInputs {
   return [
     s.activeTool, s.selectedItemId, s.armedMacro, s.brushSize, s.selectingRegion, s.placementRotation, s.viewMode,
-    s.autoEdgeCut, s.eraserShape, s.tileMaterial, s.selection,
-    s.annotationTool, s.annotationZoneShape, s.annotationSelection, s.annotationsEpoch, s.locale,
+    s.autoEdgeCut, s.eraserShape, s.tileMaterial, s.selection, s.regionTool, s.regionBrushSize,
+    s.regionDimensions, s.region,
+    s.annotationTool, s.annotationZoneShape, s.annotationSelection, s.annotationsEpoch, s.annotationHistoryEpoch, s.annotationDiscardAction, s.locale,
     mapEpoch, toolEpoch, multiSelectHeld,
   ];
 }
@@ -318,6 +205,7 @@ export function usePointerInteraction(
     /** A second finger landed (or the touch was cancelled) while a touch stroke was live:
      *  close the stroke, then undo whatever it committed — the finger meant to navigate. */
     const cancelTouchStroke = (x: number, y: number) => {
+      if (regionBrushing) { regionBrushing = false; cancelRegionStroke(); }
       if (!toolDown) return;
       toolDown = false;
       tools()?.handlePointerCancel(x, y);
@@ -427,7 +315,7 @@ export function usePointerInteraction(
           toggleOffOnUp = false;
           collapseToOnUp = null;
           view()?.overlay.clearGhost();
-          if (regionBrushing) { regionBrushing = false; finishRegionStroke(); }
+          if (regionBrushing) { regionBrushing = false; cancelRegionStroke(); }
           touchNavigating = true;
           return true;
         }
@@ -600,7 +488,7 @@ export function usePointerInteraction(
       const panKey = plan.down.find((i) => i.kind === 'pan-camera' && i.source === 'pan-key');
       if (panKey) { runIntent(panKey, e, f); return; }
       // The press resolves the hover preview: either into a real selection (which paints the
-      // orange ring) or into a tool stroke.
+      // selection marks) or into a tool stroke.
       view()?.overlay.clearHover();
       // The region brush owns the pointer outright, down to leaving an open context menu alone.
       const paint = plan.down.find((i) => i.kind === 'paint-region');
@@ -617,6 +505,7 @@ export function usePointerInteraction(
 
     const onPointerDown = (e: PointerEvent) => {
       if (!isCanvasTarget(e)) return;
+      releaseTextFocus(container);
 
       // Touch has no meaningful "position" once the finger lifts, so it never feeds the resampler.
       if (e.pointerType !== 'touch') { lastPointerX = clientPoint(e).x; lastPointerY = clientPoint(e).y; pointerKnown = true; }
@@ -800,6 +689,13 @@ export function usePointerInteraction(
       if (bandMove(e)) return;
       if (regionMove(e)) return;
       if (dragMove(e)) return;
+      if (useEditorStore.getState().selectingRegion) {
+        const regionView = view();
+        if (regionView && isCanvasTarget(e) && e.pointerType !== 'touch') {
+          previewRegionCell(regionView.projection.screenToMacro(clientPoint(e).x, clientPoint(e).y));
+        }
+        return;
+      }
       if (!dragging && (toolDown || isCanvasTarget(e))) {
         // While a tool is down (a stroke), replay the browser's COALESCED moves — the intermediate
         // positions it captured but batched into this one event — so a fast drag samples the real
@@ -845,7 +741,7 @@ export function usePointerInteraction(
         ? selectionHoverBox(
             store.gridState,
             macro,
-            store.activeTool, store.selectedItemId, store.selectingRegion, store.selection,
+            store.activeTool, store.selectedItemId, store.selectingRegion,
             meshHit,
           )
         : null;
@@ -939,7 +835,9 @@ export function usePointerInteraction(
       }
       if (regionBrushing) {
         regionBrushing = false;
-        finishRegionStroke(); // commits the brushed region to React state
+        finishRegionStroke();
+        if (e.pointerType === 'touch') view()?.overlay.clearGhost();
+        else resamplePointer();
         return;
       }
       if (dragging && dragObjId) {
@@ -975,11 +873,8 @@ export function usePointerInteraction(
             executor, gs, groupIds, newX - obj.position.x, newY - obj.position.y,
             (member) => dropView.plopObject?.(member.id),
           );
-          if (res.refusal) {
-            useEditorStore.getState().eventBus.emit('validation-failed', res.refusal);
-            return;
-          }
           // The members keep their ids, so the selection still names them; only the rings move.
+          reportRefusal(useEditorStore.getState().eventBus, res.refusal);
           return;
         }
 
@@ -997,7 +892,7 @@ export function usePointerInteraction(
         if (errors.length > 0) {
           // Invalid drop — emit so the renderer flashes the bad cells AND the
           // global toast surfaces the reason; the object stays put.
-          useEditorStore.getState().eventBus.emit('validation-failed', { cmd: placeCmd, errors });
+          reportRefusal(useEditorStore.getState().eventBus, { cmd: placeCmd, errors });
           return;
         }
 
@@ -1039,6 +934,8 @@ export function usePointerInteraction(
       if (e.button === PRIMARY_BUTTON && toolDown) {
         toolDown = false;
         tools()?.handlePointerUp(clientPoint(e).x, clientPoint(e).y);
+        if (e.pointerType === 'touch') view()?.overlay.clearGhost();
+        else resamplePointer();
       }
     };
 
@@ -1059,7 +956,7 @@ export function usePointerInteraction(
       dragging = false;
       dragObjId = null;
       setCursorDrag('none');
-      if (regionBrushing) { regionBrushing = false; finishRegionStroke(); }
+      if (regionBrushing) { regionBrushing = false; cancelRegionStroke(); }
       if (bandArmed) { bandArmed = false; bandActive = false; bandStartMacro = null; view()?.overlay.clearBand(); }
       view()?.overlay.clearGhost();
     };
@@ -1099,6 +996,11 @@ export function usePointerInteraction(
       if (gestures.isNavigating() || leftPanning || panKeyPanning || dragging || bandArmed || regionBrushing || touchNavigating) return;
       resampling = true;
       try {
+        if (useEditorStore.getState().selectingRegion) {
+          const regionView = view();
+          if (regionView) previewRegionCell(regionView.projection.screenToMacro(lastPointerX, lastPointerY));
+          return;
+        }
         tools()?.handlePointerMove(lastPointerX, lastPointerY);
         // Brushes/eraser/placer already got their re-sample above; the hover box and cursor hints are
         // the "no stroke active" half of the same fact, gated (inside updateSelectionHover) on the
@@ -1153,6 +1055,7 @@ export function usePointerInteraction(
     // (window edge) must not strand a grey box or a stale badge on the map.
     const onPointerLeave = (e: PointerEvent) => {
       view()?.overlay.clearHover();
+      if (!toolDown && !regionBrushing) view()?.overlay.clearGhost();
       hoverCell = null;
       hoverInputsKey = null;
       pointerKnown = false; // gone: nothing left for the resampler to re-sample
@@ -1174,6 +1077,8 @@ export function usePointerInteraction(
     window.addEventListener('pointercancel', onPointerCancel);
     container.addEventListener('wheel', onWheel, { passive: false });
     window.addEventListener('wheel', onWheelGlobal, { passive: false });
+    // Controls riding on the map forward the wheel they do not use (see map-wheel.ts).
+    const releaseWheelSink = setMapWheelSink((e) => { e.preventDefault(); gestures.wheel(e); });
     container.addEventListener('contextmenu', onContextMenu);
     container.addEventListener('auxclick', onAuxClick);
     window.addEventListener('blur', onWindowBlur);
@@ -1187,6 +1092,7 @@ export function usePointerInteraction(
       window.removeEventListener('pointercancel', onPointerCancel);
       container.removeEventListener('wheel', onWheel);
       window.removeEventListener('wheel', onWheelGlobal);
+      releaseWheelSink();
       container.removeEventListener('contextmenu', onContextMenu);
       container.removeEventListener('auxclick', onAuxClick);
       window.removeEventListener('blur', onWindowBlur);

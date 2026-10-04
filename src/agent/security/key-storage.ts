@@ -6,7 +6,13 @@
 import { PROVIDER_META, PROVIDER_IDS, providerBaseUrls, type ProviderId } from '../providers/defaults';
 import { sealSecret, openSecret, type SealedBlob } from '../../core/runtime/vault';
 import { sanitizeEndpointUrl } from '../../core/runtime/endpoint-url';
-import { PREFS } from '../../core/runtime/prefs';
+import { readStoredPref, writePref } from '../../core/runtime/prefs';
+
+/** The stored settings record, or null when it is unset or storage is unavailable. */
+function storedSettings(): string | null {
+  const stored = readStoredPref('agentSettings');
+  return stored.available ? stored.raw : null;
+}
 
 export type Oversight = 'strict' | 'checkpoint' | 'yolo';
 
@@ -21,6 +27,8 @@ export interface AgentSettings {
   oversight: Oversight;
   /** OpenAI-compatible custom endpoint. Stored as a non-secret field. */
   customBaseUrl?: string;
+  /** Explicitly configured authentication for the custom endpoint. Omission requires a key. */
+  customAuth?: 'none';
   /** Registry URL that accepted each region-specific provider key. Stored as a non-secret field. */
   regionBaseUrl?: Partial<Record<ProviderId, string>>;
 }
@@ -45,6 +53,7 @@ interface StoredRecord {
   /** Wider than `Oversight` so renamed stored values can be migrated. */
   oversight?: string;
   customBaseUrl?: string;
+  customAuth?: 'none';
   regionBaseUrl?: Record<string, string>;
 }
 
@@ -88,7 +97,7 @@ function defaultAgentSettings(): AgentSettings {
 
 export function loadAgentSettings(): AgentSettings {
   try {
-    const raw = localStorage.getItem(PREFS.agentSettings.key);
+    const raw = storedSettings();
     if (!raw) return defaultAgentSettings();
     const parsed = JSON.parse(raw) as StoredRecord;
     const base = defaultAgentSettings();
@@ -108,6 +117,7 @@ export function loadAgentSettings(): AgentSettings {
       oversight,
       // Stored free-text endpoints receive the same normalization as newly typed values.
       customBaseUrl: typeof parsed.customBaseUrl === 'string' ? sanitizeEndpointUrl(parsed.customBaseUrl) || undefined : undefined,
+      ...(parsed.customAuth === 'none' ? { customAuth: 'none' as const } : {}),
       regionBaseUrl: readRegionBaseUrl(parsed.regionBaseUrl),
     };
   } catch {
@@ -139,7 +149,13 @@ let hydratedSignature: string | null = null;
 /** Decrypt stored keys for the startup merge. */
 export async function hydrateSealedKeys(): Promise<Partial<Record<ProviderId, string>> | null> {
   try {
-    const rec = JSON.parse(localStorage.getItem(PREFS.agentSettings.key) ?? 'null') as StoredRecord | null;
+    const stored = readStoredPref('agentSettings');
+    // Unreadable storage leaves the unread-blob state as it was: the blob may still be there.
+    if (!stored.available) {
+      hydratedSignature = null;
+      return null;
+    }
+    const rec = JSON.parse(stored.raw ?? 'null') as StoredRecord | null;
     if (!rec?.keysSealed) {
       sealedUnread = false;
       return null;
@@ -161,9 +177,9 @@ export async function hydrateSealedKeys(): Promise<Partial<Record<ProviderId, st
 
 /** Seal obfuscated keys without overwriting a newer settings save. */
 async function upgradeToSealed(): Promise<void> {
-  const raw = localStorage.getItem(PREFS.agentSettings.key);
-  if (!raw) return;
-  const rec = JSON.parse(raw) as StoredRecord;
+  const stored = readStoredPref('agentSettings');
+  if (!stored.available || !stored.raw) return;
+  const rec = JSON.parse(stored.raw) as StoredRecord;
   const obf = rec.keys ?? {};
   if (Object.keys(obf).length === 0) return;
   const plain: Record<string, string> = {};
@@ -184,11 +200,13 @@ async function upgradeToSealed(): Promise<void> {
   }
   const sealed = await sealSecret(JSON.stringify(plain));
   if (!sealed) return; // Keep the obfuscated fallback when the vault is unavailable.
-  const cur = JSON.parse(localStorage.getItem(PREFS.agentSettings.key) ?? 'null') as StoredRecord | null;
+  const now = readStoredPref('agentSettings');
+  if (!now.available) return;
+  const cur = JSON.parse(now.raw ?? 'null') as StoredRecord | null;
   if (!cur || JSON.stringify(cur.keys) !== JSON.stringify(rec.keys)) return; // A newer save owns the upgrade.
   delete cur.keys;
   cur.keysSealed = sealed;
-  localStorage.setItem(PREFS.agentSettings.key, JSON.stringify(cur));
+  if (!writePref('agentSettings', JSON.stringify(cur))) return;
   hydratedSignature = keyringSignature(plain as Partial<Record<ProviderId, string>>);
 }
 
@@ -204,27 +222,24 @@ export function saveAgentSettings(s: AgentSettings): boolean {
   let keysSealed: SealedBlob | undefined;
   if (!keysHydrated || sealedUnread || sealedIsCurrent || Object.keys(keys).length > 0) {
     try {
-      keysSealed = (JSON.parse(localStorage.getItem(PREFS.agentSettings.key) ?? 'null') as StoredRecord | null)?.keysSealed;
+      keysSealed = (JSON.parse(storedSettings() ?? 'null') as StoredRecord | null)?.keysSealed;
     } catch {
       /* corrupted record → write fresh */
     }
   }
-  // Write synchronously before the asynchronous vault upgrade.
-  let written = true;
-  try {
-    localStorage.setItem(
-      PREFS.agentSettings.key,
-      JSON.stringify({
-        provider: s.provider, model: s.model, effort: s.effort, keys: sealedIsCurrent && keysSealed ? undefined : keys, keysSealed,
-        askBeforeEdits: s.oversight === 'strict', // Compatibility mirror.
-        oversight: s.oversight,
-        customBaseUrl: s.customBaseUrl,
-        regionBaseUrl: s.regionBaseUrl,
-      }),
-    );
-  } catch {
-    written = false; // Storage disabled, or quota exceeded: the settings stay session-only.
-  }
+  // Written synchronously before the asynchronous vault upgrade. When storage is disabled or full,
+  // the settings stay session-only.
+  const written = writePref(
+    'agentSettings',
+    JSON.stringify({
+      provider: s.provider, model: s.model, effort: s.effort, keys: sealedIsCurrent && keysSealed ? undefined : keys, keysSealed,
+      askBeforeEdits: s.oversight === 'strict', // Compatibility mirror.
+      oversight: s.oversight,
+      customBaseUrl: s.customBaseUrl,
+      customAuth: s.customAuth,
+      regionBaseUrl: s.regionBaseUrl,
+    }),
+  );
   void upgradeToSealed().catch(() => {});
   return written;
 }

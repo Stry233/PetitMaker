@@ -1,5 +1,6 @@
 import ts from 'typescript';
 import * as constants from '../src/core/model/constants';
+import * as profile from '../src/core/model/game-profile';
 import { createDefaultRegistry } from '../src/rules';
 
 type ReadSource = (path: string) => string;
@@ -20,13 +21,18 @@ function declarations(read: ReadSource, path: string, names: readonly string[]):
 }
 
 export function referenceBlocks(read: ReadSource): Record<string, string> {
-  const scalarConstants = Object.entries(constants).filter(([, value]) => typeof value !== 'object');
+  const scalars = (module: Record<string, unknown>) => Object.entries(module).filter(([, value]) => typeof value !== 'object');
+  const table = (rows: [string, unknown][]) => [
+    '| Constant | Value |', '|---|---|',
+    ...rows.map(([name, value]) => `| \`${name}\` | \`${JSON.stringify(value)}\` |`),
+  ];
   const rules = createDefaultRegistry().getRules();
   return {
     constants: [
-      'Source: [src/core/model/constants.ts](../src/core/model/constants.ts).', '',
-      '| Constant | Value |', '|---|---|',
-      ...scalarConstants.map(([name, value]) => `| \`${name}\` | \`${JSON.stringify(value)}\` |`),
+      'Game facts. Source: [src/core/model/game-profile.ts](../src/core/model/game-profile.ts).', '',
+      ...table(scalars(profile)), '',
+      'Editor constants. Source: [src/core/model/constants.ts](../src/core/model/constants.ts).', '',
+      ...table(scalars(constants)),
     ].join('\n'),
     rules: [
       'Source: [src/rules/index.ts](../src/rules/index.ts), through `createDefaultRegistry().getRules()`.', '',

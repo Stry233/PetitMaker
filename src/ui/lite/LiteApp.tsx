@@ -2,6 +2,7 @@ import { brandName } from '../../version';
 import { useEffect } from 'react';
 import { MotionConfig } from 'framer-motion';
 import { I18nProvider } from '../../i18n/context';
+import { localeTag } from '../../i18n/translations';
 import { useEditorStore } from '../../state/store';
 import { PixiCanvas } from '../../canvas/map2d/PixiCanvas';
 import { Editor3DCanvas } from '../../canvas/map3d/Editor3DCanvas';
@@ -12,31 +13,33 @@ import { useMotionEnabled } from '../hooks/useMotionEnabled';
 import { useEditorSession } from '../hooks/use-editor-session';
 import { ToastContainer } from '../chrome/floating/Toast';
 import { CurveHandles } from '../chrome/floating/CurveHandles';
-import { SelectionHandles } from '../chrome/floating/SelectionHandles';
+import { SelectionMarks } from '../chrome/floating/SelectionMarks';
+import { SelectionCard } from '../chrome/floating/SelectionCard';
 import { AnnotationEditor } from '../chrome/floating/AnnotationEditor';
 import { ContextMenu } from '../chrome/floating/ContextMenu';
 import { DeletePopover } from '../chrome/floating/DeletePopover';
+import { fadeVisibilityCss } from '../design/motion';
 
 export default function LiteApp() {
   useEffect(() => { useEditorStore.getState().setPortraitBlocked(false); }, []);
   useCursorVars();
-  useMotionEnabled();
+  const reducedMotion = useMotionEnabled();
   const locale = useEditorStore(s => s.locale);
-  useEffect(() => { document.title = brandName(locale); document.documentElement.lang = locale === 'zh' ? 'zh-CN' : locale; }, [locale]);
-  const motion = useEditorStore(s => s.motionPref);
+  useEffect(() => { document.title = brandName(locale); document.documentElement.lang = localeTag(locale); }, [locale]);
   const view = useEditorStore(s => s.viewMode);
   const restore = useEditorSession();
   return (
-    <MotionConfig reducedMotion={motion === 'reduced' ? 'always' : motion === 'full' ? 'never' : 'user'}>
+    <MotionConfig reducedMotion={reducedMotion ? 'always' : 'never'}>
       <I18nProvider>
         <DockRefProvider value={0}>
           <Shell onRestoreSession={restore}>
             <div style={{ visibility: view === '3d' ? 'hidden' : 'visible' }}><PixiCanvas /></div>
-            <Editor3DCanvas />
+            <Editor3DCanvas fade={(visible) => fadeVisibilityCss('map.view.crossfade', visible)} />
           </Shell>
           <ToastContainer />
           <CurveHandles />
-          <SelectionHandles />
+          <SelectionMarks />
+          <SelectionCard />
           <AnnotationEditor />
           <ContextMenu />
           <DeletePopover />

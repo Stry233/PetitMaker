@@ -1,9 +1,7 @@
 /**
- * Every whole-map count the editor reads, derived once: per-layer cell/object counts (the
- * layer panel) and per-chunk object load (the agent's chunk-load rule and the programmatic API).
- * Per-catalogId tallies live in `state/object-index.ts:countByCatalog` instead — the one other
- * consumer that asks that question (`rules/placement-max-count.ts`) reads it from there, so this
- * module does not keep a second, differently-scoped count of the same fact.
+ * Every whole-map count the editor reads, derived once: per-layer cell/object counts and per-chunk
+ * object load. Per-catalogId tallies live in `state/object-index.ts:countByCatalog` instead, so this
+ * module keeps no second, differently-scoped count of the same fact.
  *
  * Memoized per GridState and PATCHED from `state.objectsDelta` rather than rebuilt, because a
  * rebuild costs one catalog lookup, one rect and one chunk bucketing per object and a stroke
@@ -14,18 +12,20 @@
  * Anything the cache cannot trust falls back to a rebuild, so it can be slow but never stale.
  */
 import type { EventBus } from '../core/commands/event-bus';
-import { CHUNK_SIZE, ELEVATION_MAX } from '../core/model/constants';
+import { roundLoad } from '../core/model/load';
 import { chunkKey } from '../core/model/grid-model';
-import { TerrainType, type EditorEvents, type GridState, type ObjectsDelta, type PlacedObject } from '../core/model/types';
+import { mapChunkAt } from '../core/model/map-chunks';
+import { TerrainType, type EditorEvents, type GridState, type MapTemplate, type ObjectsDelta, type PlacedObject } from '../core/model/types';
 import { getCatalogItem } from './catalog';
 import { getPlacedObjectSize } from './object-geometry';
+import { ELEVATION_MAX } from '../core/model/game-profile';
 
-interface ChunkStat { objects: number; load: number }
+interface ChunkStat { objects: number; load: number; unknownLoads: number }
 
 /** A LIVE view, not a snapshot: `getMapStats`'s cached instance is MUTATED IN PLACE by the
  *  object-delta patch path (`applyObject`), so a held reference keeps reading current values
- *  rather than the map state at the moment it was returned. A future consumer that memoizes on
- *  this object's identity (as opposed to its field values) would be wrong. */
+ *  rather than the map state at the moment it was returned. Memoize on its field values, never on
+ *  its identity. */
 export interface MapStats {
   /** cellsByLayer[n] = cells whose terrain reaches at least layer n. Fixed length
    *  ELEVATION_MAX + 1; index 0 is unused (terrain never occupies layer 0). */
@@ -63,15 +63,16 @@ const loadOf = (obj: PlacedObject): number => getCatalogItem(obj.catalogId)?.loa
 /** Every chunk key an object's footprint touches. Exported for rules/chunk-load.ts, which
  *  needs the same footprint-to-chunk-keys computation for a candidate that has not been
  *  placed yet (so cannot be read back out of `chunks` itself). */
-export function chunksOf(obj: PlacedObject): string[] {
+export function chunksOf(obj: PlacedObject, template: Pick<MapTemplate, 'chunkGrid'>): string[] {
   const { w, h } = getPlacedObjectSize(obj);
   const x0 = Math.floor(obj.position.x), x1 = Math.ceil(obj.position.x + w) - 1;
   const y0 = Math.floor(obj.position.y), y1 = Math.ceil(obj.position.y + h) - 1;
   if (x0 > x1 || y0 > y1) return [];
   const keys: string[] = [];
+  const first = mapChunkAt(template, x0, y0), last = mapChunkAt(template, x1, y1);
   // Floor/ceil includes every partially covered macro cell at a half-step footprint's edges.
-  for (let y = Math.floor(y0 / CHUNK_SIZE); y <= Math.floor(y1 / CHUNK_SIZE); y++) {
-    for (let x = Math.floor(x0 / CHUNK_SIZE); x <= Math.floor(x1 / CHUNK_SIZE); x++) {
+  for (let y = first.cy; y <= last.cy; y++) {
+    for (let x = first.cx; x <= last.cx; x++) {
       keys.push(chunkKey(x, y));
     }
   }
@@ -88,16 +89,17 @@ export function chunksOf(obj: PlacedObject): string[] {
  *  (the plaza) is excluded from what the user placed — the layer panel's per-layer counts;
  *  `patchOnly` is excluded from chunk load only — a road's cosmetic corner-cut re-index, still
  *  standing on the map and still in its layer row. */
-function applyObject(stats: MapStats, obj: PlacedObject, sign: 1 | -1): void {
+function applyObject(stats: MapStats, obj: PlacedObject, sign: 1 | -1, template: MapTemplate): void {
   if (!obj.locked) {
     stats.objectsByLayer[obj.elevation] = (stats.objectsByLayer[obj.elevation] ?? 0) + sign;
   }
   if (!obj.patchOnly) {
     const load = loadOf(obj);
-    for (const key of chunksOf(obj)) {
-      const entry = stats.chunks.get(key) ?? { objects: 0, load: 0 };
+    for (const key of chunksOf(obj, template)) {
+      const entry = stats.chunks.get(key) ?? { objects: 0, load: 0, unknownLoads: 0 };
       entry.objects += sign;
-      entry.load += load * sign;
+      entry.load = roundLoad(entry.load + load * sign);
+      if (getCatalogItem(obj.catalogId)?.loadUnknown) entry.unknownLoads += sign;
       if (entry.objects <= 0 && entry.load <= 0) stats.chunks.delete(key);
       else stats.chunks.set(key, entry);
     }
@@ -108,10 +110,10 @@ function applyObject(stats: MapStats, obj: PlacedObject, sign: 1 | -1): void {
  *  edit (command-apply.ts's road corner-cut re-index publishes `{ added: [obj] }` for an
  *  object already in `state.objects`, mirroring state/object-index's re-add-in-place contract)
  *  — idempotent only because the stored snapshot, not the live object, is folded out first. */
-function foldIn(folded: Folded, stats: MapStats, obj: PlacedObject): void {
+function foldIn(folded: Folded, stats: MapStats, obj: PlacedObject, template: MapTemplate): void {
   const prior = folded.get(obj.id);
-  if (prior) applyObject(stats, prior, -1);
-  applyObject(stats, obj, 1);
+  if (prior) applyObject(stats, prior, -1, template);
+  applyObject(stats, obj, 1, template);
   folded.set(obj.id, { ...obj });
 }
 
@@ -166,7 +168,7 @@ function rebuild(state: GridState): { stats: MapStats; folded: Folded } {
   const folded: Folded = new Map();
   walkTerrain(state, stats);
   for (const obj of state.objects.values()) {
-    applyObject(stats, obj, 1);
+    applyObject(stats, obj, 1, state.template);
     folded.set(obj.id, { ...obj });
   }
   stats.maxElevation = deriveMaxElevation(stats);
@@ -202,10 +204,10 @@ export function getMapStats(state: GridState): MapStats {
     folded = cached.folded;
     if (canPatch) {
       for (const obj of delta!.removed ?? []) {
-        applyObject(stats, folded.get(obj.id)!, -1);
+        applyObject(stats, folded.get(obj.id)!, -1, state.template);
         folded.delete(obj.id);
       }
-      for (const obj of delta!.added ?? []) foldIn(folded, stats, obj);
+      for (const obj of delta!.added ?? []) foldIn(folded, stats, obj, state.template);
     }
     if (cached.cellsVersion !== cellsVersion) walkTerrain(state, stats);
     stats.maxElevation = deriveMaxElevation(stats);

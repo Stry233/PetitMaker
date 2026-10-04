@@ -13,7 +13,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { act, render, screen, cleanup, fireEvent } from '@testing-library/react';
 import { EventBus } from '../../../core/commands/event-bus';
-import { CHUNK_LOAD_LIMIT, CHUNK_SIZE } from '../../../core/model/constants';
 import { bumpObjectsVersion } from '../../../core/model/grid-model';
 import type { EditorEvents } from '../../../core/model/types';
 import { I18nProvider } from '../../../i18n/context';
@@ -24,6 +23,7 @@ import { TOP_RIGHT } from '../../../ui/shell/frame';
 import { LoadMeter } from '../../../ui/shell/windows/LoadMeter';
 import { chunkLoad } from '../../../ui/shell/windows/map-load';
 import { makeObject, makeState } from '../../rules/_helpers';
+import { CHUNK_LOAD_LIMIT, CHUNK_SIZE } from '../../../core/model/game-profile';
 
 const ART = TOP_RIGHT.find((a) => a.id === 'load')!;
 
@@ -34,7 +34,7 @@ function mount() {
 /** A map three regions across and two down, with something standing in the middle one. */
 function mapWithLoad() {
   const state = makeState(CHUNK_SIZE * 3, CHUNK_SIZE * 2);
-  const obj = makeObject('building-fluorite-cabin', CHUNK_SIZE + 2, CHUNK_SIZE + 2);
+  const obj = makeObject('building-stall', CHUNK_SIZE + 2, CHUNK_SIZE + 2);
   state.objects.set(obj.id, obj);
   bumpObjectsVersion(state, { added: [obj] });
   return state;
@@ -105,6 +105,44 @@ describe('the regional load disc', () => {
 });
 
 describe('the regions window', () => {
+  it('toggles enforcement while keeping overloaded numeric readings visible', () => {
+    const state = makeState(CHUNK_SIZE, CHUNK_SIZE);
+    for (let i = 0; i < 101; i++) {
+      const object = { ...makeObject('flower-protea', i % 12, Math.floor(i / 12)), id: `flower-${i}` };
+      state.objects.set(object.id, object);
+    }
+    const unknown = makeObject('shrub', 14, 14);
+    state.objects.set(unknown.id, unknown);
+    act(() => {
+      useEditorStore.setState({ gridState: state });
+      useEditorStore.getState().setModal('regionLoad', true);
+    });
+    render(<I18nProvider><ChunkLoadWindow /></I18nProvider>);
+    const toggle = screen.getByRole('switch', { name: 'Enforce regional load limit' });
+    expect(toggle.getAttribute('aria-checked')).toBe('true');
+    fireEvent.click(toggle);
+    expect(toggle.getAttribute('aria-checked')).toBe('false');
+    expect(state.ignoreChunkLoad).toBe(true);
+    expect(screen.getByTestId('shell-region-A1').textContent).toContain('101%');
+    expect(screen.getByTestId('shell-region-A1').textContent).toContain('10,100');
+  });
+
+  it('marks a region holding an item of unknown load', () => {
+    const state = makeState(CHUNK_SIZE * 3, CHUNK_SIZE);
+    const known = makeObject('flower-protea', 2, 2);
+    const unknown = makeObject('shrub', CHUNK_SIZE + 2, 2);
+    const both = [known, { ...makeObject('shrub', 4, 4), id: 'shrub-a1' }];
+    for (const obj of [...both, unknown]) state.objects.set(obj.id, obj);
+    act(() => {
+      useEditorStore.setState({ gridState: state });
+      useEditorStore.getState().setModal('regionLoad', true);
+    });
+    render(<I18nProvider><ChunkLoadWindow /></I18nProvider>);
+    expect(screen.getByTestId('shell-region-A1').textContent).toContain('100 + ?');
+    expect(screen.getByTestId('shell-region-A2').textContent).toContain('?');
+    expect(screen.getByTestId('shell-region-A3').textContent).not.toContain('?');
+  });
+
   it('lays every region out in the shape of the map, empty ones included', () => {
     act(() => {
       useEditorStore.setState({ gridState: mapWithLoad() });

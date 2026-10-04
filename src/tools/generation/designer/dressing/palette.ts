@@ -1,5 +1,5 @@
 /**
- * The UNITY operator (主题统一: 同一个区域里的东西，风格要一致) and the colour vocabulary it works in.
+ * The UNITY operator (one theme per region: everything in a region shares one style) and the colour vocabulary it works in.
  *
  * THE TABLE IS AUTHORED, not derived. The catalog carries no colour field for a plant, and the
  * derivation `color-family.ts` offers — the hue of an item's largest non-foliage, non-trunk part — is
@@ -31,7 +31,7 @@ import type { DesignPlan, RegionPlan } from '../types';
 
 /** The families the authored table uses. `hueFamily`'s neutrals (grey, black, brown) name no plant and
  *  are absent. */
-export type ColorFamily =
+type ColorFamily =
   | 'red' | 'orange' | 'yellow' | 'green' | 'cyan' | 'blue' | 'purple' | 'pink' | 'white';
 
 /** One line per plant, the tree list first. The comment on a row is what the icon shows. */

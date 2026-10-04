@@ -8,6 +8,7 @@
 
 import { anyOverlayOpen } from './overlay-state';
 import { eventKeyToken } from './key-token';
+import { isTextEntry } from './text-entry';
 
 interface Binding {
   key: string;
@@ -16,9 +17,6 @@ interface Binding {
   alt: boolean;
   action: () => void;
 }
-
-/** Tags whose focused state should suppress shortcut handling. */
-const IGNORED_TARGETS = new Set(['INPUT', 'TEXTAREA', 'SELECT']);
 
 function parseCombo(combo: string): { key: string; ctrl: boolean; shift: boolean; alt: boolean } {
   const parts = combo.toLowerCase().split('+');
@@ -45,12 +43,11 @@ export class ShortcutManager {
   /**
    * Handle a keydown event: match against registered bindings and fire
    * the action if a match is found. Calls e.preventDefault() on match.
-   * Ignores events when the target is an INPUT, TEXTAREA, or SELECT.
+   * Ignores events whose target is a form field or editable content.
    */
   handleKeyDown(e: KeyboardEvent): void {
     if (anyOverlayOpen()) return; // a modal owns the foreground — tool shortcuts are suppressed
-    const target = e.target as HTMLElement | null;
-    if (target && (IGNORED_TARGETS.has(target.tagName) || target.isContentEditable)) return;
+    if (isTextEntry(e.target)) return;
 
     const pressedKey = eventKeyToken(e);
 

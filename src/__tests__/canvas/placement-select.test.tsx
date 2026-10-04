@@ -29,7 +29,7 @@ import { createDefaultRegistry } from '../../rules/index';
 import { getCatalogItem } from '../../state/catalog';
 import { ToolManager } from '../../tools/runtime/tool-manager';
 import { selectedObjectIds } from '../../state/selection';
-import { makeStubRenderer } from '../tools/_tool-manager';
+import { makeStubView } from '../tools/_tool-manager';
 import { makeState } from '../rules/_helpers';
 import { setStoreState } from '../_store';
 import { roadLookup } from '../../state/object-index';
@@ -93,7 +93,7 @@ function arm(item: string | null, ...objects: PlacedObject[]): void {
   for (const obj of objects) gs.objects.set(obj.id, obj);
   if (objects.length > 0) bumpObjectsVersion(gs, { added: objects });
   executor = new CommandExecutor(gs, useEditorStore.getState().eventBus, createDefaultRegistry(), roadLookup(gs));
-  const tm = new ToolManager(makeStubRenderer(), executor, gs);
+  const tm = new ToolManager(makeStubView(), executor, gs);
   const { view } = makeView();
   setActiveView(view); // re-points the manager's ctx at the test view's projection/overlay
   registerToolManager(tm);

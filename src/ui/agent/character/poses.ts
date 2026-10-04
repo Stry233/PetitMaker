@@ -43,7 +43,7 @@ export interface PoseTimer {
   run: 'blink' | 'earflick';
 }
 
-export interface BadgeTick {
+interface BadgeTick {
   every: number;
   rotateBy: number;
   dur: number;

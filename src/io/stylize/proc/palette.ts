@@ -1,5 +1,5 @@
 /*
- * palette.ts — a pack declares VALUE first, and the declaration is checked.
+ * A pack declares VALUE first, and the declaration is checked.
  *
  * The shipped map palette fails three of the four rules below, which is most of why the raw export
  * reads flatter than a drawn picture: its nine elevation greens never go darker than OKLab L 0.49,

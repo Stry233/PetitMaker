@@ -1,5 +1,5 @@
 /*
- * stencil-feature.ts — WHICH FEW CELLS OF A PICTURE A DECORATION IS SPENT ON, and why those.
+ * WHICH FEW CELLS OF A PICTURE A DECORATION IS SPENT ON, and why those.
  *
  * The terrain ramp is eight greens: it can say a picture's lightness and it cannot say its colour. A
  * decoration can — a flower carries a real hue and stands on one cell — which makes it the one
@@ -19,6 +19,7 @@
  */
 import type { Stencil } from '../../../core/model/types';
 import { cellDepths, coherentAreas, colourGap, nearestEntry, type Area } from './stencil-small';
+import { NEIGHBORS4_NESW } from '../../../core/model/grid-model';
 
 /**
  * A feature a picture identifies itself by: the cells it covers, the colour the SOURCE has there, and
@@ -61,7 +62,7 @@ export const FEATURE_MAX_SHARE = 0.125;
  * 24 is about a step and a half of the terrain ramp, the same gap `BORROW_MIN_GAIN` asks a borrowed
  * material to beat the ramp by: below it the picture is not drawing a boundary there, it is shading.
  */
-export const FEATURE_MIN_CONTRAST = 24;
+const FEATURE_MIN_CONTRAST = 24;
 
 /**
  * How deep inside the figure a feature's cells have to sit on average.
@@ -70,7 +71,7 @@ export const FEATURE_MIN_CONTRAST = 24;
  * says where the figure ENDS, which the silhouette already says, and it is the cell terrain refuses a
  * coating or a flat placement on. What identifies a subject is inside it.
  */
-export const FEATURE_DEPTH_MIN = 2;
+const FEATURE_DEPTH_MIN = 2;
 
 /**
  * The depth at which being interior stops earning anything, and the size at which a feature stops
@@ -85,8 +86,8 @@ export const FEATURE_DEPTH_MIN = 2;
  * feature is fully said, and rewarding size further would walk the ranking up into the subject's own mass,
  * which `FEATURE_MAX_SHARE` exists to keep out.
  */
-export const FEATURE_DEPTH_FULL = 3;
-export const FEATURE_MASS_SHARE = 1 / 48;
+const FEATURE_DEPTH_FULL = 3;
+const FEATURE_MASS_SHARE = 1 / 48;
 
 /**
  * How much better the accent palette has to say a feature's colour than the primary palette can, before
@@ -98,7 +99,7 @@ export const FEATURE_MASS_SHARE = 1 / 48;
  * thing adds an object and no information. Eight is half a ramp step: enough to exclude a colour the two
  * palettes say equally well, small enough to keep a feature whose hue the ramp merely approximates.
  */
-export const FEATURE_SAY_MIN = 8;
+const FEATURE_SAY_MIN = 8;
 
 /**
  * How much of the figure the whole decoration may cover in a small box, and how many features it may
@@ -193,7 +194,7 @@ function surround(
   const contact = new Map<number, number>();
   for (const i of areas[id]!.cells) {
     const x = i % width, y = (i / width) | 0;
-    for (const [dx, dy] of EDGES) {
+    for (const [dx, dy] of NEIGHBORS4_NESW) {
       const nx = x + dx, ny = y + dy;
       if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue;
       const other = owner[ny * width + nx]!;
@@ -210,8 +211,6 @@ function surround(
   }
   return ((Math.round(r / n) << 16) | (Math.round(g / n) << 8) | Math.round(b / n)) >>> 0;
 }
-
-const EDGES: readonly (readonly [number, number])[] = [[0, -1], [1, 0], [0, 1], [-1, 0]];
 
 /** One feature realized: the item that says its colour, the cells it may be said on, and how many of
  *  them the budget affords. */

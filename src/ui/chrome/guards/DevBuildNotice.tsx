@@ -31,7 +31,7 @@ import { TimedButton } from '../../primitives/TimedButton';
 import { colors, font, radii, springs, z, cursors } from '../../design/styles';
 import { roleWeight, roleFont } from '../../design/text-weight';
 import { MAP_LABEL, PANEL_EDGE } from '../../design/tokens';
-import { ARRIVAL_ROW, TOAST_BAND_ROW, TOAST_BAND_TOP } from '../floating/toast-band';
+import { ARRIVAL_ROW, TOAST_BAND_ROW, TOAST_BAND_TOP, bandTop } from '../floating/toast-band';
 import { useChromeScale } from '../../design/scale';
 
 /**
@@ -101,7 +101,7 @@ const dismissStyle: CSSProperties = {
   padding: '6px 10px',
   // A stadium, so the countdown's outline runs round a pill rather than round a box with soft
   // corners: `TimedButton` takes its own shape from whatever this says.
-  borderRadius: 999,
+  borderRadius: radii.pill,
   cursor: cursors.clickable,
 };
 
@@ -162,7 +162,7 @@ export function DevBuildNotice() {
           <motion.div
             role="status"
             data-testid="dev-notice"
-            style={{ ...noticeWrap, top: NOTICE_TOP, zoom: chromeScale }}
+            style={{ ...noticeWrap, top: bandTop(NOTICE_TOP), zoom: chromeScale }}
             initial={{ opacity: 0, x: '-50%', y: -12 }}
             animate={{ opacity: 1, x: '-50%', y: 0 }}
             exit={{ opacity: 0, x: '-50%', y: -8 }}

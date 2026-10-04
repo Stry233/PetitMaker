@@ -7,43 +7,54 @@
  */
 import type { CommandExecutor } from '../core/commands/command-executor';
 import type { EventBus } from '../core/commands/event-bus';
-import type { EditorEvents, GridState, PlacedObject } from '../core/model/types';
+import type { EditorEvents, GridState, PlacedObject, Rotation, Translate } from '../core/model/types';
 import { useEditorStore } from '../state/store';
+import { layerNumbersShown } from '../state/slices/planet-session';
 import { getActiveView } from '../canvas/active-view';
-import { paintGroupRotationArc } from '../canvas/interaction/usePointerInteraction';
+import { paintGroupRotationArc } from '../canvas/interaction/selection-paint';
 import {
   deleteGroup, rotateGroup, rotateObject,
   type DeleteGroupResult, type QuarterTurn, type RotateResult,
 } from '../tools/objects';
 import { showToast } from '../core/runtime/toast-bus';
+import { reportRefusal } from '../core/commands/refusal';
 import { host } from './host';
+import { rotateSessionPlaza, type SessionPlazaResult } from './operations/planet-session';
 
 /**
  * Turn ONE object to `angle`: validate, execute, play the spin on success, emit
- * `validation-failed` on refusal. The single call path behind every single-object rotate
- * (ContextMenu, SelectionHandles, the rotate keyboard shortcut) — the plural twin of
- * `rotateGroupAction` below, so no caller repeats the wiring or forgets a piece of it.
+ * `validation-failed` on refusal. The single call path behind every single-object rotate, and the
+ * singular twin of `rotateGroupAction` below.
  */
 export function rotateObjectAction(
   executor: CommandExecutor,
   state: GridState,
   eventBus: EventBus<EditorEvents>,
   obj: PlacedObject,
-  angle: 0 | 90 | 180 | 270,
+  angle: Rotation,
   spin: { from: number; to: number },
 ): RotateResult {
   const result = rotateObject(executor, state, obj, angle, spin);
-  if (result.ok) {
-    host.feedback.spin(obj.id, result.spin!.from, result.spin!.to);
-  } else {
-    eventBus.emit('validation-failed', { cmd: result.cmd, errors: result.errors });
-  }
+  if (result.ok) host.feedback.spin(obj.id, result.spin!.from, result.spin!.to);
+  else reportRefusal(eventBus, result.refusal);
+  return result;
+}
+
+/**
+ * Turn the planet session's plaza `quarterTurns` quarters clockwise: the spin `rotateObjectAction`
+ * plays on success, `validation-failed` on refusal. The plaza's art rests upright in every footprint,
+ * so the spin winds in from the old facing and lands at rest.
+ */
+export function rotateSessionPlazaAction(eventBus: EventBus<EditorEvents>, quarterTurns: 1 | 2 | 3 = 1): SessionPlazaResult {
+  const result = rotateSessionPlaza(quarterTurns);
+  if (!result.cmd) return result;
+  if (result.success) host.feedback.spin(result.cmd.object.id, -90 * quarterTurns, 0);
+  else reportRefusal(eventBus, { cmd: result.cmd, errors: result.errors });
   return result;
 }
 
 /** The removal poof, as `deleteGroup`'s `onWillRemove` hook. Bound once, inside `deleteSelection`
- *  below — nothing outside this module calls `deleteGroup` directly, so nothing outside it can
- *  forget to wire the animation. */
+ *  below. */
 function poofRemoved(obj: PlacedObject): void {
   host.feedback.poof(obj.id);
 }
@@ -51,16 +62,15 @@ function poofRemoved(obj: PlacedObject): void {
 /**
  * Render a `deleteGroup` result: a refusal (nothing removed) goes out as `validation-failed`, the
  * same register a single blocked removal uses; a partial result gets an info toast; a complete one
- * reports nothing. Shared so the keyboard command, the context menu and the delete popover render
- * identical counts identically.
+ * reports nothing. Shared so every delete surface reports the same counts the same way.
  */
 export function reportDeleteGroup(
   eventBus: EventBus<EditorEvents>,
-  t: (key: string, params?: Record<string, string | number>) => string,
+  t: Translate,
   result: DeleteGroupResult,
 ): void {
   if (result.refusal) {
-    eventBus.emit('validation-failed', result.refusal);
+    reportRefusal(eventBus, result.refusal);
   } else if (result.kept > 0) {
     const key = result.kept === 1 ? 'toast.group_delete_kept_one' : 'toast.group_delete_kept';
     showToast(t(key, { n: result.kept }), 'info');
@@ -69,16 +79,14 @@ export function reportDeleteGroup(
 
 /**
  * Delete every member of `ids` that isn't locked: the SINGLE call path behind every "delete this
- * selection" surface (the keyboard shortcut, SelectionHandles' group button, ContextMenu,
- * DeletePopover). Binds the poof, re-derives the selection from whoever survived, and reports the
- * result through `reportDeleteGroup` — so a caller cannot forget the animation or copy the
- * survivor filter.
+ * selection" surface. Binds the poof, re-derives the selection from whoever survived, and reports the
+ * result through `reportDeleteGroup`.
  */
 export function deleteSelection(
   executor: CommandExecutor,
   state: GridState,
   eventBus: EventBus<EditorEvents>,
-  t: (key: string, params?: Record<string, string | number>) => string,
+  t: Translate,
   ids: readonly string[],
 ): DeleteGroupResult {
   const result = deleteGroup(executor, state, ids, poofRemoved);
@@ -90,9 +98,9 @@ export function deleteSelection(
 }
 
 // Set only for the synchronous duration of this module's own `rotateGroup` call (never across the
-// arc animation that follows, which is async). `SelectionHandles` reads this to tell "the members'
+// arc animation that follows, which is async). `SelectionCard` reads this to tell "the members'
 // own geometry moved because they turned" apart from every other reason `objects-changed` fires, so
-// its control-row anchor can hold still across a turn while still following a genuine group move.
+// its placement can hold still across a turn while still following a genuine group move.
 let rotationInFlight = false;
 
 export function isGroupRotationInFlight(): boolean {
@@ -122,11 +130,11 @@ export function rotateGroupAction(
       const view = getActiveView();
       view?.animateGroupRotation?.(turn, (eased) => {
         const liveGs = useEditorStore.getState().gridState;
-        if (view && liveGs) paintGroupRotationArc(view.overlay, liveGs, turn, eased, useEditorStore.getState().showLayerNumbers);
+        if (view && liveGs) paintGroupRotationArc(view.overlay, liveGs, turn, eased, layerNumbersShown(useEditorStore.getState()));
       });
     });
   } finally {
     rotationInFlight = false;
   }
-  if (res.refusal) eventBus.emit('validation-failed', res.refusal);
+  reportRefusal(eventBus, res.refusal);
 }

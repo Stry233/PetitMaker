@@ -16,7 +16,7 @@ import { arcMotion, arcOffset, spinOffset, type GroupRotation } from '../../canv
 import { animateGroupRotation, animateRotation } from '../../canvas/map2d/layers/object-animations';
 import { animConfig, easeOutBack } from '../../core/runtime/anim-config';
 import { TILE_SIZE } from '../../core/model/constants';
-import { setReducedMotion, __resetMotionState } from '../../canvas/map2d/motion-state';
+import { setReducedMotion, __resetMotionState } from '../../core/runtime/motion-state';
 
 /** A stand-in for an object wrapper: '_icon' is the child animateRotation/the arc spin tween. */
 function wrapper(x: number, y: number, withIcon: boolean): PIXI.Container {

@@ -423,7 +423,7 @@ describe('a picture built small carries the picture', () => {
     expect(score.spread).toBeGreaterThan(0.8);
   });
 
-  it('is deterministic, twice over the same picture', () => {
+  it('an image run is deterministic, twice over the same picture', () => {
     const src = pixels(FACE, 6);
     expect(runImage(src, { side: 22 }).built).toEqual(runImage(src, { side: 22 }).built);
   });

@@ -1,4 +1,4 @@
-// src/io/share/glyph/gf256.ts — GF(2^8) arithmetic with primitive polynomial 0x11d,
+// GF(2^8) arithmetic with primitive polynomial 0x11d,
 // generator 2. Tables built once; used by the Reed–Solomon codec.
 const gfExp = new Uint8Array(512);
 const gfLog = new Uint8Array(256);

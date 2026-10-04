@@ -57,10 +57,10 @@ describe('history codec', () => {
     expect(decodeHistory({ v: 1, totalSteps: 1, entries: [{ nope: true }] })).toBeNull();
   });
 
-  it('collapsed-entry round-trip: place object → commitStrokeGroup → encode → decode → restore → undo removes it', () => {
+  it('collapsed-entry round-trip: place object → commitStroke → encode → decode → restore → undo removes it', () => {
     const { state: originalState, exec: originalExec } = editedExecutor();
 
-    // Place an object and collapse it into a single undo entry via commitStrokeGroup
+    // Place an object and collapse it into a single undo entry via commitStroke
     const startSize = originalExec.getUndoStackSize();
     const obj = {
       id: 'test-obj-1', catalogId: 'path-overgrown-dirt',
@@ -75,7 +75,7 @@ describe('history codec', () => {
     expect(originalState.objects.has(obj.id)).toBe(true);
 
     // Collapse into one entry
-    originalExec.commitStrokeGroup(startSize);
+    originalExec.commitStroke(startSize);
     expect(originalExec.getUndoStackSize()).toBe(startSize + 1); // collapsed to one
 
     // Encode all undo entries, JSON round-trip, and decode

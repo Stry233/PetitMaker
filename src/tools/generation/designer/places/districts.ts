@@ -1,5 +1,5 @@
 /**
- * Stage C of the methodology pipeline (districts and places, the two scales): DISTRICTS TAKE A
+ * Stage C of the designer pipeline (districts and places, the two scales): DISTRICTS TAKE A
  * TREATMENT, and each one subdivides into the composed PLACES the kits fill.
  *
  * Stage A tiles the planet with terrace plates and stage B cuts it into districts with straight
@@ -23,9 +23,9 @@
  * Pure and deterministic per (seed, template, composition, streets, richness): data in, data out,
  * no state, no commands, no browser API, so it runs inside the worker pool.
  */
-import { flatIndex } from '../../../../core/model/grid-model';
+import { flatIndex, isBuildableZone, rectContains } from '../../../../core/model/grid-model';
 import { makeRng, type Rng } from '../../../../core/model/rng';
-import { CellZone, type CatalogItem, type MapTemplate, type Rect } from '../../../../core/model/types';
+import type { CatalogItem, MapTemplate, Rect } from '../../../../core/model/types';
 import { plazaRect, cellTiers, type CompositionPlan } from '../composition/composition';
 
 import type { MovementLine, MovementStop } from '../composition/movement-line';
@@ -117,7 +117,7 @@ export interface DistrictAssignment {
   water: boolean;
 }
 
-export interface DistrictPlan {
+interface DistrictPlan {
   /** The plan every later stage reads: the places as regions, the plaza, and the high ground. */
   design: DesignPlan;
   assignments: DistrictAssignment[];
@@ -151,8 +151,7 @@ export function planDistricts(
   const specs = planRegionList(seed, catalog, r);
   // BIGGEST LOT FIRST. The shop's complex and the museum's forecourt are the roomiest anchors on the
   // map and the fewest blocks can hold them; asked for after nine homes have taken the large blocks,
-  // `facility-shop` goes unplaced, which is a break of the methodology's one hard rule rather than a
-  // rough edge.
+  // the shop goes unplaced, which breaks the hard rule that every building is placed.
   const anchorSpecs = specs.filter((s) => s.kind !== 'theme')
     .sort((a, b) => b.size.w * b.size.h - a.size.w * a.size.h || a.id.localeCompare(b.id));
   const themeSpecs = specs.filter((s) => s.kind === 'theme');
@@ -181,7 +180,7 @@ export function planDistricts(
   // EVERY LOT IS CHOSEN BEFORE ANY BLOCK IS CUT UP, so only the lot itself is claimed here and the
   // places around it are cut once every anchor has landed. Cutting a block into places as each
   // anchor takes it marks the WHOLE block as spoken for, which stops two anchors ever sharing one
-  // and starves the last homes on the list — a break of the methodology's one hard rule.
+  // and starves the last homes on the list, breaking the hard rule that every building is placed.
   const anchorBlocks = new Map<string, typeof open[number]>();
   const picks: { spec: RegionSpec; block: Block | null; lot: Rect; entry: Direction }[] = [];
   for (const spec of anchorSpecs) {
@@ -494,8 +493,8 @@ function edgeCells(lot: Rect, side: Direction): { x: number; y: number }[] {
  * THE LAST RESORT: a lot on the plaza's own plate.
  *
  * Every fallback above searches the blocks the streets cut, and on a terraced seed those can all be
- * claimed or too small, which would leave a home unplaced and break the methodology's one hard
- * rule. This searches the plaza's plate directly instead: the composition holds it at tier 0 by
+ * claimed or too small, which would leave a home unplaced and break the hard rule that every building
+ * is placed. This searches the plaza's plate directly instead: the composition holds it at tier 0 by
  * construction (`assignTiers` floors it), so any rectangle of its pavable ground is level, buildable
  * and beside the hub. The lot comes back with no block, so nothing is cut up around it; the pipeline
  * paves the approach to its door exactly as it does for a lot whose frontage a street did not reach.
@@ -520,7 +519,7 @@ function hubLot(
     const x = start % W, y = (start / W) | 0;
     const lot = { x, y, w: floor.w, h: floor.h };
     if (x + lot.w + 1 >= W || y + lot.h + 1 >= H) continue;
-    if (inRect(plaza, x, y) || rectsMeet(plaza, lot)) continue;
+    if (rectContains(plaza, x, y) || rectsMeet(plaza, lot)) continue;
     // The lot plus its dual-grid margin, all on the plate at one tier and unclaimed.
     let ok = true;
     const level = tiers[start]!;
@@ -545,9 +544,6 @@ function hubLot(
 
 const rectsMeet = (a: Rect, b: Rect): boolean =>
   a.x - 1 < b.x + b.w && b.x < a.x + a.w + 1 && a.y - 1 < b.y + b.h && b.y < a.y + a.h + 1;
-
-const inRect = (r: Rect, x: number, y: number): boolean =>
-  x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h;
 
 /**
  * The block's own unclaimed ground, as a summed-area table over its box plus the dual-grid margin.
@@ -590,7 +586,7 @@ function pavableGround(template: MapTemplate, tiers: Int8Array): Uint8Array {
   const land = new Uint8Array(W * H);
   for (let y = 0; y < H; y++) {
     for (let x = 0; x < W; x++) {
-      if (template.zones[y]?.[x] === CellZone.Grass) land[flatIndex(x, y, W)] = 1;
+      if (isBuildableZone(template.zones[y]?.[x])) land[flatIndex(x, y, W)] = 1;
     }
   }
   const out = new Uint8Array(W * H);
@@ -768,7 +764,7 @@ function backingOf(lot: Rect, entry: Direction): Rect | null {
 
 /** Every place's look-out: the direction the nearest pavement lies in, or the plaza's where no
  *  street runs within reach. A region is entered from there and backed at its far end. */
-export function lookOut(
+function lookOut(
   lot: Rect, paved: Uint8Array, centre: { x: number; y: number }, W: number, H: number,
 ): Direction {
   const cx = lot.x + lot.w / 2, cy = lot.y + lot.h / 2;
@@ -794,7 +790,7 @@ export function lookOut(
 /** The bounding rect of the composition's own high ground: the plates standing within one tier of its
  *  peak. The landmark asks a plan for one, and the composition is what decides where the mass sits, so
  *  this REPORTS the mass rather than dictating it. A planet with no relief reports an empty rect. */
-export function highGround(composition: CompositionPlan): Rect {
+function highGround(composition: CompositionPlan): Rect {
   const peak = composition.plates.reduce((m, p) => Math.max(m, p.tier), 0);
   if (peak <= 0) return { x: 0, y: 0, w: 0, h: 0 };
   let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;

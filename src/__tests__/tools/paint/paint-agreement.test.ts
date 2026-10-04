@@ -2,7 +2,6 @@ import { describe, it, expect } from 'vitest';
 import {
   CommandType, TerrainType, type Command, type EditorEvents, type GridState, type MacroCoord, type ValidationResult,
 } from '../../../core/model/types';
-import { ELEVATION_MAX } from '../../../core/model/constants';
 import { DrawingTool } from '../../../tools/paint/drawing-tool';
 import type { ContentType } from '../../../tools/paint/paint-plan';
 import type { ToolContext } from '../../../tools/runtime/types';
@@ -13,6 +12,7 @@ import { getCatalogItem } from '../../../state/catalog';
 import { makeState, setTerrain } from '../../rules/_helpers';
 import { makeToolCtx } from '../_tool-ctx';
 import { roadLookup } from '../../../state/object-index';
+import { ELEVATION_MAX } from '../../../core/model/game-profile';
 
 /**
  * The cursor's refusal badge and the click must answer the same question, and two drifts show how
@@ -44,7 +44,6 @@ function placeFixture(exec: CommandExecutor, catalogId: string, at: MacroCoord):
       id: `fixture-${catalogId}`, catalogId: item.id, position: at,
       rotation: 0, elevation: 0,
     },
-    loadValue: item.loadValue,
   });
 }
 

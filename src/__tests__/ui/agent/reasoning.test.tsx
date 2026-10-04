@@ -1,5 +1,5 @@
 /**
- * reasoning.test.tsx — PRESENCE ALWAYS, TRANSCRIPT NEVER BY DEFAULT: the counter on the dock's meta
+ * PRESENCE ALWAYS, TRANSCRIPT NEVER BY DEFAULT: the counter on the dock's meta
  * line, the stall face that stops reassuring, and the bounded box one deliberate press away.
  *
  * The three faces under test are all about what the panel SAYS while a model thinks, so every
@@ -9,6 +9,7 @@
  * have to be awaited through, and the presence line is deliberately the one carrier that survives
  * reduced motion, so testing it there is testing it where it matters.
  */
+import { ScrollIntent } from '../../../ui/primitives/scroll-intent';
 import { describe, it, expect, beforeEach } from 'vitest';
 import { render, fireEvent, waitFor } from '@testing-library/react';
 import { MotionConfig } from 'framer-motion';
@@ -249,7 +250,7 @@ describe('the thoughts affordance: one deliberate press into a bounded box', () 
     fireEvent.click(getByTestId('thoughts-toggle'));
 
     const box = getByTestId('thoughts-box');
-    expect(box.style.maxHeight).toBe(`${THOUGHTS_MAX_HEIGHT}px`);
+    expect(box.parentElement!.style.maxHeight).toBe(`${THOUGHTS_MAX_HEIGHT}px`);
     expect(box.style.overflowY).toBe('auto');
     expect(box.style.overscrollBehavior).toBe('contain');
   });
@@ -287,18 +288,19 @@ describe('the thoughts affordance: one deliberate press into a bounded box', () 
     await waitFor(() => { expect(queryByTestId('thoughts-box')).toBeNull(); });
   });
 
-  /** The ticket reports an open box so the zone's scroll-follow can stand down: a record that
-   *  yanked itself to the foot every second would make a long thought unreadable. */
-  it('reports an open box to its host', () => {
-    const seen: boolean[] = [];
+  it('pauses following before changing the reasoning disclosure', () => {
+    const seen: string[] = [];
     const job = makeJob({ thought: { chars: 1204, turns: 1, marks: [], ms: 0, live: LONG_COT } });
     const { getByTestId } = renderWithI18n(
-      <JobTicket job={job} live onThoughtsOpenChange={(open) => seen.push(open)} />,
+      <ScrollIntent.Provider value={() => seen.push(getByTestId('thoughts-toggle').getAttribute('aria-expanded')!)}>
+        <JobTicket job={job} live />
+      </ScrollIntent.Provider>,
     );
     fireEvent.click(getByTestId('thoughts-toggle'));
     fireEvent.click(getByTestId('thoughts-toggle'));
-    expect(seen).toEqual([true, false]);
+    expect(seen).toEqual(['false', 'true']);
   });
+
 });
 
 describe('the excerpt note: a reopened session says when the box holds less than it thought', () => {
@@ -410,7 +412,8 @@ describe('interleaved turns: one quiet mark per turn, in the op list', () => {
     expect(marks[0]?.textContent).toContain('thought for 1:42');
     expect(marks[1]?.textContent).toContain('thought for 0:28');
 
-    const rows = [...getByTestId('ops-list').children].map((el) => el.getAttribute('data-testid'));
+    const rows = [...getByTestId('ops-list').querySelectorAll('[data-testid="thought-row"], [data-testid="op-row"]')]
+      .map((el) => el.getAttribute('data-testid'));
     expect(rows).toEqual(['thought-row', 'op-row', 'thought-row', 'op-row']);
   });
 

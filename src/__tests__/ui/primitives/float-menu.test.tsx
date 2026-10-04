@@ -91,18 +91,12 @@ describe('the open card stands outside the panel', () => {
     expect(panel.querySelector('[role="menu"]')).toBeNull();
   });
 
-  /**
-   * THE AIR SCALES WITH THE INTERFACE. The card's box is written in the zoomed layer's own px, so a
-   * gap added to a VISUAL rect before the division comes out at 6 SCREEN px at every scale — 8 frame
-   * px at uiZoom 0.6 and 2.7 at 1.8, three times tighter to its row at the top of the range. jsdom
-   * reports a zero rect for the row, which is exactly what leaves the gap term alone to be read.
-   */
-  it('keeps the same air between row and card at every interface scale', () => {
+  it('keeps the scaled gap while respecting the viewport edge margin', () => {
     render(<Menu open zoom={2} />);
     expect(screen.getByRole('menu').style.top).toBe('6px');
     cleanup();
     render(<Menu open zoom={0.5} />);
-    expect(screen.getByRole('menu').style.top).toBe('6px');
+    expect(screen.getByRole('menu').style.top).toBe('16px');
   });
 
   /**

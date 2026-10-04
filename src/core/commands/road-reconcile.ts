@@ -8,8 +8,8 @@
  * stroke changed, so every path that edits terrain — brush, eraser, macros, agent tools — keeps
  * the invariant without knowing about it.
  *
- * The catalog questions arrive as injected lookups (`RoadLookup`, `LoadValueLookup`), the same
- * move as `RuleDispatcher`: the answers live above `core`.
+ * The paved-cell question arrives as an injected `RoadLookup`, the same move as `RuleDispatcher`:
+ * the answer lives above `core`.
  */
 import { CommandType, TerrainType } from '../model/types';
 import type {
@@ -25,16 +25,15 @@ import type {
 } from '../model/types';
 import { getCell, cellKey } from '../model/grid-model';
 import { surfaceElevation } from '../edge-cut/terrain-silhouette';
-import type { LoadValueLookup, RoadLookup } from '../model/road-lookup';
+import type { RoadLookup } from '../model/road-lookup';
 
-/** Command sink + the two catalog answers the pass needs — satisfied by CommandExecutor. */
+/** Command sink + the paved-cell answer the pass needs — satisfied by CommandExecutor. */
 export interface RoadReconcileTarget {
   execute(cmd: Command): ValidationResult;
   /** Pre-command validation WITHOUT executing or emitting: a refused re-place is this pass's
    *  ordinary removal branch, not an error anyone should be toasted about. */
   validatePre(cmd: Command): ValidationError[];
   roadAt: RoadLookup;
-  loadValueOf: LoadValueLookup;
 }
 
 /** The 2x2 terrain footprint a road at (x, y) coats — the same cells the flat trait checks
@@ -60,7 +59,7 @@ function footprintLevel(state: GridState, road: PlacedObject): number | null {
 }
 
 /** The PlaceObject that re-seats `road` at its anchor's current surface. */
-function reseatCommand(state: GridState, road: PlacedObject, target: RoadReconcileTarget): PlaceObjectCommand {
+function reseatCommand(state: GridState, road: PlacedObject): PlaceObjectCommand {
   const cell = getCell(state.cells, road.position.x, road.position.y);
   const candidate: PlacedObject = {
     id: road.id,
@@ -72,7 +71,7 @@ function reseatCommand(state: GridState, road: PlacedObject, target: RoadReconci
   };
   return {
     type: CommandType.PlaceObject, timestamp: Date.now(),
-    object: candidate, loadValue: target.loadValueOf(road.catalogId),
+    object: candidate,
   };
 }
 
@@ -105,8 +104,8 @@ export function reconcileRoads(
       if (state.objects.has(id)) { opts.removedPool.delete(id); continue; } // restored by an undo/rollback
       if (target.roadAt(parked.position.x, parked.position.y)) { opts.removedPool.delete(id); continue; }
       if (footprintLevel(state, parked) === null) continue;
-      const place = reseatCommand(state, parked, target);
-      if (target.validatePre(place).length === 0 && (target.execute(place) as ValidationResult).success) {
+      const place = reseatCommand(state, parked);
+      if (target.validatePre(place).length === 0 && target.execute(place).success) {
         opts.removedPool.delete(id);
       }
     }
@@ -133,7 +132,7 @@ export function reconcileRoads(
 
     // Probed with the old road still standing (a coating never blocks a coating), so a swap that
     // cannot land removes cleanly instead of half-moving.
-    const place = reseatCommand(state, road, target);
+    const place = reseatCommand(state, road);
     const placeable = level !== null && target.validatePre(place).length === 0;
 
     const remove: RemoveObjectCommand = {

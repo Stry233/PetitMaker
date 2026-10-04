@@ -1,4 +1,3 @@
-import { viewportSize } from '../core/runtime/viewport-space';
 /**
  * What a shell can ask of the map view.
  *
@@ -9,18 +8,26 @@ import { viewportSize } from '../core/runtime/viewport-space';
  * A verb with no view to reach is a no-op. Both canvases unmount and remount, and a shell must not
  * have to know when.
  */
+import { viewportSize } from '../core/runtime/viewport-space';
 import { showBuildableRegion, clearBuildableRegion } from '../canvas/interaction/region-view-sync';
 import { getActiveView } from '../canvas/active-view';
 import { animateCamera, type CameraTweenHandle } from '../canvas/map2d/interaction/camera-tween';
 import { getMapRenderer } from '../canvas/map2d/renderer-registry';
 import { get3DCamera, set3DCamera } from '../canvas/map3d/scene/camera-registry';
 import type { CameraAngle } from '../canvas/map3d/capture';
-import { paintSpinRing } from '../canvas/interaction/usePointerInteraction';
-import { resolveCellsFlash } from '../canvas/map2d/layers/error-flash';
+import { paintSpinRing } from '../canvas/interaction/selection-paint';
+import { resolveCellsFlash } from '../canvas/error-flash';
 import { singleSelection } from '../state/selection';
 import { useEditorStore } from '../state/store';
-import type { MacroCoord } from '../core/model/types';
+import { layerNumbersShown } from '../state/slices/planet-session';
+import type { MacroCoord, Rect } from '../core/model/types';
+import type { PlanetFrame } from '../core/model/planet';
+import type { PersistedCamera } from '../io/save-format/types';
 import { currentKit } from './context';
+
+/** A camera for each view, applied once the views have reset for the next installed map. */
+export type QueuedCamera = PersistedCamera;
+let queuedCamera: QueuedCamera | null = null;
 
 const screenCentre = (): [number, number] => [viewportSize().width / 2, viewportSize().height / 2];
 
@@ -70,6 +77,13 @@ export const host = {
     },
     get3d(): CameraAngle | undefined { return get3DCamera(); },
     set3d(c: CameraAngle): void { set3DCamera(c); },
+    /** Replaces any camera already waiting; the session hook applies it after the next map change. */
+    queue(c: QueuedCamera | null): void { queuedCamera = c; },
+    takeQueued(): QueuedCamera | null {
+      const c = queuedCamera;
+      queuedCamera = null;
+      return c;
+    },
   },
   feedback: {
     /**
@@ -95,7 +109,7 @@ export const host = {
         if (!view || !s.gridState) return;
         const sel = singleSelection(s.selection);
         if (sel?.kind === 'object' && sel.id === id) {
-          paintSpinRing(view.overlay, s.gridState, id, eased, s.showLayerNumbers);
+          paintSpinRing(view.overlay, s.gridState, id, eased, layerNumbersShown(s));
         }
       };
       getActiveView()?.animateRotation?.(id, from, to, onFrame);
@@ -103,13 +117,22 @@ export const host = {
     poof(id: string): void { getActiveView()?.animateRemove?.(id); },
   },
   buildableRegion: {
-    show(cells: MacroCoord[]): void { showBuildableRegion(cells); },
+    show(cells: MacroCoord[], dimensionScale?: number): void { showBuildableRegion(cells, dimensionScale); },
     clear(): void { clearBuildableRegion(); },
     /** The standing region breathing once, as its own answer to "why was that refused": the caller
      *  brings the numbers, since a duration is declared in the motion registry and nowhere else. */
     pulse(durationMs: number, dip: number): void {
       getActiveView()?.overlay.pulseBuildableRegion?.(durationMs, dip);
     },
+  },
+  planetFrame: {
+    show(frame: PlanetFrame | null): void { getActiveView()?.overlay.showPlanetFrame?.(frame); },
+    /** The caller brings the duration, which the motion registry declares. */
+    flash(durationMs: number): void { getActiveView()?.overlay.flashPlanetFrame?.(durationMs); },
+  },
+  planetReview: {
+    /** A scanned planet's cells to check and the landmark's footprint; null cells take them down. */
+    show(cells: readonly MacroCoord[] | null, landmark: Rect | null = null): void { getActiveView()?.overlay.showReviewCells?.(cells, landmark); },
   },
   route: {
     show(cells: MacroCoord[]): void { getActiveView()?.overlay.showRoute(cells); },
@@ -127,16 +150,11 @@ export const host = {
   capture2d(maxPx = 1024, includeGrid = false, annotations?: boolean): string | null {
     return getMapRenderer()?.captureMapImage(maxPx, includeGrid, undefined, annotations) ?? null;
   },
-  captureComplete2d(maxPx = 1024, annotations = true): string | null {
-    return getMapRenderer()?.captureCompleteMapImage(maxPx, annotations) ?? null;
-  },
   /** The plan-notes ink alone, transparent everywhere else: the stylize compose step's source for
    *  drawing the user's ink back over a redrawn map bitmap. */
   capture2dAnnotations(maxPx = 1024): string | null {
     return getMapRenderer()?.captureAnnotationsImage(maxPx) ?? null;
   },
-  /** The grid lines alone, transparent everywhere else: the layer a stylized export keeps its grid
-   *  from, since the redrawn picture carries none of its own. */
   /** One tile of the 2D map at `resolution`, for an export painted in parts. */
   capture2dRegionCanvas(region: { x: number; y: number; w: number; h: number }, resolution: number, includeGrid = false, annotations?: boolean): HTMLCanvasElement | null {
     return getMapRenderer()?.captureRegionCanvas(region, resolution, includeGrid, annotations) ?? null;
@@ -145,6 +163,8 @@ export const host = {
   capture2dTextureCap(): number {
     return getMapRenderer()?.textureCap() ?? 4096;
   },
+  /** The grid lines alone, transparent everywhere else: the layer a stylized export keeps its grid
+   *  from, since the redrawn picture carries none of its own. */
   capture2dGrid(maxPx = 1024): string | null {
     return getMapRenderer()?.captureGridImage(maxPx) ?? null;
   },

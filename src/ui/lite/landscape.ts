@@ -1,4 +1,5 @@
 import { setViewportSpace } from '../../core/runtime/viewport-space';
+import { isTextEntry } from '../../core/runtime/text-entry';
 
 /** Rotate the page, including body portals, without changing native event or DOM APIs. */
 export function installLiteLandscape(): void {
@@ -11,8 +12,7 @@ export function installLiteLandscape(): void {
   document.documentElement.appendChild(probe);
   let rotated = window.innerHeight > window.innerWidth;
   const update = () => {
-    const active = document.activeElement;
-    const editing = active instanceof HTMLElement && (active.matches('input,textarea') || active.isContentEditable);
+    const editing = isTextEntry(document.activeElement);
     if (!editing) rotated = window.innerHeight > window.innerWidth;
     const viewport = window.visualViewport;
     const safe = getComputedStyle(probe);

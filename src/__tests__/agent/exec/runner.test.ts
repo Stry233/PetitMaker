@@ -27,7 +27,7 @@ import { deriveView } from '../../../agent/core/project-view';
 import type { Part, StreamEvent } from '../../../agent/core/types';
 import type { Adapter } from '../../../agent/providers/types';
 import { toAnthropicMessages } from '../../../agent/providers/anthropic';
-import { buildMapContext, type AgentToolDeps } from '../../../agent/tools/tools';
+import { buildMapContext, type AgentToolDeps } from '../../../agent/tools';
 import { useAgentSession } from '../../../agent/session/store';
 import { createRunner, type RunnerConfig } from '../../../agent/exec/runner';
 
@@ -45,7 +45,7 @@ vi.mock('../../../io/moderation/text/reviewer', () => ({
  *  real timers), so a fixed, generous number of `await`s is enough to run a job up to its next
  *  genuinely blocking wait (an open gate, or a `runner.active()` false settle). */
 async function flush(): Promise<void> {
-  for (let i = 0; i < 50; i++) await Promise.resolve();
+  for (let i = 0; i < 100; i++) await Promise.resolve();
 }
 
 function textTurn(text: string): ScriptedTurn {
@@ -75,7 +75,18 @@ function makeToolDepsFactory(): () => AgentToolDeps {
   };
 }
 
-function makeCfg(overrides: Partial<RunnerConfig> = {}): RunnerConfig {
+function makeCfg(overrides: Partial<RunnerConfig> = {}, draftReplies = false): RunnerConfig {
+  const source = overrides.adapterForTest;
+  // Build scripts reserve their turns for map work; optional drafts have a separate response.
+  const adapterForTest: Adapter | undefined = source && !draftReplies ? {
+    async *stream(request, signal) {
+      if (request.tools.length === 0 && request.maxOutputTokens === 256) {
+        yield { t: 'text', delta: '{"reply":null}' };
+        yield { t: 'done', stop: 'stop' };
+      } else yield* source.stream(request, signal);
+    },
+    listModels: signal => source.listModels(signal),
+  } : source;
   return {
     providerId: 'claude',
     apiKey: 'test-key',
@@ -84,6 +95,7 @@ function makeCfg(overrides: Partial<RunnerConfig> = {}): RunnerConfig {
     makeToolDeps: makeToolDepsFactory(),
     registry: createDefaultRegistry(),
     ...overrides,
+    ...(adapterForTest ? { adapterForTest } : {}),
   };
 }
 
@@ -96,6 +108,59 @@ afterEach(() => {
 });
 
 describe('exec/runner', () => {
+  it('offers a missing reply draft after settlement without sending it or running tools', async () => {
+    const adapter = createScriptedAdapter([textTurn('Shall I add flowers?'), textTurn('{"reply":"Yes, add flowers"}')]);
+    const runner = createRunner(makeCfg({ adapterForTest: adapter }, true));
+    runner.send('Add a pond');
+    await flush();
+    const log = useAgentSession.getState().log;
+    expect(runner.active()).toBe(false);
+    expect(deriveView(log).suggestion).toBe('Yes, add flowers');
+    expect(eventsOf(log).filter(e => e.kind === 'order')).toHaveLength(1);
+    expect(eventsOf(log).filter(e => e.kind === 'toolResult')).toHaveLength(0);
+    expect(adapter.requests[1]).toMatchObject({ tools: [], sameModel: false, maxOutputTokens: 256 });
+  });
+
+  it('uses an explicit reply suggestion without an extra provider request', async () => {
+    const adapter = createScriptedAdapter([{ events: [
+      { t: 'text', delta: 'Shall I add flowers?' },
+      { t: 'done', stop: 'tool-calls', final: [{ callId: 'reply', name: 'suggest_reply', args: { reply: 'Add flowers' }, rawArgs: '{"reply":"Add flowers"}' }] },
+    ] }]);
+    const runner = createRunner(makeCfg({ adapterForTest: adapter }, true));
+    runner.send('Add a pond');
+    await flush();
+    expect(adapter.requests).toHaveLength(1);
+    expect(deriveView(useAgentSession.getState().log).suggestion).toBe('Add flowers');
+  });
+
+  it.each(['new-order', 'file-away', 'clear-session'] as const)('retires a pending reply draft on %s', async change => {
+    let release!: () => void;
+    const wait = new Promise<void>(resolve => { release = resolve; });
+    const signals: AbortSignal[] = [];
+    const adapter: Adapter = {
+      async *stream(request, signal) {
+        if (request.tools.length === 0) {
+          signals.push(signal);
+          await wait;
+          yield { t: 'text', delta: '{"reply":"Old reply"}' };
+        } else yield { t: 'text', delta: signals.length ? 'A plain answer.' : 'Add flowers?' };
+        yield { t: 'done', stop: 'stop' };
+      },
+      async listModels() { return []; },
+    };
+    const runner = createRunner(makeCfg({ adapterForTest: adapter }, true));
+    runner.send('Add a pond');
+    await flush();
+    expect(runner.active()).toBe(false);
+    if (change === 'new-order') runner.send('Another task');
+    else if (change === 'file-away') useAgentSession.getState().fileAway(1);
+    else useAgentSession.getState().clearSession();
+    release();
+    await flush();
+    expect(signals[0]?.aborted).toBe(true);
+    expect(deriveView(useAgentSession.getState().log).suggestion).toBeNull();
+  });
+
   it('does not publish or clear live output on a replacement session', async () => {
     let release!: () => void;
     const waiting = new Promise<void>((resolve) => { release = resolve; });

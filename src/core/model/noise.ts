@@ -1,7 +1,5 @@
-// src/core/model/noise.ts
-
-/** Seeded, smooth (smoothstep-interp) hash value noise in [0,1] — the one shared primitive.
- *  elevation.ts remaps to [-1,1] for fBm; nature.ts uses [0,1] directly for grove clustering. */
+/** Seeded, smooth (smoothstep-interpolated) hash value noise in [0,1]: the one shared primitive.
+ *  A caller that needs a signed field remaps it to [-1,1]. */
 export function valueNoise01(seed: number): (x: number, y: number) => number {
   const hash = (x: number, y: number): number => {
     let h = (x * 374761393 + y * 668265263 + seed * 0x9e3779b9) | 0;

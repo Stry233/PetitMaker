@@ -334,6 +334,28 @@ const ROWS: Row[] = [
     exit: 'manage',
   },
   {
+    name: 'a custom endpoint explicitly configured without authentication',
+    list: LISTS.named,
+    drive: async () => {
+      pick(translations.en['agent3.setup_custom_endpoint']!);
+      address(GATEWAY_URL);
+      await quiet();
+    },
+    face: { phase: 'manage', step: null, control: 'manage-done' },
+    exit: 'manage',
+  },
+  {
+    name: 'an unauthenticated custom endpoint that requires a key',
+    list: LISTS.refused,
+    drive: async () => {
+      pick(translations.en['agent3.setup_custom_endpoint']!);
+      address(GATEWAY_URL);
+      await quiet();
+    },
+    face: { phase: 'key', step: 'refused', control: 'setup-act-recheck' },
+    exit: 'stayed',
+  },
+  {
     // NAMING NOTHING IS NOT A STEP: the model row on the settings card owns that state, so the flow
     // routes there with the model as the one thing owed.
     name: 'the endpoint filed, naming nothing',
@@ -640,8 +662,9 @@ describe('the exits', () => {
     expect(screen.queryByTestId('setup-screen'), 'the card has the zone now').toBeNull();
     expect(screen.getByTestId('manage-screen')).toBeTruthy();
 
-    // The card's own fallback for an endpoint that lists nothing: the id, typed.
+    press('manage-model-dd');
     fireEvent.change(screen.getByTestId('manage-model-input'), { target: { value: 'qwen3:32b' } });
+    fireEvent.keyDown(screen.getByTestId('manage-model-input'), { key: 'Enter' });
     expect(store().model.custom).toBe('qwen3:32b');
     await act(async () => { press('manage-done'); });
 

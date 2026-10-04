@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { buildObjectInstances } from '../../canvas/map3d/build/object-meshes';
-import { GROUND_SLAB_Y, LAYER_HEIGHT, PLATFORM_UNIT_H, platformTopY } from '../../canvas/map3d/core/coords';
+import { GROUND_SLAB_Y, LAYER_HEIGHT, SPAN_DECK_CLEARANCE, PLATFORM_UNIT_H, platformTopY } from '../../canvas/map3d/core/coords';
 import { registerCatalogItem } from '../../state/catalog';
 import { ItemCategory, CellZone, TerrainType } from '../../core/model/types';
 import type { GridState, MapTemplate, PlacedObject } from '../../core/model/types';
@@ -69,7 +69,7 @@ describe('preview3d/object-meshes', () => {
     registerCatalogItem({ id: 'ramp1', category: ItemCategory.Ramp, name: { en: 'Ramp' }, width: 1, height: 2, loadValue: 0, rotatable: true, placementMode: 'point', traits: [{ type: 'heightDrop', layers: 1 }] });
     const obj: PlacedObject = { id: 'rp', catalogId: 'ramp1', position: { x: 0, y: 0 }, rotation: 0, elevation: 2 };
     const inst = buildObjectInstances(emptyGrid(8, 8, [obj])).get('a:' + ItemCategory.Ramp)![0]!;
-    expect(inst.y + inst.scaleY).toBeCloseTo(LAYER_HEIGHT * 2); // high end lands exactly at layer n=2
+    expect(inst.y + inst.scaleY).toBeCloseTo(LAYER_HEIGHT * 2 + SPAN_DECK_CLEARANCE);
     expect(inst.y).toBeLessThan(LAYER_HEIGHT * 1);              // low tip tucked just below layer n−1=1 (a road meeting it sits on top)
     expect(inst.y).toBeGreaterThan(LAYER_HEIGHT * 1 - 0.2);     // …only slightly
     expect(inst.rotationY).toBeCloseTo(Math.PI);                // rot 0 → high end faces the −Z (start) side

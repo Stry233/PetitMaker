@@ -25,6 +25,8 @@ import { colors, cursors, font, pressable, shadows, springs, exitTransition, z }
 import { resolveHintScenario, type SingleSelectionKind } from './scenario';
 import { CONCISE_ROWS, rowsFor } from './catalogue';
 import { HintTokens } from './tokens';
+import { NO_MOTION } from '../design/motion';
+import { anyModalOpen } from '../../state/slices/shell';
 
 const FALLBACK_CAPS: CameraCaps = { canOrbit: false, wheelZooms: true };
 
@@ -108,7 +110,7 @@ export function HintPanel() {
   const selectingRegion = useEditorStore((s) => s.selectingRegion);
   const tourRunning = useEditorStore((s) => s.tourRunning);
   const portraitBlocked = useEditorStore((s) => s.portraitBlocked);
-  const anyModal = useEditorStore((s) => Object.values(s.modals).some(Boolean));
+  const anyModal = useEditorStore(anyModalOpen);
   const overrides = useKeybinds((s) => s.overrides);
   const curveSessionOpen = useSyncExternalStore(subscribeCurveSession, isCurveSessionOpen);
 
@@ -200,8 +202,8 @@ export function HintPanel() {
         // the corner nearest it. The scale rides the SHELL, not the card: the card's own transform
         // is spoken for by its height spring, and two owners of one property is a fight.
         initial={reduced ? { opacity: 0 } : { opacity: 0, scale: 0.92 }}
-        animate={{ opacity: 1, scale: 1, transition: reduced ? { duration: 0 } : springs.stiff }}
-        exit={reduced ? { opacity: 0, transition: { duration: 0 } } : { opacity: 0, scale: 0.92, transition: exitTransition }}
+        animate={{ opacity: 1, scale: 1, transition: reduced ? NO_MOTION : springs.stiff }}
+        exit={reduced ? { opacity: 0, transition: NO_MOTION } : { opacity: 0, scale: 0.92, transition: exitTransition }}
         style={{
           position: 'fixed', right: 74, bottom: 18, width: 240, zIndex: z.panel,
           zoom: chrome, pointerEvents: 'none', fontFamily: font.family,
@@ -213,7 +215,7 @@ export function HintPanel() {
         aria-label={t('a11y.hint_panel')}
         initial={false}
         animate={cardHeight > 0 ? { height: cardHeight } : undefined}
-        transition={reduced ? { duration: 0 } : springs.stiff}
+        transition={reduced ? NO_MOTION : springs.stiff}
         style={{
           position: 'relative', boxSizing: 'border-box',
           background: colors.panelCream, borderRadius: 16, boxShadow: shadows.float,
@@ -225,8 +227,8 @@ export function HintPanel() {
           <motion.div
             key={scenario}
             initial={reduced ? { opacity: 0 } : { opacity: 0, x: 12 }}
-            animate={{ opacity: 1, x: 0, transition: reduced ? { duration: 0 } : springs.stiff }}
-            exit={reduced ? { opacity: 0, transition: { duration: 0 } } : { opacity: 0, x: -12, transition: exitTransition }}
+            animate={{ opacity: 1, x: 0, transition: reduced ? NO_MOTION : springs.stiff }}
+            exit={reduced ? { opacity: 0, transition: NO_MOTION } : { opacity: 0, x: -12, transition: exitTransition }}
             style={column}
           >
             <div ref={setKeptEl} style={column}>{rowBlock(kept, 0)}</div>
@@ -235,8 +237,8 @@ export function HintPanel() {
                 <motion.div
                   key="tail"
                   initial={{ opacity: 0 }}
-                  animate={{ opacity: 1, transition: reduced ? { duration: 0 } : springs.stiff }}
-                  exit={{ opacity: 0, transition: reduced ? { duration: 0 } : exitTransition }}
+                  animate={{ opacity: 1, transition: reduced ? NO_MOTION : springs.stiff }}
+                  exit={{ opacity: 0, transition: reduced ? NO_MOTION : exitTransition }}
                 >
                   {/* The ref is here, not on the presence child: framer reads that child's own ref. */}
                   <div ref={setTailEl} style={column}>{rowBlock(tail, CONCISE_ROWS)}</div>

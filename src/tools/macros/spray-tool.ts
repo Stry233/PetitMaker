@@ -1,5 +1,5 @@
 import { sprayRadius } from './spray-size';
-import { cloneGridState } from '../../core/model/grid-model';
+import { cloneGridState, mapVersionKey } from '../../core/model/grid-model';
 import type { GridState, MacroCoord } from '../../core/model/types';
 import { showToast } from '../../core/runtime/toast-bus';
 import { circleCells, line4 } from '../paint/shapes';
@@ -66,8 +66,8 @@ export class MountainSpray {
     if (this.queue.length) return;
     const state = ctx.gridState, radius = sprayRadius(ctx.brushSize);
     if (this.hoverState !== state) { this.clearGhost(ctx); this.hoverState = state; }
-    const key = [seed, radius, c.x, c.y, state.cellsVersion, state.objectsVersion, ctx.autoEdgeCut,
-      [...state.lockedLayers].sort().join(','), ctx.region?.map(p => `${p.x},${p.y}`).join(';')].join('|');
+    const key = [seed, radius, c.x, c.y, mapVersionKey(state), ctx.autoEdgeCut,
+      ctx.region?.map(p => `${p.x},${p.y}`).join(';')].join('|');
     if (key === this.target) return;
     this.target = key;
     if (key === this.ghostKey) { this.wanted = null; return; }

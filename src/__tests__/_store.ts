@@ -1,5 +1,5 @@
 /*
- * _store.ts — the typed way for a test to seed the editor store.
+ * The typed way for a test to seed the editor store.
  *
  * The store's own `setState`, cast to `never`, compiles whatever it is given, so a store field that
  * is renamed or removed leaves every seed of it passing while asserting nothing. Going through a

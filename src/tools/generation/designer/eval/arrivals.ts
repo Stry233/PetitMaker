@@ -25,8 +25,9 @@
 import type { GridState, Rect } from '../../../../core/model/types';
 import { eachTerminus } from '../streets/street-ends';
 import { figureReading, type FigureReading } from './figure';
-import { NB4, readGrid, type EvalGrid } from './grid';
+import { readGrid, type EvalGrid } from './grid';
 import { courtBoxes } from './water';
+import { NEIGHBORS4 } from '../../../../core/model/grid-model';
 
 /** How far from a set piece's own box a street end, or the pavement that serves it, may stand. One
  *  composed place's own depth: past that the street stopped somewhere else. */
@@ -121,7 +122,7 @@ function plazaPavement(g: EvalGrid, cut: ReadonlySet<number> | null): Set<number
   for (let head = 0; head < queue.length; head++) {
     const p = queue[head]!;
     const x = p % W, y = (p / W) | 0;
-    for (const [dx, dy] of NB4) {
+    for (const [dx, dy] of NEIGHBORS4) {
       const nx = x + dx, ny = y + dy;
       if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
       const j = ny * W + nx;

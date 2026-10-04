@@ -1,5 +1,5 @@
 import { TerrainType, ToolType } from '../../core/model/types';
-import type { GridState, MacroCoord, MicroCoord } from '../../core/model/types';
+import type { Command, GridState, MacroCell, MacroCoord, MicroCoord } from '../../core/model/types';
 import type { Tool, ToolContext } from '../runtime/types';
 import type { PreviewCell } from '../../core/runtime/preview-cell';
 import type { CursorId } from '../../core/runtime/cursor-spec';
@@ -17,10 +17,20 @@ import { adjustErasedCurve } from './eraser-curve';
 import { finishEraserStroke } from './eraser-stroke';
 import type { CurveAnchor } from './shapes';
 
-function erasesHere(type: TerrainType, surface: ContentType): boolean {
-  if (surface === 'water') return type === TerrainType.Water;
-  if (surface === 'mountain') return type === TerrainType.Mountain;
+/** Whether the eraser for `ctx`'s surface takes terrain of `type`. In the planet session the terrain
+ *  eraser also takes a pond, so it clears the water before it turns that ground to sea. */
+function erasesHere(type: TerrainType, ctx: ToolContext): boolean {
+  if (ctx.contentType === 'water') return type === TerrainType.Water;
+  if (ctx.contentType === 'mountain') return type === TerrainType.Mountain || (ctx.groundEditable && type === TerrainType.Water);
   return true;
+}
+
+/** The planet session's layer-0 peel for a cell with no terrain: the terrain eraser turns bare ground
+ *  to sea. Undefined when the session is off or the cell holds terrain, so the ordinary peel decides;
+ *  null when layer 0 has nothing to peel here. */
+function groundPeel(coord: MacroCoord, cell: MacroCell | null, ctx: ToolContext): Command | null | undefined {
+  if (!ctx.groundEditable || !cell || cell.terrain) return undefined;
+  return peelCommand(coord.x, coord.y, cell, ctx.contentType === 'water', true);
 }
 
 /** Erases only the selected surface, with one undo entry per gesture. */
@@ -34,7 +44,9 @@ export class EraserTool implements Tool {
       return overlappingCoatings(ctx.gridState, [coord]).every(obj => ctx.validateCommand(removeObjectCommand(obj)).length === 0);
     }
     const cell = getCell(ctx.gridState.cells, coord.x, coord.y);
-    if (!cell?.terrain || ctx.layerVisibility[cell.terrain.elevation] === false || !erasesHere(cell.terrain.type, ctx.contentType)) return true;
+    const ground = groundPeel(coord, cell, ctx);
+    if (ground !== undefined) return !ground || ctx.validateCommand(ground).length === 0;
+    if (!cell?.terrain || ctx.layerVisibility[cell.terrain.elevation] === false || !erasesHere(cell.terrain.type, ctx)) return true;
     const cmd = peelCommand(coord.x, coord.y, cell, ctx.contentType === 'water');
     return !cmd || ctx.validateCommand(cmd).length === 0;
   }
@@ -203,16 +215,26 @@ export class EraserTool implements Tool {
     this.draftContext = null; this.curvePoints = []; this.dragAnchor = null; this.dragMoved = false; this.lastClick = null;
   }
 
+  /** Terrain peels before ground peels: a block bleeds onto the ground up and left of it, so that
+   *  ground can only become sea once the dab has peeled the block away. */
   private eraseAt(cells: MacroCoord[], ctx: ToolContext): void {
     if (ctx.contentType === 'tile') { eraseTileCells(cells, ctx); return; }
+    const bare: MacroCoord[] = [];
     for (const c of cells) {
       const key = `${c.x},${c.y}`;
       if (this.strokeCells.has(key)) continue;
       const cell = getCell(ctx.gridState.cells, c.x, c.y);
-      if (!cell?.terrain || !erasesHere(cell.terrain.type, ctx.contentType) || ctx.layerVisibility[cell.terrain.elevation] === false) continue;
+      if (groundPeel(c, cell, ctx) !== undefined) { bare.push(c); continue; }
+      if (!cell?.terrain || !erasesHere(cell.terrain.type, ctx) || ctx.layerVisibility[cell.terrain.elevation] === false) continue;
       this.strokeCells.add(key);
       const cmd = peelCommand(c.x, c.y, cell, ctx.contentType === 'water');
       if (cmd) ctx.executeCommand(cmd);
+    }
+    for (const c of bare) {
+      const ground = groundPeel(c, getCell(ctx.gridState.cells, c.x, c.y), ctx);
+      if (!ground) continue;
+      this.strokeCells.add(`${c.x},${c.y}`);
+      ctx.executeCommand(ground);
     }
   }
 }

@@ -19,6 +19,9 @@ import { translateFor } from '../../../i18n/context';
 import { translations } from '../../../i18n/translations';
 import type { Locale } from '../../../core/model/types';
 import { newMap, transferMap } from '../../../kit/operations';
+import { startPlanetEditing } from '../../../ui/shell/planet/planet-editing';
+import { savePlanet, type PlanetEntry } from '../../../io/planet-library';
+import { planetFixture } from '../../fixtures/planet';
 
 const HEXIA = MAP_TEMPLATES['hexia']!;
 const TAFA = MAP_TEMPLATES['tafa']!;
@@ -32,6 +35,11 @@ vi.mock('../../../kit/operations', async (importOriginal) => ({
     target: TAFA, offset: { x: 0, y: 1 }, carried: true,
     moved: { cells: 100, objects: 5 }, dropped: { cells: 3, objects: 1 }, violations: [],
   })),
+}));
+
+vi.mock('../../../ui/shell/planet/planet-editing', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../../ui/shell/planet/planet-editing')>()),
+  startPlanetEditing: vi.fn(),
 }));
 
 function world({ built = true }: { built?: boolean } = {}) {
@@ -66,6 +74,9 @@ const press = async () => {
     await new Promise((r) => { setTimeout(r, 0); });
   });
 };
+
+/** Next only moves the window to its carry step; nothing is switched yet. */
+const next = press;
 
 beforeEach(() => { __resetArrivals(); vi.clearAllMocks(); });
 afterEach(() => {
@@ -134,6 +145,7 @@ describe('switching planet', () => {
     render(<I18nProvider><Windows /></I18nProvider>);
 
     fireEvent.click(screen.getByTestId(`planet-${TAFA.id}`));
+    await next();
     await press();
 
     expect(transferMap).toHaveBeenCalledTimes(1);
@@ -159,6 +171,7 @@ describe('switching planet', () => {
     render(<I18nProvider><Windows /></I18nProvider>);
 
     fireEvent.click(screen.getByTestId(`planet-${TAFA.id}`));
+    await next();
     await press();
 
     expect(seen).toEqual([{ kind: 'transferred', detail: [{ key: 'arrival.transferred' }] }]);
@@ -199,12 +212,76 @@ describe('switching planet', () => {
     render(<I18nProvider><Windows /></I18nProvider>);
 
     fireEvent.click(screen.getByTestId(`planet-${TAFA.id}`));
-    fireEvent.click(screen.getByRole('button', { name: 'Start fresh' }));
+    await next();
+    fireEvent.click(screen.getByRole('radio', { name: 'Start fresh' }));
     await press();
 
     expect(newMap).toHaveBeenCalledWith(TAFA.id);
     expect(transferMap).not.toHaveBeenCalled();
     expect(seen).toEqual([{ kind: 'boot' }]);
+  });
+});
+
+describe('saved planets', () => {
+  const bay = (): PlanetEntry => {
+    const r = savePlanet('Bay', planetFixture());
+    if (!r.ok) throw new Error('save failed');
+    return r.entry;
+  };
+  beforeEach(() => { localStorage.clear(); });
+
+  it('opens a saved planet from its template', async () => {
+    world({ built: false });
+    const entry = bay();
+    render(<I18nProvider><Windows /></I18nProvider>);
+    fireEvent.click(screen.getByTestId(`planet-${entry.entryId}`));
+    await press();
+    expect(newMap).toHaveBeenCalledWith(entry.template);
+  });
+
+  it('carries the build to a saved planet by its template', async () => {
+    world();
+    const entry = bay();
+    render(<I18nProvider><Windows /></I18nProvider>);
+    fireEvent.click(screen.getByTestId(`planet-${entry.entryId}`));
+    await next();
+    await press();
+    expect(vi.mocked(transferMap).mock.calls[0]![1]).toEqual({ target: entry.template, carry: true });
+  });
+
+  it('New planet closes the window and opens the planet editor', () => {
+    world();
+    vi.mocked(startPlanetEditing).mockImplementationOnce(() => {
+      // INVALID STORE SEED: only the session's presence matters to the window wiring
+      useEditorStore.setState({ planetSession: { entryId: null } as never });
+    });
+    render(<I18nProvider><Windows /></I18nProvider>);
+    try {
+      fireEvent.click(screen.getByTestId('planet-new'));
+      expect(startPlanetEditing).toHaveBeenCalledWith(null);
+      expect(useEditorStore.getState().modals.newProject).toBe(false);
+    } finally {
+      act(() => { useEditorStore.setState({ planetSession: null }); });
+    }
+  });
+
+  it('leaves the window standing when the planet editor refuses to open', () => {
+    world();
+    render(<I18nProvider><Windows /></I18nProvider>);
+    fireEvent.click(screen.getByTestId('planet-new'));
+    expect(startPlanetEditing).toHaveBeenCalledWith(null);
+    expect(useEditorStore.getState().modals.newProject).toBe(true);
+  });
+
+  it('coming back from the planet editor reopens the window on that planet', () => {
+    world();
+    const entry = bay();
+    act(() => { useEditorStore.getState().setModal('newProject', false); });
+    render(<I18nProvider><Windows /></I18nProvider>);
+    act(() => { useEditorStore.getState().setPlanetReturn({ chosen: entry.entryId }); });
+    expect(useEditorStore.getState().modals.newProject).toBe(true);
+    expect(useEditorStore.getState().planetReturn).toBeNull();
+    expect(screen.getByTestId(`planet-${entry.entryId}`).getAttribute('aria-pressed')).toBe('true');
   });
 });
 
@@ -217,6 +294,7 @@ describe('Lite planet changes', () => {
     try {
       render(<I18nProvider><LiteWindows /></I18nProvider>);
       fireEvent.click(screen.getByTestId(`planet-${TAFA.id}`));
+      await next();
       await press();
       expect(transferMap).toHaveBeenCalledTimes(1);
       expect(vi.mocked(transferMap).mock.calls[0]![1]).toEqual({ target: TAFA.id, carry: true });

@@ -1,5 +1,5 @@
 /**
- * ui-zoom-anim.ts — the ONE application-layer tween for `uiZoom` (the UI-scale
+ * The ONE application-layer tween for `uiZoom` (the UI-scale
  * multiplier). The store's `uiZoom` field is the persisted TARGET, written
  * exactly once per user action — a slider release, an arrow-key step, Ctrl+/-,
  * the reset chip, or double-click (see `setUiZoom` in `state/store.ts`, the
@@ -25,8 +25,9 @@
 import { useSyncExternalStore } from 'react';
 import { useEditorStore } from '../../state/store';
 import { useUiPreviewPose } from '../primitives/ui-preview';
-import { isMotionReduced } from '../../canvas/map2d/motion-state';
+import { isMotionReduced } from '../../core/runtime/motion-state';
 import { followStep } from '../../canvas/map2d/zoom-accum';
+import { createSignal } from '../../core/runtime/signal';
 
 let live = useEditorStore.getState().uiZoom;
 let target = live;
@@ -34,16 +35,16 @@ let raf = 0;
 /** True only while the tween is in flight; consumers gate layout animations
  *  and px rounding off during it (both jitter when the scale moves each frame). */
 let animating = false;
-const listeners = new Set<() => void>();
-const zoomListeners = new Set<() => void>();
+const zoomFrame = createSignal();
+const zoomingChanged = createSignal();
 
 function notify(): void {
-  listeners.forEach((l) => l());
+  zoomFrame.emit();
 }
 function setAnimating(v: boolean): void {
   if (v === animating) return;
   animating = v;
-  zoomListeners.forEach((l) => l());
+  zoomingChanged.emit();
 }
 
 function tick(): void {
@@ -83,8 +84,7 @@ function getSnapshot(): number {
 }
 
 function subscribe(cb: () => void): () => void {
-  listeners.add(cb);
-  return () => listeners.delete(cb);
+  return zoomFrame.subscribe(cb);
 }
 
 /** The animated uiZoom — identical live value across every consumer this frame. A pictured
@@ -96,8 +96,7 @@ export function useAnimatedUiZoom(): number {
 }
 
 function subscribeZoom(cb: () => void): () => void {
-  zoomListeners.add(cb);
-  return () => zoomListeners.delete(cb);
+  return zoomingChanged.subscribe(cb);
 }
 function getZoomingSnapshot(): boolean {
   return animating;

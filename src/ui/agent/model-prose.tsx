@@ -1,17 +1,17 @@
-import { displayAgentText } from '../../agent/tool-labels';
-import { translate, useT } from '../../i18n/context';
 /*
  * Renders model-authored Markdown through the same constrained parser used by legal documents. Raw
  * HTML is unsupported and model-authored links retain their text without becoming navigable.
  * `ModelProse` emits block layout for long answers and reasoning; `inlineProseRuns` preserves inline
  * emphasis and line breaks for clamped status text. App-authored labels and user input remain plain.
  */
-import { Fragment, type CSSProperties, type ReactNode } from 'react';
-import { parseLegalMarkdown, type Inline, type MdNode } from '../../legal/markdown';
+import { Fragment, useMemo, type CSSProperties, type ReactNode } from 'react';
+import { displayAgentText } from '../../agent/tool-labels';
+import { translate, useT } from '../../i18n/context';
+import { inlineText, parseLegalMarkdown, type Inline, type MdNode } from '../../legal/markdown';
 import { colors } from '../design/styles';
-import { useFrameReadableWeight } from '../shell/use-frame-zoom';
-import { TEXT_ROLES, roleWeight } from '../design/text-weight';
+import { roleFont, roleWeight } from '../design/text-weight';
 import { PLATE } from '../design/tokens';
+import { useStreamedText } from './use-streamed-text';
 
 /** A code span, at the one rung a chip of machine text earns beside prose. */
 const CODE: CSSProperties = {
@@ -23,12 +23,12 @@ const CODE: CSSProperties = {
   padding: '1px 4px',
 };
 
-const EMPHASIS: CSSProperties = { fontWeight: `var(--model-emphasis-weight, ${roleWeight('note')})` };
+const EMPHASIS: CSSProperties = { fontWeight: `var(--model-emphasis-weight, ${roleWeight('label')})` };
 
 const BLOCK: CSSProperties = { margin: 0 };
 const LIST: CSSProperties = { ...BLOCK, paddingLeft: 20 };
 /** Model headings use a lead line without changing the card's surrounding hierarchy. */
-const LEAD: CSSProperties = { ...BLOCK, ...EMPHASIS };
+const LEAD: CSSProperties = { ...BLOCK, ...roleFont('head'), lineHeight: 1.35, marginTop: 4 };
 const QUOTE: CSSProperties = { ...BLOCK, paddingLeft: 10, borderLeft: `2px solid ${colors.brownText}`, opacity: 0.9 };
 const RULE: CSSProperties = { border: 'none', borderTop: `1px solid ${colors.brownText}`, opacity: 0.35, margin: 0 };
 const ROW: CSSProperties = { display: 'flex', gap: 8 };
@@ -49,7 +49,7 @@ function inlineRun(children: Inline[], keyPrefix = ''): ReactNode[] {
 function blockNode(node: MdNode, key: number): ReactNode {
   switch (node.t) {
     case 'h':
-      return <p key={key} style={LEAD}>{inlineRun(node.children)}</p>;
+      return <h3 key={key} style={LEAD}>{inlineRun(node.children)}</h3>;
     case 'ul':
       return <ul key={key} style={LIST}>{node.items.map((item, i) => <li key={i}>{inlineRun(item)}</li>)}</ul>;
     case 'ol':
@@ -79,26 +79,61 @@ function blockNode(node: MdNode, key: number): ReactNode {
   }
 }
 
+function textRuns(node: MdNode): Inline[][] {
+  switch (node.t) {
+    case 'hr': return [];
+    case 'ul': case 'ol': return node.items;
+    case 'blockquote': return node.children;
+    case 'table': return [...node.header, ...node.rows.flat()];
+    default: return [node.children];
+  }
+}
+
+/** Revealing parsed words keeps complete Markdown delimiters from flashing as literal text. */
+function revealNodes(nodes: MdNode[], remaining: number): MdNode[] {
+  const take = (children: Inline[]): Inline[] => children.flatMap(child => {
+    const text = child.text.slice(0, remaining);
+    remaining -= text.length;
+    return text ? [{ ...child, text }] : [];
+  });
+  const groups = (runs: Inline[][]): Inline[][] => runs.map(take).filter(run => run.length > 0);
+  return nodes.flatMap((node): MdNode[] => {
+    if (remaining === 0) return [];
+    switch (node.t) {
+      case 'hr': return [node];
+      case 'ul': case 'ol': return [{ ...node, items: groups(node.items) }];
+      case 'blockquote': return [{ ...node, children: groups(node.children) }];
+      case 'table': {
+        const header = node.header.map(take);
+        const rows = node.rows.flatMap(row => remaining > 0 ? [row.map(take)] : []);
+        return [{ ...node, header, rows }];
+      }
+      default: return [{ ...node, children: take(node.children) }];
+    }
+  });
+}
+
 /** The model's text as blocks, in whatever rung the caller's own `style` sets. */
-export function ModelProse({ text, style, testId }: {
+export function ModelProse({ text, style, testId, streaming = false }: {
   text: string;
   /** The seat's own type rung and ink; the block spacing is this component's. */
   style?: CSSProperties;
   testId?: string;
+  streaming?: boolean;
 }) {
   const t = useT();
-  const weightAt = useFrameReadableWeight();
-  const emphasis = {
-    '--model-emphasis-weight': weightAt(700, typeof style?.fontSize === 'number' ? style.fontSize : TEXT_ROLES.note.px),
-  } as CSSProperties;
+  const nodes = useMemo(() => parseLegalMarkdown(displayAgentText(text, t)), [text, t]);
+  const words = useMemo(() => nodes.flatMap(textRuns).map(inlineText).join(''), [nodes]);
+  const visible = useStreamedText(words, streaming);
+  const revealed = streaming && visible.length < words.length ? revealNodes(nodes, visible.length) : nodes;
   return (
     <div
       {...(testId !== undefined ? { 'data-testid': testId } : {})}
       // `overflow-wrap` inherits, so one declaration covers every block: a model's own 500-char URL
       // or id has no space for the line breaker, and without this it walks out of the card.
-      style={{ display: 'flex', flexDirection: 'column', gap: 8, overflowWrap: 'anywhere', ...style, ...emphasis }}
+      style={{ ...roleFont('body'), display: 'flex', flexDirection: 'column', gap: 8, overflowWrap: 'anywhere', ...style }}
     >
-      {parseLegalMarkdown(displayAgentText(text, t)).map((node, i) => blockNode(node, i))}
+      {revealed.map((node, i) => blockNode(node, i))}
     </div>
   );
 }

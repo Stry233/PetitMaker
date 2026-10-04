@@ -10,24 +10,46 @@ import { cellsChanged, objectsChanged } from './measure';
 import { plantPatchTiers, plantScopedPatch, type PatchScope } from './patch';
 import { raiseTerrain, type RaiseSteepness } from './raise';
 import { layRoadNetwork } from './roads';
-import { detachCommand, mapFingerprint, runOnScratch, type ScratchRun } from './scratch';
+import { detachCommand } from '../../core/commands/command-apply';
+import { mapFingerprint, runOnScratch, type ScratchRun } from './scratch';
 import { carveStream } from './stream';
 import { fillMountainArea } from './landform';
 import { buildRiver } from './river';
 import type { CurveAnchor } from '../../core/model/spline';
 
+/** What the tools need to know about one macro. */
+interface MacroSpec {
+  /** The grid the macro draws on: the terrain micro grid or the object grid. */
+  grid: 'terrain' | 'object';
+  /** Builds where the user pointed; otherwise it works over the whole buildable region, which is
+   *  why the shell offers a reroll for it. */
+  aimed: boolean;
+  /** A drag from a source to a target whose course stays adjustable as a curve once it lands. */
+  adjustable: boolean;
+  /** The refusal a drag reports when the run kept nothing and named no code of its own. */
+  emptyCode: MacroRefusal;
+  /** What to say when the macro ran and kept nothing. */
+  emptyReason: string;
+  /** Which planting card the macro is, or null for every other macro. */
+  patchScope: PatchScope | null;
+}
+
 /** Available operations, including programmatic networks and category-specific planting. */
-export const MACRO_IDS = ['raise', 'stream', 'road-link', 'roads', 'patch-tree', 'patch-flora'] as const;
+export const MACROS = {
+  raise: { grid: 'terrain', aimed: true, adjustable: false, emptyCode: 'terrain-blocked', emptyReason: 'no ground here would take a rise', patchScope: null },
+  stream: { grid: 'terrain', aimed: true, adjustable: true, emptyCode: 'river-blocked', emptyReason: 'no complete river can be built here', patchScope: null },
+  'road-link': { grid: 'object', aimed: true, adjustable: true, emptyCode: 'no-route', emptyReason: 'no route could be planned between these points', patchScope: null },
+  roads: { grid: 'object', aimed: false, adjustable: false, emptyCode: 'terrain-blocked', emptyReason: 'nothing on the map to connect', patchScope: null },
+  'patch-tree': { grid: 'object', aimed: true, adjustable: false, emptyCode: 'terrain-blocked', emptyReason: 'no ground here would take a planting', patchScope: 'tree' },
+  'patch-flora': { grid: 'object', aimed: true, adjustable: false, emptyCode: 'terrain-blocked', emptyReason: 'no ground here would take a planting', patchScope: 'flora' },
+} as const satisfies Record<string, MacroSpec>;
 
-export type MacroId = (typeof MACRO_IDS)[number];
+export type MacroId = keyof typeof MACROS;
+export const MACRO_IDS = Object.keys(MACROS) as readonly MacroId[];
 
-/** Which of the two planting cards a macro id names, or null for every other macro. Exported so
- *  `macro-tool.ts` can gate the held spray on "is this id one of the planting cards" without
- *  hardcoding either one of them. */
+/** Which of the two planting cards a macro id names, or null for every other macro. */
 export function patchScope(id: MacroId): PatchScope | null {
-  if (id === 'patch-tree') return 'tree';
-  if (id === 'patch-flora') return 'flora';
-  return null;
+  return MACROS[id].patchScope;
 }
 
 export interface MacroOpts {
@@ -132,9 +154,8 @@ export type MacroRefusal =
   | 'stranded'              // gesture 3: a network WAS laid, and this building stands where it cannot reach
   | 'blocked';              // a planting holds a cell the route needed, and it was left standing
 
-/** The one toast key for each refusal a road macro can report, so the whole-map press
- *  (`SmartBuild.tsx`) and the drag tool (`macro-tool.ts`) never disagree about what a code
- *  means. Never localized here (see `MacroReport`'s own header): the caller narrates. */
+/** The one toast key for each refusal a macro can report, so every tool that narrates a refusal
+ *  agrees about what a code means. Never localized here (see `MacroReport`'s own header): the caller narrates. */
 export const EMPTY_KEY: Record<MacroRefusal, string> = {
   'terrain-blocked': 'smart.terrain_blocked',
   'river-blocked': 'smart.river_blocked',
@@ -148,48 +169,15 @@ export const EMPTY_KEY: Record<MacroRefusal, string> = {
   'nothing-to-connect': 'smart.empty_roads',
 };
 
-export interface MacroOutcome {
-  ends?: [MacroCoord, MacroCoord];
+/** A run's result: its report, and what it changed. */
+export interface MacroOutcome extends MacroReport {
   /** Cells plus objects the macro actually changed, measured off the map after the commit. Zero is
    *  a result, not a failure. */
   changes: number;
-  /** Why nothing happened, or why less happened than was asked for. Data for the caller to narrate;
-   *  never localized here, since a macro that spoke to the user could only ever have one caller. */
-  reason?: string;
-  /** road-link: which refusal this is, for a shell that narrates by kind rather than by sentence. */
-  code?: MacroRefusal;
-  /** road-link: where the refusal stands, when it is about one place (the door a spur could not
-   *  reach). */
-  at?: MacroCoord;
-  /** road-link: cells the run needed and a hand-placed decoration holds, left standing. */
-  blocked?: MacroCoord[];
-  /** roads/road-link: how many cells a wide road's corridor lost to a planting it went round. */
-  narrowedByPlanting?: number;
-  /** road-link: the offers this run drafted between the endpoints, in offer order. */
-  offers?: readonly string[];
-  /** roads: everything this gesture's work now amounts to. The caller keeps it and hands it back on
-   *  the next press, which is what makes a re-press a candidate rather than an addition. */
-  ownedIds?: readonly string[];
-  /** raise: the tier the ground carried, at or below the rung this press asked for. */
-  peak?: number;
 }
 
 const DEFAULT_RADIUS = 6;
 const DEFAULT_DENSITY = 0.6;
-
-/** The macros that build where the user pointed. `roads` is the one that works over the whole
- *  buildable region instead, which is why it is the one the shell offers a reroll for. */
-const AIMED: ReadonlySet<MacroId> = new Set<MacroId>(['raise', 'stream', 'road-link', 'patch-tree', 'patch-flora']);
-
-/** What to say when the macro ran and kept nothing. */
-const EMPTY_REASON: Record<MacroId, string> = {
-  raise: 'no ground here would take a rise',
-  stream: 'no complete river can be built here',
-  'patch-tree': 'no ground here would take a planting',
-  'patch-flora': 'no ground here would take a planting',
-  'road-link': 'no route could be planned between these points',
-  roads: 'nothing on the map to connect',
-};
 
 /** The disc an aim macro works over, clamped to the map. Off-map cells would index the analysis
  *  grid at coordinates that belong to another row. */
@@ -217,7 +205,7 @@ export function buildMacro(
   const radius = Math.max(0, opts.radius ?? DEFAULT_RADIUS);
   const density = opts.density ?? DEFAULT_DENSITY;
   const at = opts.at;
-  if (AIMED.has(id) && !at) return null;
+  if (MACROS[id].aimed && !at) return null;
 
   let cells: MacroCoord[] | null = null;
   const scope = patchScope(id);
@@ -315,7 +303,7 @@ export function buildMacro(
 function guardMacro(ctx: MacroContext, id: MacroId, opts: MacroOpts): MacroOutcome | null {
   const radius = Math.max(0, opts.radius ?? DEFAULT_RADIUS);
   const at = opts.at;
-  if (AIMED.has(id) && !at) return { changes: 0, reason: `${id} needs an aim point` };
+  if (MACROS[id].aimed && !at) return { changes: 0, reason: `${id} needs an aim point` };
 
   if (patchScope(id)) {
     // An empty list is a refusal, not the absence of a restriction: `placeNature` reads it as "no
@@ -362,17 +350,15 @@ export function landMacroRun(
 ): MacroOutcome | null {
   const { executor } = ctx;
   if (!trustBase && mapFingerprint(ctx.state) !== built.run.base) return null;
-  const watermark = executor.getUndoStackSize();
   const atomic = opts.area !== undefined || opts.from !== undefined;
   const countCells = cellsChanged(ctx.state, atomic);
   const countObjects = objectsChanged(ctx.state);
-  executor.pushSource({
+  const source = {
     source: ProvSource.Procedural,
     tool: `macro:${id}`,
     procedural: { seed: opts.seed, algorithm: id, configHash: hashJSON(opts) },
-  });
-
-  try {
+  };
+  return executor.transaction({ source }, (tx): MacroOutcome => {
     let landed = true;
     executor.runSilently(() => {
       for (const cmd of built.run.commands) {
@@ -380,11 +366,10 @@ export function landMacroRun(
       }
     });
     if (!landed) {
-      executor.rollbackTo(watermark);
+      tx.rollback();
       return { changes: 0, reason: 'the complete build could not be replayed', code: built.report?.code ?? 'blocked' };
     }
-    const violations = executor.commitStrokeGroup(watermark);
-    if (violations.length > 0 && atomic) executor.rollbackTo(watermark);
+    const violations = tx.commit({ atomic });
     const changes = countCells() + countObjects();
     const report = built.report;
     const narrated: Pick<MacroOutcome, 'code' | 'at' | 'blocked' | 'narrowedByPlanting' | 'offers' | 'peak' | 'ends'> = {
@@ -401,14 +386,9 @@ export function landMacroRun(
       return { changes, reason: changes === 0 ? 'post-stroke rules rolled the run back' : 'post-stroke rules rolled part of the run back', ...narrated };
     }
     return changes === 0
-      ? { changes: 0, reason: report?.reason ?? EMPTY_REASON[id], ...narrated }
+      ? { changes: 0, reason: report?.reason ?? MACROS[id].emptyReason, ...narrated }
       : { changes, ...narrated };
-  } catch (err) {
-    executor.rollbackTo(watermark);
-    throw err;
-  } finally {
-    executor.popSource();
-  }
+  });
 }
 
 /**
@@ -445,6 +425,7 @@ export async function applyMacroAsync(ctx: MacroContext, id: MacroId, opts: Macr
   if (buildRunner) {
     const cv = ctx.state.cellsVersion ?? 0;
     const ov = ctx.state.objectsVersion ?? 0;
+    const ignoreLoad = !!ctx.state.ignoreChunkLoad;
     let built: MacroBuild | null;
     // Only the BUILD is guarded, and only a build failure retires the runner. The landing below stays
     // outside the guard: it runs on the main thread against the live map, and it rethrows after
@@ -460,7 +441,7 @@ export async function applyMacroAsync(ctx: MacroContext, id: MacroId, opts: Macr
     if (built) {
       // Version counters unmoved since the state left for the builder ⇒ the map is the map the
       // build ran over, and the fingerprint compare has nothing left to ask.
-      const trustBase = (ctx.state.cellsVersion ?? 0) === cv && (ctx.state.objectsVersion ?? 0) === ov;
+      const trustBase = (ctx.state.cellsVersion ?? 0) === cv && (ctx.state.objectsVersion ?? 0) === ov && !!ctx.state.ignoreChunkLoad === ignoreLoad;
       const landed = landMacroRun(ctx, id, opts, built, { trustBase });
       if (landed) return landed;
       // Stale base: the map moved while the worker built. Rebuild in-process below.

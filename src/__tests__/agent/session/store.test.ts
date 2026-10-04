@@ -173,13 +173,7 @@ describe('agent session store', () => {
       setReadTools(new Set()); // module state: hand the next test back an unpublished set
     });
 
-    /**
-     * A THINKING TURN STREAMS FOR AS LONG AS IT LIKES AND CHANGES NOTHING ON SCREEN. Reasoning
-     * arrives at token rate and the panel reads a thought only as a rounded count, so a frame that
-     * publishes 40 more characters of it re-folds the whole log for every reader to paint the same
-     * pixels. These pin the digest gate: a frame publishes only when the snapshot means something
-     * different to the view.
-     */
+    /** Open transcripts need each arriving character; unchanged snapshots need no new projection. */
     describe('a frame that would change nothing on screen publishes nothing', () => {
       // The store is a module singleton, so a listener left behind would outlive its own test.
       const unwire: (() => void)[] = [];
@@ -201,7 +195,7 @@ describe('agent session store', () => {
 
       const thought = (chars: number): readonly Part[] => [{ kind: 'reasoning', text: 'x'.repeat(chars), done: false }];
 
-      it('two thoughts inside the same 256-character bucket publish once', () => {
+      it('publishes a single new reasoning character on the next frame', () => {
         startTurn();
         const updates = countUpdates();
 
@@ -209,18 +203,23 @@ describe('agent session store', () => {
         vi.advanceTimersByTime(FRAME_MS);
         expect(updates()).toBe(1);
 
-        useAgentSession.getState().setLive(thought(140));
+        useAgentSession.getState().setLive(thought(101));
         vi.advanceTimersByTime(FRAME_MS);
-        expect(updates()).toBe(1);
-        expect(useAgentSession.getState().live).toEqual(thought(100));
+        expect(updates()).toBe(2);
+        expect(useAgentSession.getState().live).toEqual(thought(101));
       });
 
-      it('a thought that crosses a bucket boundary does publish', () => {
+      it('coalesces a reasoning burst while ignoring an unchanged snapshot', () => {
         startTurn();
         const updates = countUpdates();
 
         useAgentSession.getState().setLive(thought(100));
         vi.advanceTimersByTime(FRAME_MS);
+        useAgentSession.getState().setLive(thought(100));
+        vi.advanceTimersByTime(FRAME_MS);
+        expect(updates()).toBe(1);
+        useAgentSession.getState().setLive(thought(150));
+        useAgentSession.getState().setLive(thought(200));
         useAgentSession.getState().setLive(thought(300));
         vi.advanceTimersByTime(FRAME_MS);
 
@@ -269,12 +268,13 @@ describe('agent session store', () => {
 
         useAgentSession.getState().setLive(thought(100));
         vi.advanceTimersByTime(FRAME_MS);
-        useAgentSession.getState().setLive(thought(140));
+        const completed: readonly Part[] = [{ kind: 'reasoning', text: 'x'.repeat(100), done: true }];
+        useAgentSession.getState().setLive(completed);
         vi.advanceTimersByTime(FRAME_MS);
         expect(useAgentSession.getState().live).toEqual(thought(100));
 
         append(log, { kind: 'toolResult', callId: 'c1', name: 'paint_terrain', content: 'ok', isError: false });
-        expect(useAgentSession.getState().live).toEqual(thought(140));
+        expect(useAgentSession.getState().live).toEqual(completed);
       });
 
       it('the CLEAR is never deferred or gated, however little the last thought changed', () => {

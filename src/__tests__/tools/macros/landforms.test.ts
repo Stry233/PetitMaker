@@ -15,7 +15,7 @@ function pond(ctx: ReturnType<typeof kit>, at: MacroCoord, rx: number, ry: numbe
   const mark = ctx.executor.getUndoStackSize(), draft = new TerrainDraft(ctx);
   for (const c of circleCells(at, rx - 1, ry - 1)) expect(draft.set(c, TerrainType.Water, elevation)).toBe(true);
   expect(draft.contain() && draft.commit(trim)).toBe(true);
-  expect(ctx.executor.commitStrokeGroup(mark)).toEqual([]);
+  expect(ctx.executor.commitStroke(mark)).toEqual([]);
 }
 const at = { x: 24, y: 24 };
 const top = circleCells(at, 4, 4);

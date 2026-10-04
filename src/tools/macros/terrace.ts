@@ -26,15 +26,17 @@
 import { NEIGHBORS4, distanceField } from '../../core/model/grid-model';
 import type { MacroCoord } from '../../core/model/types';
 import { largestComponent } from '../../core/model/geometry';
+import { BASE_SUPPORT } from '../../core/model/game-profile';
 
-/** The highest tier a flat top may reach. V-MTN-03 exempts 1-3 and engages at 4, so this is where the
- *  shape has to start nesting, and the ladder's stage boundary is drawn there rather than hidden. */
-export const FLAT_TOP = 3;
+/** The highest tier a flat top may reach. V-MTN-03 exempts the layers below `BASE_SUPPORT.fromLayer`,
+ *  so this is where the shape has to start nesting, and the ladder's stage boundary is drawn there
+ *  rather than hidden. */
+export const FLAT_TOP = BASE_SUPPORT.fromLayer - 1;
 
 /** The smallest core worth another tier. Below it a ring is a pixel on a hillside, not a summit. */
 export const MIN_CORE = 3;
 
-export interface TerraceInput {
+interface TerraceInput {
   /** Every cell the run may raise, the noisy rim already applied. Cells it may not raise are absent
    *  rather than flagged: to this module they are outside, which is what makes a hole erode. */
   base: readonly MacroCoord[];
@@ -82,7 +84,7 @@ export function terraceRings(input: TerraceInput): TerraceRing[] {
  * `largestComponent` then keeps ONE core: two cores at one tier are two summits, and a ladder
  * climbs one.
  */
-export function erodeCore(cells: readonly MacroCoord[], inset: number, W: number, H: number): MacroCoord[] {
+function erodeCore(cells: readonly MacroCoord[], inset: number, W: number, H: number): MacroCoord[] {
   const inSet = new Set<number>();
   for (const c of cells) inSet.add(c.y * W + c.x);
   const boundary: number[] = [];

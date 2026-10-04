@@ -8,7 +8,7 @@ import { useEditorStore } from '../../../../../state/store';
 import { PROC_PACK_META, STYLE_PACKS, type StylizeDirection } from '../../../../../io/stylize';
 import { packSampleUrl } from './sample-assets';
 import { useStylizeVersions } from './use-stylize-versions';
-import { amplitude, framerMotion } from './motion';
+import { amplitude, framerMotion } from '../../../../design/motion';
 import { MAP_ASPECT } from './sample-art';
 
 const capStyle: CSSProperties = { ...roleFont('subhead'), color: skin.muted };
@@ -57,7 +57,7 @@ function FannedCards() {
   );
 }
 
-/** The 画风 group in export controls: one entry button that opens the stylize window, its live
+/** The Art style group in export controls: one entry button that opens the stylize window, its live
  *  sub-line naming whichever take the export currently carries. */
 export function StylizeEntry() {
   const t = useT();

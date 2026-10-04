@@ -4,6 +4,7 @@ import { buildObjectInstances } from '../../canvas/map3d/build/object-meshes';
 import { surfaceY } from '../../canvas/map3d/core/coords';
 import { type GridState, TerrainType } from '../../core/model/types';
 import { makeState } from '../rules/_helpers';
+import { getCatalogItem } from '../../state/catalog';
 
 // EVERY road is meshed (never instanced): the surface feathers at its boundary, a vertex-colour
 // fade no instanced unit box can carry. The geometry is a 1:1 port of the 2D painter's.
@@ -100,13 +101,16 @@ describe('preview3d: road decals split per material and carry tile UVs', () => {
   const paved = (s: any, id: string, catalogId: string, x: number, y: number) =>
     s.objects.set(id, { id, catalogId, position: { x, y }, rotation: 0, elevation: 0 });
 
-  it('splits per material, naming the tile art each half wears', () => {
+  it('keeps procedural and icon-backed finishes separate', () => {
     const s = makeState(20, 20) as GridState;
     paved(s, 'd', 'path-overgrown-dirt', 2, 2);
     paved(s, 'c', 'path-cobblestone', 5, 2);
     const parts = buildRoadTrimMeshes(s);
     expect(parts.map((p) => p.material).sort()).toEqual(['path-cobblestone', 'path-overgrown-dirt']);
-    for (const p of parts) expect(p.icon, p.material).toBe(p.material);
+    const dirt = parts.find((p) => p.material === 'path-overgrown-dirt')!;
+    expect(dirt.icon).toBeUndefined();
+    expect(dirt.pattern).toBe(getCatalogItem(dirt.material)!.roadMaterial!.edge.pattern);
+    expect(parts.find((p) => p.material === 'path-cobblestone')!.icon).toBe('path-cobblestone');
     for (const p of parts) expect(p.mesh.positions.length).toBeGreaterThan(0);
   });
 

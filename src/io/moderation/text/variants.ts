@@ -34,7 +34,7 @@ function foldLeet(text: string): string {
   return text.replace(/[\p{L}\p{N}@$!]+/gu, token => /\p{L}/u.test(token) && /\p{L}.*[\p{N}@$!]|[\p{N}@$!].*\p{L}/su.test(token) && !/\p{Script=Han}/u.test(token) ? [...token].map(c => LEET[c] ?? c).join('') : token);
 }
 
-/** Analysis views of one normalized text: Han views join separators and single fillers (甲*乙*丙, 甲a乙a丙), Latin views fold look-alike, spelled-out, leet and stretched letters; the original text is never rewritten. */
+/** Analysis views of one normalized text: Han views join separators and single fillers (A*B*C, AxBxC over Han characters), Latin views fold look-alike, spelled-out, leet and stretched letters; the original text is never rewritten. */
 export function analysisVariants(original: string, normalized: string): Set<string> {
   const joined = normalized.replace(/(\p{Script=Han})\p{M}+/gu, '$1')
     .replace(/(\p{Script=Han})[\p{P}\p{Z}\p{S}\s]+(?=\p{Script=Han})/gu, '$1')

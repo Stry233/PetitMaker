@@ -1,6 +1,5 @@
 import { describe, it, expect } from 'vitest';
 import { chunkLoadViolations } from '../../rules/chunk-load';
-import { CHUNK_LOAD_LIMIT, CHUNK_SIZE } from '../../core/model/constants';
 import type { GridState, PlacedObject } from '../../core/model/types';
 import { ItemCategory } from '../../core/model/types';
 import { bumpObjectsVersion, chunkKey } from '../../core/model/grid-model';
@@ -9,6 +8,7 @@ import { getCatalogItem, registerCatalogItem } from '../../state/catalog';
 import { getPlacedObjectSize } from '../../state/object-geometry';
 import { getMapStats } from '../../state/map-stats';
 import { makeState } from './_helpers';
+import { CHUNK_LOAD_LIMIT, CHUNK_SIZE } from '../../core/model/game-profile';
 
 // This exercises chunkLoadViolations directly, the same way the gated-off rule would once
 // CHUNK_LOAD_ENABLED flips true — see chunk-load.test.ts for the flag itself staying off.

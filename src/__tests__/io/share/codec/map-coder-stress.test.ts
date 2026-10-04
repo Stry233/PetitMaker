@@ -6,10 +6,10 @@ import { encodeMap, decodeMap, MODEL_VARIANTS } from '../../../../io/share/codec
 import { tokenOf, type CellFields } from '../../../../io/share/codec/grid-io';
 import { getMapTemplate } from '../../../../config/maps';
 import { SHARE_CATALOG_ORDER } from '../../../../io/share/codec/catalog-order';
-import { ELEVATION_MAX } from '../../../../core/model/constants';
 import { CellZone } from '../../../../core/model/types';
 import type { SaveObject } from '../../../../io/save-format';
 import type { MapTemplate } from '../../../../core/model/types';
+import { ELEVATION_MAX } from '../../../../core/model/game-profile';
 
 const CORNERS = [...'SF1234E'];
 const template = getMapTemplate('hexia');

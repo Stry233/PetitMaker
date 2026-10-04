@@ -5,6 +5,7 @@
  */
 import type { Stencil } from '../../../core/model/types';
 import { covered, luma, type ToneRange } from './stencil';
+import { NEIGHBORS4_NESW } from '../../../core/model/grid-model';
 
 /** Full treatment through 24 cells on the short side, fading linearly to zero at 32. */
 export const SMALL_BOX_FULL = 24;
@@ -28,11 +29,11 @@ export function hueReach(weight: number, palette: ToneRange): number {
 }
 
 /** Chroma bounds for applying hue offsets; neutral colors retain their tone. */
-export const HUE_CHROMA_FULL = 60;
+const HUE_CHROMA_FULL = 60;
 export const HUE_CHROMA_MIN = 16;
 
 /** Minimum weighted mass outside the dominant hue family before hue consumes tonal range. */
-export const HUE_FAMILY_MIN = 1 / 12;
+const HUE_FAMILY_MIN = 1 / 12;
 
 /** Thirty-degree sectors used to identify the dominant hue family. */
 const HUE_SECTORS = 12;
@@ -53,7 +54,7 @@ export function signedTurn(from: number, to: number): number {
 }
 
 /** Compressive signed hue distance in [-1, 1], giving nearby color families useful separation. */
-export function hueLift(turn: number): number {
+function hueLift(turn: number): number {
   const share = Math.min(1, Math.abs(turn) / 180);
   return Math.sign(turn) * Math.sqrt(share);
 }
@@ -112,7 +113,7 @@ export function hueToneOffsets(
 
 /** Minimum coherent water body and its one-palette-step growth tolerance. */
 export const WATER_BODY_MIN = 3;
-export const WATER_GROW_STEPS = 1;
+const WATER_GROW_STEPS = 1;
 
 /**
  * Grows undersized water bodies from eligible bright neighbours or returns them to land.
@@ -144,7 +145,7 @@ export function settleWaterBodies(
       while (stack.length) {
         const i = stack.pop()!;
         const x = i % width, y = (i / width) | 0;
-        for (const [dx, dy] of EDGES) {
+        for (const [dx, dy] of NEIGHBORS4_NESW) {
           const nx = x + dx, ny = y + dy;
           if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue;
           const next = ny * width + nx;
@@ -166,7 +167,7 @@ export function settleWaterBodies(
     const beside = new Map<number, number>();
     for (const i of body) {
       const x = i % width, y = (i / width) | 0;
-      for (const [dx, dy] of EDGES) {
+      for (const [dx, dy] of NEIGHBORS4_NESW) {
         const nx = x + dx, ny = y + dy;
         if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue;
         const next = ny * width + nx;
@@ -198,12 +199,12 @@ export function blendColour(from: number, to: number, weight: number): number {
 }
 
 /** Share of a flat region's palette request supplied by its region-level color. */
-export const AREA_SHARE = 1;
+const AREA_SHARE = 1;
 
 /** Region-level thresholds, in palette steps, that distinguish flat areas from smooth gradients. */
-export const REGION_RANGE_MIN = 2;
-export const REGION_SMOOTH_MAX = 0.7;
-export const REGION_ROUGH_MIN = 1.4;
+const REGION_RANGE_MIN = 2;
+const REGION_SMOOTH_MAX = 0.7;
+const REGION_ROUGH_MIN = 1.4;
 
 export function regionFlatness(
   stencil: Stencil, areas: readonly Area[], colourAt: (index: number) => number, step: number,
@@ -290,7 +291,7 @@ export function readSmallBox(
 }
 
 /** Region-aware palette requests and residual dither for a small stencil. */
-export interface SmallBoxRead {
+interface SmallBoxRead {
   wanted: (index: number) => number | null;
   damping: number;
   /** The regions the picture was read as, in ascending first-cell order. */
@@ -302,7 +303,7 @@ export interface SmallBoxRead {
 /** Target three to six spatial regions, roughly one for every four cells on the short side. */
 export const REGION_TARGET_MIN = 3;
 export const REGION_TARGET_MAX = 6;
-export const REGION_CELLS_PER = 4;
+const REGION_CELLS_PER = 4;
 
 export function regionTarget(box: { width: number; height: number }, areas: readonly Area[], weight: number): number {
   const side = Math.min(box.width, box.height);
@@ -328,7 +329,7 @@ export function mergeToTarget(
     const own = owner[i]!;
     if (own < 0) continue;
     const x = i % width, y = (i / width) | 0;
-    for (const [dx, dy] of EDGES) {
+    for (const [dx, dy] of NEIGHBORS4_NESW) {
       const nx = x + dx, ny = y + dy;
       if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue;
       const other = owner[ny * width + nx]!;
@@ -384,12 +385,12 @@ export function mergeToTarget(
 }
 
 /** Detects dark, shallow regions that collectively enclose enough of the figure to form an outline. */
-export const RIM_ENCLOSE_MIN = 0.4;
-export const RIM_DEPTH_MAX = 2;
-export const RIM_SHARE_MAX = 0.4;
+const RIM_ENCLOSE_MIN = 0.4;
+const RIM_DEPTH_MAX = 2;
+const RIM_SHARE_MAX = 0.4;
 /** How much of the figure an outline may be and still be given its own tier rather than kept in the
  *  picture's order (`allocateEntries`, where the arithmetic behind the fifth is). */
-export const RIM_SPEND_MAX = 0.2;
+const RIM_SPEND_MAX = 0.2;
 
 export function figureRim(stencil: Stencil, areas: readonly Area[]): number[] {
   const { width, height } = stencil;
@@ -459,7 +460,7 @@ export interface Area {
 export const AREA_MIN = 3;
 
 /** Maximum channel-weighted distance for folding a speck into an adjacent area. */
-export const FOLD_MAX = 30;
+const FOLD_MAX = 30;
 
 const bucketOf = (rgb: number): number =>
   ((((rgb >> 19) & 0x1f) << 10) | (((rgb >> 11) & 0x1f) << 5) | ((rgb >> 3) & 0x1f)) >>> 0;
@@ -497,7 +498,7 @@ export function coherentAreas(
     while (stack.length) {
       const i = stack.pop()!;
       const x = i % width, y = (i / width) | 0;
-      for (const [dx, dy] of EDGES) {
+      for (const [dx, dy] of NEIGHBORS4_NESW) {
         const nx = x + dx, ny = y + dy;
         if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue;
         const next = ny * width + nx;
@@ -532,7 +533,7 @@ export function coherentAreas(
     let host = -1, bestD = Infinity;
     for (const i of area.cells) {
       const x = i % width, y = (i / width) | 0;
-      for (const [dx, dy] of EDGES) {
+      for (const [dx, dy] of NEIGHBORS4_NESW) {
         const nx = x + dx, ny = y + dy;
         if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue;
         const other = label[ny * width + nx]!;
@@ -557,8 +558,6 @@ export function coherentAreas(
     .sort((a, b) => a.cells[0]! - b.cells[0]!);
 }
 
-const EDGES: readonly (readonly [number, number])[] = [[0, -1], [1, 0], [0, 1], [-1, 0]];
-
 /** The first entry, in tone order, at least this light — 0 where nothing is asked. */
 function indexAtLeast(byTone: readonly { tone: number }[], tone: number | undefined): number {
   if (tone === undefined || !Number.isFinite(tone)) return 0;
@@ -578,7 +577,7 @@ export function cellDepths(
     if (!inFigure(i)) continue;
     const x = i % width, y = (i / width) | 0;
     let rim = false;
-    for (const [dx, dy] of EDGES) {
+    for (const [dx, dy] of NEIGHBORS4_NESW) {
       const nx = x + dx, ny = y + dy;
       if (nx < 0 || ny < 0 || nx >= width || ny >= height || !inFigure(ny * width + nx)) { rim = true; break; }
     }
@@ -587,7 +586,7 @@ export function cellDepths(
   for (let head = 0; head < queue.length; head++) {
     const i = queue[head]!;
     const x = i % width, y = (i / width) | 0;
-    for (const [dx, dy] of EDGES) {
+    for (const [dx, dy] of NEIGHBORS4_NESW) {
       const nx = x + dx, ny = y + dy;
       if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue;
       const next = ny * width + nx;
@@ -613,7 +612,7 @@ export function areaSalience(stencil: Stencil, areas: readonly Area[]): AreaRead
     const near = new Set<number>();
     for (const i of area.cells) {
       const x = i % width, y = (i / width) | 0;
-      for (const [dx, dy] of EDGES) {
+      for (const [dx, dy] of NEIGHBORS4_NESW) {
         const nx = x + dx, ny = y + dy;
         if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue;
         const other = owner[ny * width + nx]!;
@@ -821,12 +820,12 @@ export function planBorrow(
 
 /** Hue tolerance, minimum patch size, total area budget, and region cap for color beds. */
 export const FILL_HUE_MAX = 40;
-export const FILL_BED_MIN = 2;
+const FILL_BED_MIN = 2;
 export const FILL_BUDGET_SHARE = 1 / 16;
 export const FILL_MAX_REGIONS = 2;
 
 /** One body filled: which region, the coating that says its colour, and how many cells the bed may take. */
-export interface ColourFill { region: number; catalogId: string; want: number }
+interface ColourFill { region: number; catalogId: string; want: number }
 
 /** Map-dependent availability and borrow budget supplied by the caller. */
 export interface FillGate {
@@ -938,7 +937,7 @@ export function bedCells(
     const i = queue[head]!;
     if (open(i)) out.push(i);
     const x = i % width, y = (i / width) | 0;
-    for (const [dx, dy] of EDGES) {
+    for (const [dx, dy] of NEIGHBORS4_NESW) {
       const nx = x + dx, ny = y + dy;
       if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue;
       const next = ny * width + nx;
@@ -960,6 +959,3 @@ export function sourceColour(stencil: Stencil, area: Area): number {
   const n = Math.max(1, area.cells.length);
   return ((Math.round(r / n) << 16) | (Math.round(g / n) << 8) | Math.round(b / n)) >>> 0;
 }
-
-/** Minimum channel-weighted source-color gap for treating a shared palette entry as a collision. */
-export const COLLIDE_MIN = 12;

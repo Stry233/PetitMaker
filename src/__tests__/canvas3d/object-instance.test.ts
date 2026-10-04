@@ -8,6 +8,7 @@ import { buildObjectInstances, objectInstance } from '../../canvas/map3d/build/o
 import { type GridState, type PlacedObject } from '../../core/model/types';
 import { makeState } from '../rules/_helpers';
 import { getCatalogItem } from '../../state/catalog';
+import { planetPlazaObject } from '../../core/model/planet';
 
 function withObjects(...objs: PlacedObject[]): GridState {
   const s = makeState(30, 30) as GridState;
@@ -43,5 +44,14 @@ describe('objectInstance', () => {
     }
     // bulk emits exactly the two instanced objects — both roads live in the road mesh
     expect(bulkFlat).toHaveLength(2);
+  });
+
+  it.each([0, 90, 180, 270] as const)('fills the turned plaza footprint exactly at %s degrees', (rotation) => {
+    const plaza = planetPlazaObject({ x: 1, y: 1 }, rotation);
+    const inst = objectInstance(withObjects(plaza), plaza)!.inst;
+    const cos = Math.abs(Math.cos(inst.rotationY)), sin = Math.abs(Math.sin(inst.rotationY));
+    const across = rotation === 90 || rotation === 270;
+    expect(cos * inst.scaleX + sin * inst.scaleZ).toBeCloseTo(across ? 27 : 20);
+    expect(sin * inst.scaleX + cos * inst.scaleZ).toBeCloseTo(across ? 20 : 27);
   });
 });

@@ -1,13 +1,14 @@
-import { SUPPORTS_EXTERNAL_LINKS } from '../../../../core/runtime/edition';
-import { providerName } from '../../../../i18n/providers';
 /*
- * PageView.tsx — one help page rendered from its descriptor.
+ * One help page rendered from its descriptor.
  *
  * Everything textual arrives as an i18n key and is resolved with the live fact params
  * (`facts.ts`), so a page never holds a number the source already declares. Key tables resolve
  * their command ids through the live keymap (`resolveTokenSpecs`), which is what keeps a rebind
  * and its documentation the same fact.
  */
+import { cssMotion } from '../../../design/motion';
+import { SUPPORTS_EXTERNAL_LINKS } from '../../../../core/runtime/edition';
+import { providerName } from '../../../../i18n/providers';
 import { Fragment, memo, useEffect, useId, useRef, type CSSProperties, type ReactNode } from 'react';
 import { motion } from 'framer-motion';
 import { useEditorStore } from '../../../../state/store';
@@ -18,8 +19,8 @@ import { resolveTokenSpecs } from '../../../hints/catalogue';
 import { HintTokens } from '../../../hints/tokens';
 import { roleWeight, roleFont } from '../../../design/text-weight';
 import { INK, INSET, LINE, PLATE_INK } from '../../../design/tokens';
-import { buttonMotion, colors, cursors, primaryButton, radii } from '../../../design/styles';
-import { withAlpha } from '../../../design/styles';
+import { buttonMotion, colors, cursors, radii, withAlpha } from '../../../design/styles';
+import { ActionButton as SharedActionButton } from '../../../primitives/ActionButton';
 import { BrandLockup } from '../../BrandLockup';
 import { LoadDiscSvg } from '../../../shell/windows/LoadMeter';
 import { inlineArt, type InlineArt } from './inline-art';
@@ -266,6 +267,9 @@ function QaRow({ qKey, aKey, facts, t }: { qKey: string; aKey: string; facts: Re
 function ActionButton({ action }: { action: NonNullable<HelpPage['action']> }) {
   const t = useT();
   const setModal = useEditorStore((s) => s.setModal);
+  // The tour walks the map's interface, which a planet session has set aside.
+  const inSession = useEditorStore((s) => s.planetSession !== null);
+  const unavailable = action.kind === 'replay-tour' && inSession;
   const run = () => {
     // Either action opens something the help window would otherwise stand in front of, so the
     // help steps aside first; it keeps the reader's place for the way back.
@@ -275,9 +279,9 @@ function ActionButton({ action }: { action: NonNullable<HelpPage['action']> }) {
   };
   return (
     <div style={{ display: 'flex', justifyContent: 'center', marginTop: 12 }}>
-      <motion.button type="button" {...buttonMotion} onClick={run} style={{ ...primaryButton }}>
+      <SharedActionButton appearance="centered" disabled={unavailable} onClick={run}>
         {t(action.labelKey)}
-      </motion.button>
+      </SharedActionButton>
     </div>
   );
 }
@@ -334,7 +338,7 @@ export const PageView = memo(function PageView({ page, onGo, onReady }: { page: 
                   display: 'inline-flex', alignItems: 'center', gap: 7, border: 'none',
                   background: INSET, color: PLATE_INK, borderRadius: radii.pill,
                   padding: '7px 14px', ...roleFont('chip'), cursor: cursors.clickable,
-                  transition: 'background-color 0.15s ease',
+                  transition: cssMotion('control.paint', ['background-color']),
                 }}
                 onPointerEnter={(e) => { e.currentTarget.style.background = colors.tileYellow; }}
                 onPointerLeave={(e) => { e.currentTarget.style.background = INSET; }}

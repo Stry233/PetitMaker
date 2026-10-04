@@ -4,8 +4,9 @@
  * commands through the live executor; each applied candidate remains a separate undo step. Optional
  * maze endpoints and their route are recipe inputs shared by every candidate in the batch.
  */
+import { mapEdgeAttr } from '../../primitives/map-edge';
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
-import { motion, useReducedMotionConfig } from 'framer-motion';
+import { motion } from 'framer-motion';
 import { setCursorBusy } from '../../../canvas/interaction/cursor-controller';
 import { helpTargetAttr } from '../../chrome/modals/help/targets';
 import type { HelpPageId } from '../../chrome/modals/help/page-schema';
@@ -18,7 +19,7 @@ import { currentKit } from '../../../kit/context';
 import { host } from '../../../kit/host';
 import { clearGenerated, generateMap } from '../../../kit/operations';
 import { useEditorStore } from '../../../state/store';
-import { useScrollFade } from '../../primitives/scroll-fade';
+import { useScrollRow, scrollBleed } from '../../primitives/use-scroll-row';
 import {
   latticeField, mazeFootprint, onRing, resolveEnd, type MazeEnd, type MazeField,
 } from '../../../tools/generation/maze';
@@ -40,9 +41,9 @@ import { MazeEndpoints, type EndId, type MazeEnds } from './MazeEndpoints';
 import { ItemPickScreen } from './ItemPickScreen';
 import { ScopeScreen } from './ScopeScreen';
 import { SCOPE_TOOLS_FOR } from './scope-cells';
-import { useFrameZoom, wheelGlider, wheelPush } from './row-scroll';
+import { useFrameZoom } from './row-scroll';
 import { useFrameLayout, useRailClearance } from '../frame-layout';
-import { cssMotion } from '../motion/use-motion';
+import { cssMotion } from '../../design/motion';
 import { ShelfTabs, TAB_ROW } from './ShelfTabs';
 import {
   BAR, BATCH, PAIR_GAP, BODY_H, CANDIDATES, CARD, CARD_H, CHOSEN, CORRIDOR, GAP, PAD, RICHNESS, SEED_MAX,
@@ -462,8 +463,15 @@ function GenerateShelfBody({ initialKind }: { initialKind?: GenerateKind }) {
       // builds nothing whatever it was asked to build. Naming the letters that did not fit would be
       // true and useless, since no letter could have fit. A region the run was free to build on and
       // put nothing in stays quiet, which is what it always was.
+      if (outcome.stencilBudget === 'blocked') {
+        showToast(t('gen.budget_blocked'), 'warning');
+        return;
+      }
       if (outcome.scopeEmpty === 'reclaimed') showToast(t('gen.scope_reclaimed'), 'warning');
       else if (said) showToast(t(said.key, { n: said.n }), outcome.placed === 0 ? 'warning' : 'info');
+      // A thinned run says so as well, in its own toast after the ground's reason: the two answer
+      // different questions, and the toast stack shows both.
+      if (outcome.stencilBudget === 'adapted') showToast(t('gen.budget_adapted'), 'info');
       setAppliedIndex(index);
       // The run reports where its gates opened and its own walk between them. NOT the marks: those
       // are the visitor's setting, and a run answers them rather than moving them.
@@ -572,14 +580,11 @@ function GenerateShelfBody({ initialKind }: { initialKind?: GenerateKind }) {
   const stripClearance = useRailClearance(PAD.bottom, STRIP.h);
   const right = layout ? layout.edgeRight + clearance : PAD.right;
   const stripRef = useRef<HTMLDivElement>(null);
-  const stripGlide = useRef(wheelGlider()).current;
-  const stripFade = useScrollFade(stripRef, 'x');
+  const stripFade = useScrollRow(stripRef, { zoom, bleed: { top: 20, right: 12, bottom: 12, left: 12 }, pointerEvents: 'auto' });
   // This row draws no scrollbar of its own (see the comment above): the fade is the only signal
   // that there is more to see, so it earns its keep here more than anywhere else in the shelf.
-  const cardsFade = useScrollFade(cardsRef, 'x');
-  const reducedMotion = useReducedMotionConfig() ?? false;
+  const cardsFade = useScrollRow(cardsRef, { zoom, pointerEvents: 'auto' });
   const swapMotion = useMotion('shelf.category.swap');
-  const cardsGlide = useRef(wheelGlider()).current;
 
   const reroll = useCallback(() => {
     if (busy) return;
@@ -658,7 +663,7 @@ function GenerateShelfBody({ initialKind }: { initialKind?: GenerateKind }) {
   const upper: UpperKnob = kind === 'maze'
     ? {
       label: t('generate.corridor'),
-      reading: t(corridorWidth === 1 ? 'agent2.n_cells_one' : 'agent2.n_cells', { n: corridorWidth }),
+      reading: t(corridorWidth === 1 ? 'units.cells_one' : 'units.cells', { n: corridorWidth }),
       min: CORRIDOR.min, max: CORRIDOR.max, value: corridorWidth, set: setCorridorWidth,
     }
     : {
@@ -691,7 +696,7 @@ function GenerateShelfBody({ initialKind }: { initialKind?: GenerateKind }) {
   const itemName = chosenItem ? localizedName(chosenItem.name, locale) : null;
 
   const scopeSays = scope
-    ? t(scope.length === 1 ? 'agent2.n_cells_one' : 'agent2.n_cells', { n: scope.length })
+    ? t(scope.length === 1 ? 'units.cells_one' : 'units.cells', { n: scope.length })
     : t('gen.scope_all');
 
   // A SCREEN, NOT A SWAP: the shelf goes away while a region is painted, because the return is a
@@ -722,7 +727,7 @@ function GenerateShelfBody({ initialKind }: { initialKind?: GenerateKind }) {
     <>
       <MazeEndpoints ends={shownEnds} onMove={onEndMove} />
 
-      <div {...helpTargetAttr(helpForKind(kind))} style={{ position: 'fixed', left: 0, right: 0, bottom: 0, pointerEvents: 'none', zIndex: z.panel }}>
+      <div {...helpTargetAttr(helpForKind(kind))} {...mapEdgeAttr('bottom')} style={{ position: 'fixed', left: 0, right: 0, bottom: 0, pointerEvents: 'none', zIndex: z.panel }}>
         <div style={{ position: 'relative', display: 'flex', justifyContent: 'center' }}>
           {/* The backing, as the design draws it: a band at the bottom of the window that the
               candidates stand UP out of, and that the strip sits inside. See `units.ts:PLATE_BAND`. */}
@@ -742,14 +747,14 @@ function GenerateShelfBody({ initialKind }: { initialKind?: GenerateKind }) {
             style={{
               position: 'relative', width: '100%', boxSizing: 'border-box',
               padding: `${PAD.top}px ${layout?.edgeRight ?? PAD.right}px ${PAD.bottom}px ${PAD.side}px`,
-              transition: cssMotion('frame.layout.adapt', 'padding-right'),
+              transition: cssMotion('frame.layout.adapt', ['padding-right']),
               display: 'flex', flexDirection: 'column', alignItems: 'stretch', gap: rowGap,
             }}
           >
             {/* The shelf's heading, and the whole of it: the four kinds of map at the shelf's own
                 left edge, on the MAP above the backing band. Nothing else stands in this row —
                 anything more makes it hard to read. */}
-            <div style={{ ...TAB_ROW, position: 'relative', marginRight: layout ? clearance : 0, transition: cssMotion('frame.layout.adapt', 'margin-right') }}>
+            <div style={{ ...TAB_ROW, position: 'relative', marginRight: layout ? clearance : 0, transition: cssMotion('frame.layout.adapt', ['margin-right']) }}>
               <ShelfTabs
                 label={t('menu.generate')}
                 tabs={TABS.map((entry) => ({ id: entry.id, label: t(entry.labelKey), helpTarget: helpForKind(entry.id) }))}
@@ -779,7 +784,7 @@ function GenerateShelfBody({ initialKind }: { initialKind?: GenerateKind }) {
               }}
             >
               {/* One line: the scrolling recipes, then the two pinned actions. */}
-              <div style={{ display: 'flex', alignItems: 'stretch', height: cardH, minWidth: 0, marginRight: layout ? clearance : 0, transition: cssMotion('frame.layout.adapt', 'margin-right') }}>
+              <div style={{ display: 'flex', alignItems: 'stretch', height: cardH, minWidth: 0, marginRight: layout ? clearance : 0, transition: cssMotion('frame.layout.adapt', ['margin-right']) }}>
               {/*
                 A CARD HAS ONE SIZE AND THE ROW SCROLLS. Cards sharing a run of width and shrinking
                 together make the COUNT a layout decision: six makes every picture too small to
@@ -796,10 +801,6 @@ function GenerateShelfBody({ initialKind }: { initialKind?: GenerateKind }) {
                 className="pw-noscroll"
                 data-testid="gen-cards-row"
                 {...helpTargetAttr('candidates')}
-                onWheel={(e) => {
-                  const push = wheelPush(e, e.currentTarget.clientWidth, zoom);
-                  if (push) cardsGlide.wheel(e.currentTarget, push.by, reducedMotion);
-                }}
                 style={{
                   ...ROW, gap: GAP.card,
                   // Solid, gaps between cards included: a wheel between two cards glides the row
@@ -810,15 +811,13 @@ function GenerateShelfBody({ initialKind }: { initialKind?: GenerateKind }) {
                   // cards themselves do (the row then scrolls under it).
                   flex: '0 1 auto', minWidth: 0,
                   justifyContent: 'flex-start',
-                  overflowX: 'auto', overflowY: 'hidden',
                   // The chosen card's plate stands outside the card's box, and a scroll container
                   // clips at its own edge — so the box is grown by the plate's overhang on every
                   // side and pulled back by the same amount, leaving the layout where it was and
                   // the plate whole. The RIGHT needs it as much as the left: when the row scrolls,
                   // its padding edge is exactly where the last card's plate bleeds.
                   height: cardH + 2 * chosenOut,
-                  margin: `${-chosenOut}px ${-chosenOut}px ${-chosenOut}px ${-chosenOut}px`,
-                  padding: `${chosenOut}px ${chosenOut}px ${chosenOut}px ${chosenOut}px`,
+                  ...scrollBleed(chosenOut),
                   ...cardsFade,
                 }}
               >
@@ -904,7 +903,7 @@ function GenerateShelfBody({ initialKind }: { initialKind?: GenerateKind }) {
                   onClick={() => { if (!busy) reroll(); }}
                   style={{
                     ...btnReset, flex: '0 0 auto', width: actionW, height: actionH,
-                    transition: cssMotion('frame.layout.adapt', 'width', 'height'),
+                    transition: cssMotion('frame.layout.adapt', ['width', 'height']),
                     pointerEvents: 'auto', cursor: busy ? cursors.blocked : cursors.clickable,
                     opacity: busy ? 0.45 : 1,
                     borderRadius: px(BATCH.radius), background: PLATE,
@@ -929,7 +928,7 @@ function GenerateShelfBody({ initialKind }: { initialKind?: GenerateKind }) {
                     ...btnReset, flex: '0 0 auto', width: actionW, height: actionH,
                     marginLeft: stackedActions ? 0 : PAIR_GAP - GAP.card,
                     marginTop: stackedActions ? PAIR_GAP : 0,
-                    transition: cssMotion('frame.layout.adapt', 'width', 'height', 'margin-left', 'margin-top'),
+                    transition: cssMotion('frame.layout.adapt', ['width', 'height', 'margin-left', 'margin-top']),
                     pointerEvents: 'auto', cursor: busy ? cursors.blocked : cursors.clickable,
                     opacity: busy ? 0.45 : 1,
                     borderRadius: px(BATCH.radius), background: PLATE,
@@ -951,20 +950,13 @@ function GenerateShelfBody({ initialKind }: { initialKind?: GenerateKind }) {
                 ref={stripRef}
                 className="pw-noscroll"
                 data-testid="shell-gen-strip"
-                onWheel={(e) => {
-                  const row = e.currentTarget;
-                  const push = row.scrollWidth > row.clientWidth ? wheelPush(e, row.clientWidth, zoom) : null;
-                  if (push) stripGlide.wheel(row, push.by, reducedMotion);
-                }}
                 style={{
                   display: 'flex', alignItems: 'center', flexWrap: 'nowrap',
                   height: STRIP.h, minWidth: 0, gap: GAP.strip, pointerEvents: 'auto',
-                  overflowX: 'auto', overflowY: 'hidden',
-                  padding: '20px 12px 12px', margin: '-20px -12px -12px',
+                  ...stripFade,
                   // The strip reserves its own rail band independently of the taller candidate row.
                   marginRight: layout ? stripClearance - 12 : -(right - STRIP.right),
-                  transition: cssMotion('frame.layout.adapt', 'margin-right'),
-                  ...stripFade,
+                  transition: cssMotion('frame.layout.adapt', ['margin-right']),
                 }}
               >
                 <span {...helpTargetAttr('region')} style={{ flex: '0 0 auto' }}>

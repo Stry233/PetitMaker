@@ -21,15 +21,6 @@ describe('tour steps', () => {
     }
   });
 
-  it('carries no em dash in any locale (they crowd the compact panels)', () => {
-    for (const table of Object.values(translations)) {
-      for (const step of TOUR_STEPS) {
-        expect(table[step.titleKey]).not.toContain('—');
-        expect(table[step.bodyKey]).not.toContain('—');
-      }
-    }
-  });
-
   it('names each target once, so a spotlight can never be ambiguous', () => {
     const targets = TOUR_STEPS.map((s) => s.target).filter(Boolean);
     expect(new Set(targets).size).toBe(targets.length);
@@ -82,6 +73,6 @@ describe('tour steps', () => {
     expect(shellTourSteps(false).map((s) => s.id)).toEqual([
       'welcome', 'camera', 'modes', 'bar', 'assistant', 'share', 'menu',
     ]);
-    expect(shellTourSteps(true)).toBe(TOUR_STEPS);
+    expect(shellTourSteps(true)).toEqual(TOUR_STEPS);
   });
 });

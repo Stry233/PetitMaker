@@ -195,7 +195,7 @@ describe('the stylize studio', () => {
     expect(scroller.style.overflowY).toBe('auto');
     expect(scroller.style.minHeight).toBe('0');
 
-    // 自定义 is a member of the scroller like its eleven siblings.
+    // Custom is a member of the scroller like its eleven siblings.
     const customRow = screen.getByText('Custom').closest('button')!;
     expect(scroller.contains(customRow)).toBe(true);
 
@@ -237,7 +237,7 @@ describe('the stylize studio', () => {
     const row = screen.getByTestId('stylize-shelf-scroll');
     expect(row.style.overflowX).toBe('scroll');
     expect(row.style.display).toBe('flex');
-    // 原图 plus all seven takes stand in the one row; nothing is dropped and no ghosts remain.
+    // Original plus all seven takes stand in the one row; nothing is dropped and no ghosts remain.
     expect(within(row).getByLabelText('Original')).toBeTruthy();
     for (let n = 1; n <= 7; n++) expect(within(row).getByLabelText(`Take ${n}`)).toBeTruthy();
   });

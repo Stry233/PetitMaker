@@ -7,8 +7,9 @@
  * to the scorecard's own region table.
  */
 import type { GridState } from '../../../../core/model/types';
-import { NB4, readGrid, segmentRegions, type EvalGrid } from './grid';
+import { readGrid, segmentRegions, type EvalGrid } from './grid';
 import { bandScore } from './reference';
+import { NEIGHBORS4 } from '../../../../core/model/grid-model';
 
 /** The two references' own segmentation, read by `segmentRegions`: 69 districts of median 48 cells
  *  on the terraced planet (cut by its terraces), 23 of median 260 on the garden town (cut by its
@@ -137,7 +138,7 @@ export function districtFrontage(state: GridState, g = readGrid(state)): Distric
     const lines = new Map<string, Map<number, boolean>>();
     for (const i of region.cells) {
       const x = i % W, y = (i / W) | 0;
-      for (const [dx, dy] of NB4) {
+      for (const [dx, dy] of NEIGHBORS4) {
         const nx = x + dx, ny = y + dy;
         const j = ny * W + nx;
         const off = nx < 0 || ny < 0 || nx >= W || ny >= H;
@@ -197,7 +198,7 @@ function pavementDistance(g: EvalGrid): Int32Array {
   for (let head = 0; head < queue.length; head++) {
     const p = queue[head]!;
     const x = p % g.W, y = (p / g.W) | 0;
-    for (const [dx, dy] of NB4) {
+    for (const [dx, dy] of NEIGHBORS4) {
       const nx = x + dx, ny = y + dy;
       if (nx < 0 || ny < 0 || nx >= g.W || ny >= g.H) continue;
       const j = ny * g.W + nx;

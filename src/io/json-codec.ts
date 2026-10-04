@@ -1,4 +1,8 @@
 import { attributedNotes, readImageAttribution } from '../core/provenance/image-attribution';
+import { rleDecode, rleEncode } from './rle';
+import { parseTemplate, serializeTemplate } from './planet-codec';
+import { isCustomTemplate } from '../core/model/planet';
+import { resolveTemplate } from '../config/maps/resolve';
 import { clampNotes } from '../core/model/notes';
 import {
   type GridState,
@@ -10,22 +14,21 @@ import {
   type CornerTrim,
   type Corners,
   CellZone,
-  TerrainType,
+  TerrainType, type Rotation,
 } from '../core/model/types';
 import {
   ANNOTATION_COLORS, generateAnnotationId,
   type AnnotationsState, type MapAnnotation, isTagId,
 } from '../core/model/annotations';
 import type { CurveAnchor } from '../core/model/spline';
-import { cellKey, createGrid, createPlazaObject, onHalfGrid } from '../core/model/grid-model';
+import { cellKey, createGrid, createPlazaObject, isLandmarkId } from '../core/model/grid-model';
 import { generateObjectId } from '../core/model/object-id';
-import { PLAZA_ID } from '../core/model/constants';
 import { isCoating } from '../core/model/traits';
-import { isValidTerrainType, isValidRotation, isValidElevation } from './import-validate';
+import { isFiniteNumber, isValidTerrainType, isValidRotation, isValidElevation, onItemGrid } from './import-validate';
 import { currentCatalogId } from './legacy-catalog';
 import { MAX_OBJECTS_PER_CELL } from './import-limits';
 import { getCatalogItem } from '../state/catalog';
-import { hasHalfStep, objectRect } from '../state/object-geometry';
+import { objectRect } from '../state/object-geometry';
 import {
   CURRENT_VERSION,
   migrateToCurrent,
@@ -38,7 +41,9 @@ import { serializeProvenance, deserializeProvenance, markLegacyUnknown } from '.
 
 /* Save files are migrated to the schema in ./save-format/types before decoding. */
 
-const CORNER_ENCODE: Record<string, string> = {
+/** The one-character code of each corner trim in saves and share codes. The order is persisted: the
+ *  share codec stores a corner as its index in this table, so a new trim goes at the end. */
+export const CORNER_CODE: Readonly<Record<CornerTrim, string>> = {
   square: 'S', fan: 'F', 'tri-NW': '1', 'tri-NE': '2', 'tri-SW': '3', 'tri-SE': '4', empty: 'E',
 };
 
@@ -48,7 +53,7 @@ const CORNER_DECODE: Record<string, CornerTrim> = {
 
 /** Encodes corners as a four-character suffix, omitting the all-square default. */
 export function encodeCorners(corners: Corners): string | undefined {
-  const suffix = corners.map((c: CornerTrim) => CORNER_ENCODE[c] ?? 'S').join('');
+  const suffix = corners.map((c: CornerTrim) => CORNER_CODE[c] ?? 'S').join('');
   return suffix === 'SSSS' ? undefined : suffix;
 }
 
@@ -74,48 +79,6 @@ export function terrainToken(t: TerrainCell): string {
 function cellToToken(cell: MacroCell): string {
   if (!cell.terrain) return '_';
   return terrainToken(cell.terrain);
-}
-
-export function rleEncode(tokens: string[]): string {
-  if (tokens.length === 0) return '';
-  const runs: string[] = [];
-  let current = tokens[0]!;
-  let count = 1;
-  for (let i = 1; i < tokens.length; i++) {
-    if (tokens[i] === current) {
-      count++;
-    } else {
-      runs.push(count > 1 ? `${count}*${current}` : current);
-      current = tokens[i]!;
-      count = 1;
-    }
-  }
-  runs.push(count > 1 ? `${count}*${current}` : current);
-  return runs.join(',');
-}
-
-/** Decodes comma-separated RLE while bounding expansion from untrusted run counts. */
-export function rleDecode(rle: string, maxTokens?: number): string[] {
-  if (rle === '') return [];
-  const tokens: string[] = [];
-  for (const part of rle.split(',')) {
-    const starIdx = part.indexOf('*');
-    if (starIdx > 0) {
-      const count = Number(part.slice(0, starIdx));
-      if (!Number.isInteger(count) || count <= 0) throw new Error('Invalid cell data: bad RLE run count.');
-      if (maxTokens !== undefined && tokens.length + count > maxTokens) {
-        throw new Error('Invalid cell data: more cells than the map template holds.');
-      }
-      const token = part.slice(starIdx + 1);
-      for (let i = 0; i < count; i++) tokens.push(token);
-    } else {
-      if (maxTokens !== undefined && tokens.length >= maxTokens) {
-        throw new Error('Invalid cell data: more cells than the map template holds.');
-      }
-      tokens.push(part);
-    }
-  }
-  return tokens;
 }
 
 /** Parses one terrain token and rejects malformed or out-of-range values. */
@@ -197,6 +160,7 @@ export function buildSaveFile(state: GridState, camera?: PersistedCamera): SaveF
     cells: rleEncode(tokens),
     objects: objectList,
     metadata: { savedAt: new Date().toISOString() },
+    ...(isCustomTemplate(template) ? { template: serializeTemplate(template) } : {}),
     ...(state.provenance ? { provenance: serializeProvenance(state.provenance) } : {}),
     ...(notes ? { notes } : {}),
     ...(state.imageAttribution ? { imageAttribution: state.imageAttribution } : {}),
@@ -208,12 +172,23 @@ export function buildSaveFile(state: GridState, camera?: PersistedCamera): SaveF
   return saveFile;
 }
 
+/** The template a parsed save was made on: its embedded planet, else the built-in its id names.
+ *  Only a custom planet's id reads the embedded template, so a stray field never fails a built-in save. */
+export function templateOfSave(raw: unknown): MapTemplate {
+  const r = raw as { templateId?: string; template?: unknown };
+  const custom = typeof r.templateId === 'string' && isCustomTemplate({ id: r.templateId });
+  const embedded = custom && r.template !== undefined ? parseTemplate(r.template) : undefined;
+  return resolveTemplate(r.templateId, embedded);
+}
+
 export function serialize(state: GridState, camera?: PersistedCamera): string {
   return JSON.stringify(buildSaveFile(state, camera));
 }
 
-function isFiniteNumber(v: unknown): v is number {
-  return typeof v === 'number' && Number.isFinite(v);
+/** The camera a save carries: the views given, or none when neither is. */
+export function persistedCamera(view2d?: PersistedCamera['view2d'], view3d?: PersistedCamera['view3d']): PersistedCamera | undefined {
+  if (!view2d && !view3d) return undefined;
+  return { ...(view2d ? { view2d } : {}), ...(view3d ? { view3d } : {}) };
 }
 
 /** Reads valid 2D and 3D camera fields independently without rejecting the map. */
@@ -247,7 +222,7 @@ export function readParsedSaveCamera(raw: unknown): PersistedCamera | undefined 
       };
     }
   }
-  return result.view2d || result.view3d ? result : undefined;
+  return persistedCamera(result.view2d, result.view3d);
 }
 
 /**
@@ -319,15 +294,13 @@ export function deserializeParsed(raw: unknown, template: MapTemplate): GridStat
   // Provenance keys follow object IDs that are replaced during validation.
   const reIdedObjects = new Map<string, string>();
   for (const obj of save.objects) {
-    if (obj.id === PLAZA_ID) continue; // recreated fresh from the template below
+    if (isLandmarkId(obj.id)) continue; // recreated fresh from the template below
     // Exact catalog-ID aliases preserve renamed items; unknown IDs are discarded below.
     const catalogId = currentCatalogId(obj.catalogId);
     // Catalog IDs can enter model context, so imports accept only registered values.
     const item = getCatalogItem(catalogId);
     if (!item) continue;
-    // Half-step items accept integer or half-integer anchors; other items require integers.
-    const onGrid = (v: number) => (hasHalfStep(item) ? onHalfGrid(v) : Number.isInteger(v));
-    if (!onGrid(obj.x) || !onGrid(obj.y)
+    if (!onItemGrid(item, obj.x) || !onItemGrid(item, obj.y)
       || obj.x < 0 || obj.y < 0 || obj.x >= template.width || obj.y >= template.height) continue;
     if (!isValidRotation(obj.rotation)) continue;
     if (obj.elevation !== undefined && !isValidElevation(obj.elevation)) continue;
@@ -340,7 +313,7 @@ export function deserializeParsed(raw: unknown, template: MapTemplate): GridStat
       id,
       catalogId,
       position: { x: obj.x, y: obj.y },
-      rotation: obj.rotation as 0 | 90 | 180 | 270,
+      rotation: obj.rotation as Rotation,
       elevation: obj.elevation ?? 0,
     };
     if (obj.spanLength !== undefined) placed.spanLength = obj.spanLength;

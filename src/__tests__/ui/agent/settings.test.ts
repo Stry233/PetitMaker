@@ -5,7 +5,7 @@
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import {
-  connectionGaps, connectionReady, isConnected, runnerSettings, setLiveJobStop, useAgentPanelSettings,
+  connectionGaps, connectionReady, isConnected, providerForSavedKey, providerRegion, runnerSettings, setLiveJobStop, useAgentPanelSettings,
 } from '../../../ui/agent/settings';
 import { markKeysHydrated, loadAgentSettings } from '../../../agent/security/key-storage';
 import { PREFS } from '../../../core/runtime/prefs';
@@ -64,6 +64,115 @@ beforeEach(async () => {
   // `unhydrated` writes while it clears the keyring, so storage is emptied AFTER it, not before.
   await unhydrated();
   backing.clear();
+});
+
+describe('custom endpoint authentication', () => {
+  it('requires an explicit endpoint before accepting a blank custom key', () => {
+    const state = useAgentPanelSettings.getState();
+    state.connectKey('custom', '');
+    state.connectKey('openai', '');
+    expect(isConnected(useAgentPanelSettings.getState(), 'custom')).toBe(false);
+    expect(isConnected(useAgentPanelSettings.getState(), 'openai')).toBe(false);
+    state.setCustomBaseUrl('http://localhost:1234/v1');
+    state.connectKey('custom', '');
+    state.setModel('local-model');
+    expect(connectionGaps(useAgentPanelSettings.getState())).toEqual([]);
+    expect(runnerSettings(useAgentPanelSettings.getState())).toMatchObject({ apiKey: '', customBaseUrl: 'http://localhost:1234/v1', model: 'local-model' });
+  });
+
+  it('persists the explicit unauthenticated choice without a placeholder key', async () => {
+    await useAgentPanelSettings.getState().hydrate();
+    const state = useAgentPanelSettings.getState();
+    state.setCustomBaseUrl('http://localhost:1234/v1');
+    state.connectKey('custom', 'old-key');
+    state.setModel('local-model');
+    state.connectKey('custom', '');
+    expect(storedRecord().customAuth).toBe('none');
+    expect(loadAgentSettings().keys.custom).toBeUndefined();
+    expect(providerForSavedKey('old-key')).toBeNull();
+    expect(useAgentPanelSettings.getState().keyed).not.toContain('custom');
+    await state.hydrate();
+    expect(connectionReady(useAgentPanelSettings.getState())).toBe(true);
+    state.setProvider('openai');
+    expect(connectionReady(useAgentPanelSettings.getState())).toBe(false);
+    state.setProvider('custom');
+    expect(connectionReady(useAgentPanelSettings.getState())).toBe(true);
+    state.connectKey('custom', 'new/token==');
+    expect(storedRecord().customAuth).toBeUndefined();
+    expect(runnerSettings(useAgentPanelSettings.getState()).apiKey).toBe('new/token==');
+  });
+
+  it('restores an unauthenticated connection without resurrecting an old saved key', async () => {
+    backing.set(PREFS.agentSettings.key, JSON.stringify({
+      provider: 'custom', model: { custom: 'local-model' }, oversight: 'checkpoint',
+      customBaseUrl: 'http://localhost:1234/v1', customAuth: 'none', keys: { custom: btoa('old-key') },
+    }));
+    await useAgentPanelSettings.getState().hydrate();
+    expect(connectionReady(useAgentPanelSettings.getState())).toBe(true);
+    expect(runnerSettings(useAgentPanelSettings.getState()).apiKey).toBe('');
+    expect(useAgentPanelSettings.getState().keyed).not.toContain('custom');
+    useAgentPanelSettings.getState().setOversight('strict');
+    expect(loadAgentSettings().keys.custom).toBeUndefined();
+  });
+
+  it('keeps an unauthenticated choice made during hydration and disconnects it explicitly', async () => {
+    backing.set(PREFS.agentSettings.key, JSON.stringify({
+      provider: 'custom', model: { custom: 'local-model' }, oversight: 'checkpoint',
+      customBaseUrl: 'http://localhost:1234/v1', keys: { custom: btoa('old-key') },
+    }));
+    const pending = useAgentPanelSettings.getState().hydrate();
+    useAgentPanelSettings.getState().connectKey('custom', '');
+    await pending;
+    expect(connectionReady(useAgentPanelSettings.getState())).toBe(true);
+    expect(runnerSettings(useAgentPanelSettings.getState()).apiKey).toBe('');
+    const stop = vi.fn();
+    setLiveJobStop(stop);
+    try {
+      useAgentPanelSettings.getState().forgetKey('custom');
+      expect(stop).toHaveBeenCalledOnce();
+      expect(connectionGaps(useAgentPanelSettings.getState())).toEqual(['key']);
+      expect(storedRecord().customAuth).toBeUndefined();
+    } finally { setLiveJobStop(undefined); }
+  });
+});
+
+describe('saved key identification', () => {
+  const key = 'sk-0123456789abcdef0123456789abcdef';
+
+  it('matches the complete saved key without changing the active provider', () => {
+    useAgentPanelSettings.getState().connectKey('deepseek', key);
+    useAgentPanelSettings.getState().setProvider('claude');
+    expect(providerForSavedKey(` ${key} `)).toBe('deepseek');
+    expect(providerForSavedKey(key.slice(0, -1))).toBeNull();
+    expect(providerForSavedKey('')).toBeNull();
+    expect(useAgentPanelSettings.getState().provider).toBe('claude');
+  });
+
+  it('leaves keys saved under multiple providers undecided', () => {
+    useAgentPanelSettings.getState().connectKey('deepseek', key);
+    useAgentPanelSettings.getState().connectKey('qwen', key);
+    expect(providerForSavedKey(key)).toBe('ambiguous');
+  });
+
+  it.each([0, 1] as const)('requires a saved region before reusing a regional key on region %s', region => {
+    const state = useAgentPanelSettings.getState();
+    state.connectKey('moonshot', key);
+    expect(providerRegion('moonshot')).toBeUndefined();
+    expect(providerForSavedKey(key)).toBe('ambiguous');
+    state.setProviderRegion('moonshot', region);
+    expect(providerForSavedKey(key)).toBe('moonshot');
+    expect(providerRegion('moonshot')).toBe(region);
+  });
+
+  it('requires a custom endpoint and stops matching revoked keys', () => {
+    const state = useAgentPanelSettings.getState();
+    state.connectKey('custom', key);
+    expect(providerForSavedKey(key)).toBe('ambiguous');
+    state.setCustomBaseUrl('https://gateway.example/v1');
+    expect(providerForSavedKey(key)).toBe('custom');
+    state.forgetKey('custom');
+    expect(providerForSavedKey(key)).toBeNull();
+  });
 });
 
 describe('an unhydrated store never writes over a record it has not read', () => {

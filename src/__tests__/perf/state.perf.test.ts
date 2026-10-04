@@ -1,5 +1,5 @@
 /*
- * state.perf.test.ts — the derived-state layer's operation costs.
+ * The derived-state layer's operation costs.
  *
  * `state/` is where every "what is here?" question resolves without a scan:
  * the object index, the whole-map stats, the layer panel's derivation and the footprint geometry

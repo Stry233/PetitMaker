@@ -13,7 +13,7 @@ export function useStylizeVersions(): { state: VersionState; selected: StylizeVe
   return { state, selected: findSelected(state) };
 }
 
-/** The currently selected version, read imperatively (outside a component). 原图 (no selection)
+/** The currently selected version, read imperatively (outside a component). Original (no selection)
  *  returns null. */
 export function selectedVersion(): StylizeVersion | null {
   return findSelected(versionStore.getState());

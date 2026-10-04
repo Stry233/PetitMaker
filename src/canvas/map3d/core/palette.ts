@@ -1,25 +1,20 @@
 /**
  * Colour mapping for the 3D preview. Every colour is sourced from an EXISTING
  * constant — terrain from ELEVATION_COLORS, water from WATER_COLOR, zones from
- * ZONE_COLORS, objects from their own colour else the per-category tint already
- * defined in anim-config (the same hues as the deletion poofs). No new palette.
+ * ZONE_COLORS, objects from their own colour else their category's tint (the same
+ * hues as the deletion poofs). No new palette.
  */
 import { ELEVATION_COLORS, WATER_COLOR, ZONE_COLORS } from '../../../core/model/constants';
 import { animConfig } from '../../../core/runtime/anim-config';
 import type { ItemCategory, CellZone } from '../../../core/model/types';
+import { CATEGORY_BY_ID } from '../../../config/catalog/categories';
+import { numberToRgb01, hexStringToNumber } from '../../../core/model/colors';
 
 export type Rgb = [number, number, number];
 
 /** '#rrggbb' → [r,g,b] in 0..1. */
 export function hexToRgb01(hex: string): Rgb {
-  const h = hex.replace('#', '');
-  const n = parseInt(h, 16);
-  return [((n >> 16) & 0xff) / 255, ((n >> 8) & 0xff) / 255, (n & 0xff) / 255];
-}
-
-/** 0xrrggbb → [r,g,b] in 0..1. */
-function intToRgb01(n: number): Rgb {
-  return [((n >> 16) & 0xff) / 255, ((n >> 8) & 0xff) / 255, (n & 0xff) / 255];
+  return numberToRgb01(hexStringToNumber(hex));
 }
 
 /** Land-mass tint for a given surface elevation (0..8). */
@@ -39,8 +34,7 @@ export function waterColor(): Rgb {
 }
 
 /** An object's tint: its own colour (roads carry one, the plaza carries one)
- *  else the catalog category tint, else the global fallback. Mirrors how
- *  anim-config's categoryColor is used for poofs. */
+ *  else the catalog category tint, else the global fallback, as the poofs pick theirs. */
 export function objectColor(
   obj: { color?: string },
   item: { category: ItemCategory; color?: string } | undefined,
@@ -48,8 +42,8 @@ export function objectColor(
   if (obj.color) return hexToRgb01(obj.color);
   if (item?.color) return hexToRgb01(item.color);
   if (item) {
-    const tint = animConfig.categoryColor[item.category];
-    if (tint !== undefined) return intToRgb01(tint);
+    const tint = CATEGORY_BY_ID.get(item.category)?.tint;
+    if (tint !== undefined) return numberToRgb01(tint);
   }
-  return intToRgb01(animConfig.fallbackColor);
+  return numberToRgb01(animConfig.fallbackColor);
 }

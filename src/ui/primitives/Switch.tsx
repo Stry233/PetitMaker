@@ -1,6 +1,7 @@
+import { interactionProfiles, colors, inkTint, springs, cursors, radii } from '../design/styles';
 import { motion, useReducedMotionConfig } from 'framer-motion';
-import { colors, inkTint, springs, cursors } from '../design/styles';
 import { skin } from '../design/window-skin';
+import { NO_MOTION } from '../design/motion';
 
 /**
  * The one cozy toggle switch — 48×26 track, 20px knob sliding 3px↔25px, the design source's active
@@ -24,13 +25,13 @@ export function Switch({ on, onClick, label, disabled }: { on: boolean; onClick:
       aria-disabled={disabled}
       aria-label={label}
       onClick={disabled ? undefined : onClick}
-      whileTap={disabled ? undefined : { scale: 0.97 }}
+      whileTap={disabled ? undefined : interactionProfiles.toggleTap.whileTap}
       animate={{ backgroundColor: on ? skin.active : skin.track }}
-      transition={reduced ? { duration: 0 } : springs.stiff}
+      transition={reduced ? NO_MOTION : springs.stiff}
       style={{
         width: 48,
         height: 26,
-        borderRadius: 999,
+        borderRadius: radii.pill,
         position: 'relative',
         border: 'none',
         padding: 0,
@@ -42,7 +43,7 @@ export function Switch({ on, onClick, label, disabled }: { on: boolean; onClick:
       <motion.span
         initial={false}
         animate={{ x: on ? 25 : 3 }}
-        transition={reduced ? { duration: 0 } : springs.stiff}
+        transition={reduced ? NO_MOTION : springs.stiff}
         style={{
           position: 'absolute',
           top: 3,

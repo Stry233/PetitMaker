@@ -1,12 +1,14 @@
+import { framerMotion, NO_MOTION } from '../design/motion';
 import { helpAttributes, type HelpTarget } from './help-target';
-import { IS_LITE } from '../../core/runtime/edition';
+import { SUPPORTS_CSS_MIN } from '../../core/runtime/edition';
 import type { CSSProperties, ReactNode } from 'react';
-import { createContext, useContext, useEffect, useRef, useLayoutEffect, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useRef, useLayoutEffect, useState } from 'react';
 import { motion, AnimatePresence, useReducedMotionConfig, useIsPresent, type Transition } from 'framer-motion';
 import { cozyOverlay, springs, exitTransition } from '../design/styles';
 import { cozyPanel } from '../design/window-skin';
 import { useChromeScale, useViewportSize, useWeightVars } from '../design/scale';
 import { useOverlayLock } from '../hooks/useOverlayLock';
+import { SurfaceOwner, useSurfaceScope, focusableWithin } from './surface-scope';
 
 /**
  * Shared cozy modal boilerplate — the ONE place that owns the dimmed backdrop,
@@ -25,20 +27,6 @@ import { useOverlayLock } from '../hooks/useOverlayLock';
  * `cardStyle` is spread LAST so a modal can layer on padding / flex / relative
  * positioning (Export's 2-col layout, Help's clipped scroll frame, …).
  */
-/** ONE-UNIT EXIT (see the render body): a modal with a nested `AnimatePresence`
- * (e.g. AboutModal's A↔B drill-in) must NOT run its inner element exits while
- * the whole shell is closing — otherwise the content fades/slides on its own
- * timeline and floats free of the card ("window background disappears before
- * the content"). `ModalExitingContext` carries the live shell-closing signal
- * DOWN into the card subtree (it flips true the moment the shell starts its
- * exit, because framer re-renders the exiting subtree with `isPresent=false`),
- * so a nested tree can gate its `exit` on it. Consume it either via
- * `useModalExiting()` or the render-prop `children` form `(exiting) => …`. */
-const ModalExitingContext = createContext(false);
-export function useModalExiting(): boolean {
-  return useContext(ModalExitingContext);
-}
-
 /** PREVIEW MODE: a shell mounted as a PICTURE of itself (the Help Center's figures). Under this
  *  context the shell is passive and self-contained: no overlay lock, no shell-stack membership, no
  *  focus capture; the backdrop positions absolutely inside the provider's frame instead of over the
@@ -47,15 +35,10 @@ export function useModalExiting(): boolean {
  *  which are meaningless inside a small frame. */
 export const ModalPreviewContext = createContext(false);
 
-export type ModalShellChildren = ReactNode | ((exiting: boolean) => ReactNode);
+type ModalShellChildren = ReactNode | ((exiting: boolean) => ReactNode);
 
-// A `motionSize` morph can travel hundreds of px between a consumer's sections (ShareWindow's
-// widest section jump is +420px wide) — and a fixed-damping spring's overshoot scales with how far
-// it travels, so the ~1px arrival wobble that is invisible on a small control (the segmented-control
-// pill) becomes a visible pump on a card-sized morph. A tween has no overshoot term, so a long morph
-// settles the same way a short one does. Same curve as `easing.punchy` in `design/styles.ts`,
-// spelled as a Framer bezier array rather than the CSS string that token holds.
-export const SIZE_MORPH_TWEEN: Transition = { type: 'tween', ease: [0.2, 0, 0, 1], duration: 0.3 };
+// Card-sized travel needs a tween: spring overshoot grows with the distance between sections.
+export const SIZE_MORPH_TWEEN: Transition = { ...framerMotion('modal.resize'), type: 'tween' };
 
 export interface ModalShellProps {
   helpTarget?: HelpTarget;
@@ -110,24 +93,16 @@ export interface ModalShellProps {
   children: ModalShellChildren;
 }
 
-/** Renders the card's children INSIDE the shell's `AnimatePresence`, so it can
- *  read the outer presence and publish the `exiting` flag to descendants. */
+/** ONE-UNIT EXIT: a modal with a nested `AnimatePresence` (e.g. AboutModal's A↔B drill-in) must
+ *  NOT run its inner element exits while the whole shell is closing, or the content fades or slides
+ *  on its own timeline and floats free of the card. Rendered INSIDE the shell's `AnimatePresence`,
+ *  this reads the outer presence (framer re-renders the exiting subtree with `isPresent=false` the
+ *  moment the shell starts its exit) and hands the `exiting` flag to a render-prop `children`, so
+ *  a nested tree can gate its `exit` on it. */
 function ShellChildren({ children }: { children: ModalShellChildren }) {
   const exiting = !useIsPresent();
-  return (
-    <ModalExitingContext.Provider value={exiting}>
-      {typeof children === 'function' ? children(exiting) : children}
-    </ModalExitingContext.Provider>
-  );
+  return <>{typeof children === 'function' ? children(exiting) : children}</>;
 }
-
-// Module-level open-shell stack: every mounted+open ModalShell
-// pushes a stable token here; only the TOP token's instance consumes Escape, so
-// a stacked modal (e.g. About opened over Settings) closes ONE layer per press
-// instead of both at once. Overlay-click is already per-instance (each shell
-// renders its own backdrop), so it needs no equivalent — this mirrors that
-// "topmost only" behavior for the keyboard path.
-const shellStack: symbol[] = [];
 
 function resolveDim(
   px: number | string | undefined,
@@ -139,14 +114,9 @@ function resolveDim(
   if (typeof px === 'string') return px;
   if (px == null) return undefined;
   if (pct == null) return px; // plain number — the card's `zoom` scales it
-  if (IS_LITE) return Math.min(px, (pct / 100 * windowPx) / chrome - frame);
+  if (!SUPPORTS_CSS_MIN) return Math.min(px, (pct / 100 * windowPx) / chrome - frame);
   return `min(${px}px, ${(pct / 100 * windowPx) / chrome - frame}px)`;
 }
-
-// Elements a Tab press can land on — used both to bound the focus trap and to
-// find the trap's own first/last real target (sentinels excluded below).
-const FOCUSABLE_SELECTOR =
-  'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
 // Visually hidden but still in the tab order — `display:none`/`visibility:
 // hidden` would remove a node from tab order entirely, which would defeat
@@ -162,6 +132,25 @@ const sentinelStyle: CSSProperties = {
   whiteSpace: 'nowrap',
   border: 0,
 };
+
+const NONE_SETTLED: ReadonlySet<unknown> = new Set();
+
+/** Whether a ModalShell's card has settled for `resetKey` since `open` last turned on: pass
+ *  `onEntered` to the shell. A key reached for the first time (a section whose card morphs to its
+ *  own size) waits for that resize to complete, which calls `onEntered` again; a key that has
+ *  settled once stays settled until the window closes, so returning to it keeps its built work.
+ *  Under reduced motion the card is settled as soon as it is open. `hasSettled` answers for any key,
+ *  for a hidden section whose own state must not follow the one on screen. */
+export function useModalEntered(open: boolean, resetKey: unknown = null): { entered: boolean; onEntered: () => void; hasSettled: (key: unknown) => boolean } {
+  const reduced = useReducedMotionConfig() === true;
+  const [settled, setSettled] = useState<ReadonlySet<unknown>>(NONE_SETTLED);
+  const keyRef = useRef(resetKey);
+  keyRef.current = resetKey;
+  const onEntered = useCallback(() => setSettled((keys) => (keys.has(keyRef.current) ? keys : new Set(keys).add(keyRef.current))), []);
+  useEffect(() => { if (!open) setSettled(NONE_SETTLED); }, [open]);
+  const hasSettled = useCallback((key: unknown) => open && (reduced || settled.has(key)), [open, reduced, settled]);
+  return { entered: hasSettled(resetKey), onEntered, hasSettled };
+}
 
 export function ModalShell({ helpTarget, open, onClose, onEntered, width, height, maxVwPct, maxVhPct, maxVh, maxVw, motionSize, sizeInstant, sizeSpring, cardStyle, backdropStyle, lockOverlay = true, ariaLabel, ariaLabelledBy, passive: passiveProp = false, children }: ModalShellProps) {
   const preview = useContext(ModalPreviewContext);
@@ -196,66 +185,8 @@ export function ModalShell({ helpTarget, open, onClose, onEntered, width, height
   const cardRef = useRef<HTMLDivElement>(null);
   const startSentinelRef = useRef<HTMLDivElement>(null);
   const endSentinelRef = useRef<HTMLDivElement>(null);
-  const openerRef = useRef<HTMLElement | null>(null);
-  const shellId = useRef<symbol>(Symbol('modal-shell'));
-
-  // Keep the latest `onClose` in a ref so the Escape effect can read it without
-  // re-subscribing (which would pop+re-push this shell onto `shellStack` on
-  // every parent re-render and steal "topmost" from a modal stacked above it).
-  const onCloseRef = useRef(onClose);
-  onCloseRef.current = onClose;
-
-  // Escape closes the modal — but ONLY the topmost open shell.
-  // Most ModalShell consumers (About, Settings, Help, ExportJson, Import)
-  // treat `onClose` as a plain dismiss; a window with work in flight guards
-  // its own handler instead (ExportModal refuses mid-export, ChangePlanetModal
-  // while a transfer runs), which this reaches through `onCloseRef`. Keyed on
-  // `open`+`passive`, not on `onClose` identity, so a consumer whose `passive`
-  // flips mid-`open` joins or leaves the stack at that flip, not only at mount.
-  useEffect(() => {
-    if (!open || passive) return;
-    const id = shellId.current;
-    shellStack.push(id);
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape') return;
-      if (shellStack[shellStack.length - 1] !== id) return; // not the top layer
-      onCloseRef.current();
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => {
-      window.removeEventListener('keydown', handleKeyDown);
-      const idx = shellStack.lastIndexOf(id);
-      if (idx !== -1) shellStack.splice(idx, 1);
-    };
-  }, [open, passive]);
-
-  // Focus restoration to the "opener": capture whatever had focus at the
-  // moment the modal opened, and give it back when the modal closes. Every
-  // current ModalShell consumer drives this via `open` flipping back to false
-  // while the component stays mounted (Export/ExportJson/Import read `open`
-  // from the store; About/Settings/Help/NewProject read a `showX` App state
-  // flag). All seven stay mounted because ModalShell's exit animation needs
-  // the tree alive — conditional rendering (`{showX && <XModal .../>}`) would
-  // unmount mid-close and hard-cut the exit. The cleanup below still unwinds
-  // correctly if a future consumer unmounts instead of flipping `open`. Gated
-  // on `passive` like the Escape effect above: a passive span never captures,
-  // so it has nothing to hand back, and focus moved during one stays put.
-  useEffect(() => {
-    if (!open || passive) return;
-    openerRef.current = (document.activeElement as HTMLElement) ?? null;
-    return () => {
-      openerRef.current?.focus?.();
-      openerRef.current = null;
-    };
-  }, [open, passive]);
-
-  const focusableItems = (): HTMLElement[] => {
-    const card = cardRef.current;
-    if (!card) return [];
-    return Array.from(card.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)).filter(
-      (el) => el !== startSentinelRef.current && el !== endSentinelRef.current,
-    );
-  };
+  const scope = useSurfaceScope({ open: open && !passive, root: cardRef, onClose, focus: 'contain' });
+  const focusableItems = () => cardRef.current ? focusableWithin(cardRef.current) : [];
 
   const resolvedWidth = resolveDim(width, maxVwPct, chrome, windowW, frame.x);
   const resolvedHeight = resolveDim(height, maxVhPct, chrome, windowH, frame.y);
@@ -271,8 +202,8 @@ export function ModalShell({ helpTarget, open, onClose, onEntered, width, height
     ? {
         initial: { opacity: 1 },
         animate: { opacity: 1 },
-        exit: { opacity: 0, transition: { duration: 0 } },
-        transition: { duration: 0 },
+        exit: { opacity: 0, transition: NO_MOTION },
+        transition: NO_MOTION,
       }
     : {
         initial: { opacity: 0 },
@@ -289,14 +220,14 @@ export function ModalShell({ helpTarget, open, onClose, onEntered, width, height
   // regardless of how the size morph is timed.
   const sizeAnim = motionSize ? { width: motionSize.width, height: motionSize.height } : {};
   const instantSize = sizeInstant || prefersReduced;
-  const sizeTransition: Transition = instantSize ? { duration: 0 } : (sizeSpring ?? SIZE_MORPH_TWEEN);
+  const sizeTransition: Transition = instantSize ? NO_MOTION : (sizeSpring ?? SIZE_MORPH_TWEEN);
 
   const cardMotion = prefersReduced
     ? {
         initial: false as const,
         animate: sizeAnim,
         exit: {},
-        transition: { duration: 0 },
+        transition: NO_MOTION,
       }
     : {
         // The size rides on `initial` as well as `animate`: a key present only on `animate` starts
@@ -343,6 +274,7 @@ export function ModalShell({ helpTarget, open, onClose, onEntered, width, height
             style={card}
             {...helpAttributes(helpTarget)}
             role="dialog"
+            tabIndex={-1}
             aria-modal="true"
             aria-label={ariaLabel}
             aria-labelledby={ariaLabelledBy}
@@ -371,7 +303,7 @@ export function ModalShell({ helpTarget, open, onClose, onEntered, width, height
                 }}
               />
             )}
-            <ShellChildren>{children}</ShellChildren>
+            <SurfaceOwner.Provider value={scope}><ShellChildren>{children}</ShellChildren></SurfaceOwner.Provider>
             {!passive && (
               <div
                 ref={endSentinelRef}

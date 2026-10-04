@@ -20,7 +20,7 @@ import { CommandExecutor } from '../../core/commands/command-executor';
 import { EventBus } from '../../core/commands/event-bus';
 import { createDefaultRegistry } from '../../rules/index';
 import { roadLookup } from '../../state/object-index';
-import { filletOnly } from '../../canvas/map2d/layers/ghost-geometry';
+import { filletOnly } from '../../canvas/ghost-geometry';
 import {
   CommandType, TerrainType,
   type Corners, type EditorEvents, type GridState, type MacroCoord,

@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { getCatalogItem, getCatalogByCategory, getAllCategories, getAllItems, getKnownItems, searchCatalog } from '../../state/catalog';
+import { getCatalogItem, getCatalogByCategory, getAllItems, getKnownItems, searchCatalog } from '../../state/catalog';
 import { ItemCategory } from '../../core/model/types';
+import { CATEGORIES } from '../../config/catalog/categories';
 
 describe('Catalog', () => {
   it('loads all items from catalog.json', () => {
@@ -19,12 +20,8 @@ describe('Catalog', () => {
     expect(trees.every(t => t.category === 'tree')).toBe(true);
   });
 
-  it('returns all categories present in catalog', () => {
-    const cats = getAllCategories();
-    expect(cats).toContain('building');
-    expect(cats).toContain('tree');
-    expect(cats).toContain('road');
-    expect(cats).toContain('bridge');
+  it('offers items in every registered category', () => {
+    for (const { id } of CATEGORIES) expect(getCatalogByCategory(id).length).toBeGreaterThan(0);
   });
 
   it('each item has required fields', () => {
@@ -57,4 +54,34 @@ describe('a disabled catalog item', () => {
     expect(getCatalogByCategory(ItemCategory.Facility).some((i) => i.id === id)).toBe(false);
     expect(searchCatalog('station', 'en').some((i) => i.id === id)).toBe(false);
   });
+});
+
+/** The one place a test states catalog values: footprints and caps the game shows, which other
+ *  tests read from the catalog rather than repeat. */
+describe('in-game item facts', () => {
+  it.each([
+    ['building-myhouse', 7, 4],
+    ['building-bamboo-cabin', 5, 5],
+    ['building-plush-cabin', 5, 4],
+    ['facility-pavilion', 6, 5],
+  ] as const)('%s is %i wide and %i deep', (id, width, height) => {
+    const item = getCatalogItem(id)!;
+    expect([item.width, item.height]).toEqual([width, height]);
+  });
+
+  it('caps the Omni-Gallery at one per map and leaves the consignment stall uncapped', () => {
+    expect(getCatalogItem('facility-pavilion')!.maxCount).toBe(1);
+    expect(getCatalogItem('building-stall')!.maxCount).toBeUndefined();
+  });
+});
+
+// Roads have a confirmed zero cost, distinct from unmeasured catalog entries.
+it('marks road loads as known zero and keeps unknown loads weightless', () => {
+  for (const item of getAllItems()) {
+    if (item.id.startsWith('path-')) {
+      expect(item.loadValue).toBe(0);
+      expect(item.loadUnknown).not.toBe(true);
+    }
+    if (item.loadUnknown) expect(item.loadValue).toBe(0);
+  }
 });

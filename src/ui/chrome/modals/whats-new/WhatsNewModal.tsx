@@ -1,3 +1,4 @@
+import { windowTitle, windowFooterGhost, windowFooterPrimary } from '../../../design/window-skin';
 /** The release notes a returning browser has not read, shown once per version as it arrives. */
 import { useMemo, type CSSProperties } from 'react';
 import { motion } from 'framer-motion';
@@ -6,9 +7,8 @@ import { useEditorStore } from '../../../../state/store';
 import { parseLegalMarkdown } from '../../../../legal/markdown';
 import { LegalMarkdown } from '../../../../legal/LegalMarkdown';
 import { APP_VERSION } from '../../../../version';
-import { buttonMotion, colors, font, modalTitle } from '../../../design/styles';
+import { buttonMotion, colors, font } from '../../../design/styles';
 import { roleFont } from '../../../design/text-weight';
-import { windowFooterGhost, windowFooterPrimary } from '../../../design/window-skin';
 import { ModalShell } from '../../../primitives/ModalShell';
 import { currentNotes, recordSeenVersion } from './current';
 
@@ -38,7 +38,7 @@ export function WhatsNewModal() {
 
   return (
     <ModalShell helpTarget={{ page: 'settings', anchor: 'settings-reset' }} open={open} onClose={close} width={CARD_W} maxVwPct={92} maxVh={86} ariaLabel={title} cardStyle={card}>
-      <div style={modalTitle}>{title}</div>
+      <div style={windowTitle}>{title}</div>
       <div style={body} data-testid="whats-new-notes">
         {notes.map((n) => (
           <section key={n.version}>

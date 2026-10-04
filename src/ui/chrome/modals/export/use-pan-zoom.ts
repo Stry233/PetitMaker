@@ -1,11 +1,12 @@
-import { clientPoint } from '../../../../core/runtime/viewport-space';
 /*
- * use-pan-zoom.ts — the one picture-stage interaction: drag to pan (pointer-captured for the whole
- * drag), wheel to zoom in steps, double-click to reset, with a transient reset hint that appears
- * once the view has actually moved and fades after a quiet spell. The export preview and the
- * stylize studio's canvas are the two stages; they share this so the same picture answers the same
- * hands the same way on both.
+ * The one picture-stage interaction: drag to pan (pointer-captured for the whole
+ * drag), a press that does not travel counts as a tap, wheel to zoom in steps, double-click to
+ * reset, with a transient reset hint that appears once the view has actually moved and fades after
+ * a quiet spell. The export preview, the stylize studio's canvas and the planet previews share this
+ * so the same picture answers the same hands the same way on each.
  */
+import { cssMotion } from '../../../design/motion';
+import { clientPoint } from '../../../../core/runtime/viewport-space';
 import { useEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type WheelEvent as ReactWheelEvent } from 'react';
 import { clamp } from '../../../../core/model/math';
 import { useCursorCss } from '../../../design/cursors/cursor-vars';
@@ -16,10 +17,12 @@ const HINT_QUIET_MS = 2500;
 const ZOOM_STEP = 1.12;
 const SCALE_MIN = 0.5;
 const SCALE_MAX = 6;
+/** Travel under which a press counts as a tap rather than a pan, in client px. */
+const TAP_SLOP = 4;
 
-export interface PanZoomView { tx: number; ty: number; scale: number }
+interface PanZoomView { tx: number; ty: number; scale: number }
 
-export interface PanZoom {
+interface PanZoom {
   view: PanZoomView;
   /** True mid-drag; the picture's transform transition turns off so it tracks the hand exactly. */
   dragging: () => boolean;
@@ -30,7 +33,7 @@ export interface PanZoom {
     onWheel: (e: ReactWheelEvent) => void;
     onPointerDown: (e: ReactPointerEvent) => void;
     onPointerMove: (e: ReactPointerEvent) => void;
-    onPointerUp: () => void;
+    onPointerUp: (e: ReactPointerEvent) => void;
     onPointerLeave: () => void;
     onDoubleClick: () => void;
     style: CSSProperties;
@@ -41,7 +44,12 @@ export interface PanZoom {
   reset: () => void;
 }
 
-export function usePanZoom(): PanZoom {
+interface PanZoomOptions {
+  /** A press released within the tap slop of where it began; a press that pans is not a tap. */
+  onTap?: () => void;
+}
+
+export function usePanZoom({ onTap }: PanZoomOptions = {}): PanZoom {
   const [view, setView] = useState<PanZoomView>({ tx: 0, ty: 0, scale: 1 });
   const drag = useRef<{ x: number; y: number; tx: number; ty: number } | null>(null);
   const [showResetHint, setShowResetHint] = useState(false);
@@ -68,14 +76,18 @@ export function usePanZoom(): PanZoom {
       onWheel: (e) => { const f = e.deltaY < 0 ? ZOOM_STEP : 1 / ZOOM_STEP; setView((v) => ({ ...v, scale: clamp(v.scale * f, SCALE_MIN, SCALE_MAX) })); noteInteraction(); },
       onPointerDown: (e) => { drag.current = { x: clientPoint(e).x, y: clientPoint(e).y, tx: view.tx, ty: view.ty }; (e.currentTarget as Element).setPointerCapture?.(e.pointerId); },
       onPointerMove: (e) => { const d = drag.current; if (!d) return; setView((v) => ({ ...v, tx: d.tx + (clientPoint(e).x - d.x), ty: d.ty + (clientPoint(e).y - d.y) })); noteInteraction(); },
-      onPointerUp: () => { drag.current = null; },
+      onPointerUp: (e) => {
+        const d = drag.current;
+        drag.current = null;
+        if (d && onTap && Math.hypot(clientPoint(e).x - d.x, clientPoint(e).y - d.y) <= TAP_SLOP) onTap();
+      },
       onPointerLeave: () => { drag.current = null; },
       onDoubleClick: reset,
       style: { cursor: panCursor, touchAction: 'none' },
     },
     viewStyle: {
       transform: `translate(${view.tx}px, ${view.ty}px) scale(${view.scale})`,
-      transition: drag.current ? 'none' : 'transform .08s',
+      transition: drag.current ? 'none' : cssMotion('preview.zoom', ['transform']),
     },
     showResetHint,
     reset,

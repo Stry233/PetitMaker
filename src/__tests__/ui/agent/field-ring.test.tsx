@@ -1,5 +1,5 @@
 /**
- * field-ring.test.tsx — EVERY TEXT FIELD IS RINGED AS THE SHAPE IT IS DRAWN AS, and the composer's
+ * EVERY TEXT FIELD IS RINGED AS THE SHAPE IT IS DRAWN AS, and the composer's
  * text never leaves the pill it is written in.
  *
  * An outline follows its OWN element's `border-radius`. Every field in this panel is a rounded
@@ -21,7 +21,7 @@
  * would not clear it.
  */
 import { describe, it, expect, afterEach, vi } from 'vitest';
-import { act, cleanup, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { MotionConfig } from 'framer-motion';
 import { I18nProvider } from '../../../i18n/context';
 import { useEditorStore } from '../../../state/store';
@@ -112,6 +112,7 @@ describe('every text field is ringed as its own rounded box', () => {
     reset();
     useAgentPanelSettings.getState().connectKey('claude', 'sk-ant-api03-abcdefghijkl');
     await act(async () => { mount(<ManageScreen jobCount={0} listModels={() => Promise.resolve([])} />); });
+    fireEvent.click(screen.getByTestId('manage-model-dd'));
     ringedAsItsBox('manage-model-input');
   });
 

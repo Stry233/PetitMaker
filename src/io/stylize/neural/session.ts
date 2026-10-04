@@ -1,5 +1,5 @@
 /*
- * session.ts — a rendered band in, the same band redrawn by an on-device model out.
+ * A rendered band in, the same band redrawn by an on-device model out.
  *
  * The model saw letterboxed frames at training: the band fitted into the nearest of five aspects
  * on the style's paper, longest edge 1536. It is redrawn under exactly those conditions here, then
@@ -14,6 +14,7 @@ import { MODEL_URLS, type NeuralStyle } from './models';
 import { modelSize, rgbaToTensor, tensorToRgba } from './tensor';
 import { variationFor } from './variation';
 import { hasNeuralConsumers, observeNeuralConsumers } from './lifecycle';
+import { createWorkerClient, WORKER_IDLE_MS } from '../../../core/runtime/worker-client';
 
 export const NEURAL_MAX_EDGE = 1536;
 export const NEURAL_ASPECTS: readonly AspectOption[] = [
@@ -22,74 +23,33 @@ export const NEURAL_ASPECTS: readonly AspectOption[] = [
 ];
 
 type Reply = { id: number; ok: true; data: Float32Array; width: number; height: number; backend: 'webgpu' | 'wasm'; gpuError?: string } | { id: number; ok: false; error: string };
-interface Pending { resolve(r: Reply): void; reject(e: Error): void }
 
-let worker: Worker | null = null;
-let nextId = 1;
-const pending = new Map<number, Pending>();
-let idleTimer: ReturnType<typeof setTimeout> | null = null;
-
-function updateIdleTimer(): void {
-  if (idleTimer !== null) clearTimeout(idleTimer);
-  idleTimer = null;
-  if (!worker || pending.size || hasNeuralConsumers()) return;
-  // Keep a short reopen warm without retaining model heaps for the rest of the editor session.
-  idleTimer = setTimeout(() => { worker?.terminate(); worker = null; idleTimer = null; }, 30_000);
-}
-observeNeuralConsumers(updateIdleTimer);
-
-function ensureWorker(): Worker {
-  if (worker) return worker;
-  if (typeof Worker === 'undefined') throw new StylizeError('device', 'no worker');
-  worker = new Worker(new URL('./neural.worker.ts', import.meta.url), { type: 'module' });
-  worker.onmessage = (e: MessageEvent<Reply>) => {
-    const p = pending.get(e.data.id);
-    if (!p) return;
-    pending.delete(e.data.id);
-    p.resolve(e.data);
-    updateIdleTimer();
-  };
-  worker.onerror = () => {
-    const err = new StylizeError('device', 'inference worker broke');
-    for (const p of pending.values()) p.reject(err);
-    pending.clear();
-    worker?.terminate();
-    worker = null;
-    updateIdleTimer();
-  };
-  worker.onmessageerror = () => worker?.onerror?.(new ErrorEvent('error'));
-  return worker;
-}
+// Kept warm for a short reopen, and for as long as a stylize surface is open, without retaining model
+// heaps for the rest of the editor session.
+const client = createWorkerClient({
+  spawn: () => new Worker(new URL('./neural.worker.ts', import.meta.url), { type: 'module' }),
+  idleMs: WORKER_IDLE_MS,
+  keyed: true,
+  holdOpen: hasNeuralConsumers,
+});
+observeNeuralConsumers(() => client.settle());
 
 /** How long one run may take. A first run fetches the runtime, several megabytes, before it can
  *  answer anything, so the bound is generous; past it the run is lost either way. */
 export const NEURAL_INFER_TIMEOUT_MS = 120_000;
 
 function infer(modelUrl: string, data: Float32Array, width: number, height: number): Promise<Reply> {
-  const w = ensureWorker();
-  const id = nextId++;
-  return new Promise<Reply>((resolve, reject) => {
-    const deadline = setTimeout(() => {
-      pending.delete(id);
-      // A worker stalled on its runtime fetch cannot be asked again, so it is discarded and the
-      // next attempt loads a fresh one.
-      worker?.terminate();
-      worker = null;
-      updateIdleTimer();
-      reject(new StylizeError('device', 'inference timed out'));
-    }, NEURAL_INFER_TIMEOUT_MS);
-    pending.set(id, {
-      resolve: (reply) => { clearTimeout(deadline); resolve(reply); },
-      reject: (error) => { clearTimeout(deadline); reject(error); },
-    });
-    updateIdleTimer();
-    try { w.postMessage({ id, modelUrl, width, height, data }, [data.buffer]); }
-    catch (error) {
-      clearTimeout(deadline);
-      pending.delete(id);
-      reject(error);
-      updateIdleTimer();
-    }
+  return client.request<Reply>({
+    message: { modelUrl, width, height, data },
+    transfer: [data.buffer],
+    // A worker stalled on its runtime fetch cannot be asked again, so a timeout discards it and the
+    // next attempt loads a fresh one.
+    timeoutMs: NEURAL_INFER_TIMEOUT_MS,
+    fallback: (failure) => {
+      if (failure.kind === 'post' || failure.kind === 'spawn') throw failure.cause;
+      throw new StylizeError('device', failure.kind === 'unsupported' ? 'no worker'
+        : failure.kind === 'timeout' ? 'inference timed out' : 'inference worker broke');
+    },
   });
 }
 

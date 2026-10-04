@@ -6,9 +6,9 @@
  */
 import { describe, it, expect } from 'vitest';
 import { buildTerrainMeshes, buildChunkTerrain } from '../../canvas/map3d/build/terrain-geometry';
-import { CHUNK_SIZE } from '../../core/model/constants';
 import { CellZone, TerrainType } from '../../core/model/types';
 import type { GridState, MacroCell, MapTemplate, CornerTrim } from '../../core/model/types';
+import { CHUNK_SIZE } from '../../core/model/game-profile';
 
 function gridFrom(rows: MacroCell[][]): GridState {
   const template: MapTemplate = {

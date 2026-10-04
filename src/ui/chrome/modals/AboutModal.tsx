@@ -1,4 +1,5 @@
-import { IS_LITE, SUPPORTS_CLIPBOARD, SUPPORTS_EXTERNAL_LINKS } from '../../../core/runtime/edition';
+import { interactionProfiles, font, colors, radii, springs, shadows, exitTransition, modalRow, buttonMotion, btnReset, cursors } from '../../design/styles';
+import { EDITION_COPY, SUPPORTS_CLIPBOARD, SUPPORTS_EXTERNAL_LINKS, inEdition } from '../../../core/runtime/edition';
 import { viewportSize } from '../../../core/runtime/viewport-space';
 /**
  * Two-view About and legal-document modal. The legal reader is lazy-loaded. Both views share the
@@ -11,7 +12,6 @@ import { useState, useRef, useEffect, useLayoutEffect, Suspense, lazy, type CSSP
 import { motion, AnimatePresence } from 'framer-motion';
 import { useT } from '../../../i18n/context';
 import { useEditorStore } from '../../../state/store';
-import { font, colors, radii, springs, shadows, exitTransition, modalRow, buttonMotion, btnReset, cursors } from '../../design/styles';
 import { skin, windowCard } from '../../design/window-skin';
 import { roleFont } from '../../design/text-weight';
 import { APP_NAME, APP_VERSION, BUILD_NUMBER, BUILD_SHA, BUILD_DATE } from '../../../version';
@@ -28,7 +28,7 @@ import { teamAvatarUrl } from '../../../legal/team-avatars';
 
 const LegalDocView = lazy(() => import('../../../legal/LegalDocView'));
 
-export interface AboutModalProps {
+interface AboutModalProps {
   /** Drives the shared `ModalShell` open/close choreography. Defaults to `true`
    *  so tests can mount the modal directly; App passes `open={showAbout}` and
    *  keeps the component mounted so the card exit animates as one unit. */
@@ -74,17 +74,21 @@ function measureAboutHeight(view: HTMLElement, capPx: number): number {
 }
 
 // The drill-in doc rows, in reading order. The `about` doc is deliberately
-// omitted — View A itself IS the About surface (brand + team + filing).
-const GRID_DOCS: DocId[] = IS_LITE ? ['license', 'third-party', 'asset-licenses'] : [
-  'privacy',
-  'terms',
-  'license',
-  'third-party',
-  'asset-licenses',
-  'security',
-  'contact',
-  'changelog',
+// omitted — View A itself IS the About surface (brand + team + filing). The offline edition carries
+// the licence documents only.
+const DOC_ROWS: readonly { id: DocId; lite?: false }[] = [
+  { id: 'privacy', lite: false },
+  { id: 'terms', lite: false },
+  { id: 'license' },
+  { id: 'third-party' },
+  { id: 'asset-licenses' },
+  { id: 'security', lite: false },
+  { id: 'contact', lite: false },
+  { id: 'changelog', lite: false },
 ];
+const GRID_DOCS: DocId[] = DOC_ROWS.filter(inEdition).map((row) => row.id);
+/** Whether About may drill into `id`: in the offline edition, only a document it carries. */
+const opensDoc = (id: DocId): boolean => inEdition(DOC_ROWS.find((row) => row.id === id) ?? { lite: false });
 
 // The card is the morphing box: `position:relative` anchors the two absolutely-
 // positioned views, `overflow:hidden` clips them (and the rounded corners) so
@@ -316,7 +320,7 @@ const gridIcon: CSSProperties = {
 };
 
 // A document's name WRAPS rather than ellipsizing. Half the eight names are longer than a column at
-// this width in Russian and Thai, and a row reading "Политика конфи…" names nothing; the card is
+// this width in Russian and Thai, and a row whose name is cut after its first word names nothing; the card is
 // measured from its own content (see `measureAboutHeight`), so a second line grows the window
 // instead. The grid stretches both columns of a row to the taller one, so the pair stays even.
 const gridLabel: CSSProperties = {
@@ -352,7 +356,7 @@ const teamNote: CSSProperties = {
 
 // One row of four cards. At the fixed ABOUT_WIDTH (440px) card, four equal
 // columns leave roughly 95px each — enough for a ~52px circular avatar with the
-// name beneath. The names (镜喵MirrorCat is the longest) wrap to two lines rather
+// name beneath. The longest names wrap to two lines rather
 // than crowd the row, so this stays a clean single row without shrinking.
 const teamGrid: CSSProperties = {
   display: 'grid',
@@ -397,7 +401,7 @@ const avatarImg: CSSProperties = {
 };
 
 // Subtle "opens externally" affordance — a small ↗ chip on the avatar's
-// bottom-right, kept off the name so a long name (镜喵MirrorCat) can wrap
+// bottom-right, kept off the name so a long name can wrap
 // cleanly without orphaning the arrow on its own line.
 const avatarBadge: CSSProperties = {
   position: 'absolute',
@@ -614,7 +618,7 @@ export function AboutModal({ open = true, onClose }: AboutModalProps) {
   useEffect(() => {
     if (!open) return;
     const target = useEditorStore.getState().aboutTarget;
-    setView(target && (!IS_LITE || GRID_DOCS.includes(target)) ? { kind: 'doc', id: target } : { kind: 'about' });
+    setView(target && opensDoc(target) ? { kind: 'doc', id: target } : { kind: 'about' });
     if (target) useEditorStore.getState().setAboutTarget(null);
   }, [open]);
 
@@ -666,8 +670,8 @@ export function AboutModal({ open = true, onClose }: AboutModalProps) {
           style={{ ...versionButton, ...(wide ? { textAlign: 'right' } : {}) }}
           onClick={() => copyText(`${APP_NAME} ${APP_VERSION} (build ${BUILD_NUMBER}, ${BUILD_SHA}, ${BUILD_DATE})\n${navigator.userAgent}`, 'build')}
           aria-label={t('about.copy_build')}
-          whileHover={{ opacity: 1 }}
-          whileTap={{ opacity: 0.7 }}
+          whileHover={interactionProfiles.quietLink.whileHover}
+          whileTap={interactionProfiles.quietLink.whileTap}
           transition={springs.stiff}
         >
           {[
@@ -924,7 +928,7 @@ export function AboutModal({ open = true, onClose }: AboutModalProps) {
                       {roster(LEGAL.acknowledgements, 'acknowledgements-grid', 'acknowledged-member')}
                     </div>
                     <div style={{ ...teamNote, margin: 0, display: 'flex', flexWrap: 'wrap', gap: '0 6px' }}>
-                      {!IS_LITE && <span>{t('about.team_order')}</span>}
+                      {EDITION_COPY.teamOrder && <span>{t(EDITION_COPY.teamOrder)}</span>}
                       <span>{t('about.acknowledgements_note')}</span>
                     </div>
                   </div>
@@ -942,7 +946,7 @@ export function AboutModal({ open = true, onClose }: AboutModalProps) {
                 {brand}
                 <div>
                   <div style={sectionLabel}>{t('about.team_title')}</div>
-                  {!IS_LITE && <div style={teamNote}>{t('about.team_order')}</div>}
+                  {EDITION_COPY.teamOrder && <div style={teamNote}>{t(EDITION_COPY.teamOrder)}</div>}
                   {roster(LEGAL.team, 'team-grid', 'team-member')}
                 </div>
                 <div>

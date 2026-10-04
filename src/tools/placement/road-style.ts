@@ -12,11 +12,12 @@
  * A caller that reads neither — `roads.ts` calls `makeCtx(state, …)` without a naturalness — routes at
  * the organic default whatever the map underneath it is.
  */
-import { ItemCategory, type GridState, type MacroCoord, type PlacedObject } from '../../core/model/types';
+import { type GridState, type MacroCoord, type PlacedObject } from '../../core/model/types';
 import { clamp01 } from '../../core/model/math';
 import { getCatalogItem } from '../../state/catalog';
 import { TUNING } from './tuning';
 import { forEachFootprintCell } from './object';
+import { isCoatingItem } from '../../core/model/traits';
 
 /** A* cost added per direction change, from the 0..1 naturalness the map reads at: 0 (rectilinear)
  *  buys the full penalty, so a route holds its line; 1 (organic) adds none and the route winds
@@ -43,7 +44,7 @@ export interface RoadStyle {
 /** A fully organic generated network measures around here (bendDensity), so `measured / BEND_ORGANIC`
  *  reads a hand-built network on the same 0..1 scale the turn penalty is derived from. Named and unit-tested
  *  rather than folded into `readRoadStyle`'s expression. */
-export const BEND_ORGANIC = 0.45;
+const BEND_ORGANIC = 0.45;
 
 /** Fewer paved cells than this and there is no character to read: the map answers `default`. */
 export const STYLE_MIN_ROADS = 12;
@@ -105,7 +106,7 @@ export function readRoadStyle(state: GridState, near?: MacroCoord): RoadStyle {
   const roadObjs: PlacedObject[] = [];
   for (const o of state.objects.values()) {
     const item = getCatalogItem(o.catalogId);
-    if (item?.category !== ItemCategory.Road) continue;
+    if (!isCoatingItem(item)) continue;
     roadObjs.push(o);
     forEachFootprintCell(o, (x, y) => roadCells.add(y * W + x));
   }

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { placeTileCell, eraseTileCells, tileGhostColor } from '../../../tools/paint/tile-coating';
+import { placeTileCell, eraseTileCells } from '../../../tools/paint/tile-coating';
 import { CommandExecutor } from '../../../core/commands/command-executor';
 import { EventBus } from '../../../core/commands/event-bus';
 import { createDefaultRegistry } from '../../../rules/index';
@@ -101,10 +101,5 @@ describe('tile-coating helper', () => {
     expect(getObjectIndex(state).entries).toBe(before);
     expect(objectsByCatalog(state, 'path-cobblestone').length).toBe(625);
     expect(objectsByCatalog(state, 'path-overgrown-dirt').length).toBe(400);
-  });
-
-  it('ghost color matches the active material', () => {
-    expect(tileGhostColor('path-overgrown-dirt')).toBe(0xaa885c);
-    expect(tileGhostColor('path-cobblestone')).toBe(0xbcad9c);
   });
 });

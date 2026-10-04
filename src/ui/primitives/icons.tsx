@@ -1,5 +1,5 @@
 /*
- * icons.tsx — UI helpers for the icon PNGs (the only sanctioned raster
+ * UI helpers for the icon PNGs (the only sanctioned raster
  * assets; everything else in the UI is built natively). URL resolution lives
  * in src/assets/icon-urls.ts so the PixiJS renderer can share the same map.
  */

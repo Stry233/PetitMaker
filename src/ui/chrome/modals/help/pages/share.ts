@@ -27,6 +27,7 @@ export const SHARE_PAGES: readonly HelpPage[] = [
   {
     id: 'share',
     group: 'share',
+    lite: { titleKey: 'share.title', navKey: 'share.title' },
     titleKey: 'help.share.title',
     navKey: 'help.share.nav',
     ledeKey: 'help.share.lede',
@@ -77,6 +78,7 @@ export const SHARE_PAGES: readonly HelpPage[] = [
   },
   {
     id: 'json',
+    lite: false,
     group: 'share',
     titleKey: 'help.json.title',
     navKey: 'help.json.nav',
@@ -99,6 +101,7 @@ export const SHARE_PAGES: readonly HelpPage[] = [
   },
   {
     id: 'checklist',
+    lite: false,
     group: 'share',
     titleKey: 'help.checklist.title',
     ledeKey: 'help.checklist.lede',
@@ -128,11 +131,16 @@ export const SHARE_PAGES: readonly HelpPage[] = [
       { kind: 'prose', anchor: 'planet-carry', titleKey: 'help.planet.carry_t', bodyKeys: ['help.planet.carry_b1', 'help.planet.carry_b2'] },
       { kind: 'prose', anchor: 'planet-unsaved', titleKey: 'help.planet.unsaved_t', bodyKeys: ['help.planet.unsaved_b1'] },
       { kind: 'callout', bodyKey: 'help.planet.co1' },
+      { kind: 'prose', anchor: 'planet-mine', titleKey: 'help.planet.mine_t', bodyKeys: ['help.planet.mine_b1'] },
+      { kind: 'prose', anchor: 'planet-draw', titleKey: 'help.planet.draw_t', bodyKeys: ['help.planet.draw_b1', 'help.planet.draw_b2', 'help.planet.draw_b3'] },
+      { kind: 'prose', anchor: 'planet-files', titleKey: 'help.planet.files_t', bodyKeys: ['help.planet.files_b1'] },
     ],
     qa: [
       { qKey: 'help.planet.q1', aKey: 'help.planet.a1' },
       { qKey: 'help.planet.q2', aKey: 'help.planet.a2' },
       { qKey: 'help.planet.q3', aKey: 'help.planet.a3' },
+      { qKey: 'help.planet.q4', aKey: 'help.planet.a4' },
+      { qKey: 'help.planet.q5', aKey: 'help.planet.a5' },
     ],
     seeAlso: ['save', 'share', 'welcome'],
   },

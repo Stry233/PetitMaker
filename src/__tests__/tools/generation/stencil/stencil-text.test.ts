@@ -3,7 +3,7 @@
  *
  * Two failure modes are pinned here (#34), and they are one mistake seen from two sides. Laying a
  * glyph RING BY RING — the outline at tier 1, each ring inward three tiers higher — gives a letter a
- * layer-1 SKIRT around a taller core (the 包边) and leaves the parts too thin to hold a second ring
+ * layer-1 SKIRT around a taller core (the edging band) and leaves the parts too thin to hold a second ring
  * down at the skirt's own tier, which reads as a hole in the middle of the stroke. And painting tier 1
  * into a region that already stands on a mountain carves the plateau instead of writing on it.
  *
@@ -16,9 +16,9 @@ import { createDefaultRegistry } from '../../../../rules';
 import { roadLookup } from '../../../../state/object-index';
 import { TerrainType, type EditorEvents, type GridState } from '../../../../core/model/types';
 import { makeState, setTerrain } from '../../../rules/_helpers';
-import { ELEVATION_MAX } from '../../../../core/model/constants';
 import { layStencilTerrain } from '../../../../tools/generation/stencil/stencil-generator';
 import type { Stencil } from '../../../../tools/generation/stencil/stencil';
+import { ELEVATION_MAX } from '../../../../core/model/game-profile';
 
 const exec = (state: GridState) => new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
 

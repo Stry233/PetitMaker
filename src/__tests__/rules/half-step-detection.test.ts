@@ -33,7 +33,6 @@ function place(id: string, x: number, y: number): PlaceObjectCommand {
     type: CommandType.PlaceObject,
     timestamp: 0,
     object: { id: 'test', catalogId: id, position: { x, y }, rotation: 0, elevation: 0 },
-    loadValue: 0,
   };
 }
 
@@ -78,7 +77,7 @@ describe('heightDrop on the half grid', () => {
     const build = () => {
       const state = plateauMap();
       for (let y = 10; y <= 14; y++) {
-        setTerrain(state, 7, y, TerrainType.Mountain, 1);
+        setTerrain(state, 7, y, TerrainType.Mountain, 2);
         setTerrain(state, 4, y, TerrainType.Water, 0);
       }
       return state;
@@ -344,9 +343,9 @@ describe('whole-anchor placements remain legal', () => {
   it('pins the ramp snap in all four drop directions', () => {
     const cases = [
       { name: 'top-high', hi: (_x: number, y: number) => y <= 9, at: { x: 8, y: 10 }, expect: { position: { x: 8, y: 9 }, rotation: 0 as const, elevation: 1, spanLength: undefined } },
-      { name: 'bottom-high', hi: (_x: number, y: number) => y >= 11, at: { x: 8, y: 10 }, expect: { position: { x: 8, y: 7 }, rotation: 180 as const, elevation: 1, spanLength: undefined } },
+      { name: 'bottom-high', hi: (_x: number, y: number) => y >= 11, at: { x: 8, y: 10 }, expect: { position: { x: 8, y: 9 }, rotation: 180 as const, elevation: 1, spanLength: undefined } },
       { name: 'left-high', hi: (x: number, _y: number) => x <= 9, at: { x: 10, y: 8 }, expect: { position: { x: 9, y: 8 }, rotation: 90 as const, elevation: 1, spanLength: undefined } },
-      { name: 'right-high', hi: (x: number, _y: number) => x >= 11, at: { x: 10, y: 8 }, expect: { position: { x: 7, y: 8 }, rotation: 270 as const, elevation: 1, spanLength: undefined } },
+      { name: 'right-high', hi: (x: number, _y: number) => x >= 11, at: { x: 10, y: 8 }, expect: { position: { x: 9, y: 8 }, rotation: 270 as const, elevation: 1, spanLength: undefined } },
     ];
     for (const c of cases) {
       const state = grassMap();
@@ -364,8 +363,8 @@ describe('whole-anchor placements remain legal', () => {
       }
       return state;
     };
-    expect(snap('ramp-teak-stair', 10, 10, build(3)), 'a three-block terrace is too short').toBeNull();
-    expect(snap('ramp-teak-stair', 10, 10, build(5))).toEqual({
+    expect(snap('ramp-teak-stair', 9, 10, build(1)), 'a one-block terrace is too short').toBeNull();
+    expect(snap('ramp-teak-stair', 10, 10, build(2))).toEqual({
       position: { x: 9, y: 10 }, rotation: 90, elevation: 2, spanLength: undefined,
     });
   });

@@ -35,45 +35,23 @@ import {
   type Direction,
 } from '../core/model/waterfall-geometry';
 
-/**
- * Find the full waterfall strip: capping mountains + water cells between them.
- * Returns an ordered list of MacroCoords along the perpendicular axis.
- */
-function getFullStrip(
-  state: GridState, x: number, y: number, elev: number, perpDir: Direction,
-): { cells: MacroCoord[] } {
+/** The waterfall strip through (x, y) along `perpDir`'s axis, in order: the capping mountain at one
+ *  end, the water at `elev` between, and the capping mountain at the other end. */
+function fullStrip(state: GridState, x: number, y: number, elev: number, perpDir: Direction): MacroCoord[] {
   const { dx, dy } = DIR_OFFSETS[perpDir];
-
-  // Walk in the perpDir direction to find one end of the water strip
+  // Both ends are walked from (x, y) itself, which a patch-only water cell (its support a tier
+  // lower) starts but would stop a walk from the other end, so the strip always contains it.
   let sx = x, sy = y;
-  while (isWaterAtElev(state, sx + dx, sy + dy, elev)) {
-    sx += dx;
-    sy += dy;
-  }
-  // The cap mountain on this end (one step beyond the last water cell)
-  const capA: MacroCoord = { x: sx + dx, y: sy + dy };
-
-  // Walk in the opposite direction to find the other end
-  const odx = -dx, ody = -dy;
+  while (isWaterAtElev(state, sx + dx, sy + dy, elev)) { sx += dx; sy += dy; }
   let ex = x, ey = y;
-  while (isWaterAtElev(state, ex + odx, ey + ody, elev)) {
-    ex += odx;
-    ey += ody;
-  }
-  const capB: MacroCoord = { x: ex + odx, y: ey + ody };
-
-  // Build the full strip: capA, then water cells from sx,sy to ex,ey, then capB
-  const cells: MacroCoord[] = [capA];
-  let cx = sx, cy = sy;
-  while (true) {
+  while (isWaterAtElev(state, ex - dx, ey - dy, elev)) { ex -= dx; ey -= dy; }
+  const cells: MacroCoord[] = [{ x: sx + dx, y: sy + dy }];
+  for (let cx = sx, cy = sy; ; cx -= dx, cy -= dy) {
     cells.push({ x: cx, y: cy });
     if (cx === ex && cy === ey) break;
-    cx += odx;
-    cy += ody;
   }
-  cells.push(capB);
-
-  return { cells };
+  cells.push({ x: ex - dx, y: ey - dy });
+  return cells;
 }
 
 /**
@@ -82,18 +60,18 @@ function getFullStrip(
  */
 function checkAdjacentRowUniformity(
   state: GridState,
-  strip: { cells: MacroCoord[] },
+  strip: readonly MacroCoord[],
   flowDir: Direction,
   mapWidth: number,
   mapHeight: number,
   errors: ValidationError[],
 ): void {
   const { dx, dy } = DIR_OFFSETS[flowDir];
-  const n = strip.cells.length;
+  const n = strip.length;
 
   // Off the map reads as -1, so an edge-adjacent row can never pass as uniform with real terrain.
   const adjacentElevs: number[] = [];
-  for (const cell of strip.cells) {
+  for (const cell of strip) {
     const ax = cell.x + dx, ay = cell.y + dy;
     if (ax < 0 || ax >= mapWidth || ay < 0 || ay >= mapHeight) {
       adjacentElevs.push(-1);
@@ -108,7 +86,7 @@ function checkAdjacentRowUniformity(
   if (!isUniform) {
     for (let i = 0; i < n; i++) {
       if (adjacentElevs[i] !== firstElev) {
-        const cell = strip.cells[i]!;
+        const cell = strip[i]!;
         errors.push({
           ruleId: 'V-WTR-03',
           message: 'error.waterfall_adjacent_not_uniform',
@@ -150,8 +128,8 @@ export const waterfallAdjacentUniformityRule: PostStrokeRule = {
           const cappedB = traceToMountain(state, x, y, elev, pdxB, pdyB);
           if (!cappedA || !cappedB) continue;
 
-          const strip = getFullStrip(state, x, y, elev, perpA);
-          const faceKey = `${strip.cells[0]!.x},${strip.cells[0]!.y},${flowDir}`;
+          const strip = fullStrip(state, x, y, elev, perpA);
+          const faceKey = `${strip[0]!.x},${strip[0]!.y},${flowDir}`;
           if (processedFaces.has(faceKey)) continue;
           processedFaces.add(faceKey);
 

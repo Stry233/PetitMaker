@@ -1,5 +1,5 @@
 /**
- * The movement line (PDF §四 步骤 2 · 定方向与动线): the walk every other stage composes around.
+ * The movement line (the methodology's direction-and-circulation step): the walk every other stage composes around.
  *
  * What is pinned here is what the later stages depend on and what makes a walk legible: a walk that
  * EXISTS with a readable sequence, legs that join end to end so a street can be laid

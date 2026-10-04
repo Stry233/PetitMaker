@@ -1,11 +1,12 @@
-// StepFun (阶跃星辰) over its OpenAI-shaped `images/edits`: a single-image edit call, no size field
+// StepFun over its OpenAI-shaped `images/edits`: a single-image edit call, no size field
 // (the model follows its one input's own shape). `maxImages: 1` means the engine's style anchor
 // self-disables on this dialect — there is no second slot for it to ride in.
 import { dataUrlToBlob } from '../../image-export';
 import type { AspectOption } from '../normalize';
 import { classify, scrub } from './errors';
-import { fetchProviderImage } from './fetch-image';
-import { StylizeError, type DialectConfig, type StylizeDialect, type StylizeImage } from './types';
+import { firstReplyImage } from './fetch-image';
+import { StylizeError, type StylizeDialect, type StylizeImage } from './types';
+import { baseOf } from './request';
 
 const DEFAULT_BASE = 'https://api.stepfun.com';
 
@@ -17,14 +18,6 @@ const ASPECTS: readonly AspectOption[] = [
   { id: '9:16', ratio: 9 / 16 },
 ];
 
-function baseOf(cfg: DialectConfig): string {
-  return cfg.baseUrl || DEFAULT_BASE;
-}
-
-/** Reads a fetched image reply straight off its `ArrayBuffer`, never through `Blob`: browsers
- *  agree on `Response#arrayBuffer`, and it is the one path that needs no intermediate object. */
-interface EditsResponse { data?: Array<{ b64_json?: string; url?: string }> }
-
 export const stepfunImagesDialect: StylizeDialect = {
   aspects: ASPECTS,
   maxEdge: 1408,
@@ -34,7 +27,7 @@ export const stepfunImagesDialect: StylizeDialect = {
   async listModels(cfg, signal) {
     let res: Response;
     try {
-      res = await fetch(`${baseOf(cfg)}/v1/models`, {
+      res = await fetch(`${baseOf(cfg, DEFAULT_BASE)}/v1/models`, {
         headers: { Authorization: `Bearer ${cfg.key}` },
         signal,
       });
@@ -65,7 +58,7 @@ export const stepfunImagesDialect: StylizeDialect = {
 
     let res: Response;
     try {
-      res = await fetch(`${baseOf(cfg)}/v1/images/edits`, {
+      res = await fetch(`${baseOf(cfg, DEFAULT_BASE)}/v1/images/edits`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${cfg.key}` },
         body: form,
@@ -79,10 +72,6 @@ export const stepfunImagesDialect: StylizeDialect = {
     try { json = raw ? JSON.parse(raw) : undefined; } catch { json = raw; }
     if (!res.ok) throw classify(res.status, json);
 
-    const item = (json as EditsResponse).data?.[0];
-    if (!item) throw new StylizeError('bad_response');
-    if (item.b64_json) return `data:image/png;base64,${item.b64_json}`;
-    if (item.url) return fetchProviderImage(item.url, signal);
-    throw new StylizeError('bad_response');
+    return firstReplyImage(json, signal);
   },
 };

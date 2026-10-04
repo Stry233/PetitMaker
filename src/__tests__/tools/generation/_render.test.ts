@@ -25,7 +25,7 @@ function gen(mode: 'earth' | 'water' | 'mixed', seed: number, richness: number, 
   };
   const start = exec.getUndoStackSize();
   generateTerrain(config, state, (c) => exec.execute(c), exec.getRegistry());
-  exec.commitStrokeGroup(start);
+  exec.commitStroke(start);
 
   // Reconstruct tier/water from the committed cells (mountain elevation vs water elevation).
   const tier: number[] = [], water: number[] = [];

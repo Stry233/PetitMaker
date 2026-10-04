@@ -1,7 +1,7 @@
 // Real-map-shaped corpus and adversarial high-entropy builder shared by codec and degradation tests.
 //
 // `genOn`: a silent CommandExecutor stroke group drives generateTerrain, then one
-// commitStrokeGroup collapses it to a single undo entry — exactly the live Generate path.
+// commitStroke collapses it to a single undo entry — exactly the live Generate path.
 // It does not set `state.generation`; callers that need an informational recipe add it explicitly.
 import { CommandExecutor } from '../../../core/commands/command-executor';
 import { EventBus } from '../../../core/commands/event-bus';
@@ -39,7 +39,7 @@ function genOn(state: GridState, cfg: GenerateConfig): GridState {
   exec.runSilently(() => {
     generateTerrain(cfg, state, (c: Command) => exec.execute(c), exec.getRegistry());
   });
-  exec.commitStrokeGroup(exec.getUndoStackSize());
+  exec.commitStroke(exec.getUndoStackSize());
   return state;
 }
 

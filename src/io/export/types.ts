@@ -1,3 +1,4 @@
+import type { Rect } from '../../core/model/types';
 export type ResolutionKey = 'compact' | 'standard' | 'high' | 'original';
 /** User-facing export preset (the primary control). Maps directly to importability + size —
  *  the share code is a visible glyph band, so a map is importable iff the band is present. */
@@ -26,7 +27,6 @@ export function applyPreset(o: ExportOptions, preset: ExportPreset): ExportOptio
   if (preset === 'share') return { ...base, importable: true };
   return { ...base, importable: false }; // plain
 }
-export interface Rect { x: number; y: number; w: number; h: number }
 export interface Badge { label: string; color: string }
 export interface ExportComposition {
   width: number; height: number;

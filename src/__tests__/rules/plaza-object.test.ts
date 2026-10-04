@@ -17,9 +17,10 @@ import { makeState, setTerrain, placeCmd } from './_helpers';
 import { serialize, deserialize } from '../../io/json-codec';
 import { clearAllObjects } from '../../tools/generation/terrain-generator';
 import type { Command } from '../../core/model/types';
+import { PLANET_PROFILE } from '../../core/model/game-profile';
 
-// Plaza occupies world x ∈ [76.5, 96.5] (a half-block edge).
-const PLAZA = { x: 76.5, y: 58.5, width: 20, height: 27, elevation: 1 };
+// Plaza occupies world x from 76.5 (a half-block edge).
+const PLAZA = { x: 76.5, y: 58.5, ...PLANET_PROFILE.landmark };
 
 function stateWithPlaza(w = 120, h = 120) {
   const s = makeState(w, h);
@@ -39,10 +40,10 @@ describe('Central plaza as an immutable object', () => {
     const p = createPlazaObject(s.template)!;
     expect(p.id).toBe(PLAZA_ID);
     expect(p.catalogId).toBe(PLAZA_ID);
-    expect(p.position).toEqual({ x: 76.5, y: 58.5 });
-    expect(p.width).toBe(20);
-    expect(p.height).toBe(27);
-    expect(p.elevation).toBe(1);
+    expect(p.position).toEqual({ x: PLAZA.x, y: PLAZA.y });
+    expect(p.width).toBe(PLANET_PROFILE.landmark.width);
+    expect(p.height).toBe(PLANET_PROFILE.landmark.height);
+    expect(p.elevation).toBe(PLANET_PROFILE.landmark.elevation);
     expect(p.locked).toBe(true);
 
     expect(createPlazaObject(makeState().template)).toBeNull(); // default template has no plaza
@@ -60,12 +61,15 @@ describe('Central plaza as an immutable object', () => {
     expect(placementOverlapRule.validate(place('building-stall', 75, 70), s)).toHaveLength(0); // [75,76] vs [76.5,..]
   });
 
-  it('blocks terrain paint overlapping the plaza; allows adjacent (half-block edge)', () => {
+  it('blocks terrain paint overlapping the plaza; allows adjacent on both half-block edges', () => {
     const s = stateWithPlaza();
     const e = new CommandExecutor(s, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(s));
-    const paint = (x: number) => e.execute({ type: CommandType.PaintTerrain, timestamp: 0, cells: [{ x, y: 70 }], terrainType: TerrainType.Mountain, elevation: 1 });
-    expect(paint(77).success).toBe(false); // overlaps
-    expect(paint(76).success).toBe(true);  // touches edge only
+    const right = PLAZA.x + PLAZA.width;
+    const paint = (x: number, type = TerrainType.Mountain) => e.execute({ type: CommandType.PaintTerrain, timestamp: 0, cells: [{ x, y: 70 }], terrainType: type, elevation: 1 });
+    expect(paint(77).success).toBe(false); // overlaps the left edge
+    expect(paint(right - 0.5).success).toBe(false); // overlaps the right edge
+    expect(paint(76).success).toBe(true);  // touches the left edge only
+    expect(paint(right + 0.5, TerrainType.Water).success).toBe(true); // touches the right edge only
   });
 
   it('blocks a gamma fillet (patchOnly TrimCorners that materialises terrain) over the plaza', () => {
@@ -118,7 +122,7 @@ describe('Central plaza as an immutable object', () => {
 
   it('objectRect uses the plaza fractional rect, catalog size for normal objects', () => {
     const plaza = createPlazaObject({ ...makeState().template, plaza: { ...PLAZA } })!;
-    expect(objectRect(plaza)).toEqual({ x: 76.5, y: 58.5, w: 20, h: 27 });
+    expect(objectRect(plaza)).toEqual({ x: PLAZA.x, y: PLAZA.y, w: PLAZA.width, h: PLAZA.height });
     // a cell that only touches the plaza edge does not overlap; the next one does
     expect(cellOverlapsRect(objectRect(plaza), 76, 70, -0.5)).toBe(false);
     expect(cellOverlapsRect(objectRect(plaza), 77, 70, -0.5)).toBe(true);

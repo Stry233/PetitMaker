@@ -13,7 +13,7 @@ import {
   type PreCommandRule,
   type ValidationError,
 } from '../core/model/types';
-import { ELEVATION_MAX } from '../core/model/constants';
+import { ELEVATION_MAX } from '../core/model/game-profile';
 
 export const elevationRangeRule: PreCommandRule = {
   id: 'V-MTN-01',

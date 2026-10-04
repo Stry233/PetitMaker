@@ -16,7 +16,7 @@ export interface AssembledTurn {
   quirks?: TurnQuirk[];
 }
 
-export interface Assembler {
+interface Assembler {
   push(ev: StreamEvent): void;
   /** Live parts, cheap to call every render: an element unchanged since the last call keeps its
    *  object identity, so a consumer can diff by reference instead of deep-comparing. */

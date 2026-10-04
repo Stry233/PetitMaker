@@ -1,5 +1,6 @@
 import { clampNotes } from '../model/notes';
-import { CellZone, type GridState, type MapNotes } from '../model/types';
+import type { GridState, MapNotes } from '../model/types';
+import { SQUARE_CORNERS } from '../edge-cut/corner-index';
 
 export const ATTRIBUTION_CHANGE_THRESHOLD = 0.3;
 
@@ -11,7 +12,6 @@ export interface ImageAttribution {
   units: string[];
 }
 
-const SQUARES = ['square', 'square', 'square', 'square'];
 
 /** IDs, notes, annotations and camera settings do not contribute to map-content differences. */
 export function attributionUnits(state: GridState): string[] {
@@ -20,14 +20,14 @@ export function attributionUnits(state: GridState): string[] {
     for (let x = 0; x < state.template.width; x++) {
       const cell = state.cells[y]?.[x];
       const t = cell?.terrain;
-      if (!t || cell.zone === CellZone.Plaza) continue;
-      units.push(JSON.stringify(['t', x, y, t.type, t.elevation, t.corners ?? SQUARES, !!t.patchOnly, t.patchBase ?? 0]));
+      if (!t) continue;
+      units.push(JSON.stringify(['t', x, y, t.type, t.elevation, t.corners ?? SQUARE_CORNERS, !!t.patchOnly, t.patchBase ?? 0]));
     }
   }
   for (const obj of state.objects.values()) {
     if (obj.locked) continue;
     units.push(JSON.stringify(['o', obj.position.x, obj.position.y, obj.catalogId, obj.rotation,
-      obj.elevation, obj.spanLength ?? 0, obj.corners ?? SQUARES, !!obj.patchOnly]));
+      obj.elevation, obj.spanLength ?? 0, obj.corners ?? SQUARE_CORNERS, !!obj.patchOnly]));
   }
   return units;
 }

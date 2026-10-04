@@ -59,7 +59,7 @@ describe('describeToolCall (human-readable approvals)', () => {
     expect(describeToolCall({ name: 'place_object', input: { catalogId: 'building-myhouse', x: 3, y: 4 } }, en))
       .toBe(`${en(toolVerbKey('place_object'))} (Object at (3,4))`);
     expect(describeToolCall({ name: 'paint_terrain', input: { rect: { x1: 2, y1: 2, x2: 8, y2: 6 }, terrain: 'water', elevation: 0 } }, en))
-      .toBe(`${en(toolVerbKey('paint_terrain'))} (water elev 0 on (2,2)→(8,6))`);
+      .toBe(`${en(toolVerbKey('paint_terrain'))} (water, level 0, (2,2)→(8,6))`);
     expect(describeToolCall({ name: 'scatter_objects', input: { catalogIds: ['tree-a', 'tree-b', 'tree-c'], count: 30 } }, en))
       .toContain('30 × [Object, Object +1]');
     expect(describeToolCall({ name: 'carve_river', input: { points: [{ x: 1, y: 2 }, { x: 9, y: 9 }], width: 3 } }, en))
@@ -121,7 +121,7 @@ describe('describeToolCall (human-readable approvals)', () => {
 
   it('the localized line never borrows the English words', () => {
     const zh = describeToolCall({ name: 'paint_terrain', input: { rect: { x1: 2, y1: 2, x2: 8, y2: 6 }, terrain: 'mountain', elevation: 3 } }, tr('zh'));
-    expect(zh).toBe(`${tr('zh')(toolVerbKey('paint_terrain'))} (山体 高度3 在(2,2)→(8,6))`);
+    expect(zh).toBe(`${tr('zh')(toolVerbKey('paint_terrain'))} (3 层山体，(2,2)→(8,6))`);
     expect(describeToolCall({ name: 'build_road_network', input: {} }, tr('zh'))).toBe(`${tr('zh')(toolVerbKey('build_road_network'))} (连通所有建筑)`);
     expect(describeToolCall({ name: 'scatter_objects', input: { catalogIds: ['tree-a'], count: 4 } }, tr('zh')))
       .toBe(`${tr('zh')(toolVerbKey('scatter_objects'))} (4 × [${tr('zh')('agent3.object_name')}] 于所选区域)`);

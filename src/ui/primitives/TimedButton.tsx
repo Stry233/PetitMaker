@@ -40,7 +40,7 @@ const spoken: CSSProperties = {
   border: 0,
 };
 
-export interface TimedButtonProps {
+interface TimedButtonProps {
   /** Seconds until the button presses itself. */
   after: number;
   /** What the press does. Reached through a real click, never called directly. `byClock` is true

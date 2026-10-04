@@ -1,29 +1,46 @@
-import { CommandType, ToolType } from '../../core/model/types';
+import { CommandType, ToolType, type Rotation } from '../../core/model/types';
 import { detectBridgeSpan } from '../../core/model/bridge-span';
 import type { CatalogItem, GridState, MacroCoord, MicroCoord, PlacedObject, PlaceObjectCommand, RemoveObjectCommand, ValidationError } from '../../core/model/types';
-import { standsOnCoating } from '../../core/model/traits';
+import { standsOnCoating, findTrait } from '../../core/model/traits';
 import type { CommandExecutor } from '../../core/commands/command-executor';
 import type { Tool, ToolContext } from '../runtime/types';
 import type { CursorId } from '../../core/runtime/cursor-spec';
 import { getCatalogItem } from '../../state/catalog';
-import { bumpObjectsVersion, cellKey, getFootprint } from '../../core/model/grid-model';
-import { getPlacedObjectSize, getRotatedSize, resolveAnchor, snapsOwnPlacement, surfaceElevationAt } from '../../state/object-geometry';
+import { bumpObjectsVersion, cellKey, getFootprint, isLandmarkItem } from '../../core/model/grid-model';
+import { getPlacedObjectSize, resolveAnchor, snapsOwnPlacement, surfaceElevationAt } from '../../state/object-geometry';
 import { entriesNear, getObjectIndex } from '../../state/object-index';
 import { generateObjectId } from '../../core/model/object-id';
+import { planetPlazaObject } from '../../core/model/planet';
+import { hexStringToNumber } from '../../core/model/colors';
+import { ERROR_RED } from '../../core/runtime/brand-palette';
 
 
 export const GHOST_VALID = 0x22c55e;
-export const GHOST_INVALID = 0xff6b6b;
+export const GHOST_INVALID = hexStringToNumber(ERROR_RED);
 
 /** The PlaceObject command that re-places a mutated copy of an object. Callers holding an object
  *  ALREADY off the map (a group transform lifts every member first) execute this directly; for the
  *  in-place case, where the original is still on the map, the `plan*` pair below validates first. */
 export function objectPlacementCommand(candidate: PlacedObject): PlaceObjectCommand {
-  const item = getCatalogItem(candidate.catalogId);
-  return {
-    type: CommandType.PlaceObject, timestamp: Date.now(),
-    object: candidate, loadValue: item?.loadValue ?? 0,
-  };
+  return { type: CommandType.PlaceObject, timestamp: Date.now(), object: candidate };
+}
+
+/** Run `fn` with `objects` deleted from the map and restore them afterwards, even when `fn` throws,
+ *  so a destination inside their own footprint is not read as a collision. A probe: nothing is
+ *  executed and no history is written. */
+export function withObjectsLifted<T>(state: GridState, objects: readonly PlacedObject[], fn: () => T): T {
+  const lifted = (state.liftedObjects ??= new Map());
+  const added = objects.filter((obj) => !lifted.has(obj.id));
+  for (const obj of objects) state.objects.delete(obj.id);
+  for (const obj of added) lifted.set(obj.id, obj);
+  bumpObjectsVersion(state, { removed: objects });
+  try {
+    return fn();
+  } finally {
+    for (const obj of added) lifted.delete(obj.id);
+    for (const obj of objects) state.objects.set(obj.id, obj);
+    bumpObjectsVersion(state, { added: objects });
+  }
 }
 
 /** `obj` as it would be at (newX, newY): elevation tracks the destination's surface, read through
@@ -39,6 +56,9 @@ export function movedObject(gs: GridState, obj: PlacedObject, newX: number, newY
  * restored). Shared by move + rotate so both judge validity the same way — and so the object is
  * never removed before the new placement is known to be legal.
  *
+ * The removal is judged too, first: a move is a removal and a placement, and V-LOCK-02 refuses a
+ * locked object's removal; without it a locked object's plan passes wherever its copy could stand.
+ *
  * Validates a THROWAWAY CLONE, for the same reason the placer's click does: the bridge (waterSpan)
  * and ramp (heightDrop) traits SNAP — mutate — the command's position/rotation during validation.
  * Returning the validated command would hand the caller's `execute` an already-snapped one, whose
@@ -47,16 +67,14 @@ export function movedObject(gs: GridState, obj: PlacedObject, newX: number, newY
  * `execute` validates + snaps it exactly once; `preview` is the clone as validation left it — the
  * geometry the drop will actually land, for a ghost to draw.
  */
-function planObjectPlacement(
+export function planObjectPlacement(
   exec: CommandExecutor, gs: GridState, original: PlacedObject, candidate: PlacedObject,
 ): { cmd: PlaceObjectCommand; errors: ValidationError[]; preview: PlacedObject } {
   const cmd = objectPlacementCommand(candidate);
   const probe: PlaceObjectCommand = { ...cmd, object: { ...candidate } };
-  gs.objects.delete(original.id);
-  bumpObjectsVersion(gs, { removed: [original] });
-  const errors = exec.getRegistry().validatePreCommand(probe, gs);
-  gs.objects.set(original.id, original);
-  bumpObjectsVersion(gs, { added: [original] });
+  const removal = exec.getRegistry().validatePreCommand(removeObjectCommand(original), gs);
+  if (removal.length > 0) return { cmd, errors: removal, preview: probe.object };
+  const errors = withObjectsLifted(gs, [original], () => exec.getRegistry().validatePreCommand(probe, gs));
   return { cmd, errors, preview: probe.object };
 }
 
@@ -71,7 +89,7 @@ export function planObjectMove(
 /** Plan rotating `obj` to `newRotation`: validates the rotated footprint (self excluded)
  *  and returns the PlaceObject command + errors. Position and elevation are unchanged. */
 export function planObjectRotation(
-  exec: CommandExecutor, gs: GridState, obj: PlacedObject, newRotation: 0 | 90 | 180 | 270,
+  exec: CommandExecutor, gs: GridState, obj: PlacedObject, newRotation: Rotation,
 ): { cmd: PlaceObjectCommand; errors: ValidationError[]; preview: PlacedObject } {
   return planObjectPlacement(exec, gs, obj, { ...obj, rotation: newRotation });
 }
@@ -87,11 +105,7 @@ function computeBridgeGhost(
 function computeRampGhost(
   coord: MacroCoord, itemId: string, ctx: import('../runtime/types').ToolContext,
 ): MacroCoord[] {
-  // Validate through the SAME rule the placement uses (V-PLACE-TRAIT heightDrop), so the ghost can NEVER be
-  // green where the actual placement fails — e.g. when the lower terrace is shorter than the ramp's 3.5-block
-  // bottom support, or the drop isn't exactly one layer. The rule SNAPS the probe's position/rotation/
-  // elevation; we then draw the footprint from the snapped command. A cheaper check (just looking for a
-  // 1-layer-drop neighbour) would skip the support check and show green on terraces too short to place.
+  // Placement validation owns both cliff detection and support; draw its snapped footprint.
   const item = getCatalogItem(itemId);
   if (!item) return [];
   const probe: PlaceObjectCommand = {
@@ -100,7 +114,6 @@ function computeRampGhost(
       id: '__ghost__', catalogId: itemId, position: { x: coord.x, y: coord.y },
       rotation: 0, elevation: surfaceElevationAt(ctx.gridState, coord.x, coord.y),
     },
-    loadValue: item.loadValue,
   };
   if (ctx.validateCommand(probe).length > 0) return [];
   const { w, h } = getPlacedObjectSize(probe.object);
@@ -155,7 +168,7 @@ export function removeObjectCommand(obj: PlacedObject): RemoveObjectCommand {
 /**
  * Strip every coating (road/tile) object covering any of `footprint`, so the caller can coat
  * over it. The overlap set is resolved BEFORE the removals, so the commands cannot disturb
- * the iteration. A coating that `forItem` may STAND ON (flora on the plantable dirt path) is
+ * the iteration. A coating that `forItem` may STAND ON (flora on a plantable road) is
  * kept — the pair coexists in-game.
  */
 export function removeOverlappingCoatings(
@@ -188,13 +201,26 @@ export function stripCoatingsFor(
   const cells = getFootprint(dest.position.x, dest.position.y, size.w, size.h);
   for (const obj of overlappingCoatings(gs, cells)) {
     if (obj.id === dest.id) continue; // moving a road: it is its own coating, not one to strip
-    if (standsOnCoating(destItem, getCatalogItem(obj.catalogId)!)) continue; // a flower lands ON the dirt path
+    if (standsOnCoating(destItem, getCatalogItem(obj.catalogId)!)) continue; // a flower lands ON a plantable road
     executor.execute(removeObjectCommand(obj));
   }
 }
 
+/** The object a click lays for `item` at `anchor`, standing on the surface there; `id` names it
+ *  (a probe passes a throwaway). The plaza is self-sized: it keeps its fixed id and carries its own
+ *  footprint and base elevation. */
+function freshPlacement(
+  item: CatalogItem, anchor: MacroCoord, rotation: Rotation, gs: GridState, id?: string,
+): PlacedObject {
+  if (isLandmarkItem(item.id)) return planetPlazaObject(anchor, rotation);
+  return {
+    id: id ?? generateObjectId(), catalogId: item.id, position: { x: anchor.x, y: anchor.y },
+    rotation, elevation: surfaceElevationAt(gs, anchor.x, anchor.y),
+  };
+}
+
 /** What the placement ghost draws for one hovered cell, and whether the click would be accepted. */
-export interface PlacementGhostPlan {
+interface PlacementGhostPlan {
   /** The cells to outline: the real footprint, a snapped bridge/ramp span, or (when a snapping
    *  item found no legal span here) just the hovered cell. */
   cells: MacroCoord[];
@@ -205,7 +231,7 @@ export interface PlacementGhostPlan {
   /** The rotation actually applied — 0 for a non-rotatable item or a snapping bridge/ramp
    *  (which decides its own orientation), else the requested pending rotation. The single place
    *  that decision is made, so the body-ghost sprite and the footprint it outlines never disagree. */
-  rotation: 0 | 90 | 180 | 270;
+  rotation: Rotation;
 }
 
 /**
@@ -220,7 +246,7 @@ export interface PlacementGhostPlan {
  * Returns null when there is nothing to place (an unknown item), which is not a refusal.
  */
 export function planPlacementGhost(
-  itemId: string, coord: MacroCoord, ctx: ToolContext, rotation: 0 | 90 | 180 | 270 = 0,
+  itemId: string, coord: MacroCoord, ctx: ToolContext, rotation: Rotation = 0,
 ): PlacementGhostPlan | null {
   const item = getCatalogItem(itemId);
   if (!item) return null;
@@ -230,11 +256,11 @@ export function planPlacementGhost(
   // else is unaffected (see resolveAnchor). No grab offset: nothing is held yet.
   const anchor = resolveAnchor(item, coord, ctx.halfCoord);
 
-  const bridgeTrait = item.traits.find(t => t.type === 'waterSpan');
-  const rampTrait = item.traits.find(t => t.type === 'heightDrop');
+  const bridgeTrait = findTrait(item, 'waterSpan');
+  const rampTrait = findTrait(item, 'heightDrop');
   // Bridges and ramps SNAP: the trait rule decides the span, so "is there a legal span from
   // here" IS the validity question, and the span it found is the footprint.
-  if (bridgeTrait && bridgeTrait.type === 'waterSpan') {
+  if (bridgeTrait) {
     const span = computeBridgeGhost(anchor, item.width, bridgeTrait.min, bridgeTrait.max, ctx);
     return { cells: span.length > 0 ? span : [anchor], valid: span.length > 0, bodyElevation: null, rotation: 0 };
   }
@@ -244,21 +270,17 @@ export function planPlacementGhost(
   }
   // Everything else places at the hovered cell: the footprint is known (rotated, when the item
   // turns), only legality is open (overlap / zone / locked layer / trait).
-  const elevation = surfaceElevationAt(ctx.gridState, anchor.x, anchor.y);
   const appliedRotation = item.rotatable ? rotation : 0;
+  const obj = freshPlacement(item, anchor, appliedRotation, ctx.gridState, '__ghost__');
   const errors = ctx.validateCommand({
-    type: CommandType.PlaceObject, timestamp: Date.now(),
-    object: {
-      id: '__ghost__', catalogId: item.id, position: { x: anchor.x, y: anchor.y },
-      rotation: appliedRotation, elevation,
-    },
-    loadValue: item.loadValue,
+    type: CommandType.PlaceObject, timestamp: Date.now(), object: obj, loadValue: item.loadValue,
   } as PlaceObjectCommand);
-  const { w, h } = getRotatedSize(item, appliedRotation);
+  const { w, h } = getPlacedObjectSize(obj, item);
   return {
     cells: getFootprint(anchor.x, anchor.y, w, h),
     valid: errors.length === 0,
-    bodyElevation: elevation,
+    // A self-sized object (the plaza) has no catalog-sized sprite to ride the ghost; its outline is the preview.
+    bodyElevation: obj.width === undefined ? obj.elevation : null,
     rotation: appliedRotation,
   };
 }
@@ -300,24 +322,15 @@ export class ObjectPlacerTool implements Tool {
     // The SAME anchor resolution the ghost/canActAt probe uses (via planPlacementGhost), or the
     // click and the badge could disagree about where a halfStep item would land.
     const anchor = resolveAnchor(item, coord, ctx.halfCoord);
-    const elevation = surfaceElevationAt(ctx.gridState, anchor.x, anchor.y);
     // Bridges/ramps snap their own rotation during validation below; a non-rotatable item never
     // reads the pending rotation (the shortcut already refuses to set it for non-rotatable items).
     const rotation = item.rotatable ? placementRotation : 0;
-
-    const obj: PlacedObject = {
-      id: generateObjectId(),
-      catalogId: item.id,
-      position: { x: anchor.x, y: anchor.y },
-      rotation,
-      elevation,
-    };
+    const obj = freshPlacement(item, anchor, rotation, ctx.gridState);
 
     const cmd: PlaceObjectCommand = {
       type: CommandType.PlaceObject,
       timestamp: Date.now(),
       object: obj,
-      loadValue: item.loadValue,
     };
 
     // Validate BEFORE touching the ground: an illegal placement (zone / locked layer / overlapping a real
@@ -341,13 +354,19 @@ export class ObjectPlacerTool implements Tool {
     // Legal: strip the coatings this footprint covers and place, folded into ONE undo step so the road
     // removal and the placement undo together (and never leave the road gone without the object).
     const start = ctx.getUndoStackSize();
-    const { w, h } = getRotatedSize(item, rotation);
+    const { w, h } = getPlacedObjectSize(obj, item);
     const fp = getFootprint(anchor.x, anchor.y, w, h);
-    removeOverlappingCoatings(fp, ctx, item);
-    // Request the plop BEFORE executing: executeCommand emits objects-changed synchronously, so
-    // addObjects runs and consumes the pending plop in the same tick.
-    ctx.plopObject?.(obj.id);
-    ctx.executeCommand(cmd);
+    try {
+      removeOverlappingCoatings(fp, ctx, item);
+      // Request the plop BEFORE executing: executeCommand emits objects-changed synchronously, so
+      // addObjects runs and consumes the pending plop in the same tick.
+      ctx.plopObject?.(obj.id);
+      ctx.executeCommand(cmd);
+    } catch (err) {
+      // A throw part-way brings back the coatings already stripped.
+      ctx.rollbackTo(start);
+      throw err;
+    }
     ctx.collapseHistory(start);
   }
 

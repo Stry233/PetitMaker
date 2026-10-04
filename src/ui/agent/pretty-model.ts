@@ -1,6 +1,3 @@
-/** Friendly model name: "claude-opus-4-8" → "Claude Opus 4 8",
- *  "gpt-5.5" → "GPT 5 5", "glm-4.6" → "GLM 4 6", "kimi-k2-…" → "Kimi K2 …"
- *  (K2 title-cases naturally; GPT/GLM need the acronym fixups). */
 /** Fixed casings for tokens that Title Case would mangle. Derived from a
  *  cross-platform corpus (OpenAI, OpenRouter catalog, ollama gateways). */
 const BRAND_CASE: Record<string, string> = {

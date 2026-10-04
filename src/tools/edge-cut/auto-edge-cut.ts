@@ -1,5 +1,5 @@
 /*
- * auto-edge-cut.ts — applies automatic corner-trimming to a finished brush
+ * Applies automatic corner-trimming to a finished brush
  * stroke when the Build panel's "Auto Trim" toggle is on. Runs at the
  * post-stroke stage, AFTER validation, on whatever cells survived.
  *
@@ -23,13 +23,14 @@ import { CommandType, TerrainType } from '../../core/model/types';
 import type { AutoEdgeCut, Command, Corners, GridState, MacroCoord, TrimCornersCommand, ValidationResult } from '../../core/model/types';
 import { getCell } from '../../core/model/grid-model';
 import { computeLockedCorners } from '../../core/edge-cut/trim-lock';
-import { cornerWrappedAt, groundConvexCornerInWater, highestNeighborTerrain } from '../../core/edge-cut/terrain-silhouette';
+import { cornerWrappedAt, groundConvexCornerInWater, highestNeighborTerrain, patchSupport } from '../../core/edge-cut/terrain-silhouette';
 import { validateCut, isInnerCorner, OUTER_TRI, INNER_TRI } from '../../core/edge-cut/cut-validator';
 import {
   CANONICAL_ROAD_STATES, canonicalToActual, detectRoadConn,
 } from '../../core/edge-cut/road-cut-states';
 import type { RoadLookup } from '../../core/model/road-lookup';
 import { roadLookup } from '../../state/object-index';
+import { SQUARE_CORNERS, EMPTY_CORNERS, isSquareCorners } from '../../core/edge-cut/corner-index';
 
 /** The minimal slice of ToolContext the corner-cut helpers actually need — so the generator can drive
  *  them with just its grid + execute closure, without fabricating a full ToolContext. */
@@ -128,7 +129,7 @@ function cutTerrainOuter(ctx: EdgeCutCtx, cells: MacroCoord[], pick: CornerChoos
     const locked = computeLockedCorners(ctx.gridState, roads, x, y, 'terrain');
     const before: Corners = terrain.corners
       ? [...terrain.corners]
-      : ['square', 'square', 'square', 'square'];
+      : [...SQUARE_CORNERS];
     const after: Corners = [...before];
     let changed = false;
     for (let i = 0; i < 4; i++) {
@@ -147,7 +148,7 @@ function cutTerrainOuter(ctx: EdgeCutCtx, cells: MacroCoord[], pick: CornerChoos
       type: CommandType.TrimCorners,
       timestamp: Date.now(),
       x, y, layer: 'terrain',
-      beforeCorners: before.every((s) => s === 'square') ? undefined : before,
+      beforeCorners: isSquareCorners(before) ? undefined : before,
       afterCorners: after,
     } as TrimCornersCommand);
   }
@@ -196,8 +197,8 @@ function cutTerrainInner(ctx: EdgeCutCtx, candidates: readonly MacroCoord[], pic
     if (realBlock && !lowerBlock) continue;
     const before: Corners = (isPatch || lowerBlock) && t!.corners
       ? [...t!.corners]
-      : lowerBlock ? ['square', 'square', 'square', 'square'] // a bare lower block keeps its full base
-      : ['empty', 'empty', 'empty', 'empty'];
+      : lowerBlock ? [...SQUARE_CORNERS] // a bare lower block keeps its full base
+      : [...EMPTY_CORNERS];
     // The fill lands at the HIGHEST tier any corner of this cell is wrapped at, searched down
     // from the area's tallest neighbour: walls of unequal height wrap a corner only up to the
     // shorter one, so asking about `ref.elevation` alone refuses the whole notch. A cell holds one
@@ -233,7 +234,7 @@ function cutTerrainInner(ctx: EdgeCutCtx, candidates: readonly MacroCoord[], pic
     if (lowerBlock || isPatch) {
       // Cosmetic patch (matches the manual tool): patchBase = the existing real support, elevation = the
       // wrapping tier. No PaintTerrain, so it never raises a block or trips the 3x3-base rule.
-      const patchBase = isPatch ? (t!.patchBase ?? t!.elevation - 1) : t!.elevation;
+      const patchBase = isPatch ? patchSupport(t!) : t!.elevation;
       ctx.executeCommand({
         type: CommandType.TrimCorners, timestamp: Date.now(), x, y, layer: 'terrain',
         beforeCorners: isPatch ? before : undefined, afterCorners: after,
@@ -267,7 +268,7 @@ function cutGroundIslands(ctx: EdgeCutCtx, candidates: readonly MacroCoord[], pi
   for (const { x, y } of candidates) {
     const t = getCell(ctx.gridState.cells, x, y)?.terrain;
     if (t && t.type !== TerrainType.None) continue; // only plain ground / an existing islet cut
-    const before: Corners = t?.corners ? [...t.corners] : ['square', 'square', 'square', 'square'];
+    const before: Corners = t?.corners ? [...t.corners] : [...SQUARE_CORNERS];
     const after: Corners = [...before];
     let changed = false;
     for (let i = 0; i < 4; i++) {
@@ -310,7 +311,7 @@ function cutRoads(ctx: EdgeCutCtx, cells: MacroCoord[], round: boolean): void {
     seen.add(k);
     const road = roads(x, y);
     if (!road) continue;
-    if (road.corners && !road.corners.every((s) => s === 'square')) continue; // already trimmed
+    if (!isSquareCorners(road.corners)) continue; // already trimmed
 
     const conn = detectRoadConn(roads, road);
     for (const idx of order) {

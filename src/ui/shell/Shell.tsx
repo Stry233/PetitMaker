@@ -5,6 +5,7 @@ import { viewportSize } from '../../core/runtime/viewport-space';
  * under one combined page/UI zoom. This component also hosts the tour and applies its requested mode
  * and view changes.
  */
+import { mapEdgeAttr } from '../primitives/map-edge';
 import { SUPPORTS_ASSISTANT } from '../../core/runtime/edition';
 import { useFrameReadableWeight } from './use-frame-zoom';
 import {
@@ -39,17 +40,22 @@ import { dockAside, useDockDriver, useDockStage } from './use-dock';
 
 import { AnnotationBar } from './bars/AnnotationBar';
 import { ObjectShelf } from './bars/ObjectShelf';
+import { planetShelfItems } from './bars/object-shelf';
 import { ScopeScreen } from './bars/ScopeScreen';
 import { TerrainBar } from './bars/TerrainBar';
 import { terrainSurface, type TerrainSurface } from './bars/terrain-cells';
 import {
-  ASSISTANT_BLOCK, ASSISTANT_ROW_TOP, MODES, MODE_PLATE, MODE_PLATE_ID, MODE_ROW_LEFT,
-  MODE_ROW_TOP, TOP_RIGHT, TOP_RIGHT_TOP, blockCentre, topRightHeight, topRightSlack,
-  type BlockArt, type FrameArt,
+  ASSISTANT_BLOCK, ASSISTANT_ROW_TOP, MODE_PLATE, MODE_PLATE_ID, MODE_ROW_LEFT,
+  MODE_ROW_TOP, TOP_RIGHT_TOP, blockCentre, cornerArt, sessionModeArt, topRightHeight, topRightSlack,
+  type BlockArt, type FrameArt, type ModeArt,
 } from './frame';
+import { PlanetNameplate } from './planet/PlanetNameplate';
+import { PlanetFrameOverlay } from './planet/PlanetFrameOverlay';
+import { PlanetReviewOverlay } from './planet/PlanetReviewOverlay';
 import { LoadMeter } from './windows/LoadMeter';
 import { MenuSheet } from './windows/MenuSheet';
-import { cssMotion, useBeat, useMotion, useMotionAllowed } from './motion/use-motion';
+import { useBeat, useMotion, useMotionAllowed } from './motion/use-motion';
+import { cssMotion } from '../design/motion';
 import { Rail } from './Rail';
 import { FrameLayoutProvider, useFrameLayout } from './frame-layout';
 import { RestoreShelf } from './bars/RestoreShelf';
@@ -61,18 +67,7 @@ import {
 import { shellTourSteps } from './tour-steps';
 import { tourDiagram } from './tour-diagrams';
 import { useShellCommands } from './use-shell-commands';
-
-/** Which top-right control a tour step points at. Only the two that DO something are named: the
- *  load readout is a readout. */
-const TOP_RIGHT_TOUR: Partial<Record<string, TourTargetId>> = { share: 'share', menu: 'menu' };
-/** The help page each top-right button teaches; the load disc marks its own. */
-const TOP_RIGHT_HELP: Partial<Record<string, HelpPageId>> = { share: 'share', menu: 'frame' };
-/** The help page each mode block teaches: the three terrain surfaces share one page. */
-const MODE_HELP: Record<string, HelpPageId> = { object: 'objects', road: 'terrain', mountain: 'terrain', water: 'terrain', generate: 'generate' };
-
-/** The corner a top-right control's focus ring takes, for a drawing that is not the rounded
- *  rectangle `FOCUS_SHAPE_RADIUS` assumes: the menu is a disc, and the load meter draws itself. */
-const TOP_RIGHT_RADIUS: Partial<Record<string, number>> = { menu: 999 };
+import { anyModalOpen } from '../../state/slices/shell';
 
 /**
  * Call `onEdit` the first time the visitor's own work reaches the map, while `armed`.
@@ -97,6 +92,22 @@ function useFirstEdit(armed: boolean, onEdit: () => void): void {
   }, [armed, eventBus, executor, onEdit]);
 }
 
+
+/**
+ * How a cluster of the frame comes and goes when a planet session opens or closes: on the bottom
+ * bar's own handover clock, since the session is the shell swapping its tools. Opacity only, so a
+ * fixed cluster keeps its corner.
+ */
+function useChromeSwap() {
+  const enter = useMotion('mode.bar.enter');
+  const leave = useMotion('mode.bar.leave');
+  const reduced = useReducedMotionConfig();
+  return {
+    initial: reduced ? false : { opacity: 0 },
+    animate: { opacity: 1, transition: enter },
+    exit: { opacity: 0, transition: leave },
+  } as const;
+}
 
 /**
  * The one definition of the edge every drawing on the map wears, mounted once for the whole shell.
@@ -178,7 +189,7 @@ function Piece({ art, onPress, expanded, tourTarget, helpTarget }: {
       onClick={onPress}
       style={{
         ...btnReset, ...line, cursor: cursors.clickable,
-        borderRadius: TOP_RIGHT_RADIUS[art.id] ?? FOCUS_SHAPE_RADIUS,
+        borderRadius: art.focusRadius ?? FOCUS_SHAPE_RADIUS,
       }}
     >
       {shape}
@@ -351,6 +362,7 @@ function AssistantBlock({ entranceRef }: { entranceRef: RefObject<HTMLDivElement
   // A pictured shell mounts no character layer (it positions itself from measured window rects,
   // which a zoomed picture breaks), so the block draws her still art in the box instead.
   const preview = useUiPreview();
+  const swap = useChromeSwap();
   return (
     // DEAF WHILE THE PANEL IS OPEN, which is the block's own note above made true rather than assumed:
     // the panel stands where this box is and the character in her own layer is the press, so this one
@@ -359,7 +371,7 @@ function AssistantBlock({ entranceRef }: { entranceRef: RefObject<HTMLDivElement
     // plate's edge, straight across this box) had half of itself answered by the block underneath.
     // The label, the focus ring and the tour target are unaffected: a pointer rule is not a keyboard
     // one, and the badge beside it is already deaf.
-    <div style={{
+    <motion.div {...swap} style={{
       position: 'fixed', top: ASSISTANT_ROW_TOP, left: MODE_ROW_LEFT, zIndex: z.panel,
       pointerEvents: open ? 'none' : 'auto',
     }}
@@ -374,7 +386,7 @@ function AssistantBlock({ entranceRef }: { entranceRef: RefObject<HTMLDivElement
         slot={preview ? undefined : <div ref={entranceRef} data-testid="entrance-plate-anchor" style={ENTRANCE_SLOT} />}
         onPress={() => setOpen(!open)}
       />
-    </div>
+    </motion.div>
   );
 }
 
@@ -475,7 +487,7 @@ function ModeBar({ mode, surface }: { mode: BuildMode; surface: TerrainSurface |
   // dropping the wait was meant to close.
   const reduced = useReducedMotionConfig();
   const bar = surface ? <TerrainBar surface={surface} />
-    : mode === 'object' ? <ObjectShelf />
+    : mode === 'object' ? <ObjectShelf source={planetShelfItems} />
       : mode === 'generate' ? <GenerateShelf />
         : mode === 'annotate' ? <AnnotationBar /> : null;
   const scopeLeave = useMotion('mode.bar.leave');
@@ -546,6 +558,46 @@ function ModeBar({ mode, surface }: { mode: BuildMode; surface: TerrainSurface |
   );
 }
 
+/** The top-left row of mode blocks for one set of modes, with the splat under the chosen one. */
+function ModeRow({ modes, mode, swap, onPick }: {
+  modes: readonly ModeArt[];
+  mode: BuildMode | null;
+  swap: ReturnType<typeof useChromeSwap>;
+  onPick: (id: BuildMode) => void;
+}) {
+  const selectedMode = modes.findIndex((art) => art.id === mode);
+  return (
+    <motion.div
+      {...swap}
+      {...tourTargetAttr('modes')}
+      {...mapEdgeAttr('top')}
+      style={{
+        position: 'fixed', top: MODE_ROW_TOP, left: MODE_ROW_LEFT, zIndex: z.panel,
+        display: 'flex', alignItems: 'flex-end', gap: MODE.gap, pointerEvents: 'auto',
+      }}
+    >
+      {/* Before the blocks, so the splat is behind every one of them. It is ground: the drawing
+          stands ON it, and a button's own hover scale makes that button a stacking context, so a
+          splat drawn INSIDE one would rise over its neighbours at exactly the wrong moment. */}
+      <AnimatePresence initial={false}>
+        {selectedMode >= 0 ? (
+          <BlockPlate key={selectedMode} centre={blockCentre(selectedMode)} />
+        ) : null}
+      </AnimatePresence>
+      {modes.map((art, i) => (
+        <RowBlock
+          key={art.id}
+          art={art}
+          on={mode === art.id}
+          centre={blockCentre(i)}
+          helpTarget={art.helpTarget}
+          onPress={() => onPick(art.id)}
+        />
+      ))}
+    </motion.div>
+  );
+}
+
 function Frame({ onRestoreSession, splashActive, hidden, onHide, entranceRef }: {
   onRestoreSession: (save: RestoredAutosave) => void;
   /** The character's entrance box, held by `Shell` because the character's own layer stands outside
@@ -569,7 +621,11 @@ function Frame({ onRestoreSession, splashActive, hidden, onHide, entranceRef }: 
   const selectingRegion = useEditorStore((s) => s.selectingRegion);
   const setModal = useEditorStore((s) => s.setModal);
   const surface = terrainSurface(mode);
-  const selectedMode = MODES.findIndex((art) => art.id === mode);
+  // The planet session draws with three of the modes and only the menu of the corner's actions.
+  const planetSession = useEditorStore((s) => s.planetSession);
+  const inSession = planetSession !== null;
+  const modes = useMemo(() => sessionModeArt(planetSession), [planetSession]);
+  const swap = useChromeSwap();
   const [menuOpen, setMenuOpen] = useState(false);
   const layout = useFrameLayout();
   const closeMenu = useCallback(() => setMenuOpen(false), []);
@@ -612,7 +668,7 @@ function Frame({ onRestoreSession, splashActive, hidden, onHide, entranceRef }: 
   // this map has stopped considering the last one just as surely.
   // The What's new window speaks first and hands the screen back, so it is the one window that
   // leaves the offer standing.
-  const anyWindowOpen = useEditorStore((s) => Object.entries(s.modals).some(([id, on]) => on && id !== 'whatsNew'));
+  const anyWindowOpen = useEditorStore((s) => anyModalOpen(s, 'whatsNew'));
   const whatsNewOpen = useEditorStore((s) => s.modals.whatsNew);
   useEffect(() => { if (anyWindowOpen && candidate) dismissRestore(); }, [anyWindowOpen, candidate, dismissRestore]);
   // And the same dismissal, offered to the one surface that stands over the map beside this card:
@@ -625,6 +681,8 @@ function Frame({ onRestoreSession, splashActive, hidden, onHide, entranceRef }: 
   // The sheet belongs to the menu button, and the button has just gone. Left open it would be the
   // one panel standing over a map that was cleared to be looked at.
   useEffect(() => { if (hidden) setMenuOpen(false); }, [hidden]);
+  // The sheet's rows differ on each side of a session, so it closes as one opens or ends.
+  useEffect(() => { setMenuOpen(false); }, [inSession]);
 
   return (
     <>
@@ -654,7 +712,7 @@ function Frame({ onRestoreSession, splashActive, hidden, onHide, entranceRef }: 
           // at once rather than slowly. `visibility` rides the same clock because it is DISCRETE and
           // interpolates as visible until the end, which is what takes the frame out of hit-testing
           // and out of the accessibility tree only once it has finished leaving.
-          transition: cssMotion(hidden ? 'frame.veil' : 'frame.unveil', 'opacity', 'visibility'),
+          transition: cssMotion(hidden ? 'frame.veil' : 'frame.unveil', ['opacity', 'visibility']),
           // An opacity under 1 makes this a stacking context, and at z 0 among its siblings the
           // whole frame would pass UNDER the screen's own shading for the length of the fade. The z
           // its clusters claim is the z the context has to stand at (`ModeBar` stands at its bars'
@@ -662,40 +720,28 @@ function Frame({ onRestoreSession, splashActive, hidden, onHide, entranceRef }: 
           position: 'relative', zIndex: z.panel,
         }}
       >
-      <div
-        {...tourTargetAttr('modes')}
-        style={{
-          position: 'fixed', top: MODE_ROW_TOP, left: MODE_ROW_LEFT, zIndex: z.panel,
-          display: 'flex', alignItems: 'flex-end', gap: MODE.gap, pointerEvents: 'auto',
-        }}
-      >
-        {/* Before the blocks, so the splat is behind every one of them. It is ground: the drawing
-            stands ON it, and a button's own hover scale makes that button a stacking context, so a
-            splat drawn INSIDE one would rise over its neighbours at exactly the wrong moment. */}
+      {/* One row per set of modes, so opening a planet session hands the row over the way a mode
+          switch hands over the bar, rather than blocks sliding along it. */}
+      <AnimatePresence initial={false}>
+        <ModeRow key={inSession ? 'planet' : 'map'} modes={modes} mode={mode} swap={swap}
+          onPick={(id) => setEditMode({ mode: mode === id ? null : id })} />
+      </AnimatePresence>
+
+      {SUPPORTS_ASSISTANT && (
         <AnimatePresence initial={false}>
-          {selectedMode >= 0 ? (
-            <BlockPlate key={selectedMode} centre={blockCentre(selectedMode)} />
-          ) : null}
+          {!inSession && <AssistantBlock key="assistant" entranceRef={entranceRef} />}
         </AnimatePresence>
-        {MODES.map((art, i) => (
-          <RowBlock
-            key={art.id}
-            art={art}
-            on={mode === art.id}
-            centre={blockCentre(i)}
-            helpTarget={MODE_HELP[art.id]}
-            onPress={() => setEditMode({ mode: mode === art.id ? null : art.id })}
-          />
-        ))}
-      </div>
+      )}
 
-      {SUPPORTS_ASSISTANT && <AssistantBlock entranceRef={entranceRef} />}
-
-      <div
-        data-testid="shell-corner-actions"
+      <AnimatePresence initial={false}>
+      <motion.div
+        key={inSession ? 'planet-corner' : 'corner-actions'}
+        {...swap}
+        data-testid={inSession ? 'planet-session-corner' : 'shell-corner-actions'}
+        {...mapEdgeAttr('top')}
         style={{
           position: 'fixed', top: layout?.cornerTop ?? TOP_RIGHT_TOP, right: layout?.edgeRight ?? EDGE_RIGHT, zIndex: z.panel,
-          transition: cssMotion('frame.layout.adapt', 'top'),
+          transition: cssMotion('frame.layout.adapt', ['top']),
           // The three are different heights, and what they share is the LINE they stand on,
           // which is the mode row's own.
           display: 'flex', alignItems: 'flex-end', gap: TOP_RIGHT_GAP, pointerEvents: 'auto',
@@ -703,23 +749,30 @@ function Frame({ onRestoreSession, splashActive, hidden, onHide, entranceRef }: 
       >
         {/* A member with no drawing of its own is one this shell draws: today that is the load disc,
             whose shape is the game's rather than the design source's. */}
-        {TOP_RIGHT.map((art) => (art.src === undefined ? (
+        {cornerArt(inSession).map(({ opens, ...art }) => (art.src === undefined ? (
           <LoadMeter key={art.id} art={art} />
         ) : (
           <Piece
             key={art.id}
             art={{ ...art, src: art.src }}
             onPress={
-              art.id === 'menu' ? () => setMenuOpen((o) => !o)
-                : art.id === 'share' ? () => setModal('share', true)
+              opens === 'menu' ? () => setMenuOpen((o) => !o)
+                : opens ? () => setModal(opens, true)
                   : undefined
             }
-            expanded={art.id === 'menu' ? menuOpen : undefined}
-            tourTarget={TOP_RIGHT_TOUR[art.id]}
-            helpTarget={TOP_RIGHT_HELP[art.id]}
+            expanded={opens === 'menu' ? menuOpen : undefined}
+            tourTarget={art.tourTarget}
+            helpTarget={art.helpTarget}
           />
         )))}
-      </div>
+      </motion.div>
+      </AnimatePresence>
+
+      {inSession && <PlanetFrameOverlay />}
+      {inSession && <PlanetReviewOverlay />}
+      <AnimatePresence initial={false}>
+        {inSession && <PlanetNameplate key="planet-nameplate" motionProps={swap} />}
+      </AnimatePresence>
 
       <ModeBar mode={mode} surface={surface} />
       {/* The saved session's offer, in the shelf band a visitor who has chosen no mode leaves empty.
@@ -733,7 +786,7 @@ function Frame({ onRestoreSession, splashActive, hidden, onHide, entranceRef }: 
           assistant is a decision about what to do next, same as opening the menu or a mode, so the
           card must not reappear once the panel is put away. */}
       <AnimatePresence>
-        {candidate && !assistantOpen && !preview && !whatsNewOpen && (
+        {candidate && !assistantOpen && !preview && !whatsNewOpen && !inSession && (
           <RestoreShelf
             key="restore"
             state={candidate.state}
@@ -754,7 +807,7 @@ function Frame({ onRestoreSession, splashActive, hidden, onHide, entranceRef }: 
   );
 }
 
-export interface ShellProps {
+interface ShellProps {
   children: ReactNode;
   /** Resume the offered autosave. The offer is this shell's; the sequencing behind it is App's. */
   onRestoreSession: (save: RestoredAutosave) => void;
@@ -782,6 +835,14 @@ export function Shell({ children, onRestoreSession, splashActive = false }: Shel
   // that opened with the interface already gone would be a browser that opened broken.
   const [hidden, setHidden] = useState(false);
   const toggleHidden = useCallback(() => setHidden((h) => !h), []);
+  // A planet session keeps the interface up (it offers no hide toggle) and draws without the
+  // assistant, so opening one brings the interface back and folds the panel away.
+  const inSession = useEditorStore((s) => s.planetSession !== null);
+  useEffect(() => {
+    if (!inSession) return;
+    setHidden(false);
+    useEditorStore.getState().setAssistantOpen(false);
+  }, [inSession]);
   // The character's two facts, read here because its layer stands outside the frame below: whether
   // the panel is its current home, and whether there is a provider to talk to at all.
   const assistantOpen = useEditorStore((s) => s.assistantOpen);
@@ -1092,7 +1153,7 @@ export function Shell({ children, onRestoreSession, splashActive = false }: Shel
           entranceRef={entranceRef}
           open={assistantOpen}
           connected={connected}
-          hidden={hidden}
+          hidden={hidden || inSession}
           size={ENTRANCE_CHAR_W}
           onOpen={openAssistant}
           onToggle={toggleAssistant}
@@ -1103,8 +1164,8 @@ export function Shell({ children, onRestoreSession, splashActive = false }: Shel
       {/* The acting surfaces stay with the LIVE shell: a pictured one has no windows to open, no
           tour to run, and no second copy of either belongs in the document. */}
       {!preview && <Windows />}
-      {!preview && <TourOverlay steps={tourSteps} onStepEnter={handleTourStep} diagram={tourDiagram} />}
-      {!preview && <TourDoneModal />}
+      {!preview && !inSession && <TourOverlay steps={tourSteps} onStepEnter={handleTourStep} diagram={tourDiagram} />}
+      {!preview && !inSession && <TourDoneModal />}
     </>
   );
 }

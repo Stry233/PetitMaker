@@ -1,7 +1,7 @@
 import { helpAttributes, type HelpTarget } from '../../primitives/help-target';
 import { useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { motion, useIsPresent } from 'framer-motion';
-import { btnReset, buttonMotion, cursors, UNAVAILABLE } from '../../design/styles';
+import { btnReset, buttonMotion, cursors, UNAVAILABLE, radii } from '../../design/styles';
 import { INK, INSET, PLATE } from '../../design/tokens';
 import { useMotion } from '../motion/use-motion';
 import { SCALE, TEXT } from '../units';
@@ -43,16 +43,16 @@ export function OptionPill<T extends string>({ value, options, label, commandId,
 
   return <div {...helpAttributes(helpTarget)} style={{ position: 'relative', display: 'flex', alignItems: 'center', flex: 'none', height: CELL_BOX.h }}>
     <div role="group" aria-label={label} style={{ position: 'relative', boxSizing: 'border-box', display: 'flex', alignItems: 'center', gap: GAP,
-      padding: PAD, borderRadius: 999, height: PILL_H, background: PLATE, opacity: disabled ? UNAVAILABLE : 1 }}>
+      padding: PAD, borderRadius: radii.pill, height: PILL_H, background: PLATE, opacity: disabled ? UNAVAILABLE : 1 }}>
       {selected >= 0 && widths[selected] !== undefined && <motion.span data-option-plate aria-hidden initial={false}
         animate={{ left: PAD + selected * (ICON_WIDTH + GAP), width: ICON_WIDTH + (widths[selected] ?? 0) + LABEL_PAD }} transition={transition}
-        style={{ position: 'absolute', left: PAD, top: PAD, bottom: PAD, borderRadius: 999, background: INSET, pointerEvents: 'none' }}/>}
+        style={{ position: 'absolute', left: PAD, top: PAD, bottom: PAD, borderRadius: radii.pill, background: INSET, pointerEvents: 'none' }}/>}
       {options.map((option, index) => {
         const active = value === option.value;
         return <motion.button key={option.value} type="button" {...(inactive ? {} : buttonMotion)} disabled={inactive}
           aria-label={option.label} aria-pressed={active} title={option.title ?? option.label} onClick={() => { if (!inactive) onChange(option.value); }}
           style={{ ...btnReset, position: 'relative', display: 'flex', alignItems: 'center', height: PILL_H - 2 * PAD,
-            borderRadius: 999, color: INK, pointerEvents: 'auto', cursor: inactive ? cursors.blocked : cursors.clickable }}>
+            borderRadius: radii.pill, color: INK, pointerEvents: 'auto', cursor: inactive ? cursors.blocked : cursors.clickable }}>
           <span style={{ display: 'grid', placeItems: 'center', width: ICON_WIDTH, flex: 'none' }}>{option.glyph}</span>
           {/* Remount once after layout measurement so every animated width starts in pixels before paint. */}
           <motion.span key={measured ? 'measured' : 'measuring'} aria-hidden initial={false}

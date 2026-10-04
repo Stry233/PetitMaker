@@ -153,10 +153,10 @@ describe('the assistant is a block on its own row', () => {
 });
 
 describe("the panel's floor follows the bar that is showing", () => {
-  it('keeps least room clear with no bar and most under the generate shelf', () => {
+  it('reserves the same room for both shelves', () => {
     expect(footReserve(null)).toBeLessThan(footReserve('mountain'));
     expect(footReserve('mountain')).toBeLessThan(footReserve('object'));
-    expect(footReserve('object')).toBeLessThan(footReserve('generate'));
+    expect(footReserve('object')).toBe(footReserve('generate'));
   });
 
   it('answers the three terrain modes alike, since they draw the same bar', () => {

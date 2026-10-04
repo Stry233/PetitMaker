@@ -1,5 +1,9 @@
 import { useContextHelp } from '../../chrome/modals/help/use-context-help';
-import { Suspense, lazy, useCallback, useRef } from 'react';
+import { Suspense, lazy, useCallback, useEffect, useRef, useState } from 'react';
+import type { MapTemplate } from '../../../core/model/types';
+import type { PlanetEntry } from '../../../io/planet-library';
+import { startPlanetEditing } from '../planet/planet-editing';
+import type { PlanetDraft } from '../../../kit/operations/planet-session';
 import { currentKit } from '../../../kit/context';
 import { newMap, transferMap } from '../../../kit/operations';
 import { useEditorStore } from '../../../state/store';
@@ -8,6 +12,7 @@ import { AboutModal } from '../../chrome/modals/AboutModal';
 import { KeyboardModal } from '../../chrome/modals/keyboard/KeyboardModal';
 import { ChangePlanetModal } from '../../chrome/modals/ChangePlanetModal';
 import { SettingsModal } from '../../chrome/modals/SettingsModal';
+import { AnnotationDiscardModal } from '../../chrome/modals/AnnotationDiscardModal';
 import { ChunkLoadWindow } from './ChunkLoadWindow';
 
 const Preview3D = lazy(() => import('../../chrome/modals/export/Preview3D').then(m => ({ default: m.Preview3D })));
@@ -41,21 +46,42 @@ export function EditorWindows({ onPlanetChanged }: { onPlanetChanged: (outcome: 
   const quality3d = useEditorStore((s) => s.quality3d);
   const setQuality3d = useEditorStore((s) => s.setQuality3d);
 
-  const onSwitchPlanet = useCallback((templateId: string, carry: boolean) => {
+  const onSwitchPlanet = useCallback((target: string | MapTemplate, carry: boolean) => {
     const kit = carry ? currentKit() : null;
-    const outcome = kit ? transferMap(kit, { target: templateId, carry: true }) : null;
-    if (!outcome) newMap(templateId);
+    const outcome = kit ? transferMap(kit, { target, carry: true }) : null;
+    if (!outcome) newMap(target);
     setEditMode({ mode: null });
     setModal('newProject', false);
     onPlanetChanged(outcome);
   }, [setEditMode, setModal, onPlanetChanged]);
+
+  // A refused entry leaves the window standing.
+  const onEditPlanet = useCallback((entry: PlanetEntry | PlanetDraft | null) => {
+    startPlanetEditing(entry);
+    if (useEditorStore.getState().planetSession) setModal('newProject', false);
+  }, [setModal]);
+
+  // Leaving or finishing a planet session comes back to Change Planet with that planet chosen.
+  const planetReturn = useEditorStore((s) => s.planetReturn);
+  const planetSession = useEditorStore((s) => s.planetSession);
+  const setPlanetReturn = useEditorStore((s) => s.setPlanetReturn);
+  const [returnChosen, setReturnChosen] = useState<string | undefined>(undefined);
+  useEffect(() => {
+    if (!planetReturn || planetSession) return;
+    setReturnChosen(planetReturn.chosen ?? undefined);
+    setPlanetReturn(null);
+    setModal('newProject', true);
+  }, [planetReturn, planetSession, setPlanetReturn, setModal]);
+  useEffect(() => { if (!modals.newProject) setReturnChosen(undefined); }, [modals.newProject]);
 
   return (
     <>
       <ChangePlanetModal
         open={modals.newProject}
         onSwitch={onSwitchPlanet}
+        onEditPlanet={onEditPlanet}
         onClose={() => setModal('newProject', false)}
+        {...(returnChosen ? { initialChosen: returnChosen } : {})}
       />
 
       <SettingsModal
@@ -90,6 +116,7 @@ export function EditorWindows({ onPlanetChanged }: { onPlanetChanged: (outcome: 
       <AboutModal open={modals.about} onClose={() => setModal('about', false)} />
 
       <ChunkLoadWindow />
+      <AnnotationDiscardModal />
 
       {modals.preview3d && (
         <ChunkBoundary resetKey={modals.preview3d}>

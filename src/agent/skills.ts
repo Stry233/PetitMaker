@@ -27,9 +27,10 @@ import terrainShaping from './skills/terrain-shaping.md?raw';
 import settlementDesign from './skills/settlement-design.md?raw';
 import ecologyPlanting from './skills/ecology-planting.md?raw';
 import streetGrammar from './skills/street-grammar.md?raw';
+import type { SkillKind } from './core/types';
 
-export interface AgentSkill {
-  kind: 'method' | 'style';
+interface AgentSkill {
+  kind: SkillKind;
   /** A proper noun like a catalog item name, for the panel to show (the chip, the dock's playbook
    *  line, the record line) — no per-locale key, same as an item's own `name` map is not one. */
   title: string;
@@ -48,7 +49,7 @@ export const SKILLS: Record<string, AgentSkill> = {
   'composition': {
     kind: 'method',
     title: 'Composition',
-    description: 'Arrange any scene: one primary set piece, views out front with backing behind, local mirrors, pinch-and-release, nothing stamped twice.',
+    description: 'Compose a requested scene around its purpose, approach, clear foreground and supporting background while preserving existing work.',
     body: composition,
   },
   'terrain-shaping': {
@@ -60,13 +61,13 @@ export const SKILLS: Record<string, AgentSkill> = {
   'settlement-design': {
     kind: 'method',
     title: 'Settlement Design',
-    description: 'Place buildings as homes: one themed district each, doors facing the view with backing behind, the plaza ring populated near and far.',
+    description: 'Site requested homes with usable yards and accessible entrances; connect destinations while preserving building counts and existing work.',
     body: settlementDesign,
   },
   'ecology-planting': {
     kind: 'method',
     title: 'Ecology Planting',
-    description: 'Plant at two grains only: solid one-species beds and orchards plus lone specimens, one palette per place, no mid-size confetti.',
+    description: 'Arrange beds, rows, groves and specimens at the requested scale, preserve intentional palettes and repair partial placements locally.',
     body: ecologyPlanting,
   },
   'street-grammar': {
@@ -78,7 +79,7 @@ export const SKILLS: Record<string, AgentSkill> = {
   'design-review': {
     kind: 'method',
     title: 'Design Review',
-    description: 'The finishing crit: evaluate_map trend first, then view_map against the expert tells (subject, climb, arrival, stamps, grain), symptom-to-tool fixes.',
+    description: 'Verify requested outcomes, preserved features and composition; repair only actual gaps and stop when the brief is satisfied.',
     body: designReview,
   },
   'pro-terraforming': {
@@ -109,7 +110,7 @@ export const SKILLS: Record<string, AgentSkill> = {
   'cozy-village': {
     kind: 'style',
     title: 'Cozy Village',
-    description: 'A small village district: one-of-each cabins with themed yards around a half-open green, a 3-wide spine with lanes, a farm band.',
+    description: 'A small village district: distinct cabins with themed yards around a half-open green, a 3-wide spine with lanes, a farm band.',
     body: cozyVillage,
   },
   'terraced-hill-park': {

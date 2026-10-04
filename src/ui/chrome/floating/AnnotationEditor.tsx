@@ -1,7 +1,5 @@
-import { helpTargetAttr } from '../modals/help/targets';
-import { viewportSize } from '../../../core/runtime/viewport-space';
 /*
- * AnnotationEditor.tsx — the plan-notes chrome that follows the map: the small verb row a selected
+ * The plan-notes chrome that follows the map: the small verb row a selected
  * note carries (delete, and merge for several zones).
  *
  * It anchors to the note through the ACTIVE view's projection (`cellToScreen`), so it stands over
@@ -13,9 +11,11 @@ import { viewportSize } from '../../../core/runtime/viewport-space';
  * the whole set as one undo entry, and merge, offered when everything selected is a zone, folds
  * the others' cells into the FIRST-picked zone, which keeps its tag, number and colour.
  */
+import { helpTargetAttr } from '../modals/help/targets';
+import { viewportSize } from '../../../core/runtime/viewport-space';
 import { useEffect, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { getActiveView, onActiveViewChange } from '../../../canvas/active-view';
+import { getActiveView, onProjectionChange } from '../../../canvas/active-view';
 import { zoneLabelAnchor, type MapAnnotation } from '../../../core/model/annotations';
 import { useT } from '../../../i18n/context';
 import { useEditorStore } from '../../../state/store';
@@ -39,19 +39,7 @@ export function AnnotationEditor() {
   const epoch = useEditorStore((s) => s.annotationsEpoch);
   // The projection is not reactive, so the camera and the view report through a tick.
   const [tick, setTick] = useState(0);
-  useEffect(() => {
-    const onMove = () => setTick((n) => n + 1);
-    eventBus.on('viewport-changed', onMove);
-    eventBus.on('cells-changed', onMove);
-    window.addEventListener('resize', onMove);
-    const offView = onActiveViewChange(onMove);
-    return () => {
-      eventBus.off('viewport-changed', onMove);
-      eventBus.off('cells-changed', onMove);
-      window.removeEventListener('resize', onMove);
-      offView();
-    };
-  }, [eventBus]);
+  useEffect(() => onProjectionChange(eventBus, () => setTick((n) => n + 1)), [eventBus]);
   void epoch;
   void tick;
 

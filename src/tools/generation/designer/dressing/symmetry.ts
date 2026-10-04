@@ -1,5 +1,5 @@
 /**
- * The SYMMETRY operator (对称是视野范围内的局部对称，不是整张地图对称).
+ * The SYMMETRY operator (symmetry is local to what one view takes in, never across the whole map).
  *
  * A kit composes a place and hands the marks here; the operator reflects them about the place's own
  * axis, so what a player sees standing in one region reads as one arrangement. The axis is the

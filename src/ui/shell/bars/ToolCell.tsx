@@ -1,5 +1,5 @@
 /*
- * ToolCell.tsx — one cell of a tool row: the plate, the drawing on it, its shortcut badge and, while
+ * One cell of a tool row: the plate, the drawing on it, its shortcut badge and, while
  * it is the chosen one, its name under it on the map.
  *
  * TWO ROWS ARE MADE OF THESE and they are the same row: the terrain bar's seven tools, and the
@@ -22,14 +22,15 @@
 import { useFrameReadableWeight } from '../use-frame-zoom';
 import { useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { btnReset, cursors, pressable } from '../../design/styles';
+import { btnReset, cursors, pressable, radii } from '../../design/styles';
 import { MAP_LABEL } from '../../design/tokens';
 import { helpTargetAttr } from '../../chrome/modals/help/targets';
 import type { HelpPageId } from '../../chrome/modals/help/page-schema';
 import type { Glyph } from '../frame';
 import { GlyphIcon } from '../GlyphIcon';
 import { captionShift, MODE, SCALE, TEXT } from '../units';
-import { STILL, useMotion } from '../motion/use-motion';
+import { useMotion } from '../motion/use-motion';
+import { NO_MOTION } from '../../design/motion';
 import { CHIP_FOLDED_W, CHIP_INSET } from './SettingChip';
 import { ShortcutBadge } from './bar-atoms';
 import { CAPTION, CELL, GLYPH, plateShape } from './terrain-cells';
@@ -128,7 +129,7 @@ export function ToolCell({ glyph, label, commandId, active, centre, onSelect, ca
         initial={false}
         animate={plateShape(active, grown)}
         transition={shape}
-        style={{ position: 'absolute', borderRadius: 999 }}
+        style={{ position: 'absolute', borderRadius: radii.pill }}
       />
       <motion.button
         type="button"
@@ -142,7 +143,7 @@ export function ToolCell({ glyph, label, commandId, active, centre, onSelect, ca
           width: CELL_BOX.w, height: CELL_BOX.h,
           // The plate under it is a pill, and a focus ring follows its own element's corner: on a
           // square box the ring cut straight through the shape the eye reads as the button.
-          borderRadius: 999,
+          borderRadius: radii.pill,
           display: 'flex', alignItems: 'center', justifyContent: 'center',
         }}
       >
@@ -158,12 +159,12 @@ export function ToolCell({ glyph, label, commandId, active, centre, onSelect, ca
             initial={{ width: CHIP_INSET }}
             animate={{ width: carryW }}
             exit={{ width: CHIP_INSET, transition: shape }}
-            transition={opening.current ? shape : STILL}
+            transition={opening.current ? shape : NO_MOTION}
             onAnimationComplete={() => { opening.current = false; }}
             style={{
               position: 'relative', alignSelf: 'stretch', flex: 'none',
               display: 'flex', alignItems: 'center', justifyContent: 'flex-end', overflow: 'hidden',
-              marginLeft: -CHIP_INSET, borderRadius: 999,
+              marginLeft: -CHIP_INSET, borderRadius: radii.pill,
             }}
           >
             <span ref={carryRef} style={{ display: 'flex', flex: 'none', padding: `0 ${CHIP_INSET}px` }}>

@@ -10,7 +10,6 @@ import knob from '../../../assets/shell/shelf-mountain/brush-size/ellipse-1.svg'
 import pip from '../../../assets/shell/shelf-mountain/brush-size/ellipse-2.svg';
 import tick from '../../../assets/shell/shelf-mountain/brush-size/ticks/ellipse-1.svg';
 
-export const READOUT_SIZE = Math.round(BRUSH.readoutSize * SCALE);
 export const SLIDER_LIFT = CELL_BOX.h / 2 - (BRUSH.centreY - BRUSH.track.y) * SCALE;
 
 export function BrushSizeSlider({ value, onChange, disabled }: {
@@ -29,7 +28,7 @@ export function BrushSizeSlider({ value, onChange, disabled }: {
       value={value}
       onChange={onChange}
       label={t('design.brush_size')}
-      valueText={t(value === 1 ? 'agent2.n_cells_one' : 'agent2.n_cells', { n: value })}
+      valueText={t(value === 1 ? 'units.cells_one' : 'units.cells', { n: value })}
       disabled={disabled}
     />
   );

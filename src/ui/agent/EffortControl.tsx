@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from 'react';
-import { AnimatePresence, motion, useIsPresent, useReducedMotionConfig } from 'framer-motion';
+import { AnimatePresence, useIsPresent } from 'framer-motion';
 import { catalogVersion, modelCapabilities, subscribeCatalog } from '../../agent/providers/model-catalog';
 import { thinkingChoices, thinkingChoiceKey } from '../../agent/providers/reasoning';
 import { useT } from '../../i18n/context';
@@ -7,7 +7,7 @@ import { INK } from '../design/tokens';
 import { roleFont } from '../design/text-weight';
 import { NOTE_STYLE } from './setup-parts';
 import { effortKey, useAgentPanelSettings } from './settings';
-import { framerMotion, NO_MOTION } from './motion';
+import { Disclosure } from '../primitives/Disclosure';
 
 const LEVEL_KEYS: Record<string, string> = {
   none: 'agent3.effort_none', minimal: 'agent3.effort_minimal', low: 'agent3.effort_low',
@@ -17,7 +17,6 @@ const LEVEL_KEYS: Record<string, string> = {
 export function EffortControl({ onChange }: { onChange: () => void }) {
   const t = useT();
   const settings = useAgentPanelSettings();
-  const reduced = useReducedMotionConfig() === true;
   useSyncExternalStore(subscribeCatalog, catalogVersion);
   const caps = modelCapabilities(settings.provider, settings.model[settings.provider], settings.customBaseUrl);
   const choices = thinkingChoices(caps, settings.provider);
@@ -28,19 +27,14 @@ export function EffortControl({ onChange }: { onChange: () => void }) {
   return (
     <AnimatePresence initial={false}>
       {choices.length > 0 && (
-        <motion.div key="effort" data-testid="manage-effort-reveal"
-          initial={reduced ? false : { height: 0, opacity: 0, marginBottom: 0 }}
-          animate={{ height: 'auto', opacity: 1, marginBottom: 14 }}
-          exit={{ height: 0, opacity: 0, marginBottom: 0 }}
-          transition={reduced ? NO_MOTION : framerMotion('panel.detail.unfold')}
-          style={{ overflow: 'hidden' }}>
+        <Disclosure key="effort" testId="manage-effort-reveal" spaceAfter={14}>
           <EffortFields label={label} current={current} count={choices.length}
             onPick={(value) => {
               const choice = choices[value - 1];
               settings.setEffort(choice ? thinkingChoiceKey(choice) : 'auto');
               onChange();
             }} />
-        </motion.div>
+        </Disclosure>
       )}
     </AnimatePresence>
   );

@@ -18,7 +18,7 @@ import { cursorCss, setSystemCursors } from '../../../assets/cursors/cursor-css'
 import { DOM_CURSORS, type CursorId, type DomCursorId } from '../../../core/runtime/cursor-spec';
 
 /** Write the properties. Idempotent, and safe to call before React mounts. */
-export function applyCursorVars(root: HTMLElement | null = typeof document === 'undefined' ? null : document.documentElement): void {
+function applyCursorVars(root: HTMLElement | null = typeof document === 'undefined' ? null : document.documentElement): void {
   if (!root) return;
   for (const id of Object.keys(DOM_CURSORS) as DomCursorId[]) {
     root.style.setProperty(DOM_CURSORS[id], cursorCss(id));

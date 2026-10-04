@@ -172,3 +172,63 @@ describe('storage that refuses to write', () => {
     expect(saveAgentSettings({ ...s, provider: 'openai' })).toBe(true);
   });
 });
+
+describe('vault upgrade over refusing storage', () => {
+  async function sealingModule() {
+    vi.resetModules();
+    vi.doMock('../../../core/runtime/vault', () => ({
+      sealSecret: (plain: string) => Promise.resolve({ iv: 'iv', ct: btoa(plain) }),
+      openSecret: (blob: { ct: string }) => Promise.resolve(atob(blob.ct)),
+      sealWithKey: () => Promise.resolve(null),
+      openWithKey: () => Promise.resolve(null),
+    }));
+    const mod = await import('../../../agent/security/key-storage');
+    backing.clear();
+    return mod;
+  }
+  const settle = async () => { for (let i = 0; i < 5; i++) await Promise.resolve(); };
+  const stored = () => JSON.parse(backing.get('petit-agent-settings-v1') ?? 'null') as { keys?: Record<string, string>; keysSealed?: unknown };
+
+  it('keeps mirroring the obfuscated keys when the sealed record could not be written', async () => {
+    const { loadAgentSettings, saveAgentSettings, markKeysHydrated } = await sealingModule();
+    markKeysHydrated();
+    const s = loadAgentSettings();
+    const setItem = vi.spyOn(localStorage, 'setItem');
+    saveAgentSettings({ ...s, keys: { openai: 'sk-first' } });
+    setItem.mockImplementation(() => { throw new DOMException('quota'); });
+    await settle();
+    setItem.mockRestore();
+    expect(stored().keysSealed).toBeUndefined();
+
+    saveAgentSettings({ ...s, keys: { openai: 'sk-first' }, oversight: 'strict' });
+    expect(stored().keys?.openai).toBeDefined();
+  });
+
+  it('keeps an unread sealed blob through a hydration over denied storage', async () => {
+    // A vault that cannot open the blob: the first hydration leaves it unread.
+    vi.resetModules();
+    vi.doMock('../../../core/runtime/vault', () => ({
+      sealSecret: () => Promise.resolve(null),
+      openSecret: () => Promise.resolve(null),
+      sealWithKey: () => Promise.resolve(null),
+      openWithKey: () => Promise.resolve(null),
+    }));
+    const { hydrateSealedKeys, loadAgentSettings, markKeysHydrated, saveAgentSettings } =
+      await import('../../../agent/security/key-storage');
+    backing.clear();
+    const SEALED = { iv: 'iv', ct: 'unreadable' };
+    backing.set('petit-agent-settings-v1', JSON.stringify({ provider: 'openai', keysSealed: SEALED }));
+    expect(await hydrateSealedKeys()).toBeNull();
+
+    // A second hydration cannot read storage at all, so it must not decide the blob is gone.
+    const getItem = vi.spyOn(localStorage, 'getItem').mockImplementation(() => { throw new DOMException('denied', 'SecurityError'); });
+    try {
+      expect(await hydrateSealedKeys()).toBeNull();
+    } finally {
+      getItem.mockRestore();
+    }
+    markKeysHydrated();
+    saveAgentSettings({ ...loadAgentSettings(), keys: {} });
+    expect(stored().keysSealed).toEqual(SEALED);
+  });
+});

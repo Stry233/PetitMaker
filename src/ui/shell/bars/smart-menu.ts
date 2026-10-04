@@ -4,11 +4,11 @@ import type { Glyph } from '../frame';
 import type { TerrainSurface } from './terrain-cells';
 
 /** The shelves that offer smart build: the three terrain surfaces, and the object shelf. */
-export type SmartSurface = TerrainSurface | 'object';
+type SmartSurface = TerrainSurface | 'object';
 
 import smartGlyph from '../../../assets/shell/shelf-mountain/tools/smart-build/polygon.svg';
 
-export interface SmartAction {
+interface SmartAction {
   id: MacroId;
   /** Localized action name. */
   labelKey: string;

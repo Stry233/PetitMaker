@@ -1,4 +1,3 @@
-// src/io/share/errors.ts
 export type ShareErrorCode =
   | 'not-an-image'          // bytes are not a recognized container (no PNG signature) / not decodable as one
   | 'no-payload'            // valid image, but no share code found in it

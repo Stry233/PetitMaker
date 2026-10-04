@@ -1,29 +1,20 @@
 import { helpAttributes, inheritedHelpTarget } from './help-target';
-import { viewportSize } from '../../core/runtime/viewport-space';
-/**
- * Shared single-choice dropdown. The open card portals to `body` so ancestor zoom and stacking
- * contexts cannot clip it, anchors in viewport coordinates, and opens above when needed. Escape and
- * outside presses close and consume the event. UI previews render the card inline with no global
- * listeners. Item lists use menu radio semantics; caller-defined bodies use a labelled group.
- */
-import { Fragment, useLayoutEffect, useRef, useState } from 'react';
-import type { CSSProperties, ReactNode } from 'react';
+import { Fragment, useId, useRef, type CSSProperties, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { motion } from 'framer-motion';
-import { ClickCatcher, clampLeft } from './ClickCatcher';
+import { ClickCatcher } from './ClickCatcher';
 import { useUiPreview } from './ui-preview';
+import { routeSurfaceKeyDown, SurfaceOwner, useSurfaceScope } from './surface-scope';
+import { useFloatingPosition } from './use-floating-position';
+import { useDenseScript, useDevicePixelRatio } from '../design/scale';
 import { colors, cursors, font, radii, shadows, springs, UNAVAILABLE, z } from '../design/styles';
-import { ACTIVE, INK, INSET, LINE, PANEL_EDGE, PLATE, PLATE_INK } from '../design/tokens';
-import { roleFont } from '../design/text-weight';
-import { visualRect, type VisualRect } from '../design/visual-rect';
+import { ACTIVE, INK, INSET, LINE, PANEL_EDGE, PANEL_EDGE_WIDTH, PLATE, PLATE_INK } from '../design/tokens';
+import { roleFont, weightVars } from '../design/text-weight';
 
-/** The air between the row and the card, and the margin the card keeps off every window edge. */
 const ANCHOR_GAP = 6;
-const EDGE_MARGIN = 8;
-/** Below this much room under the row the card stands above it instead. */
-const ROOM_FLOOR = 120;
-/** The tallest a list gets before it scrolls inside itself. */
 const MAX_HEIGHT = 320;
+const CARD_PADDING = 6;
+export const FLOAT_MENU_CONTENT_RADIUS = radii.lg - PANEL_EDGE_WIDTH - CARD_PADDING;
 
 export interface FloatMenuItem {
   id: string;
@@ -35,7 +26,7 @@ export interface FloatMenuItem {
   separated?: boolean;
 }
 
-export interface FloatMenuProps {
+interface FloatMenuProps {
   /** The closed row's content: the current value, in the caller's own words. */
   row: ReactNode;
   /** The list, where the list really is one choice per row. */
@@ -68,58 +59,28 @@ export function FloatMenu({
   'aria-label': ariaLabel, 'data-testid': testId,
 }: FloatMenuProps) {
   const rowRef = useRef<HTMLButtonElement>(null);
-  const [place, setPlace] = useState<Placement | null>(null);
-  // A PICTURED menu holds still: `PreviewFrame`'s `inert`/`pointer-events` containment is a
-  // property of the real DOM tree, so a body-level portal and a window listener both stand OUTSIDE
-  // it — an invisible catcher over the live app, an Escape eaten app-wide. Pictured, no listener is
-  // attached and the open card renders in flow under its row instead of in the portal layer.
   const pictured = useUiPreview();
-
-  // Measured in a LAYOUT effect: the card is positioned from the row's rect, and reading it after
-  // paint would show one frame of the card at the top-left corner of the window.
-  useLayoutEffect(() => {
-    if (!open || pictured) { setPlace(null); return undefined; }
-    const measure = () => { if (rowRef.current) setPlace(placeCard(visualRect(rowRef.current), zoom)); };
-    measure();
-    // The anchor moves with the page, and a card left behind is a card pointing at nothing.
-    window.addEventListener('resize', measure);
-    window.addEventListener('scroll', measure, true);
-    return () => {
-      window.removeEventListener('resize', measure);
-      window.removeEventListener('scroll', measure, true);
-    };
-  }, [open, zoom, pictured]);
-
-  // Capture at the window, which is earlier than every keydown listener the app registers, and the
-  // press is STOPPED: the menu is what the Escape was aimed at, and the surface behind it keeps
-  // standing until the next one.
-  useLayoutEffect(() => {
-    if (!open || pictured) return undefined;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape') return;
-      e.stopPropagation();
-      onClose();
-    };
-    window.addEventListener('keydown', onKey, true);
-    return () => window.removeEventListener('keydown', onKey, true);
-  }, [open, onClose, pictured]);
+  const menuId = useId();
+  const weights = weightVars(zoom, useDevicePixelRatio(), useDenseScript());
+  const { ref: cardRef, placement, style } = useFloatingPosition({ open: open && !pictured, anchor: rowRef, zoom, width: 'anchor', maxHeight: MAX_HEIGHT, gap: ANCHOR_GAP });
+  const scope = useSurfaceScope({ open: open && !pictured && !!placement, root: cardRef, trigger: rowRef, onClose, focus: body ? 'contain' : 'menu' });
 
   const card = (box: CSSProperties, origin: string) => (
     <motion.div
-      // A CARD OF `menuitem` ROWS IS A MENU; a card the caller filled itself is not. The
-      // rows a `body` brings carry a second control of their own (that is what `body` is
-      // for), so calling it a menu would promise every child is a menuitem and leave a
-      // screen reader announcing an empty one. A labelled GROUP is what it is.
+      ref={cardRef}
+      id={menuId}
+      tabIndex={-1}
       {...helpAttributes(inheritedHelpTarget(rowRef.current))}
       role={body ? 'group' : 'menu'}
       aria-label={ariaLabel}
+      onKeyDown={pictured ? undefined : routeSurfaceKeyDown}
       initial={{ opacity: 0, scale: 0.94 }}
       animate={{ opacity: 1, scale: 1 }}
       transition={springs.stiff}
       style={{ ...cardStyle, ...box, transformOrigin: origin }}
     >
       {header ? <div style={headStyle}>{header}</div> : null}
-      {body}
+      <SurfaceOwner.Provider value={scope}>{body}</SurfaceOwner.Provider>
       {items.map((item) => (
         <Fragment key={item.id}>
           {item.separated ? <div style={dividerStyle} /> : null}
@@ -149,6 +110,8 @@ export function FloatMenu({
         data-testid={testId}
         aria-haspopup={body ? true : 'menu'}
         aria-expanded={open}
+        aria-controls={open ? menuId : undefined}
+        onKeyDown={(event) => { if (!open && ['ArrowDown', 'ArrowUp'].includes(event.key)) { event.preventDefault(); onOpen(); } }}
         aria-label={ariaLabel}
         onClick={() => (open ? onClose() : onOpen())}
         style={rowStyle}
@@ -161,55 +124,17 @@ export function FloatMenu({
           {card({ position: 'static', maxHeight: MAX_HEIGHT }, 'top center')}
         </div>
       ) : null}
-      {open && place ? createPortal(
+      {open && !pictured ? createPortal(
         <>
           <ClickCatcher onDismiss={onClose} zIndex={z.popover} />
-          <div style={{ ...layerStyle, zoom }}>
-            {card(place.box, place.above ? 'bottom center' : 'top center')}
+          <div style={{ ...layerStyle, zoom, ...weights }}>
+            {card(style, placement?.above ? 'bottom center' : 'top center')}
           </div>
         </>,
         document.body,
       ) : null}
     </>
   );
-}
-
-/** Where the card stands, in the layer's own (zoom-divided) coordinates. */
-interface Placement { box: CSSProperties; above: boolean }
-
-/**
- * The card under its row, or above it where the window has no room below. Widths and offsets are
- * clamped in VISUAL px — what actually occupies screen is the css length times the zoom — and then
- * divided back into the zoomed layer's coordinates.
- */
-function placeCard(anchor: VisualRect, zoom: number): Placement {
-  // THE AIR IS A DESIGNED LENGTH, so it is spent in the CARD's own px and converted like every
-  // other one. Added to a visual rect and divided with it, it came out at ANCHOR_GAP SCREEN px
-  // whatever the interface scale — 8 frame px of air at uiZoom 0.6 and 2.7 at 1.8, the card three
-  // times tighter to its row at the top of the range than at the bottom. Here it is the room test's
-  // own term, which is measured in visual px, so the gap is scaled INTO it.
-  const gapVisual = ANCHOR_GAP * zoom;
-  const below = viewportSize().height - anchor.bottom - gapVisual - EDGE_MARGIN;
-  const above = anchor.top - gapVisual - EDGE_MARGIN;
-  const flip = below < ROOM_FLOOR && above > below;
-  const room = Math.max(ROOM_FLOOR, flip ? above : below);
-  const width = anchor.width;
-  const left = clampLeft(anchor.left, width / zoom, zoom, EDGE_MARGIN);
-  const maxHeight = Math.min(MAX_HEIGHT * zoom, room);
-  return {
-    above: flip,
-    box: {
-      left: left / zoom,
-      width: width / zoom,
-      maxHeight: maxHeight / zoom,
-      // A flipped card grows UPWARD from the row, so its FOOT is what is pinned and the height cap
-      // above keeps its head inside the window. Pinning the top instead would make the card's own
-      // length decide where it starts, which moves it every time the list changes.
-      ...(flip
-        ? { bottom: (viewportSize().height - anchor.top) / zoom + ANCHOR_GAP }
-        : { top: anchor.bottom / zoom + ANCHOR_GAP }),
-    },
-  };
 }
 
 /** The chevron that turns over when the list opens. */
@@ -229,16 +154,6 @@ function Chevron({ open }: { open: boolean }) {
   );
 }
 
-/**
- * One row of the list. The ACTIVE fill is the whole of the current-row mark: no tick, no rule, no
- * second colour, since the app already answers "this is the chosen one" in that one yellow.
- *
- * AND NO SECOND WEIGHT EITHER, which is the same rule and was being broken by the line below it: the
- * active row took the `menu` rung and every other row the `label` rung one step lighter, so a list
- * of providers stood a full weight under the same names on the setup screen's own confirmed row, and
- * "which is chosen" was said twice while "these are all choices" was said at two ranks. `menu` is
- * the rung for exactly this — the chosen row of a menu — and every row here is a choice being named.
- */
 export function floatMenuItemStyle(active: boolean, disabled = false): CSSProperties {
   return {
     display: 'flex',
@@ -278,17 +193,10 @@ const rowStyle: CSSProperties = {
   borderRadius: radii.md,
   padding: '10px 12px',
   fontFamily: font.family,
-  // The CLOSED row shows the value that is chosen, so it is the same rung as the chosen row inside
-  // the card. Drawn at `label` it read a step under the pills and the footer beside it.
   ...roleFont('menu'),
   cursor: cursors.clickable,
 };
 
-/** The row's own content area: it FILLS the row (`flex: 1`) rather than being pushed left by an auto
- *  margin, so a caller whose row has a far-right datum of its own (a count, a shortcut) can put one
- *  there with a flex child of this box. BLOCK, not inline: a plain string still ellipsizes here
- *  (block + hidden + nowrap is what draws the ellipsis at all), and an inline box under a scaled font
- *  would be baseline-aligned to the host's unscaled strut. */
 const rowValue: CSSProperties = {
   flex: '1 1 auto',
   minWidth: 0,
@@ -298,9 +206,6 @@ const rowValue: CSSProperties = {
   whiteSpace: 'nowrap',
 };
 
-/** The layer: the whole viewport at the popover rung, taking NO pointer event of its own, so the
- *  card is the only thing in it a press can land on. The dismissing press lands on the
- *  `ClickCatcher` a rung below, which is what closes the menu. */
 const layerStyle: CSSProperties = {
   position: 'fixed',
   inset: 0,
@@ -308,14 +213,7 @@ const layerStyle: CSSProperties = {
   pointerEvents: 'none',
 };
 
-/**
- * The card. BORDER-BOX, and that is what makes the placement below mean what it says: the card is
- * given the ROW's width and the room the window has left, and its own padding and border are inside
- * both. Content-box put them outside instead — the card came out 14px wider than the row it hangs
- * from, so its right corners stood past the row and past the clamp that is supposed to hold them off
- * the window's edge, and 14px taller than the room, so its bottom corners were cut off by the window
- * itself. A rounded card with two of its corners clipped square is how that read on the glass.
- */
+/** Placement caps include padding and border. */
 const cardStyle: CSSProperties = {
   position: 'fixed',
   boxSizing: 'border-box',
@@ -326,7 +224,7 @@ const cardStyle: CSSProperties = {
   background: PLATE,
   border: PANEL_EDGE,
   borderRadius: radii.lg,
-  padding: 6,
+  padding: CARD_PADDING,
   boxShadow: shadows.menu,
   overflowY: 'auto',
 };

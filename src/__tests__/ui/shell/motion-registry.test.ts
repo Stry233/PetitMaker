@@ -1,3 +1,4 @@
+import ts from 'typescript';
 /**
  * The motion registry's own contract.
  *
@@ -94,37 +95,85 @@ describe('the motion registry', () => {
 });
 
 /**
- * A CALL SITE NAMES A MOTION, IT DOES NOT CHOOSE ONE.
- *
- * Modelled on `__tests__/core/prefs.test.ts`, which fails on a storage key written outside its one
- * table. The same argument applies: a number chosen at a call site is a decision nobody can find,
- * and chrome drifts exactly that way. The registry's own directory is exempt, because that is
- * where the numbers are supposed to be.
+ * A setting sample is the one motion allowed past the reduced-motion gate: Framer's nearest
+ * `MotionConfig` wins, so a nested `reducedMotion` override lifts the gate for its subtree. Only the
+ * root configs of the two editions and `MotionSample` may set one, and `MotionSample` plays only
+ * sample entries.
  */
-describe('no motion is chosen at a call site', () => {
-  const OFFENDER = /duration:\s*[0-9.]+|stiffness:\s*[0-9]+|damping:\s*[0-9]+|cubic-bezier\(|ease:\s*\[/;
+describe('setting samples and the reduced-motion gate', () => {
+  const GATE_OWNERS = ['src/App.tsx', 'src/ui/lite/LiteApp.tsx', 'src/ui/shell/motion/MotionSample.tsx'];
+  const sampleIds = new Set(entries.filter(([, m]) => m.tier === 'sample').map(([id]) => id));
+  const tsx = sources('src').filter(({ path }) => !path.startsWith('src/__tests__/'));
 
-  /** Motion parameters belong in the shared registry or in a component's dedicated choreography
-   * table. Call sites select named motions without defining their timing. */
-  const TABLES = [
-    '/ui/shell/motion/', '/ui/agent/motion.ts', '/ui/agent/character/poses.ts',
-    '/ui/agent/sketchbook/sketch-motion.ts',
-  ];
-
-  function offenders(dir: string): string[] {
-    return sources(dir)
-      .filter(({ path }) => !TABLES.some((t) => `/${path}`.includes(t)))
-      .flatMap(({ path, text }) => text.split('\n').flatMap((line, i) => (
-        OFFENDER.test(line) ? [`${path}:${i + 1}${line.trim()}`] : []
-      )));
-  }
-
-  it('every curve and duration under ui/shell comes from the registry', () => {
-    expect(offenders('src/ui/shell')).toEqual([]);
+  it('declares what each sample previews', () => {
+    expect(sampleIds.size).toBeGreaterThan(0);
+    for (const [id, m] of entries) {
+      if (m.tier === 'sample') expect(m.previews.trim().length, `${id} previews nothing`).toBeGreaterThan(0);
+    }
   });
 
-  /** The panel is chrome the shell stands beside, held to the shell's own rule. */
-  it('every curve and duration under ui/agent comes from a declaration', () => {
-    expect(offenders('src/ui/agent')).toEqual([]);
+  it('lets only the root config and MotionSample set reducedMotion', () => {
+    const setters = tsx.filter(({ text }) => /<MotionConfig\b[^>]*\breducedMotion=/.test(text)).map(({ path }) => path).sort();
+    expect(setters).toEqual([...GATE_OWNERS].sort());
+  });
+
+  it('opts out of the gate only for registry-declared samples', () => {
+    const played: string[] = [];
+    const failures: string[] = [];
+    for (const { path, text } of tsx) {
+      const file = ts.createSourceFile(path, text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+      const visit = (node: ts.Node) => {
+        if ((ts.isJsxSelfClosingElement(node) || ts.isJsxOpeningElement(node)) && node.tagName.getText(file) === 'MotionSample') {
+          const id = node.attributes.properties.find((a) => ts.isJsxAttribute(a) && a.name.getText(file) === 'id');
+          const literal = id && ts.isJsxAttribute(id) && id.initializer && ts.isStringLiteral(id.initializer) ? id.initializer.text : null;
+          if (literal === null || !sampleIds.has(literal)) failures.push(`${path}: ${node.getText(file)}`);
+          else played.push(literal);
+        }
+        // A sample id anywhere else would play it through a gated path, or a gated motion as a sample.
+        if (ts.isStringLiteralLike(node) && sampleIds.has(node.text) && !path.includes('/shell/motion/')
+          && !(ts.isJsxAttribute(node.parent) && (node.parent.parent.parent as ts.JsxOpeningLikeElement).tagName.getText(file) === 'MotionSample')) {
+          failures.push(`${path}: ${node.getText(file)} outside MotionSample`);
+        }
+        ts.forEachChild(node, visit);
+      };
+      visit(file);
+    }
+    expect(failures).toEqual([]);
+    expect(new Set(played)).toEqual(sampleIds);
+  });
+});
+
+/** Drawing-specific choreography owns its timings; shared controls use named declarations. */
+describe('motion call sites', () => {
+  const tables = [
+    '/ui/design/styles.ts', '/ui/design/motion.ts', '/ui/shell/motion/',
+    '/ui/agent/character/poses.ts', '/ui/agent/sketchbook/sketch-motion.ts',
+    '/ui/chrome/modals/keyboard/motion.ts', '/ui/chrome/modals/help/figures/',
+    '/ui/hints/', // The unmounted hint illustrations retain their drawing choreography.
+  ];
+
+  it('uses declared timings and interaction profiles across every UI owner', () => {
+    const failures: string[] = [];
+    for (const { path, text } of sources('src/ui')) {
+      if (tables.some((table) => `/${path}`.includes(table))) continue;
+      const file = ts.createSourceFile(path, text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+      const fail = (node: ts.Node) => failures.push(`${path}:${file.getLineAndCharacterOfPosition(node.getStart(file)).line + 1} ${node.getText(file)}`);
+      const visit = (node: ts.Node) => {
+        if (ts.isPropertyAssignment(node) && /^(duration|stiffness|damping|mass)$/.test(node.name.getText(file))
+          && ts.isNumericLiteral(node.initializer) && Number(node.initializer.text) !== 0) fail(node);
+        if (ts.isStringLiteralLike(node) && /(?:[a-z-]+)\s+[.\d]+m?s\s+(?:ease|linear|cubic-bezier)/.test(node.text)) fail(node);
+        if (ts.isJsxAttribute(node) && /^(whileHover|whileTap)$/.test(node.name.getText(file)) && node.initializer) {
+          const scan = (part: ts.Node) => {
+            if (ts.isPropertyAssignment(part) && /^(scale|x|y|rotate|opacity)$/.test(part.name.getText(file))
+              && (ts.isNumericLiteral(part.initializer) || ts.isPrefixUnaryExpression(part.initializer))) fail(part);
+            ts.forEachChild(part, scan);
+          };
+          scan(node.initializer);
+        }
+        ts.forEachChild(node, visit);
+      };
+      visit(file);
+    }
+    expect(failures).toEqual([]);
   });
 });

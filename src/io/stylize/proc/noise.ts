@@ -1,5 +1,5 @@
 /*
- * noise.ts — the only source of randomness a procedural pack may use.
+ * The only source of randomness a procedural pack may use.
  *
  * Every value here is a pure function of its seed, because a pack must draw the same picture on
  * every machine and on every re-open. `Math.random` and any clock reading are therefore absent by
@@ -86,30 +86,4 @@ export function makeNoise(seed: number): NoiseField {
   }
 
   return { at: noise2, fbm };
-}
-
-/** A 1-D fractal noise, for wobbling a boundary along its own arc length. Correlated by
- *  construction: neighbouring samples share octaves, so an outline waves instead of buzzing. */
-export function makeNoise1(seed: number): (t: number) => number {
-  const N = 1024;
-  const rnd = mulberry32(seed);
-  const table = new Float32Array(N);
-  for (let i = 0; i < N; i++) table[i] = rnd() * 2 - 1;
-  const smooth = (t: number): number => t * t * (3 - 2 * t);
-  return (x: number): number => {
-    let amp = 1;
-    let freq = 1;
-    let sum = 0;
-    let norm = 0;
-    for (let o = 0; o < 3; o++) {
-      const xx = x * freq;
-      const i = Math.floor(xx);
-      const t = smooth(xx - i);
-      sum += amp * (table[i & (N - 1)]! * (1 - t) + table[(i + 1) & (N - 1)]! * t);
-      norm += amp * amp;
-      amp *= 0.5;
-      freq *= 2.1;
-    }
-    return sum / Math.sqrt(norm);
-  };
 }

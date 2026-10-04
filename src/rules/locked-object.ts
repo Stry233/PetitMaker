@@ -1,11 +1,9 @@
 /**
  * V-LOCK-02: Locked Object Immutability (pre-command)
  *
- * Rejects removing an immutable (locked) object — today the central plaza
- * (createPlazaObject sets locked:true). The `locked` flag already gates
- * selection, layers, serialization and rendering; this rule extends that
- * immutability to the RemoveObject command path so no code (e.g. a bulk
- * clear, or a future tool) can dissolve the plaza's no-build footprint.
+ * Rejects removing an immutable (locked) object, such as the central plaza
+ * (createPlazaObject sets locked:true), on the RemoveObject command path, so
+ * no caller (a bulk clear, any tool) can dissolve a locked footprint.
  *
  * The plaza's no-build protection itself is enforced by V-PLACE-OVERLAP
  * (objects) and V-PLACE-BLOCK (terrain) against its footprint — but only

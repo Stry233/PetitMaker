@@ -6,14 +6,14 @@
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { motion, useReducedMotionConfig } from 'framer-motion';
 import { Icon, type IconId } from './icons';
-import { edge, inkTint, tape, tickInk } from './tokens';
+import { edge, panelTint, tape, tickInk } from './tokens';
 import { ACTIVE, INK, INSET, PLATE, PLATE_INK } from '../design/tokens';
-import { buttonMotion, colors, cursors, font } from '../design/styles';
+import { buttonMotion, colors, cursors, font, radii } from '../design/styles';
 import { roleFont } from '../design/text-weight';
-import { windowFooterPrimary, windowPill, type PillVariant, type WindowSurface } from '../design/window-skin';
+import { windowFooterPrimary } from '../design/window-skin';
 import { MOTIONS } from '../shell/motion/registry';
 import { Spinner } from '../primitives/Spinner';
-import { amplitude, cssMotion, framerMotion } from './motion';
+import { amplitude, cssMotion, framerMotion } from '../design/motion';
 import { useT } from '../../i18n/context';
 import { openHelp } from '../chrome/modals/help/targets';
 import type { HelpPageId } from '../chrome/modals/help/page-schema';
@@ -34,9 +34,7 @@ export function HelpLink({ page, anchor }: { page: HelpPageId; anchor?: string }
   );
 }
 
-/** A SCREEN ARRIVING IN THE JOB ZONE for a press (`panel.zone.swap`): the gear's manage card, the
- *  connection form, the keyless office. Entrance only — the zone's ternary replaces screens
- *  synchronously, so the arrival is the whole gesture, and every screen makes the same one. */
+/** Incoming screens share one reveal; outgoing forms unmount before their controls can be reused. */
 export function zoneEnter(reduced: boolean): {
   initial: false | { opacity: number; y: number };
   animate: { opacity: number; y: number };
@@ -48,7 +46,6 @@ export function zoneEnter(reduced: boolean): {
     transition: framerMotion('panel.zone.swap'),
   };
 }
-
 
 /** The construction tape shares its cycle duration with the motion registry. */
 const CRAWL_SECONDS = MOTIONS['panel.tape.crawl'].duration;
@@ -80,7 +77,7 @@ export function TapeBar({ mode, held = false }: { mode: TapeMode; held?: boolean
     display: 'block',
     position: 'relative',
     height: '100%',
-    borderRadius: 999,
+    borderRadius: radii.pill,
     width: `${fraction * 100}%`,
     opacity: held ? HELD_OPACITY : undefined,
     transition: cssMotion('panel.tape.fill', ['width'], reduced),
@@ -108,7 +105,7 @@ export function TapeBar({ mode, held = false }: { mode: TapeMode; held?: boolean
       // wants more room than the box has shrinks every item with a default `flex-shrink`, and a 10px
       // band with `min-height: auto` resolving to 0 is the first thing to vanish entirely.
       style={{
-        height: 10, flex: '0 0 auto', borderRadius: 999,
+        height: 10, flex: '0 0 auto', borderRadius: radii.pill,
         background: tape.track, overflow: 'hidden', boxShadow: 'none',
       }}
     >
@@ -200,78 +197,6 @@ export function TickDot({ status }: { status: OpRow['status'] }) {
         ? <Spinner size={MARK_SIZE} color={INK} />
         : <Icon id={spec.icon} size={MARK_SIZE} />}
     </motion.span>
-  );
-}
-
-/* ── the window pill, ported into the panel's own paper ─────────────────── */
-
-/**
- * `windowPill`'s three fills, worn by a panel control. `on` names the
- * surface the pill itself stands on, exactly as `windowPill` reads it: a `quiet` pill flips fill to
- * stay legible on either cream level, `active`/`danger` bring their own colour regardless.
- *
- * It uses the shared `buttonMotion` hover and press treatment. `animations.css` states that there
- * are no global button rules — components own their hover and tap — so a plain `<button>` here was
- * motionless while the retry pill beside it, being a `TimedButton`, sprang: two press idioms on one
- * card. A DISABLED pill takes none of it: a control that refuses must not answer the pointer.
- */
-export function Pill({
-  variant = 'quiet',
-  on = 'plate',
-  disabled = false,
-  hoverFill,
-  onClick,
-  children,
-  style,
-  'data-testid': testId = 'pill',
-  'data-demoted': demoted,
-}: {
-  variant?: PillVariant;
-  on?: WindowSurface;
-  disabled?: boolean;
-  /** Added AFTER the pill's own, for a wrapper that has something to say about the box rather than
-   *  about the pill: `primitives/InlineConfirm` hands its trigger the beat the fill crosses on and the
-   *  clip the growth is revealed behind. Not a way to restyle a pill. */
-  style?: CSSProperties;
-  /** A fill the pill takes under the pointer, on top of the house press. The gate family's own
-   *  idiom: a quiet pill inside a gate card answers a hover with the ask colour, which is the one
-   *  place that colour appears below the dock. */
-  hoverFill?: string;
-  onClick?: () => void;
-  children?: ReactNode;
-  /** Overrides the generic `pill` id: a screen with several of these needs to name each one, and a
-   *  caller wrapping every pill in a labelled box just to select it would move the layout. */
-  'data-testid'?: string;
-  /** Whether this pill has stepped down for a control that now owns the press (`AskPrimary`'s own
-   *  demotion, said in the same attribute so one reader answers for the whole gate family). */
-  'data-demoted'?: string;
-}) {
-  const [hovered, setHovered] = useState(false);
-  const lit = hoverFill !== undefined && hovered && !disabled;
-  return (
-    <motion.button
-      type="button"
-      data-testid={testId}
-      {...(demoted !== undefined ? { 'data-demoted': demoted } : {})}
-      disabled={disabled}
-      onClick={onClick}
-      onPointerEnter={hoverFill === undefined ? undefined : () => setHovered(true)}
-      onPointerLeave={hoverFill === undefined ? undefined : () => setHovered(false)}
-      whileHover={disabled ? undefined : buttonMotion.whileHover}
-      whileTap={disabled ? undefined : buttonMotion.whileTap}
-      transition={buttonMotion.transition}
-      style={{
-        display: 'inline-flex',
-        alignItems: 'center',
-        gap: 6,
-        boxShadow: 'none',
-        ...windowPill(variant, disabled, on),
-        ...(lit ? { background: hoverFill } : {}),
-        ...style,
-      }}
-    >
-      {children}
-    </motion.button>
   );
 }
 
@@ -369,7 +294,7 @@ export function CountPill({ total, shown, expanded, onClick }: { total: number; 
         color: PLATE_INK,
         background: INSET,
         border: 'none',
-        borderRadius: 999,
+        borderRadius: radii.pill,
         padding: '3px 10px',
         cursor: onClick ? cursors.clickable : cursors.default,
         boxShadow: 'none',
@@ -405,7 +330,7 @@ export function ResultChip({ tone, children }: { tone?: 'warn' | 'bad'; children
         fontFamily: font.family,
         color: ink,
         background: INSET,
-        borderRadius: 999,
+        borderRadius: radii.pill,
         padding: '2px 6px',
         overflow: 'hidden',
         textOverflow: 'ellipsis',
@@ -479,7 +404,7 @@ export function PinKnob({
   );
 }
 
-export interface IconButtonProps {
+interface IconButtonProps {
   testId: string;
   icon: IconId;
   label: string;
@@ -529,7 +454,7 @@ export function IconButton({
         // made. Named only in the disabled branch, so the sheet still gives the live seat its hand.
         ...(disabled ? { cursor: cursors.default } : {}),
         color: door && !lit ? colors.brownText : INK,
-        background: lit ? ACTIVE : inkTint.chip,
+        background: lit ? ACTIVE : panelTint.chip,
       }}
     >
       <Icon id={icon} size={16} />

@@ -1,5 +1,5 @@
 /*
- * zoom-corrected-radius.ts — the corner of a box that is being LAYOUT-ANIMATED inside a zoomed frame.
+ * The corner of a box that is being LAYOUT-ANIMATED inside a zoomed frame.
  *
  * A layout animation does not resize an element, it SCALES one, and a scaled corner is an ellipse.
  * Framer fixes that by rewriting a px `borderRadius` as a PERCENTAGE of the box it is projecting,

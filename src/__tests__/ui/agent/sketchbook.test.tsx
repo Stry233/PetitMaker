@@ -6,7 +6,7 @@ import { act, cleanup, fireEvent, render, within } from '@testing-library/react'
 import { MotionConfig } from 'framer-motion';
 
 import type { PanelView } from '../../../agent/core/project-view';
-import { I18nProvider } from '../../../i18n/context';
+import { I18nProvider, translateFor } from '../../../i18n/context';
 import { translations } from '../../../i18n/translations';
 import { useEditorStore } from '../../../state/store';
 import { DreamOffice } from '../../../ui/agent/DreamOffice';
@@ -62,11 +62,7 @@ const GROVE: SketchIdea = {
 
 /** The words the card says for an idea, resolved exactly as the card resolves them. */
 function said(idea: SketchIdea, which: 'capKey' | 'orderKey'): string {
-  const en = translations.en;
-  const dir = en[idea.dirKey]!;
-  return (en[idea[which]] ?? '')
-    .replace('{dir}', dir)
-    .replace('{n}', String(idea.params.n));
+  return translateFor('en', idea[which], { dir: translateFor('en', idea.dirKey), ...idea.params });
 }
 
 let animate: ReturnType<typeof vi.fn>;
@@ -104,12 +100,10 @@ describe('the card only stands where there is something to say', () => {
     expect(queryByTestId('sketch-card')).toBeNull();
   });
 
-  it('draws the first idea, its caption and the two lines around it', () => {
+  it('draws the first idea with its caption', () => {
     const { getByTestId } = mount([LANE, POND]);
     expect(getByTestId('sketch-card').getAttribute('data-kind')).toBe('lane');
     expect(getByTestId('sketch-caption').textContent).toBe(said(LANE, 'capKey'));
-    expect(getByTestId('sketchbook').textContent).toContain(translations.en['agent3.sketch_say']);
-    expect(getByTestId('sketchbook').textContent).toContain(translations.en['agent3.sketch_note']);
   });
 
   /** The ground is the map's own photograph, and until the renderer answers the card WAITS: no drawn
@@ -351,7 +345,7 @@ describe('the panel seats the card', () => {
     // is what stands last.
     const seat = getByTestId('sketch-seat');
     expect(seat.contains(card)).toBe(true);
-    expect(zone.lastElementChild, 'nearest the composer').toBe(seat);
+    expect(zone.querySelector('[data-scroll-content]')!.lastElementChild, 'nearest the composer').toBe(seat);
   });
 
   it('keeps it last with the state\'s own news above it', () => {
@@ -364,7 +358,7 @@ describe('the panel seats the card', () => {
     const { getByTestId } = stand({ jobs: [past] }, { filed: new Set([1]) });
     const zone = getByTestId('panel-job-zone');
     expect(zone.contains(getByTestId('history-strip')), 'the news reads first').toBe(true);
-    expect(zone.lastElementChild).toBe(getByTestId('sketch-seat'));
+    expect(zone.querySelector('[data-scroll-content]')!.lastElementChild).toBe(getByTestId('sketch-seat'));
     expect(getByTestId('sketch-seat').contains(getByTestId('sketch-marker'))).toBe(true);
   });
 

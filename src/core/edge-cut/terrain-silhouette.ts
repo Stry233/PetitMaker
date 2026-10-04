@@ -1,5 +1,5 @@
 /*
- * terrain-silhouette.ts — the ONE geometric primitive under all edge-cut logic.
+ * The ONE geometric primitive under all edge-cut logic.
  *
  * A cell at elevation N is a vertical STACK of layers, so every trim question is really a question
  * about the silhouette of solid terrain at a specific layer e:
@@ -43,8 +43,17 @@ export const EDGE_NEIGHBORS: readonly (readonly (readonly [number, number])[])[]
  *  from-empty gamma (no base block, like a tier-1 fillet at any tier), N-1 when it rounds a genuinely real
  *  lower block. Falls back to elevation-1 for patches saved before patchBase existed. A real (non-patch)
  *  block contributes its full elevation. An edge cut never changes THIS — only the corners. */
-export function structuralTop(t: TerrainCell): number {
-  return t.patchOnly ? (t.patchBase ?? t.elevation - 1) : t.elevation;
+export function structuralTop(t: StackFields): number {
+  return t.patchOnly ? patchSupport(t) : t.elevation;
+}
+
+/** The fields of a terrain stack that decide its structural top, as a cell or a decoded share record carries them. */
+export interface StackFields { elevation: number; patchOnly?: boolean; patchBase?: number | null }
+
+/** The real support tier under a Γ patch's cosmetic fillet: its `patchBase`, or elevation-1 for a
+ *  patch saved before `patchBase` existed. Meaningful only for a `patchOnly` cell. */
+export function patchSupport(t: Pick<StackFields, 'elevation' | 'patchBase'>): number {
+  return t.patchBase ?? t.elevation - 1;
 }
 
 /** Does this terrain hold solid mass of `type` at layer `e`? Mountain at elevation N fills layers 1..N;
@@ -125,7 +134,7 @@ export function cornerEdgeCoverTier(
  */
 export function enclosedGap(state: GridState, x: number, y: number): boolean {
   const t = getCell(state.cells, x, y)?.terrain;
-  const bare = !t || t.type === TerrainType.None || (!!t.patchOnly && (t.patchBase ?? t.elevation - 1) < 1);
+  const bare = !t || t.type === TerrainType.None || (!!t.patchOnly && patchSupport(t) < 1);
   if (!bare) return false;
   return NEIGHBORS4.every(([dx, dy]) => surfaceElevation(getCell(state.cells, x + dx, y + dy)?.terrain) >= 1);
 }

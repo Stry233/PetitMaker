@@ -5,7 +5,7 @@
 // that leads back to it.
 import { describe, it, expect } from 'vitest';
 import { MAP_TEMPLATES } from '../../../../../config/maps';
-import type { MapTemplate, Rect } from '../../../../../core/model/types';
+import type { MapTemplate, Rect, Rotation } from '../../../../../core/model/types';
 import { getCatalogItem } from '../../../../../state/catalog';
 import { getRotatedSize } from '../../../../../state/object-geometry';
 import { planAnchors, type AnchorPlan } from '../../../../../tools/generation/designer/places/anchors';
@@ -26,7 +26,7 @@ function planned(seed: number, template: MapTemplate, richness = DEFAULT_RICHNES
 }
 
 /** A placement's footprint, as the rules will read it (rotated). */
-function footprint(catalogId: string, position: { x: number; y: number }, rotation: 0 | 90 | 180 | 270): Rect {
+function footprint(catalogId: string, position: { x: number; y: number }, rotation: Rotation): Rect {
   const item = getCatalogItem(catalogId)!;
   const { w, h } = getRotatedSize(item, rotation);
   return { x: position.x, y: position.y, w, h };

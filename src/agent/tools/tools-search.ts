@@ -16,9 +16,10 @@ import { getCatalogItem, getCatalogByCategory } from '../../state/catalog';
 import { surfaceElevation } from '../../core/edge-cut/terrain-silhouette';
 import { detectBridgeSpan } from '../../core/model/bridge-span';
 import { footprintCells, objectRect } from '../../state/object-geometry';
-import { type AgentToolDeps, type ToolResultBody, argError, waterSpanTrait } from './tools-common';
+import { type AgentToolDeps, type ToolResultBody, argError } from './tools-common';
 import { pointInput } from './geometry';
 import { objectPlacementCommand } from '../../tools/objects';
+import { findTrait } from '../../core/model/traits';
 
 /* ── search: flat areas a footprint fits on ─────────────────────────── */
 
@@ -117,7 +118,7 @@ export function findBridgeSites(deps: AgentToolDeps, input: Record<string, unkno
   const state = deps.getState();
   const catalogId = String(input.catalogId ?? 'bridge-plank');
   const item = getCatalogItem(catalogId);
-  const trait = waterSpanTrait(item);
+  const trait = findTrait(item, 'waterSpan');
   if (!item || !trait) return argError(`"${catalogId}" is not a bridge (no waterSpan trait).`, 'catalogId: "bridge-plank"');
   const limit = Math.min(Math.max(Number(input.limit) || 6, 1), 10);
   const near = pointInput(input, 'near') ?? { x: Math.floor(state.template.width / 2), y: Math.floor(state.template.height / 2) };
@@ -165,7 +166,7 @@ function scanRampSites(deps: AgentToolDeps, near: MacroCoord, limit: number): Ra
   // Collect ramp items grouped by their heightDrop.layers value.
   const rampsByDrop = new Map<number, string[]>();
   for (const item of getCatalogByCategory(ItemCategory.Ramp)) {
-    const trait = item.traits.find((t): t is Extract<typeof t, { type: 'heightDrop' }> => t.type === 'heightDrop');
+    const trait = findTrait(item, 'heightDrop');
     if (!trait) continue;
     const list = rampsByDrop.get(trait.layers) ?? [];
     list.push(item.id);

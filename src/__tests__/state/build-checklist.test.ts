@@ -44,7 +44,7 @@ function generated(): { state: GridState; exec: CommandExecutor } {
   clearAllObjects(state, run);
   clearAllTerrain(state, run);
   generateTerrain(config, state, run, exec.getRegistry());
-  exec.commitStrokeGroup(start);
+  exec.commitStroke(start);
   return { state, exec };
 }
 
@@ -161,7 +161,7 @@ describe('road surfaces', () => {
     let n = 0;
     for (const material of getRoadMaterials()) {
       const cmd: PlaceObjectCommand = {
-        type: CommandType.PlaceObject, timestamp: 0, loadValue: material.loadValue,
+        type: CommandType.PlaceObject, timestamp: 0,
         object: {
           id: `checklist-road-${n}`, catalogId: material.id,
           position: { x: 1 + n, y: 1 }, rotation: 0, elevation: 0,

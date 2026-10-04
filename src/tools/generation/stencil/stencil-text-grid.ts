@@ -157,6 +157,16 @@ export function textStrokeEnds(coverage: Uint8Array, width: number, height: numb
   return endsOf(trace(skeleton(ink, width, height, distanceInside(ink, width, height)), width, height));
 }
 
+/** Trace at the original coordinates so sparse placement can retain endpoints, turns and dots. */
+export function stencilStrokePaths(coverage: Uint8Array, width: number, height: number): { cells: number[]; corners: number[] }[] {
+  const ink = Uint8Array.from(coverage, value => value >= 128 ? 1 : 0);
+  return trace(skeleton(ink, width, height, distanceInside(ink, width, height)), width, height)
+    .map(path => ({
+      cells: path.map(([x, y]) => y * width + x),
+      corners: simplify(path, 0.75).map(([x, y]) => y * width + x),
+    }));
+}
+
 function simplify(path: Path, epsilon: number): Point[] {
   if (path.length < 3) return [...path];
   const [ax, ay] = path[0]!, [bx, by] = path[path.length - 1]!;

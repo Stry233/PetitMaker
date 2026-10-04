@@ -7,7 +7,7 @@
 import type { StreamEvent, TurnError } from '../core/types';
 import type { Adapter, AdapterRequest } from '../providers/types';
 
-export interface LiveEnv {
+interface LiveEnv {
   baseUrl: string; key: string; model: string; dialect: 'openai' | 'anthropic' | 'responses'; headers?: Record<string, string>;
   /** Extended-thinking token budget for the anthropic dialect (`AGENT_LIVE_THINKING`); absent is off. */
   thinking?: number;
@@ -62,7 +62,7 @@ export function redactKey(text: string, key: string): string {
   return text.split(key).join(stamp);
 }
 
-export interface WireFetchOpts {
+interface WireFetchOpts {
   headers?: Record<string, string>;
   /** Header names removed after injection (an SDK-minted credential header a proxy must not see). */
   dropHeaders?: string[];

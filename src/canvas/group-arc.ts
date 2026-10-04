@@ -1,5 +1,5 @@
 /**
- * group-arc.ts — the contract and the geometry a GROUP ROTATION is animated with, shared by both
+ * The contract and the geometry a GROUP ROTATION is animated with, shared by both
  * views so the 2D and 3D tweens cannot drift apart.
  *
  * A group rotation is ONE rigid body turning about ONE point: every member's POSITION turns about

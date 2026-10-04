@@ -1,5 +1,5 @@
 /**
- * region-bounds.test.ts — the ONE region derivation, and the proof that it is one.
+ * The ONE region derivation, and the proof that it is one.
  *
  * The numbers the composer's chip says and the numbers the agent's refusal quotes back to the model
  * are the same numbers, so a chip reading "1,128 cells within (2,3)-(48,44)" over a run the model
@@ -10,7 +10,6 @@
  */
 import { describe, it, expect } from 'vitest';
 import { regionBounds } from '../../state/region-bounds';
-import { regionBounds as toolsRegionBounds } from '../../agent/tools/tools-common';
 import { executeToolCall, type AgentToolDeps } from '../../agent/tools';
 import { CommandExecutor } from '../../core/commands/command-executor';
 import { EventBus } from '../../core/commands/event-bus';
@@ -55,13 +54,7 @@ describe('regionBounds', () => {
 });
 
 describe('the agent guard and the panel chip share ONE derivation', () => {
-  /** Not "they agree" — they are the SAME function. A re-implementation that happened to agree on
-   *  these three fixtures would pass an equality test and diverge on the fourth. */
-  it('is the identical function the tool surface exports', () => {
-    expect(toolsRegionBounds).toBe(regionBounds);
-  });
-
-  /** The other half of the claim, driven through the REAL tool surface: whatever the guard says to
+  /** Driven through the REAL tool surface: whatever the guard says to
    *  the model is spelled out of this reading, so a chip built on it is quoting the same sentence. */
   it('produces the numbers the out-of-region refusal quotes back to the model', async () => {
     for (const f of FIXTURES) {

@@ -6,7 +6,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import { dirtyChunksFor } from '../../canvas/map3d/build/chunk-dirty';
-import { CHUNK_SIZE } from '../../core/model/constants';
+import { CHUNK_SIZE } from '../../core/model/game-profile';
 
 const key = (cx: number, cy: number) => `${cx},${cy}`;
 

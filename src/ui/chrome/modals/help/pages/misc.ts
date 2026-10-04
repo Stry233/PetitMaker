@@ -1,5 +1,5 @@
 /*
- * pages/misc.ts — the 其他 group: settings, keyboard shortcuts, FAQ.
+ * The More group: settings, keyboard shortcuts, FAQ.
  *
  * Descriptor data only: copy uses full i18n key literals, key tables name command ids and figures
  * name renderable help scenes or surfaces.

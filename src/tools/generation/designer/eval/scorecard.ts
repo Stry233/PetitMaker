@@ -1,5 +1,5 @@
 /**
- * THE SCORECARD: one finished map read into the three ledgers the methodology ranks.
+ * THE SCORECARD: one finished map read into three ranked ledgers.
  *
  *  1. HARD RULES (pass/fail) — every distinct anchor building/facility placed exactly once; the
  *     road network reachable from the plaza with no dead ends; no 1-wide road network; every street
@@ -17,7 +17,7 @@
  * Deterministic and pure: same state in, same numbers out, no commands and no randomness.
  */
 import { ItemCategory, type GridState, type PlacedObject } from '../../../../core/model/types';
-import { categoryOf, getCatalogItem, getPlaceableByCategory } from '../../../../state/catalog';
+import { categoryOf, getCatalogItem } from '../../../../state/catalog';
 import { objectRect } from '../../../../state/object-geometry';
 import { familyOf } from '../dressing/palette';
 import type { Direction } from '../types';
@@ -27,7 +27,7 @@ import {
   districtFrontage, districtLegibility, type DistrictFrontage, type DistrictLegibility,
 } from './districts';
 import {
-  mirrorScore, NB4, openingWidths, readGrid, regionDecor, runWidths, segmentRegions,
+  mirrorScore, openingWidths, readGrid, regionDecor, runWidths, segmentRegions,
   REGION_MIN_DECOR, SYMMETRY_MATCH_MIN, UNITY_SHARE_MIN, type EvalGrid,
 } from './grid';
 import {
@@ -43,6 +43,9 @@ import {
   fountainPresence, streamShape, waterStoryLedger, type FountainPresence, type StreamShape,
   type WaterStoryLedger,
 } from './water';
+import { isBridge, isCoatingItem, isRamp } from '../../../../core/model/traits';
+import { NEIGHBORS4 } from '../../../../core/model/grid-model';
+import { anchorCatalogItems } from '../places/region-list';
 
 /** Rows (or columns) per profile band: the map's own extent over fourteen, so a real 140-row map is
  *  banded by ten exactly as the reference's north-south table is, and a small hand-built one still
@@ -60,7 +63,7 @@ export interface HardLedger {
   allAnchorsPlaced: { pass: boolean; expected: number; missing: string[]; repeated: { id: string; count: number }[] };
   roadsConnected: { pass: boolean; paved: number; reachableShare: number; deadEnds: number; deadEndShare: number };
   /** No ROAD is one cell wide. Scoped to the NETWORK: a 1-wide garden walk hanging off one street
-   *  inside a region is the supplement's third grade and is not charged (`networkOneWide`). */
+   *  inside a region is the third road grade and is not charged (`networkOneWide`). */
   noOneWideRoads: { pass: boolean; oneWideCells: number; gardenCells: number; oneWideShare: number };
   /** Every street end arrives at something (`streetArrivals`). The tip-cell reading above stays
    *  beside it: the two ask different questions and both must hold. */
@@ -158,14 +161,11 @@ export interface EvalOptions {
   compositionAxis?: Direction;
 }
 
-/** Every catalog item the methodology's hard rule requires on a finished map: each placeable
+/** Every catalog item the hard rule requires on a finished map: each placeable
  *  Building and Facility, exactly once. `getPlaceableByCategory` drops the rule-TBD items, and the
  *  plaza is off-catalog, so neither can be demanded of a generator. */
 export function anchorCatalogIds(): string[] {
-  return [
-    ...getPlaceableByCategory(ItemCategory.Building),
-    ...getPlaceableByCategory(ItemCategory.Facility),
-  ].map((i) => i.id);
+  return anchorCatalogItems().map((i) => i.id);
 }
 
 function anchorObjects(state: GridState): PlacedObject[] {
@@ -216,7 +216,7 @@ function profile(g: EvalGrid, axis: 'north-south' | 'east-west'): ProfileBand[] 
 }
 
 /**
- * NEAR-LOW-FAR-HIGH as one number (the game's own 高度错落: 近处矮、远处高).
+ * NEAR-LOW-FAR-HIGH as one number (the game's own staggered heights: low near, high far).
  *
  * The rule is written from where the player stands, so the reading is PLAZA-RELATIVE: on one side of
  * the plaza, does the mean elevation RISE with distance from it? The correlation is signed, so
@@ -225,7 +225,7 @@ function profile(g: EvalGrid, axis: 'north-south' | 'east-west'): ProfileBand[] 
  * an unsigned correlation cannot tell the two maps apart.
  *
  * The axis and the side are the map's to choose UNLESS the caller names one: a wall on any horizon is
- * far, and the PDF names no compass direction, but a map BUILT to a composition axis is read along
+ * far, and the rule names no compass direction, but a map BUILT to a composition axis is read along
  * that axis, so the score says whether the map delivered the composition it planned rather than
  * whether some horizon happens to be high. Bands are WEIGHTED BY THEIR LAND, so a 400-cell sliver of
  * coast beyond the wall cannot outvote the 1400-cell bands that are the wall. The magnitude factor is
@@ -338,7 +338,7 @@ function connectivity(g: EvalGrid): { reachableShare: number; components: number
       if (g.plaza[p]) hasPlaza = true;
       if (g.paved[p]) hasPaved = true;
       const x = p % W, y = (p / W) | 0;
-      for (const [dx, dy] of NB4) {
+      for (const [dx, dy] of NEIGHBORS4) {
         const nx = x + dx, ny = y + dy;
         if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
         const j = ny * W + nx;
@@ -358,7 +358,7 @@ function connectivity(g: EvalGrid): { reachableShare: number; components: number
     const i = y * W + x;
     if (!g.paved[i]) continue;
     let n = 0, terminates = false;
-    for (const [dx, dy] of NB4) {
+    for (const [dx, dy] of NEIGHBORS4) {
       const nx = x + dx, ny = y + dy;
       if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
       const j = ny * W + nx;
@@ -377,7 +377,7 @@ function connectivity(g: EvalGrid): { reachableShare: number; components: number
     while (stack.length) {
       const p = stack.pop()!;
       const x = p % W, y = (p / W) | 0;
-      for (const [dx, dy] of NB4) {
+      for (const [dx, dy] of NEIGHBORS4) {
         const nx = x + dx, ny = y + dy;
         if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
         const j = ny * W + nx;
@@ -434,10 +434,11 @@ export function evaluateMap(state: GridState, options: EvalOptions = {}): MapEva
   let bridges = 0, ramps = 0, trees = 0, flora = 0;
   for (const o of state.objects.values()) {
     if (o.locked) continue;
-    const cat = categoryOf(o);
-    if (cat === ItemCategory.Road) materialCount.set(o.catalogId, (materialCount.get(o.catalogId) ?? 0) + 1);
-    else if (cat === ItemCategory.Bridge) bridges++;
-    else if (cat === ItemCategory.Ramp) ramps++;
+    const item = getCatalogItem(o.catalogId);
+    const cat = item?.category;
+    if (isCoatingItem(item)) materialCount.set(o.catalogId, (materialCount.get(o.catalogId) ?? 0) + 1);
+    else if (isBridge(item)) bridges++;
+    else if (isRamp(item)) ramps++;
     else if (cat === ItemCategory.Tree) trees++;
     else if (cat === ItemCategory.Flora) flora++;
   }

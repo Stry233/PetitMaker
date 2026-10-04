@@ -20,7 +20,7 @@ import { useEditorStore } from '../../state/store';
 import { CommandExecutor } from '../../core/commands/command-executor';
 import { createDefaultRegistry } from '../../rules/index';
 import { ToolManager } from '../../tools/runtime/tool-manager';
-import { makeStubRenderer } from '../tools/_tool-manager';
+import { makeStubView } from '../tools/_tool-manager';
 import { makeState } from '../rules/_helpers';
 import { setStoreState } from '../_store';
 import { roadLookup } from '../../state/object-index';
@@ -82,7 +82,7 @@ let view: ReturnType<typeof makeView>['view'];
 function activate(tool: ToolType, itemId: string | null = null): void {
   gs = makeState(20, 20);
   executor = new CommandExecutor(gs, useEditorStore.getState().eventBus, createDefaultRegistry(), roadLookup(gs));
-  tm = new ToolManager(makeStubRenderer(), executor, gs);
+  tm = new ToolManager(makeStubView(), executor, gs);
   const made = makeView();
   overlay = made.overlay;
   camera = made.camera;

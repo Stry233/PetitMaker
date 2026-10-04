@@ -1,6 +1,6 @@
 import type {
   MacroCoord, MicroCoord, ToolType, TerrainType, AutoEdgeCut, EraserShape,
-  Command, ValidationError, ValidationResult, GridState,
+  Command, ValidationError, ValidationResult, GridState, Rotation, Translate,
 } from '../../core/model/types';
 import type { AnnotationsState, AnnotationTool, AnnotationZoneShape, MapAnnotation, TagId } from '../../core/model/annotations';
 import type { ContentType } from '../../core/model/edit-mode';
@@ -8,6 +8,7 @@ import type { ToolOverlay, ViewProjection } from '../../canvas/view-projection';
 import type { CursorId } from '../../core/runtime/cursor-spec';
 import type { RuleDispatcher } from '../../core/model/rule-dispatcher';
 import type { MacroContext } from '../macros/context';
+import type { PlanetMaterial } from '../../state/slices/planet-session';
 
 export interface ToolContext {
   gridState: GridState;
@@ -38,7 +39,7 @@ export interface ToolContext {
    *  `commitStroke`'s auto-revert stops as soon as the state is legal, which can leave a multi-part
    *  stroke half-applied — right for a brush, wrong for one that rewrites a shape. */
   rollbackTo: (watermark: number) => void;
-  t: (key: string, params?: Record<string, string | number>) => string;
+  t: Translate;
   /** Set the layer-panel highlight while auto-stacking (null → follow the
    *  selected layer). Does NOT change the build floor (ctx.elevation). */
   setDisplayLayer: (layer: number | null) => void;
@@ -51,6 +52,13 @@ export interface ToolContext {
   /** Whether `elevation` was chosen by hand in the layer panel. The water brush paints at the
    *  pinned layer when it was, and at each cell's own surface when it was not. */
   layerPinned: boolean;
+  /** The planet session unlocks layer 0: sea and bare ground become paintable levels. */
+  groundEditable: boolean;
+  /** The planet session's mountain-mode material. Ignored outside the session. */
+  planetMaterial: PlanetMaterial;
+  /** A ground stroke asked for cells beyond the canvas edge, the planet's size limit. Omitted where
+   *  nothing presents it. */
+  reportGroundClipped?: () => void;
   brushSize: number;
   /** A painted region confines all support and crossings of a Smart Build gesture. */
   region?: readonly MacroCoord[];
@@ -79,7 +87,7 @@ export interface ToolContext {
   /** The armed catalog item, or null with nothing armed. */
   armedItem: string | null;
   /** The armed item's PENDING rotation, turned by the rotate shortcuts while its ghost shows. */
-  placementRotation: 0 | 90 | 180 | 270;
+  placementRotation: Rotation;
   /** The armed macro's id, as a plain string — the catalogue lives above this layer. */
   armedMacro: string | null;
   /** How many times the armed macro has changed (`state/slices/edit.ts`). A tool holding state
@@ -98,18 +106,20 @@ export interface ToolContext {
   annotationTool: AnnotationTool;
   annotationZoneShape: AnnotationZoneShape;
   annotationColor: string;
-  annotationTag: TagId;
+  annotationTag: TagId | null;
   annotationSize: 's' | 'm' | 'l';
   annotationRouteDashed: boolean;
   annotationSelection: string[];
   annotationDraft: MapAnnotation | null;
+  annotationHistoryEpoch: number;
+  annotationDiscardPending: boolean;
   /** The annotation slice's verbs, one handle the way `macroContext` is one handle. */
   annotationEdit: AnnotationEditVerbs;
   /** The drawn label for a tag, in the interface language. Hit tests read caption widths from it. */
   tagLabel: (tag: TagId) => string;
 }
 
-export interface AnnotationEditVerbs {
+interface AnnotationEditVerbs {
   /** One lane entry for the gesture about to apply, however many `apply` calls follow. */
   begin(): void;
   apply(fn: (data: AnnotationsState) => void): void;

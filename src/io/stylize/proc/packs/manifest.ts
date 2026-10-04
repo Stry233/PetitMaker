@@ -1,5 +1,5 @@
 /*
- * manifest.ts — what the rest of the app may know about a pack WITHOUT loading its renderer.
+ * What the rest of the app may know about a pack WITHOUT loading its renderer.
  *
  * The export controls, the persisted settings and the booklet rows all need a pack's identity,
  * name, cost and palette; none of them need a line of drawing code. Splitting the two is what

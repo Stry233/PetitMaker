@@ -5,12 +5,12 @@
 import { describe, it, expect } from 'vitest';
 import { MAP_TEMPLATES } from '../../../../../config/maps';
 import { CellZone, type MapTemplate } from '../../../../../core/model/types';
-import { ELEVATION_MAX } from '../../../../../core/model/constants';
 import {
   PLATE_COUNT_BAND, PLATE_STEP_MAX, PLATE_TOTAL_MAX, plateAdjacency, planComposition, plazaRect,
   type CompositionPlan,
 } from '../../../../../tools/generation/designer/composition/composition';
 import { compositionVariety, type CompositionSample } from '../../../../../tools/generation/designer/eval';
+import { ELEVATION_MAX } from '../../../../../core/model/game-profile';
 
 const TEMPLATES: MapTemplate[] = [MAP_TEMPLATES.hexia!, MAP_TEMPLATES.tafa!];
 /** Twenty seeds, unrelated to each other, so a batch reading is not one arithmetic sequence. */

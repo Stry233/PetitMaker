@@ -16,6 +16,7 @@ import { buildManifest } from '../scene/manifest';
 import { verbalizeScene } from '../scene/verbalize';
 import { StylizeError, type DialectConfig, type StylizeDialect, type StylizeImage } from '../dialects/types';
 import type { Recipe } from './recipe';
+import { CATEGORIES } from '../../../config/catalog/categories';
 
 export interface EngineDeps {
   /** Wired to `host.capture2d(maxEdge, false, false)`: no grid, no ink. */
@@ -37,12 +38,9 @@ const FALLBACK_PAPER = STYLE_PACKS.find((p) => p.id === 'watercolor')!.paper;
 /** This module's own category vocabulary (see presets.ts): plant merges tree and flora,
  *  water-feature reads terrain rather than a placed object. Decoration has no catalog category of
  *  its own, so it never fires off this reading — a known gap, not a bug. */
-const CATEGORY_LABEL: Partial<Record<ItemCategory, string>> = {
-  [ItemCategory.Building]: 'building',
-  [ItemCategory.Road]: 'road',
-  [ItemCategory.Tree]: 'plant',
-  [ItemCategory.Flora]: 'plant',
-};
+const CATEGORY_LABEL: Partial<Record<ItemCategory, string>> = Object.fromEntries(
+  CATEGORIES.filter((c) => c.stylizeLabel).map((c) => [c.id, c.stylizeLabel]),
+);
 
 function presentCategoriesOf(state: GridState): Set<string> {
   const present = new Set<string>();

@@ -1,29 +1,25 @@
 import { packAutosaveBytes } from './autosave-codec';
+import { createWorkerClient, type WorkerFailure } from '../core/runtime/worker-client';
+
+const FAILURE_MESSAGE: Partial<Record<WorkerFailure['kind'], string>> = {
+  timeout: 'Autosave compression timed out',
+  crash: 'Autosave worker failed',
+  unreadable: 'Autosave worker response failed',
+};
 
 /** A large save's compression runs in a disposable same-origin worker. */
-export function encodeAutosaveInWorker(json: string, signal: AbortSignal): Promise<string> {
-  return new Promise<string>((resolve, reject) => {
-    const worker = new Worker(new URL('./autosave.worker.ts', import.meta.url), { type: 'module' });
-    let finished = false;
-    const finish = (bytes?: Uint8Array, error?: unknown) => {
-      if (finished) return;
-      finished = true;
-      clearTimeout(timer);
-      signal.removeEventListener('abort', abort);
-      worker.terminate();
-      if (error) reject(error);
-      else {
-        try { resolve(packAutosaveBytes(bytes!)); } catch (error) { reject(error); }
-      }
-    };
-    const abort = () => finish(undefined, new DOMException('Cancelled', 'AbortError'));
-    const timer = setTimeout(() => finish(undefined, new Error('Autosave compression timed out')), 15_000);
-    signal.addEventListener('abort', abort, { once: true });
-    worker.onmessage = ({ data }: MessageEvent<Uint8Array>) => finish(data);
-    worker.onerror = () => finish(undefined, new Error('Autosave worker failed'));
-    worker.onmessageerror = () => finish(undefined, new Error('Autosave worker response failed'));
-    if (signal.aborted) { abort(); return; }
-    const bytes = new TextEncoder().encode(json);
-    try { worker.postMessage(bytes, [bytes.buffer]); } catch (error) { finish(undefined, error); }
+export async function encodeAutosaveInWorker(json: string, signal: AbortSignal): Promise<string> {
+  const client = createWorkerClient({
+    spawn: () => new Worker(new URL('./autosave.worker.ts', import.meta.url), { type: 'module' }),
+    idleMs: 0,
   });
+  const bytes = new TextEncoder().encode(json);
+  const packed = await client.request<Uint8Array>({
+    message: bytes, transfer: [bytes.buffer], signal, timeoutMs: 15_000,
+    fallback: (failure) => {
+      const message = FAILURE_MESSAGE[failure.kind];
+      throw message ? new Error(message) : failure.cause ?? failure;
+    },
+  });
+  return packAutosaveBytes(packed);
 }

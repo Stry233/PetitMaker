@@ -11,3 +11,6 @@ import { fr } from './locales/fr';
 // longer than any other surface's strings, so they live in the help chunk and arrive through
 // `context.tsx:registerExtraStrings` when that chunk loads (`locales/help/index.ts`).
 export const translations: Record<Locale, Record<string, string>> = { en, zh, ja, ru, th, id, fr };
+
+/** The BCP 47 tag for a UI locale. */
+export const localeTag = (locale: Locale): string => (locale === 'zh' ? 'zh-CN' : locale);

@@ -7,7 +7,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import { pickSurface } from '../../canvas/map3d/interaction/pick';
-import { GROUND_SLAB_Y, layerToY, mapCenterOffset } from '../../canvas/map3d/core/coords';
+import { GROUND_SLAB_Y, layerToY, mapCenterOffset, waterSurfaceY } from '../../canvas/map3d/core/coords';
 import { CellZone, TerrainType } from '../../core/model/types';
 import type { GridState } from '../../core/model/types';
 import { makeState, setTerrain } from '../rules/_helpers';
@@ -67,6 +67,7 @@ describe('pickSurface', () => {
     const hit = pickSurface(s, { x: wx - 0.5, y: 50, z: wz - 0.5 }, { x: 0, y: -1, z: 0 })!;
     expect(hit.cell).toEqual({ x: 3, y: 8 });
     expect(hit.kind).toBe('water');
+    expect(hit.point.y).toBeCloseTo(waterSurfaceY(0), 4);
   });
 
   it('void cells pick the sea; rays that never land return null', () => {

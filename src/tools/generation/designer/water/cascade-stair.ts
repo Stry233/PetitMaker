@@ -4,7 +4,7 @@
  * Reach rows expose no face, front rows terminate against same-tier caps, and receiving rows must be
  * uniform. Attempts are transactional and deterministic over the terrain plan and masks.
  */
-import { flatIndex } from '../../../../core/model/grid-model';
+import { flatIndex, NEIGHBORS4_ESWN } from '../../../../core/model/grid-model';
 import type { MacroCoord, Rect } from '../../../../core/model/types';
 import type { TerrainPlan } from '../../core/types';
 import type { MovementLine, WaterWant } from '../composition/movement-line';
@@ -64,7 +64,7 @@ const CHUTE_MIN = 3;
 // --- what a stair is ----------------------------------------------------------------------------
 
 /** One band of the stair: the water standing on one terrace step, and the tier it pours from. */
-export interface StairBand {
+interface StairBand {
   rect: Rect;
   tier: number;
   /** The level this band pours onto: one tier down for a step, further for a plunge. */
@@ -86,7 +86,7 @@ export interface CascadeStair {
   width: number;
 }
 
-export interface StairInput {
+interface StairInput {
   t: TerrainPlan;
   grass: Uint8Array;
   flat: Uint8Array;
@@ -97,7 +97,6 @@ export interface StairInput {
 
 type Vec = readonly [number, number];
 
-const DIRS: readonly Vec[] = [[1, 0], [0, 1], [-1, 0], [0, -1]];
 const perp = (d: Vec): Vec => [d[1], -d[0]];
 
 // --- cutting them -------------------------------------------------------------------------------
@@ -517,7 +516,7 @@ function lips(input: StairInput): Lip[] {
     for (let x = 2; x < t.width - 2; x++) {
       const tier = t.tier[flatIndex(x, y, t.width)]!;
       if (tier < STAIR_FROM_TIER) continue;
-      for (const [d, dir] of DIRS.entries()) {
+      for (const [d, dir] of NEIGHBORS4_ESWN.entries()) {
         if (!isLip(x, y, dir, tier) || seen.has(flatIndex(x, y, t.width) * 4 + d)) continue;
         const p = perp(dir);
         const cells: MacroCoord[] = [];

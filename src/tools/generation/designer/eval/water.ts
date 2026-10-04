@@ -7,10 +7,10 @@
  * The rest is reported rather than gated: what a composition class is worth is a matter of taste, and
  * the ladder of classes is authored rather than discovered.
  */
-import { distanceField } from '../../../../core/model/grid-model';
+import { distanceField, NEIGHBORS4 } from '../../../../core/model/grid-model';
 import { detectWaterfalls } from '../../../../core/model/waterfall-geometry';
 import type { GridState, Rect } from '../../../../core/model/types';
-import { NB4, readGrid, segmentRegions, type EvalGrid } from './grid';
+import { readGrid, segmentRegions, type EvalGrid } from './grid';
 import { bandScore } from './reference';
 import {
   bodiesTouch, COMB_FLIPS_MIN, bandFlips, extentOf, mirrors, mountainFrame, spannedByCrossing,
@@ -46,9 +46,9 @@ const COURT_REACH = 6;
 
 /**
  * What makes a court a MAIN fountain rather than an ornament, which is the distinction the whole
- * per-region rule rests on: 一个区域有明确的主喷泉即可，不要同时有多个, and in the same breath
- * 小喷泉则可以放在花园、街角 — a garden or street-corner fountain standing beside the main one is what
- * the supplement asks for, not what it forbids.
+ * per-region rule rests on: one clear main fountain per region, never several at once, and in the
+ * same breath small fountains may stand in gardens and at street corners. A garden or street-corner
+ * fountain standing beside the main one is allowed.
  *
  * IT IS THE SPAN AND NOT THE CELL COUNT. A cell floor conflates the two: a large court drawn as a
  * thin ring round a wide platform holds 32 water cells and a small solid cruciform basin holds 20, so
@@ -68,8 +68,8 @@ const COURT_SPAN_MAX = 17;
 const COURT_MIRROR_MIN = 0.9;
 
 /**
- * The stream-shape floors, from the game's own guidance on watercourses (做成有方向的曲线，避免长距离
- * 笔直，可以有缓弯、急弯、局部变宽变窄).
+ * The stream-shape floors, from the game's own guidance on watercourses (a directed curve, no long
+ * straight runs, gentle and sharp bends, local widening and narrowing).
  *
  * Measured by this code on the two fixtures: the style target's own course reads 7.6 bends per 10
  * cells of length, 17 distinct local widths and a longest straight run of 3; the garden town's is
@@ -211,7 +211,7 @@ export function courtBoxes(state: GridState, g = readGrid(state)): Rect[] {
  * whatever stands between them are separate annuli standing inside one another, and each of them
  * reads as a court on its own — same box, same mirror, its own islet. Counted as bodies, ONE
  * fountain of nesting depth 3 answers "how many main fountains stand in this region" with 2, which is
- * the supplement's own rule failing on the composition it asks for. `figure.ts` makes the same move
+ * the per-region rule failing on the very composition it asks for. `figure.ts` makes the same move
  * for the set piece and for the same reason.
  *
  * Boxes that OVERLAP are one composition. Concentric annuli nest, so the test is exact for what it is
@@ -239,8 +239,8 @@ function isCourt(g: EvalGrid, body: WaterBody): boolean {
   return mirrors(g, body) >= COURT_MIRROR_MIN;
 }
 
-/** Whether pavement, the plaza or a building stands within reach of the court: the RELATION the
- *  supplement asks a fountain to be composed with. */
+/** Whether pavement, the plaza or a building stands within reach of the court: the RELATION a
+ *  fountain is composed with. */
 function relatedToSpace(g: EvalGrid, body: WaterBody): boolean {
   const { W, H } = g;
   for (let y = body.y0 - COURT_REACH; y <= body.y1 + COURT_REACH; y++) {
@@ -489,7 +489,7 @@ function rimAgainstStep(g: EvalGrid, body: WaterBody): boolean {
   const own = new Set(body.cells);
   for (const i of body.cells) {
     const x = i % W, y = (i / W) | 0;
-    for (const [dx, dy] of NB4) {
+    for (const [dx, dy] of NEIGHBORS4) {
       const nx = x + dx, ny = y + dy;
       if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
       const j = ny * W + nx;

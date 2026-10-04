@@ -197,21 +197,20 @@ const PROSE_HOLD_MAX = 8192;
 const PROSE_ENDPOINTS = new Set<string>();
 
 export function createOpenAIAdapter(opts: { apiKey: string; baseUrl?: string; providerId?: ProviderId; quirks: Quirks }): Adapter {
-  // A PROVIDER WHOSE HOST IS THE USER'S OWN IS NEVER BUILT WITHOUT IT (`Quirks.needsBaseUrl`). The
-  // SDK's default host is another company's API and the key was issued by whatever runs at the
-  // user's address, so no client exists on this path at all — the throw is the floor under every
-  // readiness gate above it, and its wording classifies as `config` (`core/errors.ts`).
-  if (opts.quirks.needsBaseUrl === true && (opts.baseUrl ?? '') === '') throw new Error(NO_ENDPOINT_ADDRESS);
+  // Custom credentials must never reach the SDK's default cloud endpoint.
+  const providerId = opts.providerId ?? PROVIDER_IDS.find((id) => QUIRKS[id] === opts.quirks) ?? 'custom';
+  if ((providerId === 'custom' || opts.quirks.needsBaseUrl === true) && (opts.baseUrl ?? '') === '') throw new Error(NO_ENDPOINT_ADDRESS);
+  const anonymous = providerId === 'custom' && opts.apiKey === '';
   const client = new OpenAI({
-    apiKey: opts.apiKey,
+    // The SDK requires a nonempty key even when Authorization is explicitly omitted.
+    apiKey: anonymous ? 'no-auth' : opts.apiKey,
     // undefined is SDK-legal here and takes the SDK's own default endpoint — the `openai`
     // provider's `baseUrlFor` deliberately returns undefined (see defaults.ts).
     baseURL: opts.baseUrl,
     maxRetries: 0,
     dangerouslyAllowBrowser: true,
-    defaultHeaders: NO_TELEMETRY_HEADERS,
+    defaultHeaders: { ...NO_TELEMETRY_HEADERS, ...(anonymous ? { Authorization: null } : {}) },
   });
-  const providerId = opts.providerId ?? PROVIDER_IDS.find((id) => QUIRKS[id] === opts.quirks) ?? 'custom';
   const reasoningFields = opts.quirks.reasoningFields ?? [];
   const imageInToolResult = opts.quirks.imageInToolResult;
   const streamUsage = opts.quirks.streamUsage === true;

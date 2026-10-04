@@ -1,5 +1,5 @@
 /*
- * curves.ts — the closed set of curves a shell motion may use.
+ * The closed set of curves a shell motion may use.
  *
  * Every entry is one the interface already moves on, taken from `ui/design/styles.ts` rather than restated
  * here, so every surface accelerates the same way and a curve has one definition. Adding one is a
@@ -18,7 +18,13 @@ export const CURVES = {
   /** Leaves at once and settles flat. The shelves already arrive on this bezier; it is `easing
    *  .punchy`'s own control points, so the two spellings are one curve. A TWEEN rather than a
    *  spring, so a motion naming it also gives a duration and one naming any other must not. */
-  punchy: { ease: [0.2, 0, 0, 1] },
+  punchy: { ease: bezierOf('punchy') },
+  expand: { ease: bezierOf('expand') },
+  breathing: { ease: bezierOf('breathing') },
+  roll: { ease: bezierOf('roll') },
+  fade: { ease: bezierOf('fade') },
+  ease: { ease: [0.25, 0.1, 0.25, 1] },
+  easeOut: { ease: 'easeOut' },
   /**
    * Leaves from rest and is still gaining speed when it goes. The shape of a DEPARTURE that has
    * nothing left to show: a card turning edge-on before its new face is even written accelerates
@@ -67,6 +73,12 @@ export const CSS_CURVES = {
   stiff: easing.springStiff,
   gentle: easing.punchy,
   punchy: easing.punchy,
+  expand: easing.expand,
+  breathing: easing.breathing,
+  roll: easing.roll,
+  fade: easing.fade,
+  ease: 'ease',
+  easeOut: 'ease-out',
   accel: easing.accel,
   settle: easing.settle,
   swing: 'ease-in-out',

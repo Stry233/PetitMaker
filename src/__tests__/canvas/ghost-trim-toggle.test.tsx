@@ -22,7 +22,7 @@ import { createDefaultRegistry } from '../../rules/index';
 import { ToolManager } from '../../tools/runtime/tool-manager';
 import { DrawingTool } from '../../tools/paint/drawing-tool';
 import type { TrimmedCell } from '../../tools/edge-cut/trim-preview';
-import { makeStubRenderer } from '../tools/_tool-manager';
+import { makeStubView } from '../tools/_tool-manager';
 import { makeState } from '../rules/_helpers';
 import { setStoreState } from '../_store';
 import { roadLookup } from '../../state/object-index';
@@ -69,7 +69,7 @@ let overlay: ReturnType<typeof makeView>['overlay'];
 function armBrush(surface: 'mountain' | 'tile'): void {
   gs = makeState(20, 20);
   const executor = new CommandExecutor(gs, useEditorStore.getState().eventBus, createDefaultRegistry(), roadLookup(gs));
-  const tm = new ToolManager(makeStubRenderer(), executor, gs);
+  const tm = new ToolManager(makeStubView(), executor, gs);
   const made = makeView();
   overlay = made.overlay;
   setActiveView(made.view);

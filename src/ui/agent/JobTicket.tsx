@@ -4,7 +4,8 @@
  * same list directly. Settled and historical jobs omit the live progress band, while held jobs
  * freeze it. Stamps are placed next to the work they describe.
  */
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import { useReadingIntent } from '../primitives/scroll-intent';
+import { useMemo, useState, type CSSProperties, type ReactNode } from 'react';
 import { AnimatePresence, motion, useReducedMotionConfig } from 'framer-motion';
 import { RESUME_PRIMARY, Stamp, TapeBar, type TapeMode } from './atoms';
 import { ThoughtRow, ThoughtsBox } from './ThoughtsBox';
@@ -16,12 +17,13 @@ import type { LaneView } from './Lane';
 import { edge } from './tokens';
 import type { Checkpoint } from './FlipTicket';
 import { INSET, PLATE, PLATE_INK } from '../design/tokens';
-import { colors, cursors, font } from '../design/styles';
+import { colors, cursors, font, radii } from '../design/styles';
 import { roleFont } from '../design/text-weight';
 import { windowPill } from '../design/window-skin';
-import { cssMotion, framerMotion } from './motion';
+import { cssMotion, framerMotion } from '../design/motion';
 import { useT } from '../../i18n/context';
 import type { JobView } from '../../agent/core/project-view';
+import type { Translate } from '../../core/model/types';
 
 /** Icon + i18n key for each side stamp a job can carry, as literal key strings (see OpRow.tsx's
  *  own note on why the drift detector needs that, not a template). */
@@ -42,9 +44,8 @@ export function jobStamps(
   }));
 }
 
-/** Ticket inset and border widths used to align the sticky order line. */
+/** Ticket inset in local CSS pixels. */
 const TICKET_PAD = 12;
-const TICKET_BORDER = 1;
 
 /** How far past its own words the parked order line's opaque backing reaches, in px. */
 const STICKY_BLEED = 4;
@@ -72,7 +73,7 @@ const SAYS_CLOSED_H = Math.round(roleFont('note').fontSize * 1.4 * 2);
 
 const ORDER_STYLE: CSSProperties = {
   position: 'sticky',
-  top: -(TICKET_PAD + TICKET_BORDER),
+  top: 0,
   zIndex: 2,
   background: PLATE,
   // THE BACKING IS WIDER THAN THE WORDS, and the negative margin hands the room straight back so no
@@ -109,7 +110,7 @@ const THOUGHTS_PILL: CSSProperties = {
   flex: '0 0 auto',
   border: 'none',
   background: INSET,
-  borderRadius: 999,
+  borderRadius: radii.pill,
   padding: '2px 9px',
   ...roleFont('small'),
   fontFamily: font.family,
@@ -117,7 +118,7 @@ const THOUGHTS_PILL: CSSProperties = {
   cursor: cursors.clickable,
 };
 
-export interface JobTicketProps {
+interface JobTicketProps {
   job: JobView;
   live?: boolean;
   /** Nothing is moving: a pause, a stop, a wait on the provider. Freezes the tape where it stands. */
@@ -135,15 +136,7 @@ export interface JobTicketProps {
   onRewind?: (checkpoint: Checkpoint) => void;
   onResume?: () => void;
   onStop?: () => void;
-  /**
-   * A THOUGHTS BOX IS OPEN, or the last one has closed.
-   *
-   * The record FOLLOWS ITS OWN FOOT while a job appends, and a box opened mid-run would be yanked
-   * away from the reader every time the projection moved — several times a second, for exactly the
-   * length of the thought being read. The zone owns the follow, so the ticket reports the fact and
-   * the zone stands down.
-   */
-  onThoughtsOpenChange?: (open: boolean) => void;
+
 }
 
 export function JobTicket({
@@ -158,7 +151,6 @@ export function JobTicket({
   onRewind,
   onResume,
   onStop,
-  onThoughtsOpenChange,
 }: JobTicketProps) {
   const t = useT();
   const reduced = useReducedMotionConfig() === true;
@@ -167,7 +159,8 @@ export function JobTicket({
   // owes the renders where the text itself moved.
   const saysRuns = useMemo(() => (job.says === undefined ? null : inlineProseRuns(job.says, t)), [job.says, t]);
   const tapeMode = tapeModeFor(job, live);
-  const toggleSays = () => setSaysOpen((o) => !o);
+  const preserveReading = useReadingIntent();
+  const toggleSays = () => { preserveReading(); setSaysOpen((o) => !o); };
   /**
    * WHICH THOUGHTS ARE OPEN, by the turn's own log seq — plus `LIVE_TURN` for the turn still
    * streaming, which has no seq yet because it has not been logged.
@@ -177,24 +170,14 @@ export function JobTicket({
    * close one to see the other.
    */
   const [openThoughts, setOpenThoughts] = useState<ReadonlySet<number>>(NONE_OPEN);
-  const toggleThought = (id: number) => setOpenThoughts((open) => {
-    const next = new Set(open);
-    if (!next.delete(id)) next.add(id);
-    return next;
-  });
-  // REPORTED ON CHANGE, AND ON THE WAY OUT. A mount reports nothing (the host's own default is
-  // closed), and a ticket that leaves with a box open — the job settles, the record swaps — hands
-  // the follow back, which a report keyed on the state alone would never do.
-  const report = useRef(onThoughtsOpenChange);
-  report.current = onThoughtsOpenChange;
-  const reportedOpen = useRef(false);
-  useEffect(() => {
-    const open = openThoughts.size > 0;
-    if (reportedOpen.current === open) return;
-    reportedOpen.current = open;
-    report.current?.(open);
-  }, [openThoughts]);
-  useEffect(() => () => { if (reportedOpen.current) report.current?.(false); }, []);
+  const toggleThought = (id: number) => {
+    preserveReading();
+    setOpenThoughts((open) => {
+      const next = new Set(open);
+      if (!next.delete(id)) next.add(id);
+      return next;
+    });
+  };
   // A revision above the first is a plan the model re-filed mid-job: the rail would otherwise change
   // shape under the user with nothing saying it had.
   const revised = job.plan !== undefined && job.plan.revision > 1;
@@ -264,104 +247,104 @@ export function JobTicket({
       {tapeMode !== undefined && <TapeBar mode={tapeMode} held={held} />}
 
       {(job.says !== undefined || liveThought !== undefined) && (
-        <>
-        <div data-testid="says" style={{ display: 'flex', alignItems: 'flex-start', gap: 6, minHeight: 17 }}>
-          {job.says !== undefined && (
-            <>
-              {/* The unclamp UNFOLDS on the shared beat (`panel.detail.unfold`): the wrapper's height
-                  opens to the whole text and closes back to the two-line cap, which is the same cut
-                  the clamp makes — the clamp only adds the ellipsis on top. */}
-              <motion.div
-                initial={false}
-                animate={{ height: saysOpen ? 'auto' : SAYS_CLOSED_H }}
-                transition={framerMotion('panel.detail.unfold')}
-                style={{ flex: 1, minWidth: 0, overflow: 'hidden' }}
-              >
-              <span
-                data-testid="says-line"
-                data-open={saysOpen}
-                style={{
-                  // The panel's own prose rung, not `body`: the says line is the assistant SPEAKING,
-                  // in the receding ink, and `body` is a paragraph rung in the plate's own.
-                  ...roleFont('note'),
-                  fontFamily: font.family,
-                  color: colors.brownText,
-                  display: '-webkit-box',
-                  lineHeight: 1.4,
-                  WebkitLineClamp: saysOpen ? undefined : 2,
-                  WebkitBoxOrient: 'vertical',
-                  overflow: 'hidden',
-                  // The model writes markdown, and this seat is ONE clamped run: its emphasis is
-                  // rendered inline and its own line breaks are kept, which is as much of the
-                  // written shape as two lines of a card can hold.
-                  ...INLINE_PROSE_STYLE,
-                }}
-              >
-                {saysRuns}
-                {streaming && (
-                  <motion.span
-                    data-testid="says-caret"
-                    animate={reduced ? { opacity: 1 } : CARET_BLINK}
-                    transition={{ ...framerMotion('panel.says.caret'), repeat: Infinity }}
-                    style={{
-                      display: 'inline-block',
-                      width: 7,
-                      height: 11,
-                      marginLeft: 2,
-                      borderRadius: 2,
-                      background: colors.brownText,
-                      opacity: 0.7,
-                      verticalAlign: -1,
-                    }}
-                  />
-                )}
-              </span>
-              </motion.div>
-              {/* The whole line is one press away, since a clamped two lines can end mid-clause. */}
+        <div>
+          <div data-testid="says" style={{ display: 'flex', alignItems: 'flex-start', gap: 6, minHeight: 17 }}>
+            {job.says !== undefined && (
+              <>
+                {/* The unclamp UNFOLDS on the shared beat (`panel.detail.unfold`): the wrapper's height
+                    opens to the whole text and closes back to the two-line cap, which is the same cut
+                    the clamp makes — the clamp only adds the ellipsis on top. */}
+                <motion.div
+                  initial={false}
+                  animate={{ height: saysOpen ? 'auto' : SAYS_CLOSED_H }}
+                  transition={framerMotion('panel.detail.unfold')}
+                  style={{ flex: 1, minWidth: 0, overflow: 'hidden' }}
+                >
+                <span
+                  data-testid="says-line"
+                  data-open={saysOpen}
+                  style={{
+                    // The panel's own prose rung, not `body`: the says line is the assistant SPEAKING,
+                    // in the receding ink, and `body` is a paragraph rung in the plate's own.
+                    ...roleFont('note'),
+                    fontFamily: font.family,
+                    color: colors.brownText,
+                    display: '-webkit-box',
+                    lineHeight: 1.4,
+                    WebkitLineClamp: saysOpen ? undefined : 2,
+                    WebkitBoxOrient: 'vertical',
+                    overflow: 'hidden',
+                    // The model writes markdown, and this seat is ONE clamped run: its emphasis is
+                    // rendered inline and its own line breaks are kept, which is as much of the
+                    // written shape as two lines of a card can hold.
+                    ...INLINE_PROSE_STYLE,
+                  }}
+                >
+                  {saysRuns}
+                  {streaming && (
+                    <motion.span
+                      data-testid="says-caret"
+                      animate={reduced ? { opacity: 1 } : CARET_BLINK}
+                      transition={{ ...framerMotion('panel.says.caret'), repeat: Infinity }}
+                      style={{
+                        display: 'inline-block',
+                        width: 7,
+                        height: 11,
+                        marginLeft: 2,
+                        borderRadius: 2,
+                        background: colors.brownText,
+                        opacity: 0.7,
+                        verticalAlign: -1,
+                      }}
+                    />
+                  )}
+                </span>
+                </motion.div>
+                {/* The whole line is one press away, since a clamped two lines can end mid-clause. */}
+                <button
+                  type="button"
+                  data-testid="says-expand"
+                  aria-label={t(saysOpen ? 'agent3.says_less' : 'agent3.says_more')}
+                  aria-expanded={saysOpen}
+                  onClick={toggleSays}
+                  style={{
+                    flex: '0 0 auto',
+                    width: 20,
+                    height: 20,
+                    border: 'none',
+                    background: 'none',
+                    padding: 0,
+                    color: colors.brownText,
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    cursor: cursors.clickable,
+                    transform: saysOpen ? 'rotate(180deg)' : undefined,
+                    // The turn rides the same unfold beat as the text it points at.
+                    transition: cssMotion('panel.detail.unfold', ['transform'], reduced),
+                  }}
+                >
+                  <Icon id="pw-chevron" size={13} />
+                </button>
+              </>
+            )}
+            {/* Reasoning remains accessible even before the model writes its first answer text. */}
+            {liveThought !== undefined && (
               <button
                 type="button"
-                data-testid="says-expand"
-                aria-label={t(saysOpen ? 'agent3.says_less' : 'agent3.says_more')}
-                aria-expanded={saysOpen}
-                onClick={toggleSays}
-                style={{
-                  flex: '0 0 auto',
-                  width: 20,
-                  height: 20,
-                  border: 'none',
-                  background: 'none',
-                  padding: 0,
-                  color: colors.brownText,
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  cursor: cursors.clickable,
-                  transform: saysOpen ? 'rotate(180deg)' : undefined,
-                  // The turn rides the same unfold beat as the text it points at.
-                  transition: cssMotion('panel.detail.unfold', ['transform'], reduced),
-                }}
+                data-testid="thoughts-toggle"
+                aria-expanded={openThoughts.has(LIVE_TURN)}
+                onClick={() => toggleThought(LIVE_TURN)}
+                style={THOUGHTS_PILL}
               >
-                <Icon id="pw-chevron" size={13} />
+                {t('agent3.thoughts_so_far')}
               </button>
-            </>
-          )}
-          {/* Reasoning remains accessible even before the model writes its first answer text. */}
-          {liveThought !== undefined && (
-            <button
-              type="button"
-              data-testid="thoughts-toggle"
-              aria-expanded={openThoughts.has(LIVE_TURN)}
-              onClick={() => toggleThought(LIVE_TURN)}
-              style={THOUGHTS_PILL}
-            >
-              {t('agent3.thoughts_so_far')}
-            </button>
-          )}
+            )}
+          </div>
+          <AnimatePresence initial={false}>
+            {liveThought !== undefined && openThoughts.has(LIVE_TURN) && <ThoughtsBox text={liveThought} spaceBefore={9} streaming={live && !held} />}
+          </AnimatePresence>
         </div>
-        <AnimatePresence initial={false}>
-          {liveThought !== undefined && openThoughts.has(LIVE_TURN) && <ThoughtsBox text={liveThought} />}
-        </AnimatePresence>
-        </>
       )}
 
       <div data-testid="ticket-body" style={BODY_STYLE}>
@@ -450,7 +433,7 @@ const PAUSEMARK_STYLE: CSSProperties = {
   alignItems: 'center',
   gap: 6,
   background: INSET,
-  borderRadius: 999,
+  borderRadius: radii.pill,
   padding: '4px 10px',
   ...roleFont('small'),
   fontFamily: font.family,
@@ -464,7 +447,7 @@ const PAUSEMARK_STYLE: CSSProperties = {
  * EXPORTED because the resume OFFER says the same fact about the same job, and two spellings of one
  * sentence drift the first time either is tuned.
  */
-export function pausedWhere(job: JobView, t: (key: string, params?: Record<string, string | number>) => string): string {
+export function pausedWhere(job: JobView, t: Translate): string {
   // "AFTER step n" IS A COUNT OF WHAT IS DONE, which is `doneCount` and not the index of the step the
   // job had reached: reading the index claimed the step in progress as finished, so a hold with two
   // stages banked said "paused after step 3 of 4" directly above an offer note saying two of four

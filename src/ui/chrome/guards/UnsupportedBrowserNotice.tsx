@@ -61,7 +61,7 @@ const pill: CSSProperties = {
   fontFamily: font.family,
   ...roleFont('small'),
   padding: '6px 10px',
-  borderRadius: 999,
+  borderRadius: radii.pill,
   textDecoration: 'none',
   whiteSpace: 'nowrap',
   cursor: cursors.clickable,

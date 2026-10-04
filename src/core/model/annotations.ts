@@ -2,6 +2,9 @@
  * use macro-grid cell units; zones and measurements use whole cells, while chips and routes may be fractional. */
 import type { MacroCoord } from './types';
 import { splineSamples, type CurveAnchor } from './spline';
+import { rectContains } from './grid-model';
+import { generateId } from './object-id';
+import type { BuildShape } from './edit-mode';
 
 /** The closed planning vocabulary. Notes carry one of these ids; free text is never stored. */
 export type TagId =
@@ -14,6 +17,9 @@ export interface AnnotationTag {
   /** Retained for saved notes, omitted from the creation picker. */
   legacy?: boolean;
 }
+
+/** The tag a new zone or chip carries until another is armed. */
+export const DEFAULT_TAG: TagId = 'homes';
 
 export const ANNOTATION_TAGS: readonly AnnotationTag[] = [
   { id: 'homes', labelKey: 'annot.tag_homes' },
@@ -40,7 +46,7 @@ export function isTagId(v: unknown): v is TagId {
   return typeof v === 'string' && (TAG_IDS as readonly string[]).includes(v);
 }
 
-/** A painted region with a numbered caption. `tag` is null only on zones loaded from older saves. */
+/** A painted region with a stable number and an optional text tag. */
 export interface ZoneNote {
   kind: 'zone';
   id: string;
@@ -101,7 +107,7 @@ export function createAnnotationsState(): AnnotationsState {
 export type AnnotationTool = 'zone' | 'chip' | 'route' | 'measure' | 'erase' | 'none';
 
 /** Zone shapes shared with the terrain toolbar. */
-export type AnnotationZoneShape = 'free' | 'line' | 'curve' | 'rect' | 'circle';
+export type AnnotationZoneShape = BuildShape;
 
 /** Palette chosen for contrast over grass, sand, and water. The final cream uses neutral number
  * badges and matches the map-lettering color. */
@@ -115,10 +121,17 @@ export const ANNOTATION_COLORS: readonly string[] = [
 /** Cream annotation color rendered with white outlines and neutral number badges. */
 export const ANNOTATION_INK = '#FFFEE3';
 
+/** Whether a note wears the cream ink rather than a palette colour. */
+export function isAnnotationInk(color: string): boolean {
+  return color.toLowerCase() === ANNOTATION_INK.toLowerCase();
+}
+
+/** The neutral number badge an ink zone wears in place of its own colour. */
+export const INK_ZONE_DISC = '#8A9BAE';
+
 /** Generate an id unique within the session and unlikely to collide with loaded ids. */
-let seq = 0;
 export function generateAnnotationId(): string {
-  return 'an' + Date.now().toString(36) + (seq++).toString(36) + Math.random().toString(36).slice(2, 6);
+  return generateId('an');
 }
 
 /** Return one more than the highest assigned zone number. */
@@ -380,17 +393,15 @@ export function annotationsInRect(
   rect: { x: number; y: number; w: number; h: number },
   items: readonly MapAnnotation[],
 ): string[] {
-  const inside = (px: number, py: number): boolean =>
-    px >= rect.x && px < rect.x + rect.w && py >= rect.y && py < rect.y + rect.h;
   const caught = (n: MapAnnotation): boolean => {
-    if (n.kind === 'zone') return n.cells.some((c) => inside(c.x, c.y));
-    if (n.kind === 'chip') return inside(n.x, n.y);
+    if (n.kind === 'zone') return n.cells.some((c) => rectContains(rect, c.x, c.y));
+    if (n.kind === 'chip') return rectContains(rect, n.x, n.y);
     if (n.kind === 'measure') {
       const [a, b] = n.points;
       return Math.max(a.x, b.x) >= rect.x && Math.min(a.x, b.x) < rect.x + rect.w
         && Math.max(a.y, b.y) >= rect.y && Math.min(a.y, b.y) < rect.y + rect.h;
     }
-    return routeSamples(n.points, 8).some(([sx, sy]) => inside(sx, sy));
+    return routeSamples(n.points, 8).some(([sx, sy]) => rectContains(rect, sx, sy));
   };
   return items.filter(caught).map((n) => n.id);
 }

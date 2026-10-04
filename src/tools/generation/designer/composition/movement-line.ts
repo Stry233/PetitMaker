@@ -4,9 +4,9 @@
  * and set-piece scale. The result is pure and deterministic for its seed, template, composition,
  * and richness.
  */
-import { flatIndex } from '../../../../core/model/grid-model';
+import { flatIndex, isBuildableZone } from '../../../../core/model/grid-model';
 import { makeRng, type Rng } from '../../../../core/model/rng';
-import { CellZone, type MacroCoord, type MapTemplate, type Rect } from '../../../../core/model/types';
+import type { MacroCoord, MapTemplate, Rect } from '../../../../core/model/types';
 import { plazaRect, cellTiers, MASSIF_PEAK_FROM, plateAdjacency, type CompositionPlan, type Plate } from './composition';
 
 import type { SeedInfo, ThemeFamily, ThemeId } from '../types';
@@ -15,7 +15,7 @@ import type { SeedInfo, ThemeFamily, ThemeId } from '../types';
 
 /** What a stop IS on the walk. The roles are the narrative, and each one names a slice of the theme
  *  library rather than a template. */
-export type StopRole = 'market' | 'garden' | 'waterside' | 'climb' | 'lookout';
+type StopRole = 'market' | 'garden' | 'waterside' | 'climb' | 'lookout';
 
 /** One stop: a district the walk passes through, with the theme it is met as. */
 export interface MovementStop {
@@ -34,7 +34,7 @@ export interface MovementStop {
 
 /** One straight stretch of the line, in the same vocabulary a street is written in: `axis` is the
  *  direction it RUNS along, `line` the fixed coordinate across it. */
-export interface MovementSegment {
+interface MovementSegment {
   axis: 'x' | 'y';
   line: number;
   from: number;
@@ -67,8 +67,8 @@ export interface MovementLine {
 /** How many stops a walk holds, at richness 0 and 1. Under three there is no sequence to read; past
  *  six the line crosses the planet more than once and stops reading as one walk. */
 const STOP_COUNT = { low: 3, high: 6 } as const;
-/** The tallest step the walk prefers to take between two stops, in tiers. A flight is `RAMP_RUN`
- *  cells of run per tier, so a taller step is one the ground below it usually has no room for, and a
+/** The tallest step the walk prefers to take between two stops, in tiers. A flight uses one catalog ramp length
+ *  per tier, so a taller step is one the ground below it usually has no room for, and a
  *  leg the flights cannot carry is a leg the settling prunes. */
 const CLIMB_STEP_MAX = 2;
 /** Stops the walk may spend BEYOND its count to reach the mass. A walk that has not arrived by then
@@ -358,10 +358,8 @@ function shortestRoute(
  * own level or rises is preferred.
  *
  * A STEP THE WALK CAN CLIMB comes before that. The flight that carries the line over a step is
- * `RAMP_RUN` cells of run per tier, so a three-tier step needs twelve cells of the terrace below it
- * and there is usually no such room: the leg is then laid, found unreachable and pruned, and the map
- * comes back with no primary walk at all (measured on one seed of ten, whose walk crossed 0, 3, 5 and
- * 8 in four steps). So a gentle step is preferred, then a rising one.
+ * one catalog ramp length per tier. A steep step can exhaust the terrace below it and leave the
+ * primary walk unreachable, so a gentle step is preferred, then a rising one.
  *
  * `first` is the group the walk chooses inside — seeded, which is what gives two seeds two stories on
  * one planet — and `rest` is what the route search falls back through when nothing beyond `first`
@@ -685,7 +683,7 @@ function landMask(template: MapTemplate): Uint8Array {
   const out = new Uint8Array(W * H);
   for (let y = 0; y < H; y++) {
     for (let x = 0; x < W; x++) {
-      if (template.zones[y]?.[x] === CellZone.Grass) out[flatIndex(x, y, W)] = 1;
+      if (isBuildableZone(template.zones[y]?.[x])) out[flatIndex(x, y, W)] = 1;
     }
   }
   return out;

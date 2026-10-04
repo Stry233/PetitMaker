@@ -16,7 +16,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSy
 // @ts-ignore - node:fs/promises is untyped here (no @types/node)
 import { copyFile } from 'node:fs/promises';
 // @ts-ignore - node:path is untyped here (no @types/node)
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 
 // Minimal ambient shape for the pieces of `process` this module uses — this repo declares the node
 // globals it uses locally, per file, rather than adding an @types/node dependency.
@@ -199,6 +199,13 @@ export function auditPackages(closure: ClosureEntry[], opts: { rootDir?: string 
       // package.json missing/unreadable (shouldn't happen with a real install) — fall back
       // to lockfile-known version below, empty metadata otherwise.
     }
+    // clipper-lib omits license files from its npm tarball; its source headers also credit JSBN.
+    const supplement = entry.name === 'clipper-lib' ? {
+      license: 'BSL-1.0 AND LicenseRef-JSBN',
+      author: 'Angus Johnson, Timo, Tom Wu',
+      homepage: 'https://github.com/junmer/clipper-lib',
+      licenseFile: join(rootDir, 'licenses', 'clipper-lib', 'LICENSE'),
+    } : undefined;
     const licenseFile = findFirstMatch(pkgDir, ['LICENSE', 'LICENCE', 'COPYING']);
     const noticeFile = findFirstMatch(pkgDir, ['NOTICE']);
     return {
@@ -209,6 +216,7 @@ export function auditPackages(closure: ClosureEntry[], opts: { rootDir?: string 
       homepage: typeof pkgJson.homepage === 'string' ? pkgJson.homepage : '',
       licenseFile,
       noticeFile,
+      ...supplement,
     };
   });
 }
@@ -462,7 +470,8 @@ export async function writeLicenseTree(audits: PackageAudit[], destRoot: string)
     const pkgDest = join(destRoot, a.name);
     if (a.licenseFile) {
       mkdirSync(pkgDest, { recursive: true });
-      await copyFile(a.licenseFile, join(pkgDest, 'LICENSE'));
+      const target = join(pkgDest, 'LICENSE');
+      if (resolve(a.licenseFile) !== resolve(target)) await copyFile(a.licenseFile, target);
     }
     if (a.noticeFile) {
       mkdirSync(pkgDest, { recursive: true });

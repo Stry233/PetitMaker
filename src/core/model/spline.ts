@@ -1,5 +1,5 @@
 /*
- * spline.ts — the anchor-chain curve: a smooth path THROUGH every anchor, each with an adjustable
+ * The anchor-chain curve: a smooth path THROUGH every anchor, each with an adjustable
  * direction line.
  *
  * This is the curve the paint tools draw with and the one a route annotation runs along, so it

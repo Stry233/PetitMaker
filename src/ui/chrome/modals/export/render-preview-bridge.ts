@@ -1,4 +1,3 @@
-// render-preview-bridge.ts
 // Browser-only export-preview rendering, split so typing in title/description never recaptures the
 // map or the 3D stills: captureBaseMap / captureCard3dAngles are the EXPENSIVE steps (run only when
 // the map / resolution / 3D toggle / chosen shots change); paintPreview is CHEAP (a canvas draw + text) and re-runs on
@@ -15,7 +14,8 @@ import { brandInfo } from './brand';
 import { loadImage } from '../../../../io/export/canvas-helpers';
 import { badgesFor } from '../../../../io/export/render';
 import { captureMapStills, type CameraAngle } from '../../../../canvas/map3d/capture';
-import { translateFor, localizedName } from '../../../../i18n/context';
+import { translateFor } from '../../../../i18n/context';
+import { shownPlanetName } from '../../../../io/planet-library';
 import type { ExportOptions } from '../../../../io/export/types';
 import { mapNativePx } from '../../../../io/export/sizing';
 import type { GridState, Locale } from '../../../../core/model/types';
@@ -36,7 +36,7 @@ export function footerTokenValues(state: GridState, options: ExportOptions, loca
   const peak = maxTerrainElevation(state);
   const seed = state.generation?.seed;
   return {
-    name: localizedName(state.template.name, locale) || '',
+    name: shownPlanetName(state.template, locale),
     cells: `${state.template.width}×${state.template.height}`,
     layers: String(layersFor(state).length),
     objects: String(state.objects.size),
@@ -61,7 +61,7 @@ const EMPTY_SUMMARY: MapProvenanceSummary = {
 /** EXPENSIVE: capture the 2D map at preview resolution, OR — when a stylize version is selected —
  *  compose that version's picture with the user's own ink instead of capturing the map bitmap at
  *  all. Cache by resolution in the caller. includeGrid bakes the real 2D grid (sub + cell + chunk
- *  lines) into the capture; 原图 (no selection) keeps that plain path byte for byte. */
+ *  lines) into the capture; Original (no selection) keeps that plain path byte for byte. */
 export async function captureBaseMap(px = 720, includeGrid = false, annotations?: boolean, aiTag = ''): Promise<BaseMapSource | null> {
   const version = selectedVersion();
   if (version) {
@@ -87,7 +87,7 @@ export async function captureCard3dAngles(state: GridState, angles?: CameraAngle
 /** CHEAP: paint the preview from already-captured assets. Returns a PNG data URL (or null).
  *  Always the SAME composed layout as the export (map dominant + optional restore-strip band),
  *  so the preview matches the final image and every appearance option stays visible. */
-export interface PaintPreviewArgs {
+interface PaintPreviewArgs {
   options: ExportOptions; summary: MapProvenanceSummary | null; state: GridState; locale: Locale;
   baseMap: BaseMapSource; card3dAngles: HTMLImageElement[];
   /** The REAL rendered share-code band (built async by the modal); the caller gates painting on

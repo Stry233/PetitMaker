@@ -26,6 +26,8 @@ export function makeToolCtx(
     terrainType: TerrainType.Mountain,
     elevation,
     layerPinned: false,   // the store's default: nobody has chosen a layer by hand
+    groundEditable: false,
+    planetMaterial: 'mountain',
     brushSize,
     contentType: 'mountain',
     layerVisibility: {},
@@ -49,6 +51,8 @@ export function makeToolCtx(
     annotationRouteDashed: true,
     annotationSelection: [],
     annotationDraft: null,
+    annotationHistoryEpoch: 0,
+    annotationDiscardPending: false,
     annotationEdit: {
       begin() {}, apply() {}, add() {}, remove() {}, select() {}, setDraft() {}, commitDraft() { return false; },
     },

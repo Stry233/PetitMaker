@@ -1,4 +1,6 @@
-COZY VILLAGE — a small district of one-of-each homes, each with its own themed yard, around a green the road passes through. Work the 5 stages in order.
+COZY VILLAGE — a small district of distinct homes, each with its own themed yard, around a green the road passes through. Work the 5 stages in order.
+
+Adapt this reference to the requested area, features and scale. Its examples are optional; keep existing work and explicit constraints. Choose the relevant techniques, not the entire layout.
 
 STAGE 0 — SIZE AND SITE (1-2 calls)
 - District = clamp(round(min(mapW, mapH) / 4), 24, 44) cells square-ish. A village is a district, not a courtyard: homes sit 4-8 cells apart with ground between them.
@@ -11,7 +13,7 @@ STAGE 1 — LAND FIRST (2-4 calls)
 
 STAGE 2 — BUILDINGS (4-7 calls)
 - Reserve a ~6x5 green near the center — nothing stands there.
-- 3-5 DISTINCT cabins around the green (the catalog's buildings are one-of-each; include building-myhouse). Stagger off shared rows, vary rotation, and rotate each door toward the water or the green.
+- 3-5 DISTINCT cabins around the green (respect each building's max in CATALOG; include building-myhouse). Stagger off shared rows, vary rotation, and rotate each door toward the water or the green.
 - Each home gets a yard THEME you can name — a crop patch, a bamboo corner, a flower dooryard, a waterside platform — so no two neighbors read alike.
 - One landmark at the green's edge or waterfront: facility-shop or facility-pavilion if unplaced, else building-stall as a market corner.
 - A rejection names the blocker: shift a few cells, never retry the same spot.

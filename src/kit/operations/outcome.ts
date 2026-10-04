@@ -2,7 +2,7 @@
  * The shape every editor verb returns. A leaf module, so every operation (including `generate.ts`)
  * can import it directly instead of through the `index.ts` barrel that re-exports them.
  */
-import type { MacroCoord, ResolvedMazeGates, ValidationError } from '../../core/model/types';
+import type { MacroCoord, ResolvedMazeGates, StencilBudgetOutcome, ValidationError } from '../../core/model/types';
 
 export interface Outcome {
   /** The cells the operation touched, for the caller's flash. */
@@ -32,6 +32,7 @@ export interface Outcome {
    * letting a letter go quietly missing.
    */
   stencil?: StencilOutcome;
+  stencilBudget?: StencilBudgetOutcome;
   /**
    * Why a run confined to a REGION built nothing, on a run that built nothing. Absent otherwise, and
    * absent on an unconfined run, which has no surroundings to answer to.

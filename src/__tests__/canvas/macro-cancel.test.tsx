@@ -9,7 +9,7 @@ import { useEditorStore } from '../../state/store';
 import { ToolManager } from '../../tools/runtime/tool-manager';
 import { buildMacroRun, installMacroBuildRunner, type MacroBuild } from '../../tools/macros/run';
 import { makeExecutor, makeState } from '../rules/_helpers';
-import { makeStubRenderer } from '../tools/_tool-manager';
+import { makeStubView } from '../tools/_tool-manager';
 
 function Host() {
   const ref = useRef<HTMLDivElement>(null);
@@ -31,7 +31,7 @@ function setup() {
   useEditorStore.setState({ gridState: state, commandExecutor: executor, activeTool: ToolType.Macro,
     armedMacro: 'raise', armingEpoch: 1, region: [], selectingRegion: false, selectedItemId: null,
     selection: [], layerPinned: false, activeLayer: 1, contentType: 'mountain', autoEdgeCut: 'off' });
-  const manager = new ToolManager(makeStubRenderer(), executor, state);
+  const manager = new ToolManager(makeStubView(), executor, state);
   const view = {
     projection: { screenToMacro: (x: number, y: number) => ({ x: x/10, y: y/10 }),
       screenToMicro: (x: number, y: number) => ({ x: x/5, y: y/5 }) },

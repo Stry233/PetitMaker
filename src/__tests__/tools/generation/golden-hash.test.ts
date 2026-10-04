@@ -71,7 +71,7 @@ function run(config: GenerateConfig): GridState {
   const state = makeState(SIZE, SIZE);
   const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
   exec.runSilently(() => generateTerrain(config, state, (c: Command) => exec.execute(c), exec.getRegistry()));
-  exec.commitStrokeGroup(exec.getUndoStackSize());
+  exec.commitStroke(exec.getUndoStackSize());
   return state;
 }
 
@@ -79,11 +79,11 @@ describe('golden hash: what a seed produces is pinned across commits', () => {
   // The planet across a few seeds at the shelf's default richness — the matrix a saved "recipe
   // number" most commonly is — plus both ends of the richness axis on one seed.
   it.each([
-    ['mixed seed 4', { algorithm: 'designed', mode: 'mixed', corridorWidth: 1, maxElevation: 6, seed: 4, region: null, richness: 0.7 } as GenerateConfig, '5f6c4378a5cd4d8868cf7c26f0a0d2eea1cbcc61924743cd046fea4ff5b45c46'],
-    ['mixed seed 11', { algorithm: 'designed', mode: 'mixed', corridorWidth: 1, maxElevation: 6, seed: 11, region: null, richness: 0.7 } as GenerateConfig, '6ab5e1c86466046b0d3637c2b5c845445249888ed10f4b4e344ad242afe6f991'],
-    ['earth seed 42', { algorithm: 'designed', mode: 'earth', corridorWidth: 1, maxElevation: 6, seed: 42, region: null, richness: 0.7 } as GenerateConfig, '1a96458db8a25dbb37ea7162e4b41e86813e60c011fdf8897d5600164d5f9c76'],
-    ['garden town (richness 0) seed 4', { algorithm: 'designed', mode: 'mixed', corridorWidth: 1, maxElevation: 6, seed: 4, region: null, richness: 0 } as GenerateConfig, 'd39c8454dfbedb703f78ad51538b1ac2cd3e9369746ccb1522580d573def149c'],
-    ['terraced planet (richness 1) seed 4', { algorithm: 'designed', mode: 'mixed', corridorWidth: 1, maxElevation: 6, seed: 4, region: null, richness: 1 } as GenerateConfig, '16b09ee2fb4c08f51c4abfb30ad4603462367766643995f4223a2c77b41f5c53'],
+    ['mixed seed 4', { algorithm: 'designed', mode: 'mixed', corridorWidth: 1, maxElevation: 6, seed: 4, region: null, richness: 0.7 } as GenerateConfig, '4662b20841e76c2392aadbfcb2b030df9ef7d0763e6ec0728ea6639a4345e3d5'],
+    ['mixed seed 11', { algorithm: 'designed', mode: 'mixed', corridorWidth: 1, maxElevation: 6, seed: 11, region: null, richness: 0.7 } as GenerateConfig, 'ba7f74b8c9ddba7b4a709c3041962ec8855d276db18707bd8f5c32bb2b0deefb'],
+    ['earth seed 42', { algorithm: 'designed', mode: 'earth', corridorWidth: 1, maxElevation: 6, seed: 42, region: null, richness: 0.7 } as GenerateConfig, '19b492762e121e5c9a2bee25bfbdd935b43956c2c0f0701e6601eb032a4075cd'],
+    ['garden town (richness 0) seed 4', { algorithm: 'designed', mode: 'mixed', corridorWidth: 1, maxElevation: 6, seed: 4, region: null, richness: 0 } as GenerateConfig, '6471fe2962f90a5f223006f28ee2c2e7ab4b06a9ce3a05bd3dd4703cf8fd9041'],
+    ['terraced planet (richness 1) seed 4', { algorithm: 'designed', mode: 'mixed', corridorWidth: 1, maxElevation: 6, seed: 4, region: null, richness: 1 } as GenerateConfig, '084d0e93cc7faa00b4d3a14d44323f83f15a05d14907f691c8c415e966d141fc'],
   ] as const)('%s', (_label, config, expected) => {
     expect(goldenHash(run(config))).toBe(expected);
   });

@@ -1,4 +1,5 @@
 import { LiteFrameBudget } from './lite-frame-budget';
+import { assertFinite } from '../core/finite';
 import { viewportRect } from '../../../core/runtime/viewport-space';
 /**
  * ThreeScene — the ONLY GPU-touching module. Builds a three.js scene from a
@@ -12,26 +13,25 @@ import type { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js
 import { FontLoader, type Font } from 'three/examples/jsm/loaders/FontLoader.js';
 // MgOpen Helvetiker bold, vendored unmodified from three.js r169 (the package stopped shipping example fonts); matches the 2D legend's bold sans-serif weight.
 import helvetikerBold from '../../../assets/fonts/helvetiker_bold.typeface.json';
-import { ItemCategory, TerrainType, type GridState, type PlacedObject } from '../../../core/model/types';
+import { TerrainType, type GridState, type PlacedObject } from '../../../core/model/types';
 import { watchContextLoss } from '../../context-loss';
-import { ELEVATION_MAX } from '../../../core/model/constants';
-import { glQuality, maxRenderScale, canIncreaseRenderScale } from '../../../core/runtime/device-quality';
+import { glQuality, maxRenderScale, canIncreaseRenderScale, type GlQuality } from '../../../core/runtime/device-quality';
 import { solidTopOf } from '../../../core/edge-cut/terrain-silhouette';
 import { getPlacedObjectSize } from '../../../state/object-geometry';
-import { resolveHistoryFlash } from '../../map2d/layers/error-flash';
-import { buildChunkTerrain, buildRoadTrimMeshes, type RoadTrimPart } from '../build/terrain-geometry';
+import { resolveHistoryFlash } from '../../error-flash';
+import { buildChunkTerrain, buildRoadTrimMeshes, buildSeaFrame, RoadTrimCache, type RoadTrimPart } from '../build/terrain-geometry';
 import { dirtyChunksFor } from '../build/chunk-dirty';
-import { bodyRoute, objectInstance } from '../build/object-meshes';
+import { bodyRoute, objectSlotIds, objectSlotInstances, slotOwner } from '../build/object-meshes';
 import { getCatalogItem } from '../../../state/catalog';
 import { InstanceSlots } from '../build/instance-slots';
 import { visibilityView } from '../build/visibility-view';
 import { chunkNumberQuads } from '../build/passive-geometry';
-import { chunkNumberCells, setNumberLabelStyle, drawNumberLabel } from '../../map2d/layers/number-cells';
+import { chunkNumberCells, setNumberLabelStyle, drawNumberLabel } from '../../number-cells';
 import { waterfallFaceMap } from '../../../core/model/waterfall-geometry';
 import { pickSurface, surfaceHeightAt } from '../interaction/pick';
-import { animConfig, easeOutBack } from '../../../core/runtime/anim-config';
+import { animConfig, easeOutBack, easeOutCubic, easeOutQuad } from '../../../core/runtime/anim-config';
 import { arcMotion, arcOffset, spinOffset, type ArcMotion, type GroupRotation } from '../../group-arc';
-import { isMotionReduced } from '../../map2d/motion-state';
+import { isMotionReduced } from '../../../core/runtime/motion-state';
 import { getCell } from '../../../core/model/grid-model';
 import { Overlay3D } from './overlay3d';
 import { Annotations3D, type Annotations3DOpts } from './annotations3d';
@@ -39,26 +39,33 @@ import type { AnnotationsState } from '../../../core/model/annotations';
 import { Projection3D } from '../interaction/projection';
 import type { ActiveView, ViewCamera } from '../../view-projection';
 import { CommandType } from '../../../core/model/types';
-import { cellsAffectedByLayerToggle } from '../../map2d/layers/layer-visibility';
-import { CHUNK_SIZE } from '../../../core/model/constants';
+import { cellsAffectedByLayerToggle } from '../../layer-visibility';
+import { mapChunkAxes, mapChunkOrigin, mapFrame } from '../../../core/model/map-chunks';
+import { CELL_GRID_STYLE, CHUNK_GRID_STYLE } from '../../reference-grid';
+import { softenSeaEdge } from './sea-edge';
+import { softenRoadEdge } from './road-edge';
 import type { EventBus } from '../../../core/commands/event-bus';
 import type { EditorEvents } from '../../../core/model/types';
 import { archetypeGeometry, disposeArchetypes } from '../build/object-archetypes';
-import { modelGeometry, disposeModels } from '../models/build-model';
+import { deckGeometry, modelGeometry, disposeModels } from '../models/build-model';
 import { introStartOffset, reportedCameraAngle, type CameraAngle } from '../capture';
 import { clamp } from '../../../core/model/math';
-import { makeCamera, makeControls, frameBounds, type MapBounds } from './camera-controls';
+import { makeCamera, makeControls, frameBounds, islandBounds, type MapBounds } from './camera-controls';
 import { CameraInertia } from './camera-inertia';
 import { CameraRestDetector } from './camera-rest';
-import { layerToY, mapCenterOffset, cellCornerWorld, platformTopY } from '../core/coords';
+import { SEA_Y, layerToY, mapCenterOffset, cellCornerWorld } from '../core/coords';
 
 /** Ease for the camera fly-in (decelerate into the resting frame). */
-const easeOutCubic = (t: number): number => 1 - Math.pow(1 - t, 3);
 import { iconUrl } from '../../../assets/icon-urls';
 import { roadTileCanvas } from '../../road-tile-texture';
+import { roadPatternKey, roadPatternRepeat } from '../../../core/model/road-material';
+import { roadMaterialTexture } from '../../road-material-texture';
 import { waterColor } from '../core/palette';
 import { iconDominantColor } from './icon-color';
 import type { MeshData, ObjectInstance, ArchetypeKey } from '../core/types';
+import { isCoatingItem, isCoating } from '../../../core/model/traits';
+import { ELEVATION_MAX, CHUNK_SIZE } from '../../../core/model/game-profile';
+import { CATEGORIES } from '../../../config/catalog/categories';
 
 /** One instanced-object group's live scene state (see addObjectInstance). */
 interface InstanceGroup {
@@ -71,6 +78,11 @@ interface InstanceGroup {
 
 const UP_AXIS = new THREE.Vector3(0, 1, 0);
 
+/** Instance groups drawn as flat ground decals: the archetypes of coating categories and the platform. */
+const DECAL_GROUPS: ReadonlySet<string> = new Set([
+  ...CATEGORIES.filter((c) => c.items.some(isCoating)).map((c) => `a:${c.id}`), 'a:platform',
+]);
+
 /** One terrain chunk's live scene objects (see rebuildChunk). */
 interface TerrainChunk {
   meshes: THREE.Mesh[];
@@ -78,7 +90,8 @@ interface TerrainChunk {
   numbers: { mesh: THREE.Mesh; tex: THREE.CanvasTexture } | null;
 }
 
-function toGeometry(m: MeshData): THREE.BufferGeometry {
+function toGeometry(m: MeshData, source: string): THREE.BufferGeometry {
+  if (import.meta.env.DEV) assertFinite(source, m.positions);
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.Float32BufferAttribute(m.positions, 3));
   // The builders emit sRGB colours; convert to the renderer's LINEAR working
@@ -181,6 +194,7 @@ function addProximityFade(mat: THREE.Material): void {
   };
 }
 
+
 /** Where along the cascade pattern a waterfall face is shaded (see shadeFall). */
 const FALL_PHASE = 0;
 
@@ -201,52 +215,76 @@ function ensureFadeRadius(geo: THREE.BufferGeometry): void {
 
 /** Shared uniforms for the draped reference grid (one set, referenced by the terrain material's
  *  injected shader so toggling is a single `.value` write). */
-interface GridUniforms { uGrid: { value: number }; uChunks: { value: number }; uGridOff: { value: THREE.Vector2 } }
+interface GridUniforms {
+  uGrid: { value: number };
+  uChunks: { value: number };
+  uGridOff: { value: THREE.Vector2 };
+  uChunkOrigin: { value: THREE.Vector2 };
+  uChunkEnd: { value: THREE.Vector2 };
+  uGridPixelRatio: { value: number };
+}
 
-/** Inject a DRAPED reference grid into the terrain material — a light "texture" painted in the fragment
- *  shader from WORLD XZ, so it follows the terrain surface (never a flat plane floating over it) and
- *  placements drawn on top occlude it normally. Only UP-FACING faces get it (the derivative face normal
- *  gates out the vertical walls); `fwidth` keeps every line a screen-constant ~1px. The macro cell grid +
- *  a fainter half-cell subgrid (uGrid) and the coarse chunk bounds (uChunks) toggle live via the shared
- *  uniforms. Mirrors the 2D grid's colours (white cell/subgrid, black chunk bounds). */
+/** World-space grid lines follow upward terrain faces and remain occluded by placed objects.
+ *  Derivatives enforce a CSS-pixel minimum width; chunk strokes also grow with the cell size.
+ *  Both views use white cell lines and black dashed chunk boundaries. */
 function addGridOverlay(mat: THREE.Material, u: GridUniforms): void {
   mat.onBeforeCompile = (shader) => {
     shader.uniforms.uGrid = u.uGrid;
     shader.uniforms.uChunks = u.uChunks;
     shader.uniforms.uGridOff = u.uGridOff;
+    shader.uniforms.uChunkOrigin = u.uChunkOrigin;
+    shader.uniforms.uChunkEnd = u.uChunkEnd;
+    shader.uniforms.uGridPixelRatio = u.uGridPixelRatio;
     shader.vertexShader = shader.vertexShader
       .replace('#include <common>', '#include <common>\nvarying vec3 vGridW;')
       .replace('#include <begin_vertex>', '#include <begin_vertex>\n\tvGridW = ( modelMatrix * vec4( transformed, 1.0 ) ).xyz;');
     const K = CHUNK_SIZE.toFixed(1);
+    const halfWidth = CHUNK_GRID_STYLE.map3d.widthPx / 2;
     shader.fragmentShader = shader.fragmentShader
-      .replace('#include <common>', '#include <common>\nvarying vec3 vGridW;\nuniform float uGrid;\nuniform float uChunks;\nuniform vec2 uGridOff;')
-      .replace('#include <opaque_fragment>', [
-        '#include <opaque_fragment>',
+      .replace('#include <common>', '#include <common>\nvarying vec3 vGridW;\nuniform float uGrid;\nuniform float uChunks;\nuniform vec2 uGridOff;\nuniform vec2 uChunkOrigin;\nuniform vec2 uChunkEnd;\nuniform float uGridPixelRatio;')
+      .replace('#include <fog_fragment>', [
+        '#include <fog_fragment>',
         'if ( uGrid > 0.5 || uChunks > 0.5 ) {',
         '\tvec3 gfn = normalize( cross( dFdx( vGridW ), dFdy( vGridW ) ) );',
-        '\tif ( gfn.y > 0.5 ) {', // up-facing surfaces only — the walls stay clean
-        '\t\tvec2 gc = vGridW.xz + uGridOff;', // → macro cell coordinates (lines at integers)
-        // Density fade: each line is ~1px on screen, so as the map zooms out and a cell shrinks below
-        // ~10px that 1px line becomes a large fraction of the cell (and finally washes it) — reading as
-        // fat, dense lines. gfw = fwidth(gc) = cell-units per pixel (1/gfw = cell size in px), so fade the
-        // grid out well before that: the dense half-cell subgrid first, then the cell grid. The grid is
-        // crisp only when cells are comfortably large (zoomed in for editing) and gone at the global view.
-        '\t\tfloat gfw = max( fwidth( gc ).x, fwidth( gc ).y );',
-        '\t\tfloat subFade = 1.0 - smoothstep( 0.025, 0.07, gfw );',   // subgrid gone by ~14px cells
-        '\t\tfloat cellFade = 1.0 - smoothstep( 0.05, 0.11, gfw );',   // cell grid gone by ~9px cells
+        '\tvec2 gc = vGridW.xz + uGridOff;',
+        '\tbool inFrame = all( greaterThanEqual( gc, uChunkOrigin ) ) && all( lessThanEqual( gc, uChunkEnd ) );',
+        `\tif ( gfn.y > 0.5 && vGridW.y >= ${(SEA_Y - 1e-5).toFixed(5)} && inFrame ) {`, // exclude walls and the sea floor
+        '\t\tvec2 cellStep = max( fwidth( gc ), vec2( 1e-5 ) );',
+        '\t\tfloat cellPixels = 1.0 / ( max( cellStep.x, cellStep.y ) * uGridPixelRatio );',
+        '\t\tfloat ink = 0.0;',
+        '\t\tfloat whiteClearance = 1.0;',
+        '\t\tif ( uChunks > 0.5 ) {',
+        `\t\t\tvec2 kc = ( gc - uChunkOrigin ) / ${K};`,
+        '\t\t\tvec2 dk = abs( fract( kc - 0.5 ) - 0.5 ) / max( fwidth( kc ), vec2( 1e-5 ) );',
+        `\t\t\tvec2 halfWidth = max( vec2( ${halfWidth} * uGridPixelRatio ), vec2( ${CHUNK_GRID_STYLE.minCellWidth / 2} ) / cellStep );`,
+        `\t\t\thalfWidth = min( halfWidth, vec2( ${CHUNK_GRID_STYLE.map3d.maxCellWidth / 2} ) / cellStep );`,
+        '\t\t\tvec2 chunkLine = 1.0 - smoothstep( halfWidth - 0.5, halfWidth + 0.5, dk );',
+        // Keep the outer stroke inside the grid so it remains complete at the sea edge.
+        '\t\t\tvec2 edge = min( gc - uChunkOrigin, uChunkEnd - gc ) / cellStep;',
+        '\t\t\tchunkLine = max( chunkLine, 1.0 - smoothstep( 2.0 * halfWidth - 0.5, 2.0 * halfWidth + 0.5, edge ) );',
+        `\t\t\tvec2 phase = abs( mod( gc - uChunkOrigin + ${((CHUNK_GRID_STYLE.dashCells + CHUNK_GRID_STYLE.gapCells) / 2).toFixed(1)}, vec2( ${(CHUNK_GRID_STYLE.dashCells + CHUNK_GRID_STYLE.gapCells).toFixed(1)} ) ) - ${((CHUNK_GRID_STYLE.dashCells + CHUNK_GRID_STYLE.gapCells) / 2).toFixed(1)} );`,
+        `\t\t\tvec2 dash = 1.0 - smoothstep( vec2( ${CHUNK_GRID_STYLE.dashCells / 2} ) - cellStep * 0.5, vec2( ${CHUNK_GRID_STYLE.dashCells / 2} ) + cellStep * 0.5, phase );`,
+        `\t\t\tink = max( chunkLine.x * dash.y, chunkLine.y * dash.x ) * ${CHUNK_GRID_STYLE.map3d.opacity};`,
+        // White lines remain in dash gaps but cannot tint the translucent reference ink.
+        '\t\t\twhiteClearance = ink > 0.0 ? 0.0 : 1.0;',
+        '\t\t}',
         '\t\tif ( uGrid > 0.5 ) {',
-        '\t\t\tif ( subFade > 0.001 ) {',
-        '\t\t\t\tvec2 ds = abs( fract( gc * 2.0 - 0.5 ) - 0.5 ) / max( fwidth( gc * 2.0 ), vec2( 1e-5 ) );',
-        '\t\t\t\tgl_FragColor.rgb = mix( gl_FragColor.rgb, vec3( 1.0 ), ( 1.0 - min( min( ds.x, ds.y ), 1.0 ) ) * 0.09 * subFade );',
-        '\t\t\t}',
-        '\t\t\tif ( cellFade > 0.001 ) {',
-        '\t\t\t\tvec2 dc = abs( fract( gc - 0.5 ) - 0.5 ) / max( fwidth( gc ), vec2( 1e-5 ) );',
-        '\t\t\t\tgl_FragColor.rgb = mix( gl_FragColor.rgb, vec3( 1.0 ), ( 1.0 - min( min( dc.x, dc.y ), 1.0 ) ) * 0.18 * cellFade );',
-        '\t\t\t}',
+        `\t\t\tfloat cellFade = smoothstep( ${CELL_GRID_STYLE.map3d.fadePx[0].toFixed(1)}, ${CELL_GRID_STYLE.map3d.fadePx[1].toFixed(1)}, cellPixels );`,
+        `\t\t\tfloat subFade = smoothstep( ${CELL_GRID_STYLE.map3d.subFadePx[0].toFixed(1)}, ${CELL_GRID_STYLE.map3d.subFadePx[1].toFixed(1)}, cellPixels );`,
+        `\t\t\tfloat cellHalf = ${(CELL_GRID_STYLE.map3d.widthPx / 2).toFixed(3)} * uGridPixelRatio;`,
+        `\t\t\tfloat subHalf = ${(CELL_GRID_STYLE.subWidthPx / 2).toFixed(3)} * uGridPixelRatio;`,
+        '\t\t\tvec2 dc = abs( fract( gc - 0.5 ) - 0.5 ) / cellStep;',
+        '\t\t\tvec2 ds = abs( fract( gc ) - 0.5 ) / cellStep;',
+        '\t\t\tfloat cellLine = 1.0 - smoothstep( cellHalf - 0.5, cellHalf + 0.5, min( dc.x, dc.y ) );',
+        '\t\t\tfloat subLine = 1.0 - smoothstep( subHalf - 0.5, subHalf + 0.5, min( ds.x, ds.y ) );',
+        `\t\t\tfloat whiteInk = max( cellLine * cellFade * ${CELL_GRID_STYLE.map3d.opacity}, subLine * subFade * ${CELL_GRID_STYLE.map3d.subOpacity} );`,
+        '\t\t\tgl_FragColor.rgb = mix( gl_FragColor.rgb, vec3( 1.0 ), whiteInk * whiteClearance );',
         '\t\t}',
         '\t\tif ( uChunks > 0.5 ) {',
-        '\t\t\tvec2 dk = abs( fract( gc / ' + K + ' - 0.5 ) - 0.5 ) / max( fwidth( gc / ' + K + ' ), vec2( 1e-5 ) );',
-        '\t\t\tgl_FragColor.rgb = mix( gl_FragColor.rgb, vec3( 0.0 ), ( 1.0 - min( min( dk.x, dk.y ) / 0.6, 1.0 ) ) * 0.55 );', // ~0.6px hairline (alpha keeps it readable)
+        // Composite the reference ink independently so its opacity survives the sea's edge fade.
+        '\t\t\tfloat combinedAlpha = gl_FragColor.a + ink * ( 1.0 - gl_FragColor.a );',
+        '\t\t\tgl_FragColor.rgb *= gl_FragColor.a * ( 1.0 - ink ) / max( combinedAlpha, 1e-5 );',
+        '\t\t\tgl_FragColor.a = combinedAlpha;',
         '\t\t}',
         '\t}',
         '}',
@@ -254,23 +292,19 @@ function addGridOverlay(mat: THREE.Material, u: GridUniforms): void {
   };
 }
 
-/** Fade the layer-number labels with the SAME density LOD as the draped grid: the
- *  label mesh is in the same world scale as the terrain (1 unit = 1 cell), so
- *  fwidth of its world XZ is cell-units-per-pixel — identical to the grid's gfw.
- *  Using the grid's EXACT cell-grid fade window (0.05..0.11) makes the numbers
- *  appear and fade in lockstep with the cell lines: wherever the grid shows,
- *  the numbers show. Per-pixel, so near chunks stay readable while far ones fade. */
-function addLabelFade(mat: THREE.Material): void {
+/** Layer numbers follow the white cell grid's density fade in CSS pixels. */
+function addLabelFade(mat: THREE.Material, pixelRatio: GridUniforms['uGridPixelRatio']): void {
   mat.onBeforeCompile = (shader) => {
+    shader.uniforms.uGridPixelRatio = pixelRatio;
     shader.vertexShader = shader.vertexShader
-      .replace('#include <common>', '#include <common>\nvarying vec3 vLblW;')
+      .replace('#include <common>', '#include <common>\nvarying vec3 vLblW;\nuniform float uGridPixelRatio;')
       .replace('#include <begin_vertex>', '#include <begin_vertex>\n\tvLblW = ( modelMatrix * vec4( transformed, 1.0 ) ).xyz;');
     shader.fragmentShader = shader.fragmentShader
-      .replace('#include <common>', '#include <common>\nvarying vec3 vLblW;')
+      .replace('#include <common>', '#include <common>\nvarying vec3 vLblW;\nuniform float uGridPixelRatio;')
       .replace('#include <opaque_fragment>', [
         '#include <opaque_fragment>',
         'float lfw = max( fwidth( vLblW.x ), fwidth( vLblW.z ) );', // cell-units per pixel (== grid gfw)
-        'gl_FragColor.a *= 1.0 - smoothstep( 0.05, 0.11, lfw );',    // same window as the grid's cell lines
+        `gl_FragColor.a *= smoothstep( ${CELL_GRID_STYLE.map3d.fadePx[0].toFixed(1)}, ${CELL_GRID_STYLE.map3d.fadePx[1].toFixed(1)}, 1.0 / max( lfw * uGridPixelRatio, 1e-5 ) );`,
       ].join('\n'));
   };
 }
@@ -348,11 +382,14 @@ export class ThreeScene {
    *  set no longer matches the map and `resume()` rebuilds it whole (see `resetObjects`). */
   private objectsStale = false;
   private viewCache: GridState | null = null;
-  private plazaGroup: THREE.Group | null = null;
-  private plazaElevation: number | null = null;
   private overlay3d: Overlay3D | null = null;
   private passive = { grid: false, numbers: false, chunks: false };
-  private gridUniforms: GridUniforms = { uGrid: { value: 0 }, uChunks: { value: 0 }, uGridOff: { value: new THREE.Vector2() } };
+  private gridUniforms: GridUniforms = {
+    uGrid: { value: 0 }, uChunks: { value: 0 },
+    uGridOff: { value: new THREE.Vector2() }, uChunkOrigin: { value: new THREE.Vector2() },
+    uChunkEnd: { value: new THREE.Vector2() },
+    uGridPixelRatio: { value: 1 },
+  };
   private legendGroup: THREE.Group | null = null;
   private legendMat: THREE.MeshBasicMaterial | null = null;
   private arrowGroup = new THREE.Group();
@@ -367,6 +404,8 @@ export class ThreeScene {
   private roadTrimMeshes: THREE.Mesh[] = [];
   private roadTrimGeos: THREE.BufferGeometry[] = [];
   private roadTrimMat!: THREE.MeshLambertMaterial;
+  /** Regions and band triangulations reused across road rebuilds, tween frames and move previews. */
+  private roadTrimCache = new RoadTrimCache(() => this.onRoadArtLoaded());
   /** The per-material road materials, keyed `<catalogId>:tex|flat`. A textured surface's vertex
    *  colours are white, so the stand-in used while the art decodes must carry the item's hex
    *  itself — the two are separate cache entries, and the textured one wins once it exists. */
@@ -416,6 +455,7 @@ export class ThreeScene {
   private introTarget = new THREE.Vector3();
   /** Lightweight effects profile; drawing-buffer resolution is budgeted separately. */
   private lite = false;
+  private modelQuality = (): GlQuality => this.lite ? 'lite' : 'full';
   private frameBudget = new LiteFrameBudget();
   private budgetScale = 1;
   private resolutionLimited = false;
@@ -462,7 +502,7 @@ export class ThreeScene {
     // silhouette edges of small geometry (flowers, posts) then flicker against the
     // background as the camera moves (a "flashing border"). The scene doesn't need log
     // depth: near=0.5 gives ~0.003-unit precision at map-viewing distance, well under
-    // the smallest intentional separation (the 0.02 water-rim lift), and objects stand
+    // the 0.02-unit road decal lift, and objects stand
     // on the visible surface rather than intersecting it.
     // ANTIALIASING IS DONE IN-APP, never on the canvas. Canvas-level MSAA
     // (antialias: true) hands the resolve to the browser's present path, and on
@@ -594,14 +634,13 @@ export class ThreeScene {
       };
     }
     this.buildObjects(this.liveState);
-    this.buildPlaza(this.liveState);
 
     const off = mapCenterOffset(this.liveState.template.width, this.liveState.template.height);
-    const bounds: MapBounds = { halfX: off.x, halfZ: off.z, maxY: layerToY(maxHeight(this.liveState)) };
+    const bounds = islandBounds(this.liveState.template, layerToY(maxHeight(this.liveState)));
     frameBounds(this.camera, this.controls, bounds);
     // Fog melts distant terrain into the horizon band (depth + immersion).
     this.scene.fog = new THREE.Fog(HORIZON, this.controls.maxDistance * 0.45, this.controls.maxDistance * 1.3);
-    this.setupShadows(bounds);
+    this.setupShadows({ halfX: off.x, halfZ: off.z, maxY: bounds.maxY });
 
     // Camera intro: capture the resting frame, then start FAR out (higher + pulled back, so the map
     // sits small in the fog) and fly in. Controls are paused until it lands.
@@ -721,6 +760,9 @@ export class ThreeScene {
    *  through here so on-screen and captured frames share one pipeline. */
   private renderFrame(): void {
     if (this.contextLost) return;
+    this.gridUniforms.uGridPixelRatio.value = this.msaaTarget
+      ? this.msaaTarget.height / Math.max(1, this.container.clientHeight)
+      : this.renderer.getPixelRatio();
     this.flushTerrainDirty();
     this.flushObjectDirty();
     this.flushAnnotations();
@@ -880,6 +922,14 @@ export class ThreeScene {
         this.resolutionLimited = true;
         if (!this.lite) {
           this.lite = true;
+          for (const [key, group] of this.groups) {
+            const geo = key.startsWith('d:') ? deckGeometry(key.slice(2), this.modelQuality())
+              : key.startsWith('m:') ? modelGeometry(key.slice(2), this.modelQuality()) : null;
+            if (!geo) continue;
+            if (!key.startsWith('d:')) ensureFadeRadius(geo);
+            group.geo = geo;
+            group.mesh.geometry = geo;
+          }
           this.renderer.shadowMap.enabled = false;
           this.msaaTarget?.dispose();
           this.msaaTarget = null;
@@ -912,8 +962,8 @@ export class ThreeScene {
     const sun = this.sun;
     sun.castShadow = true;
     const r = Math.max(b.halfX, b.halfZ) * 1.25 + 2;
-    sun.position.set(r * 0.7, r * 1.6 + b.maxY, r * 0.55);
-    sun.target.position.set(0, 0, 0);
+    sun.position.set((b.centerX ?? 0) + r * 0.7, r * 1.6 + b.maxY, (b.centerZ ?? 0) + r * 0.55);
+    sun.target.position.set(b.centerX ?? 0, 0, b.centerZ ?? 0);
     this.scene.add(sun.target);
     const cam = sun.shadow.camera as THREE.OrthographicCamera;
     cam.left = -r; cam.right = r; cam.top = r; cam.bottom = -r;
@@ -941,14 +991,20 @@ export class ThreeScene {
     this.roadTrimMat = new THREE.MeshLambertMaterial({
       vertexColors: true, flatShading: true, side: THREE.DoubleSide, transparent: true, depthWrite: false,
     });
+    softenRoadEdge(this.roadTrimMat);
     this.disposables.push(this.opaqueMat, this.wetMat, this.roadTrimMat);
     // The reference grid + chunk bounds are DRAPED onto the terrain via the material shader (world XZ),
     // so they follow the surface as a light texture. Align to macro cells + seed the live toggles.
     const goff = mapCenterOffset(state.template.width, state.template.height);
     this.gridUniforms.uGridOff.value.set(goff.x, goff.z);
+    const origin = mapChunkOrigin(state.template);
+    this.gridUniforms.uChunkOrigin.value.set(origin.x, origin.y);
+    const frame = mapFrame(state.template);
+    this.gridUniforms.uChunkEnd.value.set(frame.x + frame.width, frame.y + frame.height);
     this.gridUniforms.uGrid.value = this.passive.grid ? 1 : 0;
     this.gridUniforms.uChunks.value = this.passive.chunks ? 1 : 0;
     addGridOverlay(this.opaqueMat, this.gridUniforms);
+    addGridOverlay(this.wetMat, this.gridUniforms);
     const wc = waterColor();
     const deep = new THREE.Color().setRGB(wc[0], wc[1], wc[2], THREE.SRGBColorSpace);
     const foam = new THREE.Color().setRGB(Math.min(1, wc[0] + 0.22), Math.min(1, wc[1] + 0.22), Math.min(1, wc[2] + 0.22), THREE.SRGBColorSpace);
@@ -960,6 +1016,20 @@ export class ThreeScene {
     const chunksY = Math.ceil(state.template.height / CHUNK_SIZE);
     for (let cy = 0; cy < chunksY; cy++) {
       for (let cx = 0; cx < chunksX; cx++) this.rebuildChunk(cx, cy);
+    }
+    const sea = buildSeaFrame(state);
+    for (const [data, baseMaterial] of [[sea.ground, this.opaqueMat], [sea.water, this.wetMat]] as const) {
+      if (!data.positions.length) continue;
+      const material = baseMaterial.clone();
+      addGridOverlay(material, this.gridUniforms);
+      softenSeaEdge(material, state.template);
+      const geometry = toGeometry(data, 'sea frame');
+      this.disposables.push(geometry, material);
+      const mesh = new THREE.Mesh(geometry, material);
+      mesh.receiveShadow = baseMaterial === this.opaqueMat;
+      // Draw the fading seabed before water chunks blend and write their depth.
+      if (baseMaterial === this.opaqueMat) mesh.renderOrder = -1;
+      this.scene.add(mesh);
     }
   }
 
@@ -974,7 +1044,7 @@ export class ThreeScene {
   /** Apply a layer-visibility change: remesh the affected chunks under the new
    *  peel view, zero-scale instanced objects on hidden elevations (their slot
    *  keeps its metadata, so unhiding rewrites the real transform), filter the
-   *  trimmed-road mesh, and hide the plaza with its layer. */
+   *  trimmed-road mesh. */
   setLayerVisibility(hidden: ReadonlySet<number>): void {
     const changed: number[] = [];
     for (const l of hidden) if (!this.hiddenLayers.has(l)) changed.push(l);
@@ -998,9 +1068,6 @@ export class ThreeScene {
     }
     this.rebuildRoadTrim();
     this.rebuildWaterfallArrows();
-    if (this.plazaGroup && this.plazaElevation !== null) {
-      this.plazaGroup.visible = !hidden.has(this.plazaElevation);
-    }
     this.renderer.shadowMap.needsUpdate = true;
     this.requestRender();
   }
@@ -1015,31 +1082,33 @@ export class ThreeScene {
     const cfg = animConfig.plop;
     for (const [id, born] of this.plops) {
       const t = (now - born) / cfg.settleMs;
-      const ref = this.slots.slotOf(id);
-      const group = ref ? this.groups.get(ref.group) : null;
-      const inst = group?.instances[ref!.slot];
-      if (!ref || !group || !inst || t >= 1) {
-        if (ref && group && inst) this.writeInstance(group, ref.slot, inst);
+      const drawn = [...this.drawnSlots(id)];
+      if (drawn.length === 0 || t >= 1) {
+        for (const { group, slot, inst } of drawn) this.writeInstance(group, slot, inst);
         this.plops.delete(id);
         continue;
       }
-      // Footprint scaling mirrors 2D: bigger objects squash less (~1/size).
-      const span = Math.max(inst.scaleX, inst.scaleZ, 1);
+      // Footprint scaling mirrors 2D: bigger objects squash less (~1/size). The body's footprint
+      // sets it for everything that draws the object.
+      const body = drawn[0]!.inst;
+      const span = Math.max(body.scaleX, body.scaleZ, 1);
       const ampX = 1 + (cfg.squashX - 1) / span;
       const ampY = 1 - (1 - cfg.squashY) / span;
       // Damped settle from squashed toward rest, one soft overshoot (cfg.bounce).
       const settle = 1 - (1 - t) * (1 - t) * Math.cos(t * Math.PI * cfg.bounce * 0.5);
       const sy = ampY + (1 - ampY) * settle;
       const sxz = ampX + (1 - ampX) * settle;
-      const m = new THREE.Matrix4();
-      const q = new THREE.Quaternion().setFromAxisAngle(UP_AXIS, inst.rotationY);
-      m.compose(
-        new THREE.Vector3(inst.x, inst.y, inst.z),
-        q,
-        new THREE.Vector3(inst.scaleX * sxz, inst.scaleY * sy, inst.scaleZ * sxz),
-      );
-      group.mesh.setMatrixAt(ref.slot, m);
-      group.mesh.instanceMatrix.needsUpdate = true;
+      for (const { group, slot, inst } of drawn) {
+        const m = new THREE.Matrix4();
+        const q = new THREE.Quaternion().setFromAxisAngle(UP_AXIS, inst.rotationY);
+        m.compose(
+          new THREE.Vector3(inst.x, inst.y, inst.z),
+          q,
+          new THREE.Vector3(inst.scaleX * sxz, inst.scaleY * sy, inst.scaleZ * sxz),
+        );
+        group.mesh.setMatrixAt(slot, m);
+        group.mesh.instanceMatrix.needsUpdate = true;
+      }
     }
     return this.plops.size > 0;
   }
@@ -1053,28 +1122,28 @@ export class ThreeScene {
     const cfg = animConfig.rotation;
     for (const [id, spin] of this.spins) {
       const t = (now - spin.born) / cfg.durationMs;
-      const ref = this.slots.slotOf(id);
-      const group = ref ? this.groups.get(ref.group) : null;
-      const inst = group?.instances[ref!.slot];
-      if (!ref || !group || !inst || t >= 1) {
-        if (ref && group && inst) this.writeInstance(group, ref.slot, inst);
+      const drawn = [...this.drawnSlots(id)];
+      if (drawn.length === 0 || t >= 1) {
+        for (const { group, slot, inst } of drawn) this.writeInstance(group, slot, inst);
         spin.onFrame?.(1);
         this.spins.delete(id);
         continue;
       }
       // Overshoot ease: swing past the target by cfg.overshoot degrees, settle.
-      const ease = 1 - (1 - t) * (1 - t);
+      const ease = easeOutQuad(t);
       const swing = Math.sin(t * Math.PI) * cfg.overshoot;
       const deg = spin.from + (spin.to - spin.from) * ease + swing;
-      const m = new THREE.Matrix4();
-      // Yaw = ROT(deg) = restYaw + (to − deg)·π/180 (ROT's slope is −π/180). At
-      // deg=from this is exactly the PREVIOUS rotation's yaw (correct first frame);
-      // as deg climbs to `to` the yaw decreases to restYaw — a CW turn from above,
-      // matching the 2D sprite.
-      const q = new THREE.Quaternion().setFromAxisAngle(UP_AXIS, inst.rotationY + ((spin.to - deg) * Math.PI) / 180);
-      m.compose(new THREE.Vector3(inst.x, inst.y, inst.z), q, new THREE.Vector3(inst.scaleX, inst.scaleY, inst.scaleZ));
-      group.mesh.setMatrixAt(ref.slot, m);
-      group.mesh.instanceMatrix.needsUpdate = true;
+      for (const { group, slot, inst } of drawn) {
+        const m = new THREE.Matrix4();
+        // Yaw = ROT(deg) = restYaw + (to − deg)·π/180 (ROT's slope is −π/180). At
+        // deg=from this is exactly the PREVIOUS rotation's yaw (correct first frame);
+        // as deg climbs to `to` the yaw decreases to restYaw — a CW turn from above,
+        // matching the 2D sprite.
+        const q = new THREE.Quaternion().setFromAxisAngle(UP_AXIS, inst.rotationY + ((spin.to - deg) * Math.PI) / 180);
+        m.compose(new THREE.Vector3(inst.x, inst.y, inst.z), q, new THREE.Vector3(inst.scaleX, inst.scaleY, inst.scaleZ));
+        group.mesh.setMatrixAt(slot, m);
+        group.mesh.instanceMatrix.needsUpdate = true;
+      }
       spin.onFrame?.(ease);
     }
     // The shadow map is frozen (autoUpdate off), so a spinning object's shadow would otherwise stay
@@ -1114,22 +1183,20 @@ export class ThreeScene {
         }
         continue;
       }
-      const ref = this.slots.slotOf(m.id);
-      const group = ref ? this.groups.get(ref.group) : null;
-      const inst = ref && group ? group.instances[ref.slot] : null;
-      if (!ref || !group || !inst) continue;
-      if (t >= 1) { this.writeInstance(group, ref.slot, inst); continue; }
-      const { dx, dy } = arcOffset(m.motion, arc.sweepRad, e);
-      // Yaw runs OPPOSITE the screen-space spin offset (ROT's slope is −π/180, as in tickSpins), so
-      // a member back-dated by a clockwise-from-above turn settles onto its stored rotation.
-      const yaw = inst.rotationY - (m.spun ? spinOffset(arc.sweepRad, e) : 0);
-      const mat = new THREE.Matrix4().compose(
-        new THREE.Vector3(inst.x + dx, inst.y, inst.z + dy),
-        new THREE.Quaternion().setFromAxisAngle(UP_AXIS, yaw),
-        new THREE.Vector3(inst.scaleX, inst.scaleY, inst.scaleZ),
-      );
-      group.mesh.setMatrixAt(ref.slot, mat);
-      group.mesh.instanceMatrix.needsUpdate = true;
+      for (const { group, slot, inst } of this.drawnSlots(m.id)) {
+        if (t >= 1) { this.writeInstance(group, slot, inst); continue; }
+        const { dx, dy } = arcOffset(m.motion, arc.sweepRad, e);
+        // Yaw runs OPPOSITE the screen-space spin offset (ROT's slope is −π/180, as in tickSpins), so
+        // a member back-dated by a clockwise-from-above turn settles onto its stored rotation.
+        const yaw = inst.rotationY - (m.spun ? spinOffset(arc.sweepRad, e) : 0);
+        const mat = new THREE.Matrix4().compose(
+          new THREE.Vector3(inst.x + dx, inst.y, inst.z + dy),
+          new THREE.Quaternion().setFromAxisAngle(UP_AXIS, yaw),
+          new THREE.Vector3(inst.scaleX, inst.scaleY, inst.scaleZ),
+        );
+        group.mesh.setMatrixAt(slot, mat);
+        group.mesh.instanceMatrix.needsUpdate = true;
+      }
     }
     if (roadOffsets) this.rebuildRoadTrim(roadOffsets.size > 0 ? roadOffsets : undefined);
     // The shadow map is frozen, so every moving member's shadow would otherwise stay behind on the
@@ -1167,7 +1234,7 @@ export class ThreeScene {
     const entry: TerrainChunk = { meshes: [], geometries: [], numbers: null };
     const addOpaque = (data: MeshData) => {
       if (!data.positions.length) return;
-      const geo = toGeometry(data);
+      const geo = toGeometry(data, import.meta.env.DEV ? `terrain chunk ${cx},${cy}` : '');
       const mesh = new THREE.Mesh(geo, this.opaqueMat);
       mesh.castShadow = true;
       mesh.receiveShadow = true;
@@ -1179,7 +1246,7 @@ export class ThreeScene {
     addOpaque(ground);
     if (water.positions.length) {
       // Translucent water: no shadow cast/receive (avoids transparency artifacts).
-      const geo = toGeometry(water);
+      const geo = toGeometry(water, import.meta.env.DEV ? `water chunk ${cx},${cy}` : '');
       const mesh = new THREE.Mesh(geo, this.wetMat);
       this.scene.add(mesh);
       entry.meshes.push(mesh);
@@ -1187,7 +1254,7 @@ export class ThreeScene {
     }
     if (fall.positions.length) {
       // Waterfall / pond-cliff faces: the cascade shading, painted into the colour buffer once.
-      const geo = toGeometry(fall);
+      const geo = toGeometry(fall, import.meta.env.DEV ? `waterfall chunk ${cx},${cy}` : '');
       this.shadeFall(geo);
       const mesh = new THREE.Mesh(geo, this.wetMat);
       this.scene.add(mesh);
@@ -1213,7 +1280,7 @@ export class ThreeScene {
         geo.setAttribute('uv', new THREE.Float32BufferAttribute(quads.uvs, 2));
         geo.setIndex(quads.index);
         const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false, side: THREE.DoubleSide });
-        addLabelFade(mat); // smooth density LOD, the same window the draped grid fades on
+        addLabelFade(mat, this.gridUniforms.uGridPixelRatio); // smooth density LOD, the same window the draped grid fades on
         const mesh = new THREE.Mesh(geo, mat);
         this.scene.add(mesh);
         entry.numbers = { mesh, tex };
@@ -1290,18 +1357,14 @@ export class ThreeScene {
     }
     if (!this.passive.chunks) return;
     if (!this.legendMat) {
-      // Black bold sans-serif like the 2D legend, but a heavier alpha: the 2D map's 0.12 reads over a
-      // light map background, whereas the 3D ground beside the map is darker, so the same alpha washes
-      // out — 0.45 carries the equivalent visual weight. depthTest stays ON (the default) so terrain
-      // between the camera and a label OCCLUDES it instead of the label punching through onto the
-      // top layer.
-      this.legendMat = new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.45, side: THREE.DoubleSide });
+      // Reference labels stay legible through fog but remain occluded by terrain in front of them.
+      this.legendMat = new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.45, fog: false, side: THREE.DoubleSide });
       this.disposables.push(this.legendMat);
     }
     const { width, height } = this.liveState.template;
     const off = mapCenterOffset(width, height);
-    const chunksX = Math.ceil(width / CHUNK_SIZE);
-    const chunksY = Math.ceil(height / CHUNK_SIZE);
+    const { columns, rows } = mapChunkAxes(this.liveState.template);
+    const frame = mapFrame(this.liveState.template);
     const LS = Math.min(CHUNK_SIZE * 0.7, 9); // label size (world units)
     const GAP = LS * 0.75;                    // distance from the map edge to the label centre
     const group = new THREE.Group();
@@ -1311,13 +1374,11 @@ export class ThreeScene {
       mesh.position.set(wx, 0.12, wz);
       group.add(mesh);
     };
-    // Centre each label on a FULL CHUNK_SIZE stride (like the 2D legend), so a partial last chunk
-    // doesn't pull its label toward the previous one — keeps the gaps uniform (e.g. 10 → 11).
-    for (let r = 0; r < chunksY; r++) {
-      addLabel(String.fromCharCode(65 + (r % 26)), -off.x - GAP, r * CHUNK_SIZE + CHUNK_SIZE / 2 - off.z);
+    for (let r = 0; r < rows.length; r++) {
+      addLabel(String.fromCharCode(65 + (r % 26)), frame.x - off.x - GAP, rows[r]!.center - off.z);
     }
-    for (let c = 0; c < chunksX; c++) {
-      addLabel(String(c + 1), c * CHUNK_SIZE + CHUNK_SIZE / 2 - off.x, height - off.z + GAP);
+    for (let c = 0; c < columns.length; c++) {
+      addLabel(String(c + 1), columns[c]!.center - off.x, frame.y + frame.height - off.z + GAP);
     }
     this.scene.add(group);
     this.legendGroup = group;
@@ -1458,31 +1519,51 @@ export class ThreeScene {
    *  needed). Returns true when the object is a road — the caller decides
    *  whether the trimmed-road mesh needs a rebuild. */
   private addObjectInstance(obj: PlacedObject): boolean {
-    const isRoad = getCatalogItem(obj.catalogId)?.category === ItemCategory.Road;
+    const isRoad = isCoatingItem(getCatalogItem(obj.catalogId));
     if (isRoad) this.roadIds.add(obj.id);
-    const resolved = objectInstance(this.liveState, obj);
-    if (!resolved) return isRoad; // trimmed road: meshed by the road-trim pass
-    const group = this.ensureGroup(resolved.groupKey);
-    if (!group) return isRoad;
-    const slot = this.slots.add(obj.id, resolved.groupKey);
-    if (slot >= group.capacity) this.growGroup(resolved.groupKey, group);
-    group.instances[slot] = resolved.inst;
-    this.objElevation.set(obj.id, obj.elevation);
-    if (this.hiddenLayers.has(obj.elevation)) this.writeHiddenInstance(group, slot);
-    else this.writeInstance(group, slot, resolved.inst);
-    group.mesh.count = this.slots.count(resolved.groupKey);
+    // A trimmed road has none: the road-trim pass meshes it.
+    for (const drawn of objectSlotInstances(this.liveState, obj)) this.placeInstance(drawn.slotId, obj.elevation, drawn);
     return isRoad;
   }
 
-  /** Free one object's instance slot, keeping the group dense (the group's
+  /** Put one instance in its group's next slot under `slotId`. */
+  private placeInstance(slotId: string, elevation: number, resolved: { groupKey: string; inst: ObjectInstance }): void {
+    const group = this.ensureGroup(resolved.groupKey);
+    if (!group) return;
+    const slot = this.slots.add(slotId, resolved.groupKey);
+    if (slot >= group.capacity) this.growGroup(resolved.groupKey, group);
+    group.instances[slot] = resolved.inst;
+    this.objElevation.set(slotId, elevation);
+    if (this.hiddenLayers.has(elevation)) this.writeHiddenInstance(group, slot);
+    else this.writeInstance(group, slot, resolved.inst);
+    group.mesh.count = this.slots.count(resolved.groupKey);
+  }
+
+  /** Each instance that draws object `id`: its body, then its deck parts when it has them. */
+  private *drawnSlots(id: string): Generator<{ group: InstanceGroup; slot: number; inst: ObjectInstance }> {
+    for (const slotId of objectSlotIds(id)) {
+      const ref = this.slots.slotOf(slotId);
+      const group = ref ? this.groups.get(ref.group) : undefined;
+      const inst = ref && group ? group.instances[ref.slot] : null;
+      if (ref && group && inst) yield { group, slot: ref.slot, inst };
+    }
+  }
+
+  /** Free one object's instance slots, keeping each group dense (the group's
    *  last instance moves into the hole). Returns true for roads. */
   private removeObjectInstance(id: string): boolean {
     const isRoad = this.roadIds.delete(id);
-    this.objElevation.delete(id);
-    const removed = this.slots.remove(id);
-    if (!removed) return isRoad; // not instanced (trimmed road, or unknown)
+    for (const slotId of objectSlotIds(id)) this.freeInstance(slotId);
+    return isRoad;
+  }
+
+  /** Free the slot `slotId` holds, if any. */
+  private freeInstance(slotId: string): void {
+    this.objElevation.delete(slotId);
+    const removed = this.slots.remove(slotId);
+    if (!removed) return; // not instanced (trimmed road, or unknown)
     const group = this.groups.get(removed.group);
-    if (!group) return isRoad;
+    if (!group) return;
     if (removed.moved) {
       const inst = group.instances[removed.moved.fromSlot]!;
       group.instances[removed.slot] = inst;
@@ -1493,18 +1574,21 @@ export class ThreeScene {
     }
     group.mesh.count = this.slots.count(removed.group);
     group.mesh.instanceMatrix.needsUpdate = true;
-    return isRoad;
   }
 
   private ensureGroup(key: string): InstanceGroup | null {
     const existing = this.groups.get(key);
     if (existing) return existing;
-    // 'm:<id>' → bespoke per-item model (baked vertex colours, no instance tint);
-    // 'a:<archetype>' → category archetype (white material + per-instance tint).
-    const isModel = key.startsWith('m:');
-    const geo = isModel ? modelGeometry(key.slice(2)) : archetypeGeometry(key.slice(2) as ArchetypeKey);
+    // 'm:<id>' → bespoke per-item model and 'd:<id>' → an item's deck parts (baked vertex colours,
+    // no instance tint); 'a:<archetype>' → category archetype (white material + per-instance tint).
+    const isDeck = key.startsWith('d:');
+    const isModel = isDeck || key.startsWith('m:');
+    const geo = isDeck ? deckGeometry(key.slice(2), this.modelQuality()) : isModel ? modelGeometry(key.slice(2), this.modelQuality()) : archetypeGeometry(key.slice(2) as ArchetypeKey);
     if (!geo) return null;                           // shared/cached → freed by disposeModels/disposeArchetypes
-    ensureFadeRadius(geo);                           // bake aObjR once so the proximity fade keys off the object's skin
+    // Bake aObjR once so the proximity fade keys off the object's skin. Deck parts spread over a
+    // whole platform, so they fade from the deck's centre: keyed off their combined skin, the
+    // courtyard floor would dissolve under any camera low over the plaza.
+    if (!isDeck) ensureFadeRadius(geo);
 
     const group: InstanceGroup = { mesh: this.makeInstancedMesh(key, geo, 16), capacity: 16, isModel, geo, instances: [] };
     this.groups.set(key, group);
@@ -1512,10 +1596,10 @@ export class ThreeScene {
   }
 
   private makeInstancedMesh(key: string, geo: THREE.BufferGeometry, capacity: number): THREE.InstancedMesh {
-    const isModel = key.startsWith('m:');
-    // Flat ground decals (road tiles, the plaza platform) skip the proximity fade — the floor
+    const isModel = key.startsWith('m:') || key.startsWith('d:');
+    // Flat ground decals (coating tiles, the plaza platform) skip the proximity fade — the floor
     // under a low camera must not dissolve; everything else fades when the camera pushes into it.
-    const isDecal = key === `a:${ItemCategory.Road}` || key === 'a:platform';
+    const isDecal = DECAL_GROUPS.has(key);
     const mesh = new THREE.InstancedMesh(geo, isModel ? this.modelMat : isDecal ? this.decalMat : this.sharedMat, capacity);
     mesh.count = 0;
     // Instances sit far from the origin but the geometry's bounding sphere is
@@ -1550,6 +1634,7 @@ export class ThreeScene {
   }
 
   private writeInstance(group: InstanceGroup, slot: number, inst: ObjectInstance): void {
+    if (import.meta.env.DEV) assertFinite(`the object instance in slot ${slot}`, [inst.x, inst.y, inst.z, inst.rotationY, inst.scaleX, inst.scaleY, inst.scaleZ]);
     const m = new THREE.Matrix4();
     const q = new THREE.Quaternion().setFromAxisAngle(UP_AXIS, inst.rotationY);
     m.compose(new THREE.Vector3(inst.x, inst.y, inst.z), q, new THREE.Vector3(inst.scaleX, inst.scaleY, inst.scaleZ));
@@ -1570,8 +1655,8 @@ export class ThreeScene {
     for (const geo of this.roadTrimGeos) geo.dispose(); // the materials are cached per material, not per rebuild
     this.roadTrimMeshes = [];
     this.roadTrimGeos = [];
-    for (const part of buildRoadTrimMeshes(state, this.hiddenLayers, offsets)) {
-      const geo = toGeometry(part.mesh);
+    for (const part of buildRoadTrimMeshes(state, this.hiddenLayers, offsets, this.roadTrimCache)) {
+      const geo = toGeometry(part.mesh, 'road trim');
       const mesh = new THREE.Mesh(geo, this.roadMaterial(part));
       // A flat decal on the surface casts no shadow of its own — and the shadow depth pass ignores
       // vertex alpha, so letting it cast would print the feather's full square silhouette.
@@ -1590,13 +1675,14 @@ export class ThreeScene {
    * since the builder leaves those vertices white for the art to colour.
    */
   private roadMaterial(part: RoadTrimPart): THREE.MeshLambertMaterial {
-    if (!part.icon) return this.roadTrimMat;
-    const url = iconUrl(part.icon);
-    const canvas = url ? roadTileCanvas(url, this.onRoadArtLoaded) : undefined;
-    const key = `${part.material}:${canvas ? 'tex' : 'flat'}`;
+    if (!part.icon && !part.pattern) return this.roadTrimMat;
+    const url = part.icon ? iconUrl(part.icon) : undefined;
+    const canvas = part.pattern ? roadMaterialTexture(part.pattern) : url ? roadTileCanvas(url, this.onRoadArtLoaded) : undefined;
+    const key = `${part.material}:${roadPatternKey(part.pattern)}:${canvas ? 'tex' : 'flat'}`;
     const hit = this.roadTileMats.get(key);
     if (hit) return hit;
     const mat = this.roadTrimMat.clone();
+    softenRoadEdge(mat);
     if (canvas) {
       const tex = new THREE.CanvasTexture(canvas);
       tex.wrapS = tex.wrapT = THREE.RepeatWrapping; // the crop is power-of-two, so REPEAT is legal on WebGL1 too
@@ -1607,6 +1693,7 @@ export class ThreeScene {
       // The label atlas solves the same thing on the UV side (build/passive-geometry emits 1 - v);
       // here the texture is ours alone, so it is one property rather than a term in the geometry.
       tex.flipY = false;
+      tex.repeat.setScalar(1 / roadPatternRepeat(part.pattern));
       tex.colorSpace = THREE.SRGBColorSpace;
       // A ground plane is seen at glancing angles almost everywhere; without this the tiling
       // pattern aliases into a shimmer well before the horizon.
@@ -1630,44 +1717,6 @@ export class ThreeScene {
     this.roadTrimDirty = true;
     this.requestRender();
   };
-
-  /** A small LOW-POLY model for the central plaza (it would otherwise be a blank platform): a raised
-   *  wood courtyard inset on the stone platform, with an octagonal pavilion umbrella + a green awning
-   *  and a bench — echoing the 2D plaza art. Sized to the plaza footprint; the fixed accents scale to
-   *  the smaller side so they read at any plaza size. Built statically (the camera intro flies in). */
-  private buildPlaza(state: GridState): void {
-    let plaza: PlacedObject | undefined;
-    for (const o of state.objects.values()) if (o.width !== undefined && o.height !== undefined) { plaza = o; break; }
-    if (!plaza) return;
-    const { width, height } = state.template;
-    const size = getPlacedObjectSize(plaza);
-    const corner = cellCornerWorld(plaza.position.x, plaza.position.y, width, height);
-    const cx = corner.x + size.w / 2, cz = corner.z + size.h / 2;
-    const W = size.w, H = size.h, s = Math.min(W, H); // s = accent scale
-    const PLAT = platformTopY(plaza.elevation); // deck top of the plinth the accents stand on
-    const plazaGroup = new THREE.Group();
-    this.scene.add(plazaGroup);
-    this.plazaGroup = plazaGroup;
-    this.plazaElevation = plaza.elevation;
-    const part = (geo: THREE.BufferGeometry, hex: string, x: number, y: number, z: number): void => {
-      const mat = new THREE.MeshLambertMaterial({ color: new THREE.Color().setStyle(hex, THREE.SRGBColorSpace), flatShading: true });
-      addProximityFade(mat); // plaza accents fade like any other object when the camera dives in
-      const mesh = new THREE.Mesh(geo, mat);
-      mesh.position.set(x, y, z);
-      mesh.castShadow = true; mesh.receiveShadow = true;
-      plazaGroup.add(mesh);
-      this.disposables.push(geo, mat);
-    };
-    // raised wood courtyard, inset so the grey platform reads as a stone rim around it
-    part(new THREE.BoxGeometry(W * 0.66, 0.12, H * 0.78), '#d9b98a', cx, PLAT + 0.06, cz);
-    // octagonal pavilion umbrella near a corner of the courtyard (post + 8-gon canopy)
-    const ux = cx - W * 0.22, uz = cz - H * 0.30, top = PLAT + 0.12;
-    part(new THREE.CylinderGeometry(s * 0.02, s * 0.02, 0.5, 6), '#9c7b53', ux, top + 0.25, uz);
-    part(new THREE.ConeGeometry(s * 0.14, 0.3, 8), '#ece0c4', ux, top + 0.6, uz);
-    // a green awning/tent block + a bench, matching the icon's accents
-    part(new THREE.BoxGeometry(W * 0.26, 0.34, H * 0.16), '#8cbf6e', cx + W * 0.12, top + 0.17, cz - H * 0.34);
-    part(new THREE.BoxGeometry(s * 0.34, 0.16, s * 0.14), '#b98f5e', cx - W * 0.22, top + 0.08, cz + H * 0.30);
-  }
 
   /** Glide the camera from the far framing to its resting frame (whole-map fly-in). Time-based, so
    *  it takes the same wall time at any refresh rate. */
@@ -1769,12 +1818,12 @@ export class ThreeScene {
     this.renderFrame();
   };
 
-  /** World-space bounding box of one placed object's live mesh (instance
-   *  geometry bounds under its instance transform), or null when it has no
-   *  instanced representation (trimmed roads, the plaza's platform). */
+  /** Selection bounds use the occupied footprint in X/Z and the rendered body's vertical extent.
+   *  Objects without an instanced body use the overlay's flat footprint fallback. */
   objectBoundingBox(id: string): THREE.Box3 | null {
+    const obj = this.liveState.objects.get(id);
     const ref = this.slots.slotOf(id);
-    if (!ref) return null;
+    if (!obj || !ref) return null;
     const group = this.groups.get(ref.group);
     const inst = group?.instances[ref.slot];
     if (!group || !inst) return null;
@@ -1784,7 +1833,13 @@ export class ThreeScene {
       new THREE.Quaternion().setFromAxisAngle(UP_AXIS, inst.rotationY),
       new THREE.Vector3(inst.scaleX, inst.scaleY, inst.scaleZ),
     );
-    return group.geo.boundingBox!.clone().applyMatrix4(m);
+    const box = group.geo.boundingBox!.clone().applyMatrix4(m);
+    const { width, height } = this.liveState.template;
+    const corner = cellCornerWorld(obj.position.x, obj.position.y, width, height);
+    const size = getPlacedObjectSize(obj);
+    box.min.x = corner.x; box.max.x = corner.x + size.w;
+    box.min.z = corner.z; box.max.z = corner.z + size.h;
+    return box;
   }
 
   /** The object whose MESH the pointer ray hits first — canopy, roof, or wall,
@@ -1800,8 +1855,9 @@ export class ThreeScene {
       if (group.mesh.count === 0) continue;
       for (const hit of rc.intersectObject(group.mesh, false)) {
         if (hit.instanceId === undefined) continue;
-        const id = this.slots.idAt(key, hit.instanceId);
-        if (!id) continue;
+        const slotId = this.slots.idAt(key, hit.instanceId);
+        if (!slotId) continue;
+        const id = slotOwner(slotId);
         if (!best || hit.distance < best.dist) best = { dist: hit.distance, id };
       }
     }
@@ -1828,17 +1884,17 @@ export class ThreeScene {
       const original = this.liveState.objects.get(id);
       if (!original) continue;
       if (bodyRoute(this.liveState, id) === 'roadTrim') { roads = true; continue; }
-      const ref = this.slots.slotOf(id);
-      const group = ref ? this.groups.get(ref.group) : undefined;
-      if (!ref || !group) continue;
       const obj = next.get(id) ?? original;
-      const resolved = objectInstance(this.liveState, obj);
-      if (!resolved) continue;
       if (next.has(id)) { this.plops.delete(id); this.spins.delete(id); }
-      if (this.hiddenLayers.has(obj.elevation)) this.writeHiddenInstance(group, ref.slot);
-      else this.writeInstance(group, ref.slot, resolved.inst);
-      group.mesh.boundingSphere = null;
-      group.mesh.boundingBox = null;
+      for (const resolved of objectSlotInstances(this.liveState, obj)) {
+        const ref = this.slots.slotOf(resolved.slotId);
+        const group = ref ? this.groups.get(ref.group) : undefined;
+        if (!ref || !group) continue;
+        if (this.hiddenLayers.has(obj.elevation)) this.writeHiddenInstance(group, ref.slot);
+        else this.writeInstance(group, ref.slot, resolved.inst);
+        group.mesh.boundingSphere = null;
+        group.mesh.boundingBox = null;
+      }
     }
     if (roads) {
       const objects = new Map(this.liveState.objects);
@@ -1858,7 +1914,7 @@ export class ThreeScene {
       const overlay = new Overlay3D(
         () => this.meshState(), this.requestRender, (id) => this.objectBoundingBox(id),
         undefined, (destinations) => this.previewObjectMove(destinations), this.camera,
-        () => viewportRect(this.renderer.domElement),
+        () => viewportRect(this.renderer.domElement), this.modelQuality,
       );
       this.scene.add(overlay.group);
       this.overlay3d = overlay;
@@ -2077,10 +2133,11 @@ export class ThreeScene {
    *  strand the camera over empty void, mirroring the 2D pan bounds. */
   private clampTarget(): void {
     const off = mapCenterOffset(this.liveState.template.width, this.liveState.template.height);
+    const frame = mapFrame(this.liveState.template);
     const m = 4;
     const t = this.controls.target;
-    const cx = Math.max(-off.x - m, Math.min(off.x + m, t.x));
-    const cz = Math.max(-off.z - m, Math.min(off.z + m, t.z));
+    const cx = Math.max(frame.x - off.x - m, Math.min(frame.x + frame.width - off.x + m, t.x));
+    const cz = Math.max(frame.y - off.z - m, Math.min(frame.y + frame.height - off.z + m, t.z));
     this.camera.position.x += cx - t.x;
     this.camera.position.z += cz - t.z;
     t.x = cx;
@@ -2096,34 +2153,10 @@ export class ThreeScene {
 
   private editorInput = false;
 
-  /** Camera tilt as 0..1 across the polar clamp range (0 = low horizon sweep,
-   *  1 = the steepest permitted look-down). */
-  setTilt(v: number): void {
-    const t = this.controls.target;
-    const offset = new THREE.Vector3().subVectors(this.camera.position, t);
-    const sph = new THREE.Spherical().setFromVector3(offset);
-    const clamped = Math.max(0, Math.min(1, v));
-    sph.phi = this.controls.maxPolarAngle + (this.controls.minPolarAngle - this.controls.maxPolarAngle) * clamped;
-    sph.makeSafe();
-    offset.setFromSpherical(sph);
-    this.camera.position.copy(t).add(offset);
-    this.camera.lookAt(t);
-    this.requestRender();
-  }
-
-  /** Snap the camera to the resting whole-map framing (instant). */
-  fitCamera(): void {
-    this.camera.position.copy(this.introTo);
-    this.controls.target.copy(this.introTarget);
-    this.camera.lookAt(this.introTarget);
-    this.controls.update();
-    this.requestRender();
-  }
-
   /** Start an eased glide of the camera pose (position + orbit target) toward a
    *  goal — the toolkit zoom/tilt/fit buttons use this so the view slides instead
    *  of jumping. A new glide replaces any in flight (held buttons chase smoothly). */
-  private startCamTween(toPos: THREE.Vector3, toTgt: THREE.Vector3, dur = 260): void {
+  private startCamTween(toPos: THREE.Vector3, toTgt: THREE.Vector3, dur = animConfig.cameraGlide.map3dMs): void {
     // Reduced motion: land on the goal pose immediately instead of gliding. One chokepoint, so every
     // toolkit glide (zoom steppers, tilt steppers, fit-to-map) is covered.
     if (isMotionReduced()) {
@@ -2148,7 +2181,7 @@ export class ThreeScene {
     const tw = this.camTween;
     if (!tw) return;
     const raw = Math.min(1, (performance.now() - tw.startMs) / tw.dur);
-    const t = 1 - Math.pow(1 - raw, 3); // easeOutCubic
+    const t = easeOutCubic(raw);
     this.camera.position.lerpVectors(tw.fromPos, tw.toPos, t);
     this.controls.target.lerpVectors(tw.fromTgt, tw.toTgt, t);
     this.camera.lookAt(this.controls.target);

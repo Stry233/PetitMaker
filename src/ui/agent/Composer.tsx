@@ -18,13 +18,14 @@ import { AnimatePresence, motion, useReducedMotionConfig } from 'framer-motion';
 import type { ComposerRoute } from '../../agent/session/composer-routing';
 import { useT } from '../../i18n/context';
 import { Icon } from './icons';
-import { INK, INSET, PLATE, PLATE_INK, TRACK } from '../design/tokens';
+import { zoneEnter } from './atoms';
+import { PANEL_PAD } from './tokens';
+import { INK, INSET, PLATE, PLATE_INK, TRACK, PANEL_EDGE } from '../design/tokens';
 import { colors, cursors, font, shadows, radii, z } from '../design/styles';
-import { PANEL_EDGE } from '../design/tokens';
 import { roleFont } from '../design/text-weight';
 import { FIELD_INPUT_CLASS, FIELD_WRAP_CLASS } from '../design/focus-source';
 import { windowFooterGhost, windowFooterPrimary } from '../design/window-skin';
-import { cssMotion, framerMotion, NO_MOTION } from './motion';
+import { cssMotion, framerMotion } from '../design/motion';
 import { visualRect } from '../design/visual-rect';
 
 /** Placeholder key for each routing mode, kept as literals for the i18n drift check. */
@@ -133,7 +134,7 @@ const GHOST_STYLE: CSSProperties = {
 const ROUND_BUTTON_BASE: CSSProperties = {
   width: 36,
   height: 36,
-  borderRadius: 999,
+  borderRadius: radii.pill,
   flex: '0 0 auto',
   border: 'none',
   boxShadow: 'none',
@@ -143,8 +144,8 @@ const ROUND_BUTTON_BASE: CSSProperties = {
 };
 
 const CAVEAT_STYLE: CSSProperties = {
-  ...roleFont('note'), fontFamily: font.family, color: colors.brownText,
-  lineHeight: 1.4, margin: '8px 4px 0', textAlign: 'center',
+  ...roleFont('caption'), fontFamily: font.family, color: colors.textSecondary,
+  lineHeight: 1.4, margin: `${PANEL_PAD}px 4px 0`, textAlign: 'center',
 };
 
 const SEND_STYLE: CSSProperties = { ...ROUND_BUTTON_BASE, background: INK, color: PLATE };
@@ -154,7 +155,7 @@ const SEND_OFF_STYLE: CSSProperties = { ...ROUND_BUTTON_BASE, background: TRACK,
 
 const STOP_BASE_STYLE: CSSProperties = { ...ROUND_BUTTON_BASE, background: colors.dangerBg, color: colors.dangerText };
 
-export interface ComposerProps {
+interface ComposerProps {
   route: ComposerRoute;
   running: boolean;
   /** Current suggested reply projected from the session log. */
@@ -344,7 +345,8 @@ export function Composer({
   }
 
   return (
-    <div
+    <motion.div
+      {...zoneEnter(reduced)}
       data-testid="composer"
       // The composer stays fixed below the scrollable job zone and keeps guidance fully legible.
       style={{ flex: '0 0 auto' }}
@@ -435,7 +437,7 @@ export function Composer({
                 initial={reduced ? false : DOOR_FOLDED}
                 animate={DOOR_OPEN}
                 exit={DOOR_FOLDED}
-                transition={reduced ? NO_MOTION : framerMotion('panel.composer.unfold')}
+                transition={framerMotion('panel.composer.unfold', reduced)}
                 style={DOOR_STYLE}
               >
                 <Icon id="pw-note" size={17} />
@@ -469,7 +471,7 @@ export function Composer({
         onSend={() => { setExpanded(false); submit(); }}
         onClose={() => setExpanded(false)}
       />
-    </div>
+    </motion.div>
   );
 }
 
@@ -581,7 +583,7 @@ function ExpandedField({
           initial={reduced ? false : { ...from, borderRadius: PILL_RADIUS }}
           animate={{ ...morph, borderRadius: radii.lg }}
           exit={{ ...from, borderRadius: PILL_RADIUS }}
-          transition={reduced ? NO_MOTION : framerMotion('panel.composer.unfold')}
+          transition={framerMotion('panel.composer.unfold', reduced)}
           // The focus ring follows the card's animated radius.
           className={FIELD_WRAP_CLASS}
           style={CARD_STYLE}
@@ -591,7 +593,7 @@ function ExpandedField({
             initial={reduced ? false : { opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            transition={reduced ? NO_MOTION : framerMotion('panel.composer.unfold')}
+            transition={framerMotion('panel.composer.unfold', reduced)}
             style={{ ...CARD_BODY_STYLE, width: morph.width, height: morph.height }}
           >
             <textarea

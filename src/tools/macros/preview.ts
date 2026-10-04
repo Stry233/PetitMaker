@@ -1,14 +1,11 @@
 /** Preview the actual committed macro on a detached map. Calls share a bounded per-map cache. */
-import { CommandExecutor } from '../../core/commands/command-executor';
-import { EventBus } from '../../core/commands/event-bus';
-import { cloneGridState } from '../../core/model/grid-model';
+import { cloneGridState, mapVersionKey } from '../../core/model/grid-model';
 import { hashJSON } from '../../core/model/hash';
-import type { EditorEvents, GridState, MacroCoord } from '../../core/model/types';
-import { roadLookup } from '../../state/object-index';
-import { catalogLoadValue } from '../../state/catalog';
+import type { GridState, MacroCoord } from '../../core/model/types';
 import { objectRect } from '../../state/object-geometry';
 import type { MacroContext } from './context';
-import { applyMacro, type MacroId, type MacroOpts } from './run';
+import { applyMacro, MACROS, type MacroId, type MacroOpts } from './run';
+import { detachedContext } from './scratch';
 
 /** Final cell and object footprints, including removals and refusal evidence. */
 export interface MacroPreview {
@@ -35,7 +32,7 @@ function cacheFor(state: GridState): Map<string, MacroPreview> {
 }
 
 const cacheKey = (state: GridState, id: MacroId, opts: MacroOpts): string => (
-  `${id}|${hashJSON(opts)}|${state.cellsVersion ?? 0}|${state.objectsVersion ?? 0}|${[...state.lockedLayers].sort().join(',')}`
+  `${id}|${hashJSON(opts)}|${mapVersionKey(state)}`
 );
 
 function cachePut(state: GridState, key: string, preview: MacroPreview): void {
@@ -82,12 +79,12 @@ export function previewMacro(ctx: MacroContext, id: MacroId, opts: MacroOpts): M
   const hit = cacheFor(ctx.state).get(key);
   if (hit) return hit;
 
-  const state = cloneGridState(ctx.state);
-  const executor = new CommandExecutor(state, new EventBus<EditorEvents>(), ctx.registry, roadLookup(state), catalogLoadValue);
+  const scratch = detachedContext(cloneGridState(ctx.state), ctx.registry);
+  const { state, executor } = scratch;
   // THE REAL PRESS, on a copy. A macro is more than its builder — it is the builder, the replay,
   // and the post-stroke commit that can revert all of it — so running `applyMacro` itself is what
   // keeps the shape shown from disagreeing with the shape laid.
-  const outcome = applyMacro({ state, executor, registry: ctx.registry }, id, opts);
+  const outcome = applyMacro(scratch, id, opts);
 
   const added: MacroCoord[] = [];
   const seen = new Set<string>();
@@ -110,7 +107,7 @@ export function previewMacro(ctx: MacroContext, id: MacroId, opts: MacroOpts): M
   for (const entry of executor.getUndoEntries()) {
     for (const snap of entry.after) {
       if (!seen.has(`${snap.coord.x},${snap.coord.y}`) && differs(snap.coord.x, snap.coord.y)) {
-        const shift = id === 'raise' || id === 'stream' ? 0 : -0.5;
+        const shift = MACROS[id].grid === 'terrain' ? 0 : -0.5;
         add(snap.coord.x + shift, snap.coord.y + shift);
       }
     }

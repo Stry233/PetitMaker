@@ -1,5 +1,5 @@
 /**
- * endpoint-truth.test.ts — A KEY FOR THE USER'S OWN SERVER NEVER LEAVES FOR SOMEBODY ELSE'S.
+ * A KEY FOR THE USER'S OWN SERVER NEVER LEAVES FOR SOMEBODY ELSE'S.
  *
  * The `openai` SDK treats an absent `baseURL` as "use my own default host", which is correct for the
  * `openai` provider and catastrophic for `custom`: the address is the user's, the key was issued by
@@ -26,7 +26,7 @@ import { createOpenAIAdapter } from '../../../agent/providers/openai';
 import { createRunner } from '../../../agent/exec/runner';
 import { eventsOf } from '../../../agent/core/log';
 import { useAgentSession } from '../../../agent/session/store';
-import type { AgentToolDeps } from '../../../agent/tools/tools';
+import type { AgentToolDeps } from '../../../agent/tools';
 
 function toolDeps(): AgentToolDeps {
   const state = makeState(20, 20);

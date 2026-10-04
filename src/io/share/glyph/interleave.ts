@@ -1,4 +1,4 @@
-// src/io/share/glyph/interleave.ts — column-major interleave of equal-length RS
+// Column-major interleave of equal-length RS
 // codewords, so a local burst of damage in the rendered code spreads thinly across many
 // blocks (each block then has few errors, within its RS budget) instead of destroying one.
 export function interleaveBlocks(blocks: Uint8Array[]): Uint8Array {

@@ -1,7 +1,7 @@
 /*
- * ShareWindow.tsx — what the 保存与分享 button opens: one home, three purposes.
+ * What the Save and share button opens: one home, three purposes.
  *
- * 自己继续 is the save file, 给朋友 the share picture, 搬进游戏 the build checklist. The first two
+ * Keep working is the save file, For a friend the share picture, Into the game the build checklist. The first two
  * are `ExportJsonPanel` and `ExportPanel`, the same components an opener that names a section
  * reaches, carried here rather than copied so each has one implementation.
  *
@@ -24,7 +24,7 @@ import { useEditorStore } from '../../../state/store';
 import { BuildChecklist } from '../../chrome/modals/export/BuildChecklist';
 import { ExportJsonPanel } from '../../chrome/modals/export/ExportJsonModal';
 import { ExportPanel } from '../../chrome/modals/export/ExportModal';
-import { ModalShell } from '../../primitives/ModalShell';
+import { ModalShell, useModalEntered } from '../../primitives/ModalShell';
 import { SegmentedControl } from '../../primitives/SegmentedControl';
 import { useScrollFade } from '../../primitives/scroll-fade';
 import { windowCard, windowTitle } from '../../design/window-skin';
@@ -113,10 +113,13 @@ export function ShareWindow() {
   const gameRef = useRef<HTMLDivElement>(null);
   const gameFade = useScrollFade(gameRef, 'y');
 
+  const { onEntered, hasSettled } = useModalEntered(open, section);
+
   return (
     <ModalShell helpTarget={{ page: section === 'keep' ? 'json' : section === 'game' ? 'checklist' : 'share' }}
       open={open}
       onClose={close}
+      onEntered={onEntered}
       motionSize={SIZE[section]}
       maxVw={94}
       maxVh={92}
@@ -132,7 +135,7 @@ export function ShareWindow() {
       )}
       {visited.includes('friend') && (
         <div style={slot(section === 'friend')}>
-          <ExportPanel open={open} onDone={close} />
+          <ExportPanel open={open} entered={hasSettled('friend')} onDone={close} />
         </div>
       )}
       {visited.includes('game') && (

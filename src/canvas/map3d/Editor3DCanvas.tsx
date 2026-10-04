@@ -9,19 +9,20 @@
 import { useEffect, useRef, useState } from 'react';
 import { tagLabel } from '../../i18n/annotation-tags';
 import { useEditorStore } from '../../state/store';
-import { selectedObjectIds } from '../../state/selection';
+import { layerNumbersShown } from '../../state/slices/planet-session';
 import type { GridState } from '../../core/model/types';
 import type { ThreeScene } from './scene/scene';
-import { hiddenSetFrom } from '../map2d/layers/layer-visibility';
-import { getActiveView, setActiveView } from '../active-view';
-import { usePointerInteraction, paintSelection } from '../interaction/usePointerInteraction';
+import { hiddenSetFrom } from '../layer-visibility';
+import { setActiveView } from '../active-view';
+import { usePointerInteraction } from '../interaction/usePointerInteraction';
 import { useCursor } from '../interaction/use-cursor';
 import { takePendingCameraAngle } from './scene/pending-camera';
 import { setScene3D } from './scene/camera-registry';
 import { showToast } from '../../core/runtime/toast-bus';
 import { translate } from '../../i18n/context';
 
-export function Editor3DCanvas() {
+/** `fade` gives the host's CSS transition for becoming visible or hidden, the shell's crossfade with the 2D view. */
+export function Editor3DCanvas({ fade }: { fade: (visible: boolean) => string }) {
   const viewMode = useEditorStore((s) => s.viewMode);
   const gridState = useEditorStore((s) => s.gridState);
   // The Settings 3D-quality choice: the scene bakes it at construction (shadow map, MSAA target,
@@ -92,7 +93,7 @@ export function Editor3DCanvas() {
       sceneRef.current.onUnrecoverableLoss = () => { builtFor.current = null; setGeneration((g) => g + 1); };
       sceneRef.current.setLayerVisibility(hiddenSetFrom(useEditorStore.getState().layerVisibility));
       const st = useEditorStore.getState();
-      sceneRef.current.setPassiveOverlays({ grid: st.showGrid, numbers: st.showLayerNumbers, chunks: st.showChunkBounds });
+      sceneRef.current.setPassiveOverlays({ grid: st.showGrid, numbers: layerNumbersShown(st), chunks: st.showChunkBounds });
       sceneRef.current.setEditorInput(true);
       builtFor.current = gridState;
       builtQuality.current = quality3d;
@@ -145,30 +146,10 @@ export function Editor3DCanvas() {
   // The passive overlays ride the same settings toggles as 2D.
   const showGrid = useEditorStore((s) => s.showGrid);
   const showChunkBounds = useEditorStore((s) => s.showChunkBounds);
-  const showLayerNumbers = useEditorStore((s) => s.showLayerNumbers);
+  const showLayerNumbers = useEditorStore(layerNumbersShown);
   useEffect(() => {
     sceneRef.current?.setPassiveOverlays({ grid: showGrid, numbers: showLayerNumbers, chunks: showChunkBounds });
   }, [showGrid, showChunkBounds, showLayerNumbers]);
-
-  // Re-paint the selection box on the 3D overlay when object geometry changes: a
-  // rotate/move swaps the footprint and fires objects-changed but NOT a store
-  // update, so without this the box keeps its pre-rotation bounds (or lingers on a
-  // deleted object). The 2D canvas does the same on its own overlay; here it must
-  // target the ACTIVE (3D) view. Deferred inside the overlay, so it bounds the
-  // instance AFTER the scene remeshes it.
-  useEffect(() => {
-    const bus = useEditorStore.getState().eventBus;
-    const onObjectsChanged = () => {
-      const store = useEditorStore.getState();
-      const view = getActiveView();
-      if (store.viewMode !== '3d' || !view || !store.gridState) return;
-      // A terrain-only selection cannot be affected by objects-changed.
-      if (selectedObjectIds(store.selection).length === 0) return;
-      paintSelection(view.overlay, store.gridState, store.selection, store.showLayerNumbers);
-    };
-    bus.on('objects-changed', onObjectsChanged);
-    return () => bus.off('objects-changed', onObjectsChanged);
-  }, []);
 
   useEffect(() => () => { sceneRef.current?.dispose(); sceneRef.current = null; setScene3D(null, null); }, []);
 
@@ -191,9 +172,7 @@ export function Editor3DCanvas() {
         // clientWidth/Height at construction, which `visibility: hidden` keeps).
         opacity: active ? 1 : 0,
         visibility: active ? 'visible' : 'hidden',
-        transition: active
-          ? 'opacity 0.35s ease, visibility 0s linear 0s'
-          : 'opacity 0.35s ease, visibility 0s linear 0.35s',
+        transition: fade(active),
       }}
     />
   );

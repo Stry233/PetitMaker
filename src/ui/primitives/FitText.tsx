@@ -1,5 +1,5 @@
 /*
- * FitText.tsx — a language-adaptive label. The panels are laid out at fixed
+ * A language-adaptive label. The panels are laid out at fixed
  * PSD coordinates tuned for the (compact) Chinese text; other languages can be
  * wider and overflow/overlap. FitText measures its content and, when it would
  * exceed the given slot width, scales it down uniformly to fit — so the Chinese

@@ -15,11 +15,13 @@ const context2dStub = () =>
         key === 'canvas'
           ? undefined
           : (...args: unknown[]) => {
+            if (key === 'createLinearGradient' || key === 'createRadialGradient') return { addColorStop: () => {} };
             if (key === 'measureText') return { width: String(args[0] ?? '').length * 10 };
-            if (key === 'getImageData') {
-              const w = typeof args[2] === 'number' ? args[2] : 1;
-              const h = typeof args[3] === 'number' ? args[3] : 1;
-              return { data: new Uint8ClampedArray(Math.max(24, w * h * 4)) };
+            if (key === 'getImageData' || key === 'createImageData') {
+              const offset = key === 'getImageData' ? 2 : 0;
+              const w = Number(args[offset] ?? 1);
+              const h = Number(args[offset + 1] ?? 1);
+              return { width: w, height: h, data: new Uint8ClampedArray(Math.max(24, w * h * 4)) };
             }
             return undefined;
           },

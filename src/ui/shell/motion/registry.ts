@@ -1,6 +1,8 @@
 /*
  * Central registry for shell and assistant motion. Inform motions reinforce visible state and remain
- * meaningful with reduced motion; ambient motions are decorative and are removed. Call sites use ids.
+ * meaningful with reduced motion; ambient motions are decorative and are removed. Sample motions
+ * preview a motion setting and play under every preference, only through `MotionSample`.
+ * Call sites use ids.
  */
 import { pressable } from '../../design/styles';
 import { VIGNETTE_DEPTH } from '../../design/tokens';
@@ -56,20 +58,80 @@ interface Base {
   landCurve?: CurveId;
 }
 
-export interface InformMotion extends Base {
+interface InformMotion extends Base {
   tier: 'inform';
   /** Static interface fact reinforced by this motion. */
   says: string;
 }
 
-export interface AmbientMotion extends Base {
+interface AmbientMotion extends Base {
   tier: 'ambient';
   amplitude: number;
 }
 
-export type Motion = InformMotion | AmbientMotion;
+/** A preview of what a motion setting does. It plays under every preference so each option of the
+ *  setting shows its own level; `MotionSample` is its only player. */
+interface SampleMotion extends Base {
+  tier: 'sample';
+  amplitude: number;
+  /** The Framer value the sample animates from 0 to its amplitude. */
+  property: 'rotate';
+  /** The setting this motion previews. */
+  previews: string;
+}
+
+export type Motion = InformMotion | AmbientMotion | SampleMotion;
 
 export const MOTIONS = {
+  'loading.spinner': { tier: 'inform', curve: 'linear', duration: 0.85, loop: true, says: 'work is in progress' },
+  'meter.fill': { tier: 'inform', curve: 'ease', duration: 0.25, says: 'the map capacity changed' },
+  'modal.dim': { tier: 'inform', curve: 'ease', duration: 0.3, says: 'the window is at work and the page waits' },
+  'map.view.crossfade': { tier: 'inform', curve: 'ease', duration: 0.35, says: 'the map view changed underneath you' },
+  'character.blink.lid': { tier: 'ambient', curve: 'easeOut', duration: 0.07, amplitude: 1, amplitudeUnit: 'scale' },
+  'control.paint': { tier: 'inform', curve: 'ease', duration: 0.15, says: 'the control state changed' },
+  'control.fade': { tier: 'inform', curve: 'ease', duration: 0.18, says: 'the control state changed' },
+  'control.drop': { tier: 'inform', curve: 'ease', duration: 0.12, says: 'the drop target is active' },
+  'control.detail': { tier: 'inform', curve: 'easeOut', duration: 0.15, says: 'the selected detail is visible' },
+  'control.tint': { tier: 'inform', curve: 'easeOut', duration: 0.18, says: 'the key state changed' },
+  'control.hint': { tier: 'inform', curve: 'easeOut', duration: 0.16, says: 'the shortcut action changed' },
+  'section.expand': { tier: 'inform', curve: 'expand', duration: 0.42, says: 'the section is open or closed' },
+  'scroll.fade': { tier: 'ambient', curve: 'ease', duration: 0.18, amplitude: 1, amplitudeUnit: 'opacity' },
+  'scroll.fade.settle': { tier: 'ambient', curve: 'ease', duration: 0.06, amplitude: 24 },
+  'section.opacity': { tier: 'inform', curve: 'ease', duration: 0.3, says: 'the section content is available' },
+  'modal.resize': { tier: 'inform', curve: 'punchy', duration: 0.3, says: 'the window fits its content' },
+  'selection.fade': { tier: 'inform', curve: 'easeOut', duration: 0.12, says: 'the selection changed' },
+  /** The selection card travels to a new place its selection leaves room for; a camera move is tracked instantly instead. */
+  'selection.card.move': {
+    tier: 'inform', curve: 'punchy', duration: 0.26,
+    says: 'this is the same card, standing where its selection now has room for it',
+  },
+  /** The selection card grows from the point nearest the selection it names. */
+  'selection.card.arrive': {
+    tier: 'inform', curve: 'bouncy', amplitude: 0.15, amplitudeUnit: 'scale',
+    says: 'these controls belong to what you just selected',
+  },
+  /** A card anchored to a control (a confirmation, the planet session's save panel) grows from that control. */
+  'anchored.card.arrive': {
+    tier: 'inform', curve: 'bouncy', amplitude: 0.15, amplitudeUnit: 'scale',
+    says: 'this card answers the control it grows from',
+  },
+  /** Stagger: each anchor's grab lands this long after the one before it. */
+  'curve.fade': { tier: 'inform', curve: 'easeOut', duration: 0.18, stagger: 0.045, says: 'the curve controls changed' },
+  'notice.leave': { tier: 'inform', curve: 'accel', duration: 0.2, says: 'the notice is dismissed' },
+  'notice.crossfade': { tier: 'inform', curve: 'fade', duration: 0.22, says: 'the arrival detail changed' },
+  /** The arrival notice's row eases to the width of its new line. */
+  'notice.resize': { tier: 'inform', curve: 'gentle', says: 'the notice fits its new line' },
+  'export.total': { tier: 'inform', curve: 'roll', duration: 0.6, says: 'the export size changed' },
+  'export.tint': { tier: 'inform', curve: 'swing', duration: 0.7, says: 'the export size increased or decreased' },
+  'preview.zoom': { tier: 'inform', curve: 'ease', duration: 0.08, says: 'the preview zoom changed' },
+  'help.highlight': { tier: 'inform', curve: 'ease', duration: 0.4, says: 'this is the requested section' },
+  'help.highlight.leave': { tier: 'inform', curve: 'ease', duration: 1.2, says: 'the requested section has been reached' },
+  'loading.dots': { tier: 'inform', curve: 'breathing', duration: 0.72, stagger: 0.14, loop: true, says: 'work is in progress' },
+  'settings.orbit': {
+    tier: 'sample', curve: 'linear', duration: 2.2, loop: true, amplitude: 360, property: 'rotate',
+    previews: 'the motion preference',
+  },
+
   /** One map tile arrives per asset-preload slice. */
   'splash.tile.plop': {
     tier: 'ambient', curve: 'bouncy', amplitude: 26, amplitudeUnit: 'px',
@@ -157,6 +219,27 @@ export const MOTIONS = {
   'planet.choice.select': {
     tier: 'inform', curve: 'punchy', duration: 0.18,
     says: 'this is the selected destination for the planet change',
+  },
+  /** The Change Planet preview crossfades to the planet just chosen. */
+  'planet.preview.swap': {
+    tier: 'inform', curve: 'ease', duration: 0.18,
+    says: 'the preview shows the planet you chose',
+  },
+  /** The preview's tools come and go with a saved planet, which is the only kind they act on. */
+  'planet.tools.offer': {
+    tier: 'inform', curve: 'punchy', duration: 0.16, amplitude: 0.3, amplitudeUnit: 'scale',
+    says: 'this planet is yours to edit, rename, copy, export or delete',
+  },
+  /** The planet session's chunk frame flashes once when a ground stroke reaches past the canvas. */
+  /** The video import's picture: ground the scan has just read fades in, the picture widens to
+   *  what it has read and the camera's view glides after the camera (the time to cover most of
+   *  the way), and the planet it read takes the picture's place. */
+  'scan.preview.reveal': { tier: 'inform', curve: 'easeOut', duration: 0.4, says: 'the import has read this ground' },
+  'scan.preview.follow': { tier: 'inform', curve: 'ease', duration: 0.6, says: 'the import has read further' },
+  'scan.preview.finish': { tier: 'inform', curve: 'ease', duration: 0.5, says: 'the planet the import read is ready' },
+  'planet.frame.flash': {
+    tier: 'inform', curve: 'ease', duration: 0.9,
+    says: 'the planet is at its size limit',
   },
   /** The 3D-only yaw controls enter and leave without reflowing controls above them. */
   'rail.yaw.offer': {
@@ -315,6 +398,11 @@ export const MOTIONS = {
     tier: 'inform', curve: 'punchy', duration: 0.24,
     says: 'the assistant has moved from one state to another',
   },
+  /** Live status text changes stay legible throughout their brief emphasis. */
+  'panel.status.update': {
+    tier: 'inform', curve: 'punchy', duration: 0.18, amplitude: 0.35, amplitudeUnit: 'opacity',
+    says: 'the current operation has changed while the same task continues',
+  },
   /** Flips the dock card for a session-state identity change; in-place text updates use dock.paper. */
   'panel.dock.flip': {
     tier: 'inform', curve: 'punchy', duration: 0.28, outShare: 0.54,
@@ -427,12 +515,17 @@ export const MOTIONS = {
     tier: 'inform', curve: 'punchy', duration: 0.2,
     says: 'this is the thinking behind the row you pressed',
   },
+  /** Duration caps a streamed burst; stagger is the ordinary interval between graphemes. */
+  'panel.thoughts.stream': {
+    tier: 'inform', curve: 'linear', duration: 0.24, stagger: 0.012,
+    says: 'new thoughts are arriving',
+  },
   /** Shared unfold timing for operation details, full prose and management verdicts. */
   'panel.detail.unfold': {
     tier: 'inform', curve: 'punchy', duration: 0.2,
     says: 'here is the rest of what this element holds',
   },
-  /** Job-zone screens leave before their replacement rises in, keeping one scroller mounted at a time. */
+  /** Incoming screens and the composer share one reveal after the previous screen unmounts. */
   'panel.zone.swap': {
     tier: 'inform', curve: 'punchy', duration: 0.14, amplitude: 8, amplitudeUnit: 'px',
     says: 'the panel switched to the screen your press asked for',
@@ -578,6 +671,9 @@ export const MOTIONS = {
 } as const satisfies Record<string, Motion>;
 
 export type MotionId = keyof typeof MOTIONS;
+
+/** Ids of the motions that preview a setting. */
+export type SampleMotionId = { [K in MotionId]: (typeof MOTIONS)[K]['tier'] extends 'sample' ? K : never }[MotionId];
 
 export { CURVES } from './curves';
 export type { CurveId } from './curves';

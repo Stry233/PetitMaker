@@ -6,8 +6,9 @@ import { riverPath } from './river-path';
 import type { MacroReport } from './run';
 import { isWaterAt, surfaceAt } from './terrain';
 import { TerrainDraft } from './terrain-draft';
+import { BASE_SUPPORT } from '../../core/model/game-profile';
 
-export interface RiverInput {
+interface RiverInput {
   from: MacroCoord;
   to: MacroCoord;
   width: number;
@@ -28,7 +29,7 @@ export function buildRiver(ctx: MacroContext, input: RiverInput): MacroReport {
   const levels: number[] = [];
   const floor = draft.level(path[path.length - 1]!);
   for (const [i, c] of path.entries()) {
-    let e = Math.max(floor, draft.level(c), (levels[i - 1] ?? draft.level(c)) - 3);
+    let e = Math.max(floor, draft.level(c), (levels[i - 1] ?? draft.level(c)) - BASE_SUPPORT.reach);
     // Leave a level neck at an existing pond before beginning a narrower waterfall.
     for (const [dx, dy] of NEIGHBORS4) {
       if (isWaterAt(ctx.state, c.x + dx, c.y + dy)) e = Math.max(e, surfaceAt(ctx.state, c.x + dx, c.y + dy));
@@ -56,7 +57,7 @@ export function buildRiver(ctx: MacroContext, input: RiverInput): MacroReport {
   for (const [key, t] of channel) bands.set(bandOf(key), Math.max(bands.get(bandOf(key)) ?? 0, t.elevation));
   const order = [...bands.keys()].sort((a, b) => a - b);
   for (let i = order.length - 2; i >= 0; i--) bands.set(order[i]!, Math.max(bands.get(order[i]!)!, bands.get(order[i + 1]!)!));
-  for (let i = 1; i < order.length; i++) bands.set(order[i]!, Math.max(bands.get(order[i]!)!, bands.get(order[i - 1]!)! - 3));
+  for (let i = 1; i < order.length; i++) bands.set(order[i]!, Math.max(bands.get(order[i]!)!, bands.get(order[i - 1]!)! - BASE_SUPPORT.reach));
   for (const [key, t] of channel) t.elevation = bands.get(bandOf(key))!;
   for (const [key, { elevation }] of channel) draft.set(draft.coord(key), TerrainType.Water, elevation);
   // Dry endpoints receive a small pool; joins keep the existing body's outline.

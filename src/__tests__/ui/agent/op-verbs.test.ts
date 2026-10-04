@@ -12,7 +12,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import { TOOL_META } from '../../../ui/agent/tool-meta';
-import { TOOL_SCHEMAS } from '../../../agent/tools/tools';
+import { TOOL_SCHEMAS } from '../../../agent/tools';
 import { translations } from '../../../i18n/translations';
 import type { Locale } from '../../../core/model/types';
 

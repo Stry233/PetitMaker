@@ -12,13 +12,14 @@ import {
   type EraserShape,
   type DesignMode,
   type MacroCoord,
-  type RegionTool,
+  type RegionTool, type Rotation,
 } from '../../core/model/types';
 import {
   nextEditMode, resolveEditMode, REST_INPUTS,
   type ContentType, type EditModeInputs, type EditModePatch,
 } from '../../core/model/edit-mode';
 import { getRoadMaterials } from '../catalog';
+import type { AnnotationsSlice } from './annotations';
 
 export interface EditSlice {
   activeTool: ToolType;
@@ -78,11 +79,14 @@ export interface EditSlice {
    *  call sites that all need it, and only two of those touch a tool at all. Reset by `setEditMode`
    *  whenever the armed item changes, so a fresh item starts at its natural orientation; nothing
    *  reads it while nothing is armed. */
-  placementRotation: 0 | 90 | 180 | 270;
-  setPlacementRotation: (r: 0 | 90 | 180 | 270) => void;
+  placementRotation: Rotation;
+  setPlacementRotation: (r: Rotation) => void;
   selectingRegion: boolean;
   regionSelectionOwner: 'agent' | 'generator' | null;
   regionTool: RegionTool;
+  regionBrushShape: Exclude<RegionTool, 'eraser'>;
+  regionDimensions: boolean;
+  setRegionDimensions: (visible: boolean) => void;
   regionBrushSize: number;
   /** The painted region: the macro cells the region-select tool has collected, which scope a
    *  generate, a clear and an agent run. `[]` is the ONE representation of "no region painted"
@@ -98,6 +102,8 @@ export interface EditSlice {
   /** Resolves the patch against `editMode` and derives `activeTool`/`designMode`/`contentType`/
    *  `selectedItemId` from it in one `set` — the only writer of any of the four. */
   setEditMode: (patch: EditModePatch) => void;
+  /** Reinstates exact inputs a caller saved from `editMode`, resolved as `setEditMode` resolves them. */
+  restoreEditMode: (inputs: EditModeInputs) => void;
   setTileMaterial: (m: string) => void;
   setAutoEdgeCut: (m: AutoEdgeCut) => void;
   setEraserShape: (m: EraserShape) => void;
@@ -113,7 +119,40 @@ export interface EditSlice {
   setBrushSize: (size: number) => void;
 }
 
-export const createEditSlice: StateCreator<EditSlice, [], [], EditSlice> = (set, get) => ({
+type EditGet = () => EditSlice;
+type EditSet = (patch: Partial<EditSlice>) => void;
+
+/** Derives the four resolved facts from `editMode` in one `set`, shared by `setEditMode` and `restoreEditMode`. */
+function applyEditMode(get: EditGet, set: EditSet, editMode: EditModeInputs): void {
+  const resolved = resolveEditMode(editMode);
+  // A freshly armed (or disarmed) item starts at its natural orientation, so a rotation left
+  // over from the last one is never picked up by the next placement.
+  const armedChanged = resolved.armedItem !== get().selectedItemId;
+  // Choosing what to build puts the region brush away. Both arm the pointer and the region
+  // outranks the tool, so leaving it on would hand every press to the brush that paints a
+  // scope while the map showed a mode that paints terrain. Only a change of MODE does this:
+  // picking another tool or item inside the mode the region was painted for is not leaving it.
+  const leftRegion = editMode.mode !== get().editMode.mode && get().selectingRegion;
+  const macroChanged = resolved.armedMacro !== get().armedMacro;
+  const brushSize = editMode.tool === 'erase' ? get().eraserBrushSize
+    : editMode.tool === 'brush' || editMode.tool === 'shape' || editMode.tool === 'smart' ? get().drawingBrushSize
+    : get().brushSize;
+  set({
+    editMode,
+    brushSize,
+    displayLayer: null,
+    activeTool: resolved.toolType,
+    designMode: resolved.designMode,
+    contentType: resolved.contentType,
+    selectedItemId: resolved.armedItem,
+    armedMacro: resolved.armedMacro,
+    ...(macroChanged ? { armingEpoch: get().armingEpoch + 1 } : null),
+    ...(armedChanged ? { placementRotation: 0 } : null),
+    ...(leftRegion ? { selectingRegion: false, regionSelectionOwner: null } : null),
+  });
+}
+
+export const createEditSlice: StateCreator<EditSlice & Pick<AnnotationsSlice, 'annotationDraft' | 'requestAnnotationDiscard'>, [], [], EditSlice> = (set, get) => ({
   activeTool: ToolType.Hand,
   designMode: 'hand' as DesignMode,
   contentType: 'mountain' as const,
@@ -140,42 +179,29 @@ export const createEditSlice: StateCreator<EditSlice, [], [], EditSlice> = (set,
   selectingRegion: false,
   regionSelectionOwner: null,
   regionTool: 'brush' as const,
+  regionBrushShape: 'brush',
+  regionDimensions: true,
+  setRegionDimensions: (visible) => set({ regionDimensions: visible }),
   regionBrushSize: 3,
   region: [],
   setRegion: (cells) => set({ region: cells }),
-  setSelectingRegion: (v, owner = 'generator') => set({ selectingRegion: v, regionSelectionOwner: v ? owner : null }),
-  setRegionTool: (t) => set({ regionTool: t }),
+  setSelectingRegion: (v, owner = 'generator') => {
+    const change = () => set({ selectingRegion: v, regionSelectionOwner: v ? owner : null });
+    if (v && get().annotationDraft) get().requestAnnotationDiscard(change);
+    else change();
+  },
+  setRegionTool: (t) => set(t === 'eraser' ? { regionTool: t } : { regionTool: t, regionBrushShape: t }),
   setRegionBrushSize: (s) => set({ regionBrushSize: s }),
 
   setEditMode: (patch) => {
     const editMode = nextEditMode(get().editMode, patch);
-    const resolved = resolveEditMode(editMode);
-    // A freshly armed (or disarmed) item starts at its natural orientation, so a rotation left
-    // over from the last one is never picked up by the next placement.
-    const armedChanged = resolved.armedItem !== get().selectedItemId;
-    // Choosing what to build puts the region brush away. Both arm the pointer and the region
-    // outranks the tool, so leaving it on would hand every press to the brush that paints a
-    // scope while the map showed a mode that paints terrain. Only a change of MODE does this:
-    // picking another tool or item inside the mode the region was painted for is not leaving it.
-    const leftRegion = editMode.mode !== get().editMode.mode && get().selectingRegion;
-    const macroChanged = resolved.armedMacro !== get().armedMacro;
-    const brushSize = editMode.tool === 'erase' ? get().eraserBrushSize
-      : editMode.tool === 'brush' || editMode.tool === 'shape' || editMode.tool === 'smart' ? get().drawingBrushSize
-      : get().brushSize;
-    set({
-      editMode,
-      brushSize,
-      displayLayer: null,
-      activeTool: resolved.toolType,
-      designMode: resolved.designMode,
-      contentType: resolved.contentType,
-      selectedItemId: resolved.armedItem,
-      armedMacro: resolved.armedMacro,
-      ...(macroChanged ? { armingEpoch: get().armingEpoch + 1 } : null),
-      ...(armedChanged ? { placementRotation: 0 } : null),
-      ...(leftRegion ? { selectingRegion: false, regionSelectionOwner: null } : null),
-    });
+    if (get().annotationDraft && editMode.mode !== get().editMode.mode) {
+      get().requestAnnotationDiscard(() => get().setEditMode(patch));
+      return;
+    }
+    applyEditMode(get, set, editMode);
   },
+  restoreEditMode: (inputs) => applyEditMode(get, set, inputs),
   setTileMaterial: (m) => set({ tileMaterial: m, tileMaterialPicked: true }),
   setAutoEdgeCut: (m) => set({ autoEdgeCut: m }),
   setEraserShape: (m) => set({ eraserShape: m }),

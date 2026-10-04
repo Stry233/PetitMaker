@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { clampUiZoom, followStep } from '../../canvas/map2d/zoom-accum';
+import { followStep } from '../../canvas/map2d/zoom-accum';
+import { clampUiZoom } from '../../core/runtime/prefs';
 
 describe('clampUiZoom', () => {
   it('leaves an in-range, already-2dp value untouched', () => {

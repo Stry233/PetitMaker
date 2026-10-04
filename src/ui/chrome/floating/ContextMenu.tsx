@@ -1,68 +1,66 @@
-import { helpTargetAttr } from '../modals/help/targets';
 /*
- * ContextMenu.tsx — the menu a right-click on the map opens.
+ * The menu a right-click on the map opens.
  *
  * The store holds WHICH block was clicked and where; the rows it offers for that block and the card
  * they stand on are `objectMenuRows`/`terrainMenuRows` + `ContextMenuFace` below, so the Help
  * Center's figure of this menu is this menu rather than a drawing of it.
  */
+import { helpTargetAttr } from '../modals/help/targets';
 import { Fragment, useEffect, type CSSProperties, type ReactElement } from 'react';
-import { useChromeScale, useWeightVars } from '../../design/scale';
-import { motion, AnimatePresence } from 'framer-motion';
+import { useChromeScale, useTouchPrimary, useWeightVars } from '../../design/scale';
+import { motion, AnimatePresence, useIsPresent } from 'framer-motion';
 import { useEditorStore } from '../../../state/store';
 import { getCatalogItem } from '../../../state/catalog';
 import { getCell } from '../../../core/model/grid-model';
 import { peelTerrain } from '../../../tools/objects';
-import { rotateObjectAction, deleteSelection } from '../../../kit/group-edit';
+import { rotateObjectAction, rotateSessionPlazaAction, deleteSelection } from '../../../kit/group-edit';
+import { turnsInSession } from '../../../kit/operations/planet-session';
 import { useT } from '../../../i18n/context';
-import { colors, radii, shadows, font, easing, springs, exitTransition, z, cursors } from '../../design/styles';
+import { useFloatingPosition } from '../../primitives/use-floating-position';
+import { useSurfaceScope } from '../../primitives/surface-scope';
+import { colors, radii, font, springs, exitTransition, z } from '../../design/styles';
+import { INSET, LINE, PANEL_EDGE, PLATE, PLATE_INK } from '../../design/tokens';
+import { floatMenuItemStyle } from '../../primitives/FloatMenu';
+import type { Rotation } from '../../../core/model/types';
+import { ROTATIONS } from '../../../core/model/types';
 
-const ANGLES = [0, 90, 180, 270] as const;
-
+// The map's menu wears the floating-menu card: the cream plate with the hairline every panel over
+// the map wears, rows that tint one step down the cream ramp on hover, and the chosen row in the
+// active fill.
 const menuStyle: CSSProperties = {
   position: 'fixed',
   zIndex: z.contextMenu,
-  background: colors.surfacePrimary,
-  borderRadius: radii.md,
-  boxShadow: shadows.s2,
-  padding: '4px 0',
-  minWidth: 160,
-  ...font.body,
-  color: colors.textPrimary,
-  transformOrigin: 'top left', // scale grows from the click point (Framer enter/exit)
-};
-
-const itemStyle: CSSProperties = {
+  background: PLATE,
+  border: PANEL_EDGE,
+  borderRadius: radii.lg,
+  boxShadow: 'none',
+  padding: 6,
   display: 'flex',
-  alignItems: 'center',
-  gap: 8,
-  width: '100%',
-  padding: '8px 12px',
-  background: 'none',
-  border: 'none',
-  cursor: cursors.clickable,
-  ...font.body,
-  color: colors.textPrimary,
-  transition: `background 120ms ${easing.punchy}`,
+  flexDirection: 'column',
+  gap: 2,
+  minWidth: 160, width: 'max-content',
+  fontFamily: font.family,
+  color: PLATE_INK,
+  transformOrigin: 'top left', // scale grows from the click point (Framer enter/exit)
 };
 
 const dividerStyle: CSSProperties = {
   height: 1,
-  background: colors.surfaceSecondary,
-  margin: '4px 0',
+  background: LINE,
+  margin: '4px 8px',
 };
 
 const anim = {
-  initial: { scale: 0.9, opacity: 0 },
+  initial: { scale: 0.94, opacity: 0 },
   animate: { scale: 1, opacity: 1 },
-  exit: { scale: 0.9, opacity: 0, transition: exitTransition },
-  transition: springs.bouncy,
+  exit: { scale: 0.94, opacity: 0, transition: exitTransition },
+  transition: springs.stiff,
 };
 
 type Resolver = (key: string) => string;
 
 /** One row of the menu: the words on it, and how it stands. */
-export interface ContextMenuRow {
+interface ContextMenuRow {
   id: string;
   label: string;
   /** Removal, in the error ink. */
@@ -79,7 +77,7 @@ export interface ContextMenuRow {
 export function objectMenuRows(t: Resolver, rotation: number, rotatable: boolean): ContextMenuRow[] {
   const rows: ContextMenuRow[] = [];
   if (rotatable) {
-    for (const a of ANGLES) {
+    for (const a of ROTATIONS) {
       rows.push({ id: `rotate_${a}`, label: t(`context.rotate_${a}`), current: rotation === a });
     }
   }
@@ -94,41 +92,46 @@ export function terrainMenuRows(t: Resolver, isGround: boolean): ContextMenuRow[
 
 /** The menu itself: the card, its rows and their hover. `style` carries the position and the scale
  *  the card draws at. */
-export function ContextMenuFace({ rows, onPick, style }: {
+export function ContextMenuFace({ rows, onPick, style, anchor, zoom = 1, onDismiss }: {
+  anchor?: { x: number; y: number };
+  zoom?: number;
+  onDismiss?: () => void;
   rows: readonly ContextMenuRow[];
   onPick: (id: string) => void;
   style?: CSSProperties;
 }) {
+  const present = useIsPresent();
+  const floating = useFloatingPosition({ open: !!anchor && present, anchor: anchor ?? { x: 0, y: 0 }, zoom });
+  useSurfaceScope({ open: !!onDismiss && present && !!floating.placement, root: floating.ref, onClose: onDismiss ?? (() => {}), focus: 'menu', outside: true });
   return (
-    <motion.div {...helpTargetAttr('select')} data-context-menu {...anim} style={{ ...menuStyle, ...style }}>
-      {rows.map((row) => {
-        const rest = row.current ? colors.surfaceSecondary : 'transparent';
-        return (
-          <Fragment key={row.id}>
-            {row.separated ? <div style={dividerStyle} /> : null}
-            <button
-              style={{
-                ...itemStyle,
-                ...(row.danger ? { color: colors.statusError } : {}),
-                background: row.current ? colors.surfaceSecondary : 'none',
-                ...(row.inactive ? { opacity: 0.4, pointerEvents: 'none' } : {}),
-              }}
-              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = colors.surfaceSecondary; }}
-              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = rest; }}
-              onClick={() => onPick(row.id)}
-            >
-              {row.current && <span style={{ color: colors.accentPrimary }}>&#10003;</span>}
-              {row.label}
-            </button>
-          </Fragment>
-        );
-      })}
+    <motion.div ref={floating.ref} role="menu" tabIndex={-1} {...helpTargetAttr('select')} data-context-menu {...anim} style={{ ...menuStyle, ...style, ...(anchor ? floating.style : {}) }}>
+      {rows.map((row) => (
+        <Fragment key={row.id}>
+          {row.separated ? <div style={dividerStyle} /> : null}
+          <motion.button type="button" role="menuitem" disabled={row.inactive}
+            aria-current={row.current || undefined}
+            whileHover={row.inactive || row.current ? undefined : { backgroundColor: INSET }}
+            transition={springs.stiff}
+            style={{
+              ...floatMenuItemStyle(!!row.current, row.inactive),
+              ...(row.danger ? { color: colors.dangerText } : {}),
+              ...(row.inactive ? { pointerEvents: 'none' } : {}),
+            }}
+            onClick={() => onPick(row.id)}
+          >
+            {row.label}
+          </motion.button>
+        </Fragment>
+      ))}
     </motion.div>
   );
 }
 
 export function ContextMenu() {
-  const chrome = useChromeScale();
+  // A fingertip gets the rows at their designed size at least.
+  const touch = useTouchPrimary();
+  const scale = useChromeScale();
+  const chrome = touch ? Math.max(scale, 1) : scale;
   const weights = useWeightVars();
   const t = useT();
   const menu = useEditorStore((s) => s.contextMenu);
@@ -145,35 +148,13 @@ export function ContextMenu() {
     return () => eventBus.off('viewport-changed', close);
   }, [menu, eventBus]);
 
-  useEffect(() => {
-    if (!menu) return;
-    const dismiss = (e: MouseEvent) => {
-      // containment by attribute, NOT a React ref: a ref on the AnimatePresence
-      // child makes framer-motion's PopChild read child.ref, which React 18.3+
-      // warns about ("`ref` is not a prop"). closest() keeps the exact behavior
-      // (clicks inside the menu, padding included, never dismiss).
-      if (!(e.target as Element | null)?.closest?.('[data-context-menu]')) {
-        useEditorStore.getState().setContextMenu(null);
-      }
-    };
-    const escape = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') useEditorStore.getState().setContextMenu(null);
-    };
-    window.addEventListener('mousedown', dismiss);
-    window.addEventListener('keydown', escape);
-    return () => {
-      window.removeEventListener('mousedown', dismiss);
-      window.removeEventListener('keydown', escape);
-    };
-  }, [menu]);
-
   const close = () => useEditorStore.getState().setContextMenu(null);
 
   // Build the menu content (or null) so AnimatePresence can play a close-exit.
   let content: ReactElement | null = null;
   if (menu && gridState && executor) {
     // menu.x/y are VISUAL px (pointer event); the css coords live under the zoom, so divide it out.
-    const pos = { left: menu.x / chrome, top: menu.y / chrome };
+    const anchor = { x: menu.x, y: menu.y };
     if (menu.target.kind === 'terrain') {
       const { x, y } = menu.target;
       const cell = getCell(gridState.cells, x, y);
@@ -189,15 +170,22 @@ export function ContextMenu() {
           key="menu"
           rows={terrainMenuRows(t, isGround)}
           onPick={handleTerrainDelete}
-          style={{ zoom: chrome, ...weights, ...pos }}
+          anchor={anchor} zoom={chrome} onDismiss={close}
+          style={{ zoom: chrome, ...weights }}
         />
       );
     } else {
       const obj = gridState.objects.get(menu.target.id);
       if (obj) {
         const item = getCatalogItem(obj.catalogId);
-        const handleRotate = (angle: 0 | 90 | 180 | 270) => {
+        const sessionPlaza = turnsInSession(obj);
+        const handleRotate = (angle: Rotation) => {
           if (obj.rotation === angle) { close(); return; }
+          if (sessionPlaza) {
+            const turns = ((((angle - obj.rotation) / 90) % 4) + 4) % 4 as 1 | 2 | 3;
+            if (rotateSessionPlazaAction(useEditorStore.getState().eventBus, turns).success) close();
+            return;
+          }
           // Validate the rotated footprint BEFORE touching the object. If the new
           // angle would overlap/leave the map, surface the error and leave the
           // object unchanged (never remove it on a doomed rotation).
@@ -215,12 +203,13 @@ export function ContextMenu() {
         content = (
           <ContextMenuFace
             key="menu"
-            rows={objectMenuRows(t, obj.rotation, !!item?.rotatable)}
+            rows={objectMenuRows(t, obj.rotation, sessionPlaza || !!item?.rotatable)}
             onPick={(id) => {
               if (id === 'delete') { handleDelete(); return; }
-              handleRotate(Number(id.slice('rotate_'.length)) as 0 | 90 | 180 | 270);
+              handleRotate(Number(id.slice('rotate_'.length)) as Rotation);
             }}
-            style={{ zoom: chrome, ...weights, ...pos }}
+            anchor={anchor} zoom={chrome} onDismiss={close}
+          style={{ zoom: chrome, ...weights }}
           />
         );
       }

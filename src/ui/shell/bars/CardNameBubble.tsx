@@ -1,5 +1,5 @@
 /*
- * CardNameBubble.tsx — the hovered tile's name, floating above the row that clips it.
+ * The hovered tile's name, floating above the row that clips it.
  *
  * A scroll container clips on both axes, so a label standing above a tile inside one would be cut
  * in half. This draws OUTSIDE the row, at a `centre` the caller has already corrected for its own
@@ -21,7 +21,8 @@ import { MAP_LABEL } from '../../design/tokens';
 import { TEXT } from '../units';
 import { useFrameReadableWeight } from '../use-frame-zoom';
 import { MOTIONS } from '../motion/registry';
-import { STILL, useMotion, useMotionAllowed } from '../motion/use-motion';
+import { useMotion, useMotionAllowed } from '../motion/use-motion';
+import { NO_MOTION } from '../../design/motion';
 
 /**
  * How wide the bubble may grow, in ems of its own type.
@@ -93,7 +94,7 @@ function NameText({ name }: { name: string }) {
         // Out, hold, back, hold, on one clock: the pauses are keyframes of the same run rather than
         // a second timer, so the turn cannot drift out of phase with the travel.
         animate={runs ? { x: [0, 0, -over, -over, 0] } : { x: 0 }}
-        transition={runs ? { ...marquee, times: [0, REST, 0.5, 0.5 + REST, 1] } : STILL}
+        transition={runs ? { ...marquee, times: [0, REST, 0.5, 0.5 + REST, 1] } : NO_MOTION}
         // Centred only where it WRAPS: a centred line wider than its box overhangs both ends of it,
         // which would start the travel with the name already half off its left edge.
         style={{

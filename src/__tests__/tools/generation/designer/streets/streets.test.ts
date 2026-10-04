@@ -22,12 +22,12 @@ import {
   FRONTED_SHARE_MIN, districtFrontage, districtLegibility, evaluateMap, networkShape,
   rampDiscipline, streetStraightness,
 } from '../../../../../tools/generation/designer/eval';
-import { ELEVATION_MAX } from '../../../../../core/model/constants';
 import { LINE_W, planMovementLine } from '../../../../../tools/generation/designer/composition/movement-line';
 import {
   BRANCH_W, DOMINANT_SHARE, ROAD_DOMINANT, TRUNK_W,
   planStreets, type StreetPlan,
 } from '../../../../../tools/generation/designer/streets/streets';
+import { ELEVATION_MAX } from '../../../../../core/model/game-profile';
 
 const HEXIA = MAP_TEMPLATES['hexia']!;
 const TAFA = MAP_TEMPLATES['tafa']!;
@@ -382,6 +382,7 @@ describe('ramps stand at steps, never on pavement', () => {
           expect(flight.ramps.length, `${where}: flight ramps`).toBe(flight.highTier - flight.lowTier);
           expect(flight.landings.length, `${where}: flight landings`).toBe(flight.ramps.length - 1);
           for (const ramp of flight.ramps) {
+            expect(objectRect({ ...ramp, id: 'probe' })).toEqual(ramp.footprint);
             expect(ramp.elevation, `${where}: ramp elevation inside the flight`)
               .toBeGreaterThan(flight.lowTier - 1);
             expect(ramp.elevation, `${where}: ramp elevation inside the flight`)
@@ -405,14 +406,17 @@ describe('ramps stand at steps, never on pavement', () => {
     expect(Math.max(...tiersReached), 'terraces one map lays street on').toBeGreaterThan(2);
   });
 
-  it('uses no more ramps than the terraced reference does', () => {
+  it('bounds both ramp count and total occupied run', () => {
     for (const { template, richness, runs } of batches()) {
       const counts = runs.map((r) => r.plan.ramps.length);
       const where = `${template.id} r${richness}: ramps ${Math.min(...counts)}..${Math.max(...counts)}`;
-      // The references carry 51 ramps (terraced) and 0 (flat), so the terraced one's count is the
-      // ceiling and the batch mean has to sit well under it: a ramp is furniture, not a texture.
+      // Count caps visual repetition; occupied run measures corridor density across ramp lengths.
       expect(Math.max(...counts), where).toBeLessThanOrEqual(51);
-      expect(mean(counts), where).toBeLessThan(20);
+      const occupiedRun = runs.map((run) => run.plan.ramps.reduce((sum, ramp) => {
+        const r = ramp.footprint;
+        return sum + (ramp.rotation === 0 || ramp.rotation === 180 ? r.h : r.w);
+      }, 0));
+      expect(mean(occupiedRun), where).toBeLessThan(80);
     }
   });
 });

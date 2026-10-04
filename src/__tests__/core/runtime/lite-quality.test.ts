@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-vi.mock('../../../core/runtime/edition', () => ({ IS_LITE: true }));
+// The build defines the edition flag; unset under test, so it is set before the edition module loads.
+vi.hoisted(() => { (globalThis as { __PETIT_LITE__?: boolean }).__PETIT_LITE__ = true; });
 import { writePref } from '../../../core/runtime/prefs';
 import { glQuality, maxRenderScale, setGlQualityOverride } from '../../../core/runtime/device-quality';
 

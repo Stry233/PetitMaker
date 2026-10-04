@@ -1,5 +1,5 @@
 /*
- * RoadStyles.tsx — which surface the road brush lays: one swatch per Road item, above 路面's tools.
+ * Which surface the road brush lays: one swatch per Road item, above the Roads tools.
  *
  * The row is READ FROM THE CATALOG, never from a table here: a road item carries an `icon` of its
  * own plus the `color` derived from it, so a new surface joins this row by existing. The swatch
@@ -24,23 +24,23 @@
  * highlight stands on the catalog's first road because something has to be armed, and the road
  * macros take their surface from the map instead.
  */
-import { motion, useReducedMotionConfig } from 'framer-motion';
-import { useRef, useState, type CSSProperties, type RefObject, type WheelEvent } from 'react';
+import { motion } from 'framer-motion';
+import { useRef, useState, type CSSProperties, type RefObject } from 'react';
 import { iconUrl } from '../../../assets/icon-urls';
 import { localizedName, useT } from '../../../i18n/context';
 import { getRoadMaterials } from '../../../state/catalog';
 import { useEditorStore } from '../../../state/store';
-import { useScrollFade } from '../../primitives/scroll-fade';
+import { useScrollRow } from '../../primitives/use-scroll-row';
 import { btnReset, cursors, pressable, z } from '../../design/styles';
 import { ACTIVE, PLATE } from '../../design/tokens';
 import { SCALE, SHELF_SCALE } from '../units';
 import { ACTIVE_PLATE, ROAD_STYLE } from './terrain-cells';
 import { CardNameBubble, type CardNameReach } from './CardNameBubble';
 import { ROW } from './object-shelf';
-import { useFrameZoom, wheelGlider, wheelPush } from './row-scroll';
+import { useFrameZoom } from './row-scroll';
 import { useRailClearance } from '../frame-layout';
 import { SWATCH_ROW_BOTTOM } from './ToolRow';
-import { cssMotion } from '../motion/use-motion';
+import { cssMotion } from '../../design/motion';
 
 /** The tile as it lands on screen, and the air between two of them. */
 const TILE = ROAD_STYLE.size * SCALE;
@@ -85,31 +85,20 @@ const fadeAt = (): number => FADE;
  *  pointer input; padding and gaps leave the canvas reachable. */
 export function useSwatchStripRow(): {
   rowRef: RefObject<HTMLDivElement>;
-  rowProps: { className: string; onWheel: (e: WheelEvent<HTMLDivElement>) => void; style: CSSProperties };
+  rowProps: { className: string; style: CSSProperties };
 } {
   const rowRef = useRef<HTMLDivElement>(null!);
   const zoom = useFrameZoom();
-  const reducedMotion = useReducedMotionConfig() ?? false;
-  const glide = useRef(wheelGlider()).current;
   // Only an end the row can still travel toward is shaded, so at either stop the outermost swatch —
   // grown plate, `SLACK` overhang and all — meets the edge at full strength.
-  const rowFade = useScrollFade(rowRef, 'x', { fadeAt });
+  const rowFade = useScrollRow(rowRef, { zoom, bleed: SLACK, pointerEvents: 'none', fade: { fadeAt } });
   return {
     rowRef,
     rowProps: {
       className: 'pw-noscroll',
-      onWheel: (e) => {
-        const row = e.currentTarget;
-        // A row that fits its content has no room to give the wheel, same rule the shelf rows
-        // answer it by.
-        const room = row.scrollWidth - row.clientWidth;
-        const push = room > 0 ? wheelPush(e, row.clientWidth, zoom) : null;
-        if (push) glide.wheel(row, push.by, reducedMotion);
-      },
       style: {
         position: 'relative', display: 'flex', alignItems: 'flex-end', flexWrap: 'nowrap',
-        gap: GAP, overflowX: 'auto', overflowY: 'hidden',
-        padding: SLACK, margin: -SLACK,
+        gap: GAP,
         // Hovered plates remain above the following tool row's transparent scroll padding.
         zIndex: z.panel,
         pointerEvents: 'none',
@@ -119,12 +108,34 @@ export function useSwatchStripRow(): {
   };
 }
 
+/** One swatch of a material strip: its art where it has one, else its flat colour. */
+export interface MaterialSwatch {
+  id: string;
+  name: string;
+  icon?: string;
+  color?: string;
+}
+
 export function RoadStyles() {
   const t = useT();
-  const clearance = useRailClearance(SWATCH_ROW_BOTTOM, TILE);
   const locale = useEditorStore((s) => s.locale);
   const tileMaterial = useEditorStore((s) => s.tileMaterial);
   const setTileMaterial = useEditorStore((s) => s.setTileMaterial);
+  const swatches = getRoadMaterials().map((item): MaterialSwatch => ({
+    id: item.id, name: localizedName(item.name, locale), icon: item.icon ? iconUrl(item.icon) : undefined, color: item.color,
+  }));
+  return <MaterialStrip label={t('design.road_surface')} swatches={swatches} active={tileMaterial} onPick={setTileMaterial} />;
+}
+
+/** The swatch strip above a tool row: which material the brush lays. The road surfaces and the
+ *  planet session's ground materials share it. */
+export function MaterialStrip({ label, swatches, active: activeId, onPick }: {
+  label: string;
+  swatches: readonly MaterialSwatch[];
+  active: string;
+  onPick: (id: string) => void;
+}) {
+  const clearance = useRailClearance(SWATCH_ROW_BOTTOM, TILE);
   const [reached, setReached] = useState<CardNameReach | null>(null);
   const { rowRef, rowProps } = useSwatchStripRow();
 
@@ -139,18 +150,17 @@ export function RoadStyles() {
     <div style={{
       position: 'relative',
       marginRight: clearance,
-      transition: cssMotion('frame.layout.adapt', 'margin-right'),
+      transition: cssMotion('frame.layout.adapt', ['margin-right']),
     }}>
       <div
         ref={rowRef}
         role="group"
-        aria-label={t('design.road_surface')}
+        aria-label={label}
         {...rowProps}
       >
-        {getRoadMaterials().map((item) => {
-          const active = item.id === tileMaterial;
-          const name = localizedName(item.name, locale);
-          const icon = item.icon ? iconUrl(item.icon) : undefined;
+        {swatches.map((item) => {
+          const active = item.id === activeId;
+          const { name, icon } = item;
           return (
             <motion.button
               key={item.id}
@@ -158,7 +168,7 @@ export function RoadStyles() {
               {...pressable}
               aria-label={name}
               aria-pressed={active}
-              onClick={() => setTileMaterial(item.id)}
+              onClick={() => onPick(item.id)}
               onPointerEnter={(e) => reach(e.currentTarget, name)}
               onPointerLeave={() => setReached(null)}
               onFocus={(e) => reach(e.currentTarget, name)}
