@@ -3,32 +3,35 @@ import { fitPalette, paletteLookup, readGround } from './classify';
 import { PaletteSampler } from './colour';
 import { ScanError, type ScanFailure } from './errors';
 import { EvidenceAccumulator, evidenceGrid, reduceDeviation, type ReducedDeviation } from './evidence';
-import { readHud, zoomDiffers, type HudReading } from './hud';
+import { hudLayout, readHud, zoomDiffers, type HudLayout, type HudReading } from './hud';
 import { latticePins, lineProfiles, periodScale, type RunProfiles } from './lattice';
 import { detectPlaza } from './plaza';
 import { coveragePreview, type ScanPreview } from './preview';
 import { MAP_VIEW_RECTIFICATION, SCAN_PROFILE } from './profile';
 import { buildSampleMap, rectifyGrey, rectifyRgba, rgbaToGrey, sampledRows, type SampleMap } from './rectify';
-import { familiarShape } from './framing';
+import { CALIBRATED_FRAMING, worldMeasured, type ScanFraming } from './framing';
 import { coastCoverage, landCells, reviewCells } from './review';
 import { solveScan, type FramePosition, type ScanSolution } from './scan-solve';
 import { StillRunGrouper, type StillRun } from './still-runs';
 import { scannedPlanet } from './to-template';
-import { Tracker, halveTile } from './track';
+import { KeptFrames } from './thin';
+import { Tracker } from './track';
 import type { RgbaImage } from './types';
 
 // One scan from decoded frames to a planet, in the two passes the pipeline needs. Pass 1 reads
-// every frame: the HUD check, the rectified grey tile for the still runs and, for distinct frames,
-// the half-resolution tracking tile and the palette mosaic. Between the passes the camera path and
-// the lattice are solved and the tracker's tile store is let go. Pass 2 reads the distinct frames
-// again, and only those, into the ground evidence. Frames are never kept.
+// every frame: the HUD check, the rectified grey tile for the still runs and, for the distinct
+// frames motion thinning keeps (`thin.ts`), the half-resolution tracking tile and the palette
+// mosaic. Between the passes the camera path and the lattice are solved and the tracker's tile
+// store is let go. Pass 2 reads the kept frames again, and only those, into the ground evidence.
+// Frames are never kept; the thinning holds the tiles of the one frame it has not decided yet.
 //
-// Memory on a 60 s, 60 fps scan (3600 frames, 600 to 900 distinct, 150 to 250 still runs on the
-// 680 x 300 tile): pass 1 holds the grouper's three float tiles (2.4 MB), the tracking tile store
-// (51 KB a distinct frame, 31 to 46 MB) and its correlators (about 10 MB), each still run's line
-// profiles (4 KB) and reduced deviation (51 KB, about 13 MB for 250 runs), and the palette mosaic
-// (about 2 MB). Pass 2 holds the evidence planes (about 17 MB for a 12 x 12-chunk scan, 57 MB at
-// the grid cap) and the reduced deviations until they are placed.
+// Memory on a 60 s, 60 fps scan (3600 frames, 600 to 900 kept, 150 to 250 still runs on the
+// 680 x 300 tile): pass 1 holds the grouper's three float tiles (2.4 MB), the thinning's two frame
+// slots (2.4 MB), the tracking tile store (51 KB a kept frame, 31 to 46 MB, 122 MB at
+// `import.maxDistinct`) and its correlators (about 10 MB), each still run's line profiles (4 KB) and
+// reduced deviation (51 KB, about 13 MB for 250 runs), and the palette mosaic (about 2 MB). Pass 2
+// holds the evidence planes (about 17 MB for a 12 x 12-chunk scan, 57 MB at the grid cap) and the
+// reduced deviations until they are placed.
 
 const IMPORT = SCAN_PROFILE.import;
 
@@ -56,31 +59,34 @@ export interface FirstPassReading {
   readonly knobRows: readonly number[];
   readonly distinct: number;
   readonly runs: readonly RunProfiles[];
-  /** The decoded picture's size, where known. */
-  readonly picture?: PictureSize;
-}
-
-export interface PictureSize {
-  readonly width: number;
-  readonly height: number;
+  /** The survey found no game window large enough to read; false by default. */
+  readonly unframed?: boolean;
+  /** The world's scale was measured on recordings of the window's shape (`framing.ts:worldMeasured`);
+   *  true by default. */
+  readonly worldMeasured?: boolean;
 }
 
 export interface ScanSessionOptions {
-  /** The decoded picture's size, which tells a wrongly framed recording from another screen. */
-  readonly picture?: PictureSize;
-  /** Pass 1 refuses the scan as `too-long` past this many distinct frames. */
+  /** The recording's framing (`survey.ts:surveyFraming`): the calibrated one by default, null where
+   *  the survey found no window to read. */
+  readonly framing?: ScanFraming | null;
+  /** Pass 1 refuses the scan as `too-long` past this many kept distinct frames. */
   readonly maxDistinct?: number;
 }
 
 /** Why pass 1's reading cannot make a planet, or null. The checks run in `SCAN_FAILURES` order. */
 export function firstPassFailure(read: FirstPassReading): ScanFailure | null {
-  if (read.mapFrames < SCAN_PROFILE.hud.minFrames) return read.picture && !familiarShape(read.picture.width, read.picture.height) ? 'framing' : 'not-map-view';
+  if (read.unframed) return 'framing';
+  if (read.mapFrames < SCAN_PROFILE.hud.minFrames) return 'not-map-view';
   if (zoomDiffers(read.knobRows)) return 'different-zoom';
   if (read.distinct < IMPORT.minDistinct) return 'too-little';
   const pins = latticePins(read.runs);
   if (pins.x.frame.length < IMPORT.minPins || pins.y.frame.length < IMPORT.minPins) {
     const seen = periodScale(read.runs);
-    return seen.fitted >= IMPORT.minPins && Math.abs(seen.scale - 1) > IMPORT.scaleTolerance ? 'different-zoom' : 'region-load-off';
+    if (seen.fitted < IMPORT.minPins || Math.abs(seen.scale - 1) <= IMPORT.scaleTolerance) return 'region-load-off';
+    // The lines fit another period. With the knob at the calibrated zoom in a window whose world
+    // scale only the fitted rule gives, the rule is what failed.
+    return read.worldMeasured === false && read.knobRows.length > 0 ? 'framing' : 'different-zoom';
   }
   return null;
 }
@@ -97,13 +103,21 @@ export interface PreparedFrame {
  * prepare frames for a session elsewhere; the grey conversion covers only the rows the tile reads.
  */
 export class FramePrep {
-  readonly map: SampleMap = buildSampleMap(MAP_VIEW_RECTIFICATION, SCAN_PROFILE.tile, 1);
-  private readonly rows = sampledRows(this.map);
+  readonly map: SampleMap;
+  private readonly layout: HudLayout;
+  private readonly rows: { from: number; to: number };
   private readonly greyFrame = new Float32Array(SCAN_PROFILE.frame.width * SCAN_PROFILE.frame.height);
+
+  /** Reads frames drawn under `framing`. */
+  constructor(framing: ScanFraming = CALIBRATED_FRAMING) {
+    this.map = buildSampleMap(MAP_VIEW_RECTIFICATION, SCAN_PROFILE.tile, 1, framing.world);
+    this.layout = hudLayout(framing);
+    this.rows = sampledRows(this.map);
+  }
 
   /** Reads `frame`, writing its tile into `tile` when given. */
   prepare(frame: RgbaImage, tile?: Float32Array<ArrayBuffer>): PreparedFrame {
-    const hud = readHud(frame);
+    const hud = readHud(frame, this.layout);
     if (!hud.mapView) return { hud, tile: null };
     return { hud, tile: rectifyGrey(this.map, rgbaToGrey(frame, this.greyFrame, this.rows), tile).data };
   }
@@ -148,19 +162,19 @@ type Phase = 'first' | 'second' | 'done';
 
 export class ScanSession {
   private phase: Phase = 'first';
-  private readonly prep = new FramePrep();
-  private readonly map = this.prep.map;
+  private readonly framing: ScanFraming | null;
+  private readonly prep: FramePrep;
+  private readonly map: SampleMap;
   private readonly W = SCAN_PROFILE.tile.width;
   private readonly H = SCAN_PROFILE.tile.height;
   private readonly greyTile: Float32Array<ArrayBuffer>;
-  private readonly half: Float32Array<ArrayBuffer>;
   private readonly rgba: Uint8Array<ArrayBuffer>;
   private grouper: StillRunGrouper | null;
   private tracker: Tracker | null;
   private sampler: PaletteSampler | null;
+  private kept: KeptFrames | null;
   private readonly runs: RunProfiles[] = [];
   private deviations: { distinct: number; frames: number; dev: ReducedDeviation }[] = [];
-  private readonly distinctTimes: number[] = [];
   private readonly knobRows: number[] = [];
   private mapFrames = 0;
   private miss = 0;
@@ -169,18 +183,21 @@ export class ScanSession {
   private positions: FramePosition[] = [];
   private evidence: EvidenceAccumulator | null = null;
 
-  private readonly picture: PictureSize | undefined;
   private readonly maxDistinct: number;
 
   constructor(options: ScanSessionOptions = {}) {
-    this.picture = options.picture;
+    this.framing = options.framing === undefined ? CALIBRATED_FRAMING : options.framing;
+    this.prep = new FramePrep(this.framing ?? CALIBRATED_FRAMING);
+    this.map = this.prep.map;
+    // Without a window there is nothing to read.
+    if (!this.framing) this.ended = true;
     this.maxDistinct = options.maxDistinct ?? IMPORT.maxDistinct;
     this.greyTile = new Float32Array(this.W * this.H);
-    this.half = new Float32Array((this.W >> 1) * (this.H >> 1));
     this.rgba = new Uint8Array(this.W * this.H * 4);
     this.grouper = new StillRunGrouper(this.W, this.H);
     this.tracker = new Tracker(this.W >> 1, this.H >> 1, { step: 2 });
     this.sampler = new PaletteSampler(this.W, this.H);
+    this.kept = new KeptFrames(this.tracker, this.sampler, this.W, this.H, this.maxDistinct);
   }
 
   /** Whether pass 1 still takes frames: false once the recording has left the map view. */
@@ -188,9 +205,9 @@ export class ScanSession {
     return this.phase === 'first' && !this.ended;
   }
 
-  /** Distinct frames found so far, and the distinct frames pass 2 needs. */
+  /** Distinct frames kept so far for tracking, the frames pass 2 reads. */
   get distinct(): number {
-    return this.distinctTimes.length;
+    return this.kept?.kept ?? this.positions.length;
   }
 
   /** The ground read so far, for the import's preview (`preview.ts`): pass 1's coverage with the
@@ -226,14 +243,10 @@ export class ScanSession {
     this.miss = 0;
     this.mapFrames++;
     if (hud.knob !== null) this.knobRows.push(hud.knob);
-    const verdict = this.grouper!.push({ width: this.W, height: this.H, data: tile });
-    this.closeRun(verdict.closed);
-    if (!verdict.distinct) return;
-    // Every distinct frame keeps a tracking tile until the path is solved.
-    if (this.distinctTimes.length >= this.maxDistinct) throw new ScanError('too-long');
-    this.distinctTimes.push(time);
-    this.tracker!.push(halveTile({ width: this.W, height: this.H, data: tile }, this.half));
-    this.sampler!.push(rectifyRgba(this.map, frame, this.rgba), this.tracker!.position);
+    const grey = { width: this.W, height: this.H, data: tile };
+    const verdict = this.grouper!.push(grey);
+    // Each kept distinct frame holds a tracking tile until the path is solved.
+    this.closeRun(this.kept!.push(verdict, grey, (out) => rectifyRgba(this.map, frame, out), time));
   }
 
   private closeRun(run: StillRun | null): void {
@@ -244,14 +257,18 @@ export class ScanSession {
 
   /**
    * Ends pass 1: checks what it read, solves the camera path and the lattice, fits the palette and
-   * lets the tracking tiles go. Returns the times of the distinct frames, which pass 2 reads in
+   * lets the tracking tiles go. Returns the times of the kept distinct frames, which pass 2 reads in
    * order. Throws `ScanError` for a recording that cannot make a planet.
    */
   endFirstPass(): number[] {
     if (this.phase !== 'first') throw new Error('pass 1 is over');
-    this.closeRun(this.grouper!.finish());
+    const distinct = this.grouper!.distinct;
+    this.closeRun(this.kept!.finish(this.grouper!.finish()));
     this.grouper = null;
-    const failure = firstPassFailure({ mapFrames: this.mapFrames, knobRows: this.knobRows, distinct: this.distinct, runs: this.runs, ...(this.picture ? { picture: this.picture } : {}) });
+    const failure = firstPassFailure({
+      mapFrames: this.mapFrames, knobRows: this.knobRows, distinct, runs: this.runs,
+      unframed: this.framing === null, worldMeasured: this.framing !== null && worldMeasured(this.framing),
+    });
     if (failure) throw new ScanError(failure);
     const tracker = this.tracker!;
     const solution = solveTracked(tracker, this.runs);
@@ -261,15 +278,17 @@ export class ScanSession {
     const n = tracker.frames;
     this.positions = Array.from({ length: n }, (_, k) => ({ x: solution.path.x[k]!, y: solution.path.y[k]! }));
     const lut = paletteLookup(fitPalette(this.sampler!.samples()));
+    const times = this.kept!.times;
     this.tracker = null;
     this.sampler = null;
+    this.kept = null;
     const grid = evidenceGrid(solution.lattice, this.positions, this.W, this.H);
     this.evidence = new EvidenceAccumulator(grid, solution.lattice, lut, this.W, this.H);
     this.phase = 'second';
-    return this.distinctTimes.slice();
+    return times;
   }
 
-  /** Pass 2: the frame of distinct frame `index`, in the order `endFirstPass` gave. */
+  /** Pass 2: the frame of kept distinct frame `index`, in the order `endFirstPass` gave. */
   pushDistinct(index: number, frame: RgbaImage): void {
     if (this.phase !== 'second') throw new Error('pass 2 has not started');
     const at = this.positions[index];

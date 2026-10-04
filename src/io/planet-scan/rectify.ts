@@ -48,9 +48,10 @@ export function tileToGround(tile: TileSpec, step: number, col: number, row: num
 
 /**
  * Builds the remap for `tile` sampled every `step` ground pixels (1 for the full tile, 2 for half
- * resolution). The polynomial runs once per output pixel here, never per frame.
+ * resolution), with the world drawn `zoom` times its calibrated size about the frame's centre. The
+ * polynomial runs once per output pixel here, never per frame.
  */
-export function buildSampleMap(cal: Rectification, tile: TileSpec, step = 1): SampleMap {
+export function buildSampleMap(cal: Rectification, tile: TileSpec, step = 1, zoom = 1): SampleMap {
   const width = Math.floor(tile.width / step);
   const height = Math.floor(tile.height / step);
   const fw = cal.frame.width;
@@ -74,6 +75,10 @@ export function buildSampleMap(cal: Rectification, tile: TileSpec, step = 1): Sa
       for (let k = 0; k < pu.coef.length; k++) u += pu.coef[k]! * powA[pu.terms[k]![0]]! * powB[pu.terms[k]![1]]!;
       let v = 0;
       for (let k = 0; k < pv.coef.length; k++) v += pv.coef[k]! * powA[pv.terms[k]![0]]! * powB[pv.terms[k]![1]]!;
+      if (zoom !== 1) {
+        u = fw / 2 + (u - fw / 2) * zoom;
+        v = fh / 2 + (v - fh / 2) * zoom;
+      }
       const p = row * width + col;
       if (u < 0 || v < 0 || u > fw - 1 || v > fh - 1) {
         index[p] = -1;

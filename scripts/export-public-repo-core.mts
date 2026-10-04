@@ -393,3 +393,126 @@ export function auditStatus(repoRoot: string): AuditStatus {
 export function shouldRefuseVerify(status: AuditStatus): boolean {
   return status.open || status.noneYetCount > 0;
 }
+
+// ---------------------------------------------------------------------------
+// Snapshot verification scope. A release requires the whole suite to have passed on the private
+// tree at the same commit, so the snapshot reruns only the tests whose inputs can differ there:
+// anything depending on a withheld file or on a file changed since the commit (refreshed data,
+// the build stamp), and anything that reads the tree, runs a process or resolves paths at run time.
+// ---------------------------------------------------------------------------
+
+/** Source text that reads files, runs processes or resolves paths while it runs. */
+export const TREE_READ_PATTERN =
+  /\bnode:fs\b|from\s+['"]fs(?:\/promises)?['"]|\bchild_process\b|import\.meta\.(?:url|dirname|filename)\b|\bprocess\.cwd\(|\b(?:readFileSync|readdirSync|existsSync|statSync)\b|\bimport\(\s*[^'"\s)]/;
+
+// A literal module URL, as a worker spawn writes it. It names one file, which is resolved like a
+// query import; Vitest's DOM environment has no Worker, so the target never runs in a test.
+const LITERAL_MODULE_URL = /\bnew\s+URL\(\s*['"]([^'"?]+)['"]\s*,\s*import\.meta\.url\s*\)/g;
+
+/** True when a module's behavior depends on the files around it, not only on its imports. */
+export function readsTree(text: string): boolean {
+  return TREE_READ_PATTERN.test(text.replace(LITERAL_MODULE_URL, ''));
+}
+
+const QUERY_IMPORT = /(?:\bfrom\s+|\bimport\s*\(\s*|\bimport\s+)['"]([^'"?]+)\?(?:raw|url|inline)['"]/g;
+
+function normalizePosix(path: string): string {
+  const out: string[] = [];
+  for (const part of path.split('/')) {
+    if (part === '' || part === '.') continue;
+    if (part === '..') out.pop();
+    else out.push(part);
+  }
+  return out.join('/');
+}
+
+/** Repository paths a module loads through `?raw`, `?url` or `?inline` imports or a literal
+ *  module URL. Vitest's dependency graph does not record these, so they are resolved here. */
+export function queryImportTargets(path: string, text: string): string[] {
+  const dir = path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : '';
+  const out: string[] = [];
+  for (const m of [...text.matchAll(QUERY_IMPORT), ...text.matchAll(LITERAL_MODULE_URL)]) {
+    const spec = m[1]!;
+    if (spec.startsWith('./') || spec.startsWith('../')) out.push(normalizePosix(`${dir}/${spec}`));
+    else if (spec.startsWith('@/')) out.push(normalizePosix(`src/${spec.slice(2)}`));
+  }
+  return out;
+}
+
+const GLOB_IMPORT = /import\.meta\.glob(?:<[^>]*>)?\(\s*(\[[^\]]*\]|'[^']*'|"[^"]*")/g;
+
+function expandBraces(pattern: string): string[] {
+  const m = /\{([^{}]*)\}/.exec(pattern);
+  if (!m) return [pattern];
+  return m[1]!.split(',').flatMap((alt) => expandBraces(pattern.slice(0, m.index) + alt + pattern.slice(m.index + m[0].length)));
+}
+
+/** Whether a module's `import.meta.glob` calls can match any of `paths`. Vitest's dependency
+ *  graph omits glob matches loaded with a query, so the patterns are resolved here; negations are
+ *  ignored and a pattern this matcher cannot read counts as a match. */
+export function globImportsMatch(path: string, text: string, paths: ReadonlySet<string>): boolean {
+  const dir = path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : '';
+  for (const m of text.matchAll(GLOB_IMPORT)) {
+    for (const lit of m[1]!.matchAll(/'([^']*)'|"([^"]*)"/g)) {
+      const raw = (lit[1] ?? lit[2])!;
+      if (raw.startsWith('!')) continue;
+      if (!raw.startsWith('./') && !raw.startsWith('../') && !raw.startsWith('/')) return true;
+      const absolute = raw.startsWith('/') ? raw.slice(1) : `${dir}/${raw}`;
+      for (const pattern of expandBraces(absolute)) {
+        if (/[[\]?()!{}]/.test(pattern)) return true;
+        const re = globToRegExp(normalizePosix(pattern));
+        for (const p of paths) if (re.test(p)) return true;
+      }
+    }
+  }
+  return false;
+}
+
+export function isTestPath(path: string): boolean {
+  return /\.test\.(?:ts|tsx|mts)$/.test(path);
+}
+
+/** A Vite or Vitest configuration file. A related-test query on one selects the whole suite, and
+ *  no test imports one: a withheld config is absent from the snapshot, and a public one reads only
+ *  the build stamp and package.json, whose publication rewrite (the stamp's build number and
+ *  commit) no test outcome depends on; tests that read the stamp are selected as tree readers. So
+ *  a config file seeds the scope only when it is public and changed itself. */
+export function isBuildConfig(path: string): boolean {
+  return /(?:^|\/)vite(?:st)?\.config\.[cm]?[jt]s$/.test(path);
+}
+
+/** Files whose dependent tests must run inside the snapshot: every withheld or changed file,
+ *  every public module that reads the tree, and every public module that loads a withheld or
+ *  changed file through a query import or an import glob. */
+export function snapshotTestSeeds(input: {
+  tracked: readonly string[];
+  published: readonly string[];
+  changed: readonly string[];
+  sources: ReadonlyArray<{ path: string; text: string }>;
+}): string[] {
+  const published = new Set(input.published);
+  const differing = new Set([...input.tracked.filter((p) => !published.has(p)), ...input.changed]);
+  const seeds = new Set(differing);
+  for (const { path, text } of input.sources) {
+    if (!published.has(path)) continue;
+    if ((readsTree(text) && !isBuildConfig(path))
+      || queryImportTargets(path, text).some((t) => differing.has(t))
+      || globImportsMatch(path, text, differing)) seeds.add(path);
+  }
+  const changed = new Set(input.changed);
+  return [...seeds].filter((p) => !isBuildConfig(p) || (published.has(p) && changed.has(p))).sort();
+}
+
+/** The public tests to run inside the snapshot: those Vitest relates to a seed, and seeds that
+ *  are tests themselves. Every tree has tree-reading tests, so an empty scope means the
+ *  selection broke and is refused. */
+export function selectSnapshotTests(
+  published: readonly string[],
+  seeds: readonly string[],
+  related: readonly string[],
+): string[] {
+  const chosen = new Set([...seeds, ...related]);
+  const tests = published.filter((p) => isTestPath(p) && chosen.has(p)).sort();
+  if (tests.length === 0) throw new Error('[export-public-repo] the snapshot test scope is empty');
+  return tests;
+}

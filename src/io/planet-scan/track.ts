@@ -156,6 +156,16 @@ export function agreeingOffsets(offsets: readonly (readonly [number, number])[],
   return best;
 }
 
+/** A frame's high-passed tile and its direct match against the last pushed frame, made by
+ *  `Tracker.probe` and valid for `Tracker.push` until another frame is pushed. */
+export interface TrackProbe {
+  readonly hp: Float32Array;
+  /** The shift in tile pixels, as a consecutive edge has it; null when the match did not verify. */
+  readonly direct: ShiftEstimate | null;
+  /** Frames pushed when the probe was made. */
+  readonly after: number;
+}
+
 /** Tracking tuning. */
 export interface TrackerOptions {
   /** Rectified pixels per tile pixel. */
@@ -181,6 +191,7 @@ export class Tracker {
   private previous: Float32Array<ArrayBuffer>;
   private current: Float32Array<ArrayBuffer>;
   private lastStep = { dx: 0, dy: 0 };
+  private lastVerified = false;
   /** Revisit pairs, keyed `a * PAIR_KEY + b`, that produced a closure edge. */
   private readonly matched = new Set<number>();
   /** Revisit pairs whose last match was gated, to the index of their gated edge. */
@@ -213,27 +224,47 @@ export class Tracker {
     return { x: this.chainX, y: this.chainY };
   }
 
+  /** The last pushed frame's verified shift from the frame before it, in rectified pixels (the
+   *  edge's convention: the previous frame's position minus this frame's); null for the first
+   *  frame and for a step no match verified. */
+  get lastMotion(): { dx: number; dy: number } | null {
+    return this.lastVerified ? { dx: this.lastStep.dx * this.step, dy: this.lastStep.dy * this.step } : null;
+  }
+
   /** Steps no match verified, whose edges are assumed. */
   get lost(): number {
     return this.lostSteps;
   }
 
-  /** Adds the next distinct frame's grey tile. */
-  push(tile: GreyImage): void {
-    if (tile.width !== this.width || tile.height !== this.height) {
-      throw new Error(`tracking expects ${this.width}x${this.height} tiles`);
-    }
-    const hp = highPass(tile, this.sigma, this.current, this.scratch);
+  /**
+   * High-passes `tile` into `out` and matches it directly against the last pushed frame, keeping
+   * nothing: the frame's shift from that frame at the cost of one correlation, which `push` reuses.
+   */
+  probe(tile: GreyImage, out: Float32Array<ArrayBuffer>): TrackProbe {
+    this.checkSize(tile);
+    const hp = highPass(tile, this.sigma, out, this.scratch);
+    const after = this.store.size;
+    const direct = after > 0 ? this.correlator.estimate({ width: this.width, height: this.height, data: this.previous }, hp) : null;
+    return { hp: hp.data, direct, after };
+  }
+
+  /** Adds the next distinct frame's grey tile, reusing its `probe` when given. */
+  push(tile: GreyImage, probe?: TrackProbe): void {
+    this.checkSize(tile);
+    if (probe && probe.after !== this.store.size) throw new Error('the probe predates the last pushed frame');
+    if (probe) this.current.set(probe.hp);
+    const hp = probe ? { width: this.width, height: this.height, data: this.current } : highPass(tile, this.sigma, this.current, this.scratch);
     this.store.add(hp);
     const k = this.store.size - 1;
     if (k > 0) {
       const prev = { width: this.width, height: this.height, data: this.previous };
-      const direct = this.correlator.estimate(prev, hp);
+      const direct = probe ? probe.direct : this.correlator.estimate(prev, hp);
       const est = direct ?? this.recover(k);
       const s = this.step;
       const step = est ?? this.lastStep;
       this.chainX -= step.dx * s;
       this.chainY -= step.dy * s;
+      this.lastVerified = est !== null;
       if (est) {
         this.lastStep = { dx: est.dx, dy: est.dy };
         this.edges.add(k - 1, k, est.dx * s, est.dy * s, 1, EDGE_CONSECUTIVE, direct ? SOURCE_VERIFIED : SOURCE_RECOVERED, est.ncc);
@@ -243,6 +274,12 @@ export class Tracker {
       }
     }
     [this.previous, this.current] = [this.current, this.previous];
+  }
+
+  private checkSize(tile: GreyImage): void {
+    if (tile.width !== this.width || tile.height !== this.height) {
+      throw new Error(`tracking expects ${this.width}x${this.height} tiles`);
+    }
   }
 
   private recover(k: number): ShiftEstimate | null {

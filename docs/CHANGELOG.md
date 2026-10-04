@@ -4,6 +4,20 @@ All notable changes to PetitMaker are documented here.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.557] - 2026-10-04
+
+### Added
+
+- Dropping a planet file or a game video onto PetitMaker opens it in Import planet. Import map offers to open such a file in Import planet, and Import planet takes either kind when you drop it there.
+
+### Changed
+
+- Import from a game video now reads MKV and WebM recordings, and longer recordings that keep panning.
+
+### Fixed
+
+- Import from a game video reads recordings of the game window at any shape and size, with or without black bars around it.
+
 ## [1.5.532] - 2026-10-03
 
 ### Added

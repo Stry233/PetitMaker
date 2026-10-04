@@ -28,7 +28,7 @@ function frameOf(width: number, height: number, buffer: ArrayBuffer) {
 
 async function scan(port: MessagePort, id: number): Promise<ScanReply> {
   session = null;
-  const result = await scanFromPort(port, (picture) => new ScanSession({ picture }),
+  const result = await scanFromPort(port, (framing) => new ScanSession({ framing }),
     (stage, share, preview) => scope.postMessage(preview ? { op: 'progress', stage, share, preview, id } : { op: 'progress', stage, share, id }));
   port.close();
   return result.kind === 'done' ? { op: 'done', outcome: result.outcome } : { op: 'unsupported', why: result.why };
@@ -38,7 +38,7 @@ async function scan(port: MessagePort, id: number): Promise<ScanReply> {
 function answer(req: Exclude<ScanRequest, { op: 'scan' }>): ScanReply {
   switch (req.op) {
     case 'start':
-      session = new ScanSession(req.picture ? { picture: req.picture } : {});
+      session = new ScanSession(req.framing === undefined ? {} : { framing: req.framing });
       previews = new PreviewClock();
       return { op: 'started' };
     case 'frame': {

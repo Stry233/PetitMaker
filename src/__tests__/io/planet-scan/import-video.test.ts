@@ -12,6 +12,11 @@ import { VideoBusyError, type FrameSink, type PlayOptions, type VideoFrameImage,
 import type { ScanOutcome } from '../../../io/planet-scan/run';
 import type { ScanRequest } from '../../../io/planet-scan/protocol';
 import { planetFixture } from '../../fixtures/planet';
+import { CALIBRATED_FRAMING, surveyPlacement, type Placement } from '../../../io/planet-scan/framing';
+import { SCAN_PROFILE } from '../../../io/planet-scan/profile';
+import { hudFrame } from './synthetic';
+
+const { width: FW, height: FH } = SCAN_PROFILE.frame;
 
 const OUTCOME: ScanOutcome = { template: planetFixture(), rimSand: [], review: [], landmark: null, coverage: 1, partial: false };
 
@@ -27,12 +32,15 @@ class FakeWorker {
   /** How the worker answers `scan`: as a file it read, one the page must play, or a stopped decoder. */
   direct: 'done' | 'unsupported' | 'unreadable' | 'never' = 'unsupported';
   readonly ops: string[] = [];
+  /** The `start` request the playback path sent. */
+  start: ScanRequest | null = null;
   /** A preview the worker's progress and pass 1 answers carry. */
   preview: ScanPreview | null = null;
   constructor(private readonly times: number[], private readonly delayMs = 1, private readonly crashOn: ScanRequest['op'] | null = null) {}
 
   postMessage(message: ScanRequest & { id: number }): void {
     this.ops.push(message.op);
+    if (message.op === 'start') this.start = message;
     if (message.op === 'scan') {
       if (this.direct === 'never') return;
       setTimeout(() => {
@@ -97,6 +105,7 @@ function fakeVideo(n: number, skip: (k: number) => boolean = () => false, failWi
       }
     },
     async frameAt(time) { fetched.push(Math.round(time * 60)); return frame(); },
+    place() {},
     close() {},
   };
   return { video, fetched, passes: () => passes };
@@ -116,6 +125,27 @@ describe('the video import loop', () => {
     expect(worker.most).toBeLessThanOrEqual(4);
     expect(worker.most).toBeGreaterThan(1);
     expect(worker.terminated).toBe(true);
+  });
+
+  it('surveys the played video for its framing first and plays it where the framing puts the window', async () => {
+    const worker = new FakeWorker([0]);
+    const { video, fetched } = fakeVideo(60);
+    const placed: Placement[] = [];
+    const surveyed: VideoFrames = {
+      ...video,
+      picture: { width: 1920, height: 1080 },
+      async frameAt(time) { fetched.push(Math.round(time * 60)); return { width: FW, height: FH, data: hudFrame() }; },
+      place(at) { placed.push(at); },
+    };
+    const scan = createScanVideo({ spawn: () => worker as unknown as Worker, open: async () => surveyed });
+    await scan(new Blob(), { signal: new AbortController().signal });
+    const start = worker.start as Extract<ScanRequest, { op: 'start' }>;
+    expect(start.framing).not.toBeNull();
+    expect(Math.abs(start.framing!.window.x0 - CALIBRATED_FRAMING.window.x0)).toBeLessThanOrEqual(1);
+    // Two survey passes of every survey time, then the framing's placement for playback.
+    expect(fetched.length).toBe(2 * SCAN_PROFILE.window.frames);
+    expect(placed[0]).toEqual(surveyPlacement({ width: 1920, height: 1080 }));
+    expect(placed[placed.length - 1]).toEqual(start.framing!.placement);
   });
 
   it('fetches the distinct frames pass 2 playback skipped, by their times', async () => {

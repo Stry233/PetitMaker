@@ -185,7 +185,7 @@ describe('DropImportOverlay', () => {
       const fileB = { name: 'b.json', type: 'application/json', text: async () => '{}' };
       fireWindow(dragEvent('dragenter'));
       fireWindow(dragEvent('drop', { files: [fileA] })); // -> decoding a
-      expect(inspectMock).toHaveBeenCalledTimes(1);
+      await waitFor(() => expect(inspectMock).toHaveBeenCalledTimes(1));
 
       // A second, unrelated drag+drop arrives before the first resolves.
       fireWindow(dragEvent('dragenter'));
@@ -266,7 +266,7 @@ describe('DropImportOverlay', () => {
 
       act(() => { window.dispatchEvent(new Event('blur')); });
       expect(screen.getByText('Reading map…')).toBeTruthy();
-      expect(inspectMock).toHaveBeenCalledTimes(1);
+      await waitFor(() => expect(inspectMock).toHaveBeenCalledTimes(1));
 
       await act(async () => { resolveInspect(ready()); });
     });

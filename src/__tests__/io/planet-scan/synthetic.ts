@@ -1,4 +1,6 @@
 import { Fft2d } from '../../../io/planet-scan/fft';
+import { CALIBRATED_WINDOW } from '../../../io/planet-scan/framing';
+import { CALIBRATED_LAYOUT, placeProbe, type HudLayout } from '../../../io/planet-scan/hud';
 import { SCAN_PROFILE } from '../../../io/planet-scan/profile';
 import type { GreyImage, PixelRect } from '../../../io/planet-scan/types';
 
@@ -188,16 +190,53 @@ export function paintRect(data: Uint8ClampedArray, r: PixelRect, colour: readonl
   for (let y = r.y0; y < r.y1; y++) for (let x = r.x0; x < r.x1; x++) data.set([colour[0]!, colour[1]!, colour[2]!], (y * FW + x) * 4);
 }
 
-/** A frame with the structures of the map view's HUD drawn in their measured colours, the zoom knob centred on `knob`. */
-export function hudFrame(knob: number = HUD.zoom.knobCentre, skip: 'bar' | 'discs' | 'zoom' | null = null): Uint8ClampedArray {
-  const data = plainFrame();
-  if (skip !== 'bar') paintRect(data, HUD.bar.region, HUD.barColor);
-  if (skip !== 'discs') for (const r of HUD.discs.regions) paintRect(data, r, HUD.discs.colour);
-  if (skip !== 'zoom') {
-    const Z = HUD.zoom;
-    paintRect(data, { x0: Z.x0, x1: Z.x1, y0: Z.y0, y1: Z.y1 }, HUD.barColor);
-    paintRect(data, { x0: Z.x0, x1: Z.x1, y0: Math.round(knob - 11), y1: Math.round(knob + 11) }, Z.knobColour);
+/** Paints columns [x0, x1) of rows [y0, y1) in `colour`, a column cut by a fractional end blended
+ *  by the share of it covered, as a scaler draws a picture edge between pixels. */
+function paintSpan(data: Uint8ClampedArray, x0: number, x1: number, y0: number, y1: number, colour: readonly number[]): void {
+  for (let x = Math.max(0, Math.floor(x0)); x < Math.min(FW, Math.ceil(x1)); x++) {
+    const share = Math.min(x + 1, x1) - Math.max(x, x0);
+    for (let y = y0; y < y1; y++) {
+      const i = (y * FW + x) * 4;
+      for (let c = 0; c < 3; c++) data[i + c] = Math.round(colour[c]! * share + data[i + c]! * (1 - share));
+    }
   }
+}
+
+/** A plain frame holding a game window of columns [x0, x1) and rows [y0, y1) between black bars;
+ *  a fractional side edge blends its column. */
+export function windowFrame(x0: number, x1: number, fill?: readonly number[], y0 = 0, y1 = FH): Uint8ClampedArray {
+  const data = plainFrame(fill);
+  paintSpan(data, 0, x0, 0, FH, [0, 0, 0]);
+  paintSpan(data, x1, FW, 0, FH, [0, 0, 0]);
+  paintRect(data, { x0: 0, x1: FW, y0: 0, y1: Math.round(y0) }, [0, 0, 0]);
+  paintRect(data, { x0: 0, x1: FW, y0: Math.round(y1), y1: FH }, [0, 0, 0]);
   return data;
 }
 
+/** A frame with the structures of the map view's HUD drawn in their measured colours, the zoom knob
+ *  centred on `knob` (a row of the calibrated layout), laid out as `layout` inside the game window
+ *  `window` between black bars (the calibrated layout and window by default). */
+export function hudFrame(
+  knob: number = HUD.zoom.knobCentre, skip: 'bar' | 'discs' | 'zoom' | null = null,
+  layout: HudLayout = CALIBRATED_LAYOUT, window: PixelRect = CALIBRATED_WINDOW,
+): Uint8ClampedArray {
+  const data = windowFrame(window.x0, window.x1, undefined, window.y0, window.y1);
+  if (skip !== 'bar') {
+    // The bar spans the HUD's width at the probe's rows.
+    const rows = placeProbe(HUD.bar.region, HUD.bar.anchor, layout);
+    paintSpan(data, layout.left, layout.right, rows.y0, rows.y1, HUD.barColor);
+  }
+  if (skip !== 'discs') for (const r of HUD.discs.regions) paintRect(data, placeProbe(r.rect, r.anchor, layout), HUD.discs.colour);
+  if (skip !== 'zoom') {
+    const Z = HUD.zoom;
+    paintRect(data, placeProbe(Z, Z.anchor, layout), HUD.barColor);
+    const C = CALIBRATED_LAYOUT;
+    // The knob's rows in `layout`, about its middle row as the zoom column scales.
+    const mid = (layout.top + layout.bottom) / 2;
+    const at = mid + (knob - (C.top + C.bottom) / 2) * layout.scale;
+    const half = 11 * layout.scale;
+    const x = placeProbe(Z, Z.anchor, layout);
+    paintRect(data, { x0: x.x0, x1: x.x1, y0: Math.round(at - half), y1: Math.round(at + half) }, Z.knobColour);
+  }
+  return data;
+}

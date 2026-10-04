@@ -1,5 +1,5 @@
 /**
- * Decoded frames of an MP4 through WebCodecs, as fast as the decoder runs and independent of
+ * Decoded frames of a video track through WebCodecs, as fast as the decoder runs and independent of
  * playback, in the decode worker. Samples are read from the file in windows of a few megabytes and
  * fed in decode order with at most `DECODE_QUEUE` waiting in the decoder, and no further while the
  * consumer holds; each decoded frame is drawn at the scan's frame size and closed within the
@@ -11,7 +11,8 @@
  * leading picture may refer to the group before) and drawing only the wanted frames.
  */
 import { canvasScaler, webglScaler } from './frame-scaler';
-import type { ByteSource, Mp4VideoTrack } from './mp4';
+import type { ByteSource, VideoTrack } from './container';
+import { surveyPlacement, type Placement } from './framing';
 import type { RgbaImage } from './types';
 
 /** The parts of a `VideoFrame` decoding reads. */
@@ -36,8 +37,11 @@ export interface CodecPlatform {
   /** Builds a decoder calling `output` with each frame in presentation order and `error` once on failure. */
   createDecoder(output: (frame: DecodedFrame) => void, error: (e: unknown) => void): FrameDecoder;
   isConfigSupported(config: VideoDecoderConfig): Promise<boolean>;
-  /** Draws a decoded frame at the scan's frame size; the image is valid until the next draw. */
+  /** Draws a decoded frame at the scan's frame size, placed as `place` last said; the image is
+   *  valid until the next draw. */
   draw(frame: DecodedFrame): RgbaImage;
+  /** Where the next frames' pictures land in the scan's frame. */
+  place(at: Placement): void;
 }
 
 /** The decoder or its input failed after the file was accepted. */
@@ -55,7 +59,7 @@ export const DECODE_QUEUE = 4;
 const WINDOW = 4 << 20;
 
 /** The decoder configuration of `track`. */
-export function decoderConfig(track: Mp4VideoTrack): VideoDecoderConfig {
+export function decoderConfig(track: VideoTrack): VideoDecoderConfig {
   return {
     codec: track.codec,
     codedWidth: track.codedWidth,
@@ -71,7 +75,9 @@ export function platformCodecs(width: number, height: number): CodecPlatform | n
   if (typeof VideoDecoder === 'undefined' || typeof OffscreenCanvas === 'undefined' || typeof EncodedVideoChunk === 'undefined') return null;
   const draw = webglScaler(width, height) ?? canvasScaler(width, height);
   if (!draw) return null;
+  let at: Placement | null = null;
   return {
+    place(placement) { at = placement; },
     createDecoder(output, error) {
       let wake: (() => void) | null = null;
       const woken = () => { const w = wake; wake = null; w?.(); };
@@ -95,7 +101,12 @@ export function platformCodecs(width: number, height: number): CodecPlatform | n
         return false;
       }
     },
-    draw: (frame) => draw(frame as unknown as VideoFrame),
+    draw: (frame) => {
+      const video = frame as unknown as VideoFrame;
+      // Unplaced, the whole picture is drawn, as the survey reads it.
+      at ??= surveyPlacement({ width: video.displayWidth, height: video.displayHeight });
+      return draw(video, at);
+    },
   };
 }
 
@@ -105,7 +116,7 @@ class SampleReader {
   private bytes: Uint8Array | null = null;
   private ahead: { start: number; bytes: Promise<Uint8Array> } | null = null;
 
-  constructor(private readonly src: ByteSource, private readonly track: Mp4VideoTrack) {}
+  constructor(private readonly src: ByteSource, private readonly track: VideoTrack) {}
 
   /** The window starting at sample `k`'s offset, over the samples after it in decode order while
    *  they lie within `WINDOW` bytes of it. */
@@ -181,7 +192,7 @@ async function waitForRoom(decoder: FrameDecoder, failed: () => unknown): Promis
   }
 }
 
-async function decodeRun(platform: CodecPlatform, src: ByteSource, track: Mp4VideoTrack, run: Run): Promise<void> {
+async function decodeRun(platform: CodecPlatform, src: ByteSource, track: VideoTrack, run: Run): Promise<void> {
   const { samples } = track;
   let stopped = false;
   let failure: unknown;
@@ -249,12 +260,12 @@ async function decodeRun(platform: CodecPlatform, src: ByteSource, track: Mp4Vid
 }
 
 /** Whether the platform decodes `track`. */
-export async function checkSupported(platform: CodecPlatform, track: Mp4VideoTrack): Promise<boolean> {
+export async function checkSupported(platform: CodecPlatform, track: VideoTrack): Promise<boolean> {
   return platform.isConfigSupported(decoderConfig(track));
 }
 
 /** Every frame of `track` in presentation order, until `sink` returns false. */
-export function decodeFrames(platform: CodecPlatform, src: ByteSource, track: Mp4VideoTrack, sink: DrawnFrameSink, options: DecodeOptions = {}): Promise<void> {
+export function decodeFrames(platform: CodecPlatform, src: ByteSource, track: VideoTrack, sink: DrawnFrameSink, options: DecodeOptions = {}): Promise<void> {
   return decodeRun(platform, src, track, { ranges: [[0, track.samples.count]], wanted: () => true, sink, options });
 }
 
@@ -263,7 +274,7 @@ export function decodeFrames(platform: CodecPlatform, src: ByteSource, track: Mp
  * before the sample in decode order, or the one before that when the sample shows before its key
  * frame (a leading picture may refer to the previous group). Overlapping and touching ranges merge.
  */
-export function rangesFor(track: Mp4VideoTrack, indices: Iterable<number>): [number, number][] {
+export function rangesFor(track: VideoTrack, indices: Iterable<number>): [number, number][] {
   const { key, time } = track.samples;
   const keyBefore = (k: number) => { let j = k; while (j > 0 && !key[j]) j--; return j; };
   const raw: [number, number][] = [];
@@ -287,7 +298,7 @@ export function rangesFor(track: Mp4VideoTrack, indices: Iterable<number>): [num
  * each handed to `sink` with its index in `times`. A decoder failing or leaving frames out gets one
  * more pass from the first frame; throws `DecodeError` when a frame still never came out.
  */
-export async function decodeTimes(platform: CodecPlatform, src: ByteSource, track: Mp4VideoTrack, times: readonly number[], sink: (index: number, frame: RgbaImage) => void, options: DecodeOptions = {}): Promise<void> {
+export async function decodeTimes(platform: CodecPlatform, src: ByteSource, track: VideoTrack, times: readonly number[], sink: (index: number, frame: RgbaImage) => void, options: DecodeOptions = {}): Promise<void> {
   const { samples } = track;
   const sampleAt = new Map<number, number>();
   for (let k = 0; k < samples.count; k++) sampleAt.set(samples.time[k]!, k);

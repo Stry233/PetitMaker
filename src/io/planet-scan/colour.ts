@@ -92,7 +92,7 @@ export function positionWeights(width: number, height: number): { x: Float32Arra
 }
 
 /**
- * Gathers the colours the palette is fitted to from the distinct frames, before the path is solved:
+ * Gathers the colours the palette is fitted to from the kept distinct frames, before the path is solved:
  * a coarse centre-weighted mosaic on the tracked chain path, one bin every `step` ground pixels on
  * both axes. Every bin is the weighted mean colour of the frames that saw it, so each place on the
  * ground counts once however often the camera passed over it, and the coast, often seen only near

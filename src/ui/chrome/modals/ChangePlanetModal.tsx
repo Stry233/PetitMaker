@@ -49,6 +49,9 @@ interface ChangePlanetModalProps {
   subject?: GridState;
   /** Open with this planet already picked: a built-in's id or a saved planet's entry id. */
   initialChosen?: string;
+  /** Whether this window reads the planet file or video another import surface hands over; only the
+   *  app's own window does, never a picture of it. */
+  takesHandedFiles?: boolean;
 }
 
 /** Import planet's window, kept out of the bundle of an edition that cannot read a video. */
@@ -98,7 +101,7 @@ const chunkCount = (template: MapTemplate) => {
   return { w: axes.columns.length, h: axes.rows.length };
 };
 
-export function ChangePlanetModal({ open = true, onSwitch, onClose, onEditPlanet, subject, initialChosen }: ChangePlanetModalProps) {
+export function ChangePlanetModal({ open = true, onSwitch, onClose, onEditPlanet, subject, initialChosen, takesHandedFiles = false }: ChangePlanetModalProps) {
   const t = useT();
   const locale = useEditorStore((s) => s.locale);
   // The undo stack's length at the last export is the mark; anything past it lives only here.
@@ -242,6 +245,15 @@ export function ChangePlanetModal({ open = true, onSwitch, onClose, onEditPlanet
     choose(saved.entry.entryId);
   };
 
+  // A planet file handed over by another import surface is read as From a planet file reads one.
+  const handed = useEditorStore((s) => s.handedImport);
+  useEffect(() => {
+    if (!takesHandedFiles || !open || handed?.kind !== 'planet') return;
+    const file = useEditorStore.getState().takeHandedImport('planet');
+    if (file) void importFile(file);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- importFile reads the library as it stands
+  }, [takesHandedFiles, open, handed]);
+
   const duplicate = (e: PlanetEntry) => {
     const copy = library.duplicate(e.entryId, clampName(t('planet.copy_suffix', { name: e.name })));
     if (copy) choose(copy.entryId);
@@ -356,7 +368,7 @@ export function ChangePlanetModal({ open = true, onSwitch, onClose, onEditPlanet
     {PlanetImportWindow && importEver.current && (
       <ChunkBoundary resetKey={importOpen}>
         <Suspense fallback={null}>
-          <PlanetImportWindow open={importOpen} canEdit={canEdit} onClose={() => setModal('planetImport', false)}
+          <PlanetImportWindow open={importOpen} canEdit={canEdit} takesHandedFiles={takesHandedFiles} onClose={() => setModal('planetImport', false)}
             {...(SUPPORTS_JSON_FILES ? { onPickFile: pickFile } : {})} onScanned={openScanned} />
         </Suspense>
       </ChunkBoundary>

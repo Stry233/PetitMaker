@@ -18,6 +18,7 @@ import { skin } from '../../../design/window-skin';
 import { Disclosure } from '../../../primitives/Disclosure';
 import { PlayIcon } from '../../../primitives/line-glyphs';
 import { ImportDropZone } from '../import/ImportDropZone';
+import { acceptsVideo, VIDEO_ACCEPT } from '../../../../io/import-kind';
 import { SCAN_EXAMPLE_SIZE } from './scan-example';
 
 /** The protocol, in order. */
@@ -91,6 +92,7 @@ export function VideoImportGuide({ failure, stacked, onFile }: {
   failure: ImportFailure | null;
   /** The protocol stands above the example where the window is narrow. */
   stacked: boolean;
+  /** A dropped or picked file, a video or not. */
   onFile: (file: File) => void;
 }) {
   const t = useT();
@@ -101,12 +103,14 @@ export function VideoImportGuide({ failure, stacked, onFile }: {
     e.preventDefault();
     e.stopPropagation();
     setOver(false);
-    const file = e.dataTransfer.files?.[0];
+    // A video among several files is the one taken; any other file goes to `onFile` to be routed.
+    const files = Array.from(e.dataTransfer.files ?? []);
+    const file = files.find(acceptsVideo) ?? files[0];
     if (file) onFile(file);
   };
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-      <input ref={fileRef} type="file" hidden accept="video/*" data-testid="scan-file"
+      <input ref={fileRef} type="file" hidden accept={VIDEO_ACCEPT} data-testid="scan-file"
         onChange={(e) => { const f = e.currentTarget.files?.[0]; if (f) onFile(f); }} />
       <div style={{ display: 'flex', flexDirection: stacked ? 'column' : 'row', gap: 20, alignItems: stacked ? 'stretch' : 'center' }}>
         <ol style={{ ...listStyle, flex: 1, minWidth: 0 }} data-testid="scan-steps">

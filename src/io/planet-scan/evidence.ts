@@ -5,7 +5,7 @@ import { SCAN_PROFILE } from './profile';
 import type { FramePosition, LatticeModel } from './scan-solve';
 import type { GreyImage, RgbaImage } from './types';
 
-// Per-cell evidence of the ground, streamed from the distinct frames once the path and the lattice
+// Per-cell evidence of the ground, streamed from the kept distinct frames once the path and the lattice
 // are solved. Cells are placed in a frame's tile only through the lattice model's `cellToTile` and
 // `tileToCell`.
 //

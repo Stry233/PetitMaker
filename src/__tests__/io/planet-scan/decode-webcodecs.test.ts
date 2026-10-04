@@ -6,11 +6,11 @@
  */
 import { describe, expect, it } from 'vitest';
 import { DecodeError, decodeFrames, decodeTimes, rangesFor, type CodecPlatform, type DecodedFrame, type FrameDecoder } from '../../../io/planet-scan/decode-webcodecs';
-import type { ByteSource, Mp4VideoTrack } from '../../../io/planet-scan/mp4';
+import type { ByteSource, VideoTrack } from '../../../io/planet-scan/container';
 
 /** A track of `n` samples, 4 bytes each laid out in decode order, with key frames every `gop` and
  *  each group shown in the order I P B B (decode order 0 1 2 3 shows as 0 3 1 2). */
-function track(n: number, gop = 8, lead = false): Mp4VideoTrack {
+function track(n: number, gop = 8, lead = false): VideoTrack {
   const show = [0, 3, 1, 2];
   const time = new Float64Array(n);
   const key = new Uint8Array(n);
@@ -96,6 +96,7 @@ function platform(opts: Options = {}) {
       return d;
     },
     isConfigSupported: async () => true,
+    place() {},
     draw(frame) {
       seen.drawn.push(frame.timestamp);
       return { width: 1, height: 1, data: new Uint8Array(4) };

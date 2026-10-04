@@ -30,13 +30,51 @@ export const MAP_VIEW_RECTIFICATION: Rectification = {
 /** One cell of the ground in rectified pixels, measured from the region load lines. */
 const CELL = calibrationData.cell;
 
+/** The game's view: 16:10, fit to the window's height and centred. */
+const VIEW_ASPECT = 16 / 10;
+
+/** Which edges of the HUD's layout a probe keeps its distance from: the left or right edge, or
+ *  both (`span`: its left side from the left edge, its right side from the right); the top or
+ *  bottom edge, or the window's middle row. */
+export interface HudAnchor {
+  readonly x: 'left' | 'right' | 'span';
+  readonly y: 'top' | 'middle' | 'bottom';
+}
+
 export const SCAN_PROFILE = {
   /** Frames are decoded at this size; every screen coordinate below is in its pixels. */
   frame: MAP_VIEW_RECTIFICATION.frame,
-  /** The game draws its view at 16:10, fit to the screen and centred, so a 16:9 screen shows it
-   *  between bars; the calibrated frame is such a screen. A picture whose shape is off both by more
-   *  than `shapeTolerance` (as a log ratio) and shows no map view is refused as framed wrong. */
-  view: { aspect: 16 / 10, shapeTolerance: 0.02 },
+  /** The game window the calibration was measured in: 16:10 and as tall as the frame, from frame
+   *  column `x0` (picture columns 95 to 1823 of the 1920 x 1080 reference recordings, half a frame
+   *  pixel left of the centre). The game draws the world at a scale that follows the window's height (a fixed vertical field
+   *  of view), so a window of any shape is placed with its height on the frame's, or its width on
+   *  the frame's where it is wider than the frame (`framing.ts:placeWindow`). */
+  view: { aspect: VIEW_ASPECT, x0: 47.5 },
+  /** Finding the game window in a decoded picture (`framing.ts:WindowSurvey`), over `frames`
+   *  pictures spread across the recording. A column or row of the picture is dark and plain in a
+   *  picture when the brightest channel of its pixels, sampled every `step` pixels, averages at
+   *  most `level` (limited-range black decoded as full range is 16) and varies by at most
+   *  `spread`; it is margin when it is dark and plain in `share` of the pictures and its average
+   *  stays within `steady` across them, which the game's dark vignette does not as the camera
+   *  moves. The HUD's bottom bar is plain but far brighter. A placement within `snap` frame pixels
+   *  of the picture's centred fit keeps that fit (`framing.ts:placeWindow`). A window smaller than
+   *  `minWidth` x `minHeight` picture pixels draws the ground too coarsely to read. */
+  window: {
+    frames: 16,
+    level: 16,
+    spread: 3,
+    steady: 4,
+    step: 4,
+    share: 0.9,
+    snap: 1,
+    minWidth: 480,
+    minHeight: 360,
+    /** Window aspects between these, give or take the share `aspectSlack`, were recorded and
+     *  their world scale measured; outside them the scale follows the fitted rule, and a period
+     *  that disagrees means the rule failed. */
+    measuredAspect: [VIEW_ASPECT, 16 / 9] as const,
+    aspectSlack: 0.01,
+  },
   /** The part of the screen that shows the ground undistorted enough to read, free of the HUD. */
   trustedRegion: { x0: 146, y0: 66, x1: 810, y1: 369 } satisfies PixelRect,
   /** The flat tile the trusted region rectifies to. The view is curved, so the tile's top corners
@@ -53,10 +91,20 @@ export const SCAN_PROFILE = {
   landmark: PLANET_PROFILE.landmark,
   /** The map view's HUD, whose presence tells a map-view recording from anything else. Every
    *  value was measured on the reference recordings, the map view and other screens alike; the
-   *  checks read plain colours of the HUD's structure, never its artwork. */
+   *  checks read plain colours of the HUD's structure, never its artwork. Probe rectangles are in
+   *  the calibrated window's frame pixels, and each carries the edges of the HUD it is anchored to;
+   *  `hud.ts:placeProbe` keeps its offset from them, scaled, in any window's layout. */
   hud: {
+    /** The HUD is drawn at the scale a reference-resolution canvas scaler gives the window: it fits
+     *  the reference's width or its height, whichever is smaller, so the scale is proportional to
+     *  min(width / aspect, height) for the reference `aspect`. Its left and right edges sit an
+     *  inset inside the window that the scaling does not predict; the survey measures it from the
+     *  bottom bar's ends (`hud.ts:InsetSurvey`), searching up to `max` calibrated pixels, and
+     *  `calibrated` is its value in the calibrated recordings. */
+    reference: { aspect: 16 / 9 },
+    inset: { max: 40, calibrated: 12 },
     /** The opaque bottom bar, sampled every `sampleStep` pixels. */
-    bar: { region: { x0: 120, y0: 505, x1: 840, y1: 530 } satisfies PixelRect, sampleStep: 4 },
+    bar: { region: { x0: 120, y0: 505, x1: 840, y1: 530 } satisfies PixelRect, anchor: { x: 'span', y: 'bottom' } as HudAnchor, sampleStep: 4 },
     /** As browsers and BT.709 decode it; the tolerances also admit ffmpeg's darker default
      *  decoding and the drift of re-encoded recordings. */
     barColor: [68, 66, 62] as const,
@@ -68,10 +116,10 @@ export const SCAN_PROFILE = {
      *  `colour` per channel and no channel varies by more than `spread`. */
     discs: {
       regions: [
-        { x0: 89, y0: 168, x1: 95, y1: 173 },
-        { x0: 89, y0: 325, x1: 95, y1: 331 },
-        { x0: 842, y0: 26, x1: 848, y1: 31 },
-      ] satisfies PixelRect[],
+        { rect: { x0: 89, y0: 168, x1: 95, y1: 173 }, anchor: { x: 'left', y: 'middle' } },
+        { rect: { x0: 89, y0: 325, x1: 95, y1: 331 }, anchor: { x: 'left', y: 'middle' } },
+        { rect: { x0: 842, y0: 26, x1: 848, y1: 31 }, anchor: { x: 'right', y: 'top' } },
+      ] satisfies { rect: PixelRect; anchor: HudAnchor }[],
       colour: [54, 48, 45] as const,
       tolerance: 6,
       spread: 4,
@@ -81,6 +129,7 @@ export const SCAN_PROFILE = {
      *  `knobTolerance` of `knobColour`. The column matches when `minShare` of its rows are one or
      *  the other and at least `knobRows` are knob. */
     zoom: {
+      anchor: { x: 'left', y: 'middle' } as HudAnchor,
       x0: 89,
       x1: 95,
       y0: 204,
@@ -143,6 +192,14 @@ export const SCAN_PROFILE = {
     /** High-passed tiles are kept as signed bytes of this many steps per grey level; values beyond
      *  127 steps clip. */
     storeScale: 4,
+    /** Distinct frames tracking keeps (`thin.ts`). A frame that starts no still run is dropped only
+     *  when the next distinct frame, measured against the last kept frame, lies within `maxShift`
+     *  of the tile's size from it on each axis: kept neighbours then overlap by far more than phase
+     *  correlation needs, and every cell is still seen by many kept frames. A frame is measured
+     *  only when it is at most `maxGap` distinct frames after the last kept one and the camera's
+     *  speed puts it within `maxShift`, which spares the measurement where it cannot pay off and
+     *  keeps the colour evidence sampled across a slow pan. */
+    thinning: { maxShift: { x: 0.05, y: 0.05 }, maxGap: 4 },
     closures: {
       /** Every `stride`-th frame looks for revisits among later frames. */
       stride: 2,
@@ -236,7 +293,7 @@ export const SCAN_PROFILE = {
      *  as bytes of `deviationScale` steps per grey level, until the path places them. */
     deviationStep: 2,
     deviationScale: 4,
-    /** The colour palette is fitted to a coarse centre-weighted mosaic of the distinct frames, one
+    /** The colour palette is fitted to a coarse centre-weighted mosaic of the kept distinct frames, one
      *  bin every `paletteStep` ground pixels on both axes, taking the bins whose accumulated weight
      *  exceeds `paletteMinWeight`, at most `paletteSamples` of them. */
     paletteSamples: 40_000,
@@ -313,9 +370,10 @@ export const SCAN_PROFILE = {
   import: {
     /** Fewer distinct frames than this cover too little of a planet to read. */
     minDistinct: 12,
-    /** One import reads at most this many distinct frames, which bounds the tracking tiles held
-     *  until the path is solved (51 KB each); a steady scan of the largest planet needs fewer. */
-    maxDistinct: 1800,
+    /** One import keeps at most this many distinct frames for tracking, which bounds the tracking
+     *  tiles held until the path is solved (51 KB each); a thinned scan of the largest planet,
+     *  continuously panned, needs well under half as many. */
+    maxDistinct: 2400,
     /** Each axis needs this many still runs whose lines pin the lattice; with fewer, the region
      *  load display was off, or the zoom differs when the runs' lines fit another period. */
     minPins: 6,

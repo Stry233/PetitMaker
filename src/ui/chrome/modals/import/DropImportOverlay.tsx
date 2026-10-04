@@ -1,6 +1,8 @@
 /**
  * Window-level file import: a dropped file is decoded first, then the shared confirmation card asks
- * before the map is replaced, then the decoded map is installed. Nested drag targets are tracked
+ * before the map is replaced, then the decoded map is installed. A planet file or a game video goes
+ * straight to Import planet with the file handed to it, since a drop on the page is not a map
+ * import of its own. Nested drag targets are tracked
  * with a depth counter. The synchronous phase ref prevents stale window-listener closures
  * and duplicate imports. Blur or a hidden tab clears only a hover overlay; pending confirmation and
  * active imports remain intact. `dragover` always prevents browser file navigation.
@@ -11,6 +13,7 @@ import type { CSSProperties } from 'react';
 import { useEditorStore } from '../../../../state/store';
 import { autosaveWorthy } from '../../../../io/autosave';
 import { inspectImportFile, type ImportInspection } from '../../../../io/import-file';
+import { classifyImportFile } from '../../../../io/import-kind';
 import { getImportFileDeps } from './import-deps';
 import { toastImportOutcome } from './import-toast';
 import { ImportDropZone, IMPORT_CARD_WIDTH, IMPORT_CARD_PADDING } from './ImportDropZone';
@@ -21,13 +24,17 @@ import { windowCard } from '../../../design/window-skin';
 
 type ReadyInspection = Extract<ImportInspection, { status: 'ready' }>;
 
-/** A drop decodes first (`importing`), then waits for the user's word (`confirm`), then installs (`committing`). */
+/** A drop decodes first (`importing`), then waits for the user's word (`confirm`), then installs
+ *  (`committing`); a file for another window waits on `redirect` instead. */
 type DropPhase =
   | { kind: 'idle' }
   | { kind: 'hover' }
   | { kind: 'importing' }
   | { kind: 'confirm'; inspection: ReadyInspection; name: string }
   | { kind: 'committing' };
+
+/** The phases that wait for an answer on a card. */
+const asks = (p: DropPhase): p is Extract<DropPhase, { kind: 'confirm' }> => p.kind === 'confirm';
 
 // Padding lives on the CARD, matching ImportModal's `cardStyle`: a NUMBER `width` plus a
 // same-element padding is content-box additive (no `box-sizing:border-box` here), so padding a
@@ -64,7 +71,7 @@ export function DropImportOverlay() {
   // rendered with, so the query cannot pick it up.
   useLayoutEffect(() => {
     if (!open) return;
-    const viewKey = phase.kind === 'confirm' ? 'confirm' : 'zone';
+    const viewKey = asks(phase) ? 'confirm' : 'zone';
     const el = document.querySelector<HTMLElement>(`[data-drop-view="${viewKey}"]`);
     if (!el) return;
     const remeasure = () => setCardHeight(el.scrollHeight);
@@ -86,6 +93,8 @@ export function DropImportOverlay() {
   const runImport = useCallback(async (file: File, name: string) => {
     if (phaseRef.current.kind === 'importing') return; // one decode at a time — see REENTRANCY above
     setPhaseBoth({ kind: 'importing' });
+    const kind = await classifyImportFile(file, name);
+    if (kind === 'planet' || kind === 'video') { setPhaseBoth({ kind: 'idle' }); useEditorStore.getState().handImport({ kind, file }); return; }
     const inspection = await inspectImportFile(file, name);
     if (inspection.status === 'ready') { setPhaseBoth({ kind: 'confirm', inspection, name }); return; }
     toastImportOutcome(inspection);
@@ -168,7 +177,7 @@ export function DropImportOverlay() {
   // Feeds `ModalShell`'s `onClose`, which is Escape and the backdrop click both. `passive` below
   // already stops the shell routing either one here outside `confirm`.
   const dismissConfirm = useCallback(() => {
-    if (phaseRef.current.kind === 'confirm') setPhaseBoth({ kind: 'idle' });
+    if (asks(phaseRef.current)) setPhaseBoth({ kind: 'idle' });
   }, [setPhaseBoth]);
 
   return (
@@ -180,9 +189,9 @@ export function DropImportOverlay() {
       sizeInstant={!sizeReady}
       maxVw={92}
       // Click-through during hover/importing: the window listeners still own the drag.
-      backdropStyle={{ pointerEvents: phase.kind === 'confirm' ? 'auto' : 'none' }}
-      lockOverlay={phase.kind === 'confirm'}
-      passive={phase.kind !== 'confirm'}
+      backdropStyle={{ pointerEvents: asks(phase) ? 'auto' : 'none' }}
+      lockOverlay={asks(phase)}
+      passive={!asks(phase)}
     >
       {(exiting) => (
         // The two views stand in the SAME grid cell, so the exiting one never adds to the flow

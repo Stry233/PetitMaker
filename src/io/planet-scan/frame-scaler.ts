@@ -11,11 +11,11 @@
  * when a lost WebGL context cannot be rebuilt. Colours are the browser's conversion of the frame's
  * colour space in both.
  */
-import { placePicture } from './framing';
+import type { Placement } from './framing';
 import type { RgbaImage } from './types';
 
-/** Draws a frame; the image it returns is valid until the next draw. */
-export type FrameScaler = (frame: VideoFrame) => RgbaImage;
+/** Draws a frame placed at `at` (`framing.ts`); the image it returns is valid until the next draw. */
+export type FrameScaler = (frame: VideoFrame, at: Placement) => RgbaImage;
 
 /** The most taps a side the box filter takes: enough for an 8K frame. */
 const MAX_TAPS = 8;
@@ -67,16 +67,16 @@ export function webglScaler(width: number, height: number): FrameScaler | null {
   let draw = buildWebgl(width, height);
   if (!draw) return null;
   let rebuilt = false;
-  return (frame) => {
+  return (frame, at) => {
     try {
-      return draw!(frame);
+      return draw!(frame, at);
     } catch (error) {
       if (!(error instanceof ContextLost)) throw error;
       const next = rebuilt ? null : buildWebgl(width, height);
       rebuilt = true;
       draw = next ?? canvasScaler(width, height);
       if (!draw) throw error;
-      return draw(frame);
+      return draw(frame, at);
     }
   };
 }
@@ -115,12 +115,12 @@ function buildWebgl(width: number, height: number): FrameScaler | null {
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
   let size = { w: 0, h: 0 };
-  return (frame) => {
+  let placed: Placement | null = null;
+  return (frame, at) => {
     if (gl.isContextLost()) throw new ContextLost();
     const w = frame.displayWidth;
     const h = frame.displayHeight;
-    if (w !== size.w || h !== size.h) {
-      const at = placePicture(w, h);
+    if (w !== size.w || h !== size.h || at !== placed) {
       const step = 1 / at.scale;
       gl.uniform2f(sourceSize, w, h);
       gl.uniform2f(origin, -at.x * step, -at.y * step);
@@ -128,6 +128,7 @@ function buildWebgl(width: number, height: number): FrameScaler | null {
       const n = Math.min(MAX_TAPS, Math.max(1, Math.ceil(step - 1e-6)));
       gl.uniform2i(taps, n, n);
       size = { w, h };
+      placed = at;
     }
     // A whole upload each frame: Chromium copies a video frame into a texture it allocates on the GPU,
     // while refilling immutable storage (`texStorage2D` and `texSubImage2D`) takes a slower path.
@@ -148,8 +149,7 @@ export function canvasScaler(width: number, height: number): FrameScaler | null 
   if (!ctx) return null;
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = 'high';
-  return (frame) => {
-    const at = placePicture(frame.displayWidth, frame.displayHeight);
+  return (frame, at) => {
     ctx.fillStyle = '#000';
     ctx.fillRect(0, 0, width, height);
     ctx.drawImage(frame, at.x, at.y, frame.displayWidth * at.scale, frame.displayHeight * at.scale);

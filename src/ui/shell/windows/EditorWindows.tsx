@@ -80,6 +80,7 @@ export function EditorWindows({ onPlanetChanged }: { onPlanetChanged: (outcome: 
         open={modals.newProject}
         onSwitch={onSwitchPlanet}
         onEditPlanet={onEditPlanet}
+        takesHandedFiles
         onClose={() => setModal('newProject', false)}
         {...(returnChosen ? { initialChosen: returnChosen } : {})}
       />

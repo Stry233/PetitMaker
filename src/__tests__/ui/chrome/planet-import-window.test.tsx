@@ -9,6 +9,7 @@ import { I18nProvider, translate } from '../../../i18n/context';
 import { useEditorStore } from '../../../state/store';
 import { PlanetImportWindow } from '../../../ui/chrome/modals/planet/PlanetImportWindow';
 import { FAILURE_COPY } from '../../../ui/chrome/modals/planet/VideoImportGuide';
+import { acceptsVideo } from '../../../io/import-kind';
 import { STAGE_COPY } from '../../../ui/chrome/modals/planet/VideoImportProgress';
 import { translations } from '../../../i18n/translations';
 import { SCAN_FAILURES } from '../../../io/planet-scan/errors';
@@ -129,6 +130,34 @@ describe('Import planet window', () => {
     expect(onScanned).not.toHaveBeenCalled();
     await waitFor(() => expect(onScanned).toHaveBeenCalledWith(OUTCOME), { timeout: 2 * FINISH_MS + 1000 });
     expect(onClose).toHaveBeenCalled();
+  });
+
+  it('offers the common recording containers by name in the picker, Matroska among them', async () => {
+    mount();
+    fireEvent.click(screen.getByTestId('planet-import-video'));
+    const accept = (await screen.findByTestId('scan-file')).getAttribute('accept')!.split(',');
+    expect(accept).toEqual(expect.arrayContaining(['video/*', '.mp4', '.mov', '.m4v', '.mkv', '.webm']));
+  });
+
+  it('takes a dropped recording the picker would offer, by type or by extension, and leaves other files', async () => {
+    const { scan, calls } = scripted();
+    mount({ scan });
+    fireEvent.click(screen.getByTestId('planet-import-video'));
+    await screen.findByTestId('scan-file');
+    const drop = (files: File[]) => fireEvent.drop(screen.getByText(t('planet.scan_drop')), { dataTransfer: { files } });
+    drop([new File(['x'], 'notes.txt', { type: 'text/plain' })]);
+    expect(calls).toHaveLength(0);
+    // macOS hands Matroska files over without a type.
+    const mkv = new File([new Uint8Array(16)], 'Scan.MKV', { type: '' });
+    drop([new File(['x'], 'notes.txt', { type: 'text/plain' }), mkv]);
+    await screen.findByTestId('scan-progress');
+    expect(calls).toHaveLength(1);
+  });
+
+  it('accepts recordings by video type or by container extension', () => {
+    const file = (name: string, type = '') => new File([], name, { type });
+    expect([file('a.mp4'), file('a.mov'), file('a.m4v'), file('a.mkv'), file('a.webm'), file('clip', 'video/x-matroska')].every(acceptsVideo)).toBe(true);
+    expect([file('a.txt', 'text/plain'), file('a.png', 'image/png'), file('mkv')].some(acceptsVideo)).toBe(false);
   });
 
   it('opens the planet read at once under reduced motion', async () => {

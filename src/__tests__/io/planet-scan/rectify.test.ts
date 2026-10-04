@@ -137,3 +137,19 @@ describe('rectify', () => {
     expect(() => rectifyGrey(map, { width: 1920, height: 1080, data: new Float32Array(1920 * 1080) })).toThrow();
   });
 });
+
+describe('a world drawn smaller in a window wider than the frame', () => {
+  it('samples each ground point where the zoomed world puts it, about the frame\'s centre', () => {
+    const zoom = 0.75;
+    const full = buildSampleMap(CAL, tile, 2);
+    const small = buildSampleMap(CAL, tile, 2, zoom);
+    const at = (map: ReturnType<typeof buildSampleMap>, p: number) => ({ u: (map.index[p]! % FW) + map.fx[p]!, v: Math.floor(map.index[p]! / FW) + map.fy[p]! });
+    for (const p of [0, 1234, Math.floor(full.index.length / 2), full.index.length - 1]) {
+      const a = at(full, p);
+      const b = at(small, p);
+      expect(b.u).toBeCloseTo(FW / 2 + (a.u - FW / 2) * zoom, 3);
+      expect(b.v).toBeCloseTo(FH / 2 + (a.v - FH / 2) * zoom, 3);
+    }
+    expect(Array.from(buildSampleMap(CAL, tile, 2, 1).index)).toEqual(Array.from(full.index));
+  });
+});

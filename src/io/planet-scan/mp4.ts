@@ -7,62 +7,14 @@
  *
  * Supported codecs: H.264 (`avc1`, `avc3`), HEVC (`hvc1`, `hev1`), AV1 (`av01`) and VP9 (`vp09`).
  * A file this reader cannot hand to WebCodecs as recorded (another container or codec, encryption,
- * a rotated track) throws `Mp4Unsupported`, and the caller reads it another way.
+ * a rotated track) throws `VideoUnsupported`, and the caller reads it another way.
  */
-
-/** Random access to a file's bytes. */
-export interface ByteSource {
-  readonly size: number;
-  read(offset: number, length: number): Promise<Uint8Array>;
-}
-
-export function blobSource(blob: Blob): ByteSource {
-  return {
-    size: blob.size,
-    read: async (offset, length) => new Uint8Array(await blob.slice(offset, offset + length).arrayBuffer()),
-  };
-}
-
-/** The file is not an MP4 this reader can hand to WebCodecs. */
-export class Mp4Unsupported extends Error {
-  constructor(readonly why: string) {
-    super(`unsupported video file: ${why}`);
-    this.name = 'Mp4Unsupported';
-  }
-}
-
-/** A video track's samples in decode order. Times are presentation times in whole microseconds,
- *  with the track's edit list applied. */
-export interface SampleTable {
-  readonly count: number;
-  readonly offset: Float64Array;
-  readonly size: Uint32Array;
-  readonly time: Float64Array;
-  /** 1 for a sample decoding can start at. */
-  readonly key: Uint8Array;
-}
-
-export interface Mp4VideoTrack {
-  /** The WebCodecs codec string. */
-  readonly codec: string;
-  /** The decoder configuration record, for `VideoDecoderConfig.description`. */
-  readonly description?: Uint8Array;
-  readonly codedWidth: number;
-  readonly codedHeight: number;
-  /** In seconds. */
-  readonly duration: number;
-  readonly samples: SampleTable;
-}
+import { av1Codec, avcCodec, capped, checkSamples, hevcCodec, vp9Codec, VideoUnsupported, type ByteSource, type SampleTable, type TrackReadOptions, type VideoTrack } from './container';
 
 /** The largest `moov` or `moof` read, in bytes: a 10-hour recording's sample tables fit well within. */
 const MAX_BOX = 64 << 20;
 /** The most top-level boxes read: a fragmented recording has two a fragment. */
 const MAX_TOP_BOXES = 100_000;
-
-export interface Mp4ReadOptions {
-  /** Tracks with more samples are refused before their tables are expanded. */
-  readonly maxSamples: number;
-}
 
 interface Box {
   readonly type: string;
@@ -85,7 +37,7 @@ class Reader {
   u64(at: number): number { return this.u32(at) * 2 ** 32 + this.u32(at + 4); }
   i64(at: number): number { return this.i32(at) * 2 ** 32 + this.u32(at + 4); }
   private check(at: number, n: number): void {
-    if (at < 0 || at + n > this.bytes.byteLength) throw new Mp4Unsupported('truncated box');
+    if (at < 0 || at + n > this.bytes.byteLength) throw new VideoUnsupported('truncated box');
   }
 
   /** The child boxes of the payload [start, end). */
@@ -97,7 +49,7 @@ class Reader {
       const type = fourcc(this.bytes, at + 4);
       let header = 8;
       if (size === 1) { size = this.u64(at + 8); header = 16; } else if (size === 0) size = end - at;
-      if (size < header || at + size > end) throw new Mp4Unsupported(`bad ${type} box`);
+      if (size < header || at + size > end) throw new VideoUnsupported(`bad ${type} box`);
       out.push({ type, start: at + header, end: at + size });
       at += size;
     }
@@ -110,7 +62,7 @@ class Reader {
 
   need(parent: Box, type: string): Box {
     const box = this.child(parent, type);
-    if (!box) throw new Mp4Unsupported(`no ${type} box`);
+    if (!box) throw new VideoUnsupported(`no ${type} box`);
     return box;
   }
 
@@ -131,28 +83,19 @@ async function topLevelBoxes(src: ByteSource): Promise<TopBox[]> {
     const type = fourcc(head.bytes, 4);
     let header = 8;
     if (size === 1) { size = head.u64(8); header = 16; } else if (size === 0) size = src.size - at;
-    if (size < header) throw new Mp4Unsupported(`bad ${type} box`);
-    if (out.length === 0 && type !== 'ftyp' && type !== 'moov' && type !== 'mdat' && type !== 'free' && type !== 'skip' && type !== 'wide') throw new Mp4Unsupported('not an MP4 file');
+    if (size < header) throw new VideoUnsupported(`bad ${type} box`);
+    if (out.length === 0 && type !== 'ftyp' && type !== 'moov' && type !== 'mdat' && type !== 'free' && type !== 'skip' && type !== 'wide') throw new VideoUnsupported('not an MP4 file');
     out.push({ type, offset: at, size: Math.min(size, src.size - at), header });
-    if (out.length > MAX_TOP_BOXES) throw new Mp4Unsupported('too many boxes');
+    if (out.length > MAX_TOP_BOXES) throw new VideoUnsupported('too many boxes');
     at += size;
   }
   return out;
 }
 
 async function readTop(src: ByteSource, box: TopBox): Promise<{ r: Reader; box: Box }> {
-  if (box.size > MAX_BOX) throw new Mp4Unsupported(`${box.type} box too large`);
+  if (box.size > MAX_BOX) throw new VideoUnsupported(`${box.type} box too large`);
   const r = new Reader(await src.read(box.offset, box.size));
   return { r, box: { type: box.type, start: box.header, end: box.size } };
-}
-
-const hex = (n: number, digits = 2) => n.toString(16).toUpperCase().padStart(digits, '0');
-
-/** Reverses the 32 bits of `n`, as the HEVC codec string writes the compatibility flags. */
-function reverseBits32(n: number): number {
-  let out = 0;
-  for (let k = 0; k < 32; k++) { out = (out * 2) + (n & 1); n >>>= 1; }
-  return out;
 }
 
 /** The WebCodecs codec string and description of a sample entry, or a reason it has none. */
@@ -164,43 +107,33 @@ function codecOf(r: Reader, entry: Box): { codec: string; description?: Uint8Arr
     case 'avc1':
     case 'avc3': {
       const c = find('avcC');
-      if (!c) throw new Mp4Unsupported('no avcC box');
-      const codec = `${entry.type}.${hex(r.u8(c.start + 1))}${hex(r.u8(c.start + 2))}${hex(r.u8(c.start + 3))}`;
+      if (!c) throw new VideoUnsupported('no avcC box');
       // An avc3 stream carries its parameter sets in band; a record without any configures nothing.
-      const parameterSets = r.u8(c.start + 5) & 31;
-      return parameterSets > 0 ? { codec, description: r.payload(c) } : { codec };
+      const record = r.payload(c);
+      const { codec, parameterSets } = avcCodec(entry.type, record);
+      return parameterSets ? { codec, description: record } : { codec };
     }
     case 'hvc1':
     case 'hev1': {
       const c = find('hvcC');
-      if (!c) throw new Mp4Unsupported('no hvcC box');
-      const b1 = r.u8(c.start + 1);
-      const space = ['', 'A', 'B', 'C'][b1 >> 6]!;
-      const tier = (b1 >> 5) & 1 ? 'H' : 'L';
-      const compat = reverseBits32(r.u32(c.start + 2)).toString(16).toUpperCase();
-      const constraints: number[] = [];
-      for (let k = 0; k < 6; k++) constraints.push(r.u8(c.start + 6 + k));
-      while (constraints.length > 0 && constraints[constraints.length - 1] === 0) constraints.pop();
-      const level = r.u8(c.start + 12);
-      const tail = constraints.map((v) => `.${hex(v)}`).join('');
-      return { codec: `${entry.type}.${space}${b1 & 31}.${compat}.${tier}${level}${tail}`, description: r.payload(c) };
+      if (!c) throw new VideoUnsupported('no hvcC box');
+      const record = r.payload(c);
+      return { codec: hevcCodec(entry.type, record), description: record };
     }
     case 'av01': {
       const c = find('av1C');
-      if (!c) throw new Mp4Unsupported('no av1C box');
-      const b1 = r.u8(c.start + 1);
-      const b2 = r.u8(c.start + 2);
-      const depth = (b2 & 0x40) ? ((b2 & 0x20) ? 12 : 10) : 8;
-      return { codec: `av01.${b1 >> 5}.${String(b1 & 31).padStart(2, '0')}${(b2 & 0x80) ? 'H' : 'M'}.${String(depth).padStart(2, '0')}`, description: r.payload(c) };
+      if (!c) throw new VideoUnsupported('no av1C box');
+      const record = r.payload(c);
+      return { codec: av1Codec(record), description: record };
     }
     case 'vp09': {
       const c = find('vpcC');
-      if (!c) throw new Mp4Unsupported('no vpcC box');
+      if (!c) throw new VideoUnsupported('no vpcC box');
       // A full box: version and flags, then profile, level and bit depth.
-      return { codec: `vp09.${String(r.u8(c.start + 4)).padStart(2, '0')}.${String(r.u8(c.start + 5)).padStart(2, '0')}.${String(r.u8(c.start + 6) >> 4).padStart(2, '0')}` };
+      return { codec: vp9Codec(r.u8(c.start + 4), r.u8(c.start + 5), r.u8(c.start + 6) >> 4) };
     }
     default:
-      throw new Mp4Unsupported(`codec ${entry.type}`);
+      throw new VideoUnsupported(`codec ${entry.type}`);
   }
 }
 
@@ -234,13 +167,13 @@ function videoTrack(r: Reader, moov: Box): TrackInfo {
     const hdlr = r.need(mdia, 'hdlr');
     if (fourcc(r.bytes, hdlr.start + 8) !== 'vide') continue;
     const tkhd = r.need(trak, 'tkhd');
-    if (!upright(r, tkhd)) throw new Mp4Unsupported('rotated track');
+    if (!upright(r, tkhd)) throw new VideoUnsupported('rotated track');
     const id = r.u32(tkhd.start + (r.u8(tkhd.start) === 1 ? 20 : 12));
     const mdhd = r.need(mdia, 'mdhd');
     const v1 = r.u8(mdhd.start) === 1;
     const timescale = r.u32(mdhd.start + (v1 ? 20 : 12));
     const mdhdDuration = v1 ? r.u64(mdhd.start + 24) : r.u32(mdhd.start + 16);
-    if (!(timescale > 0)) throw new Mp4Unsupported('no timescale');
+    if (!(timescale > 0)) throw new VideoUnsupported('no timescale');
     let editStart = 0;
     let editDelay = 0;
     const elst = r.child(r.child(trak, 'edts') ?? { type: '', start: 0, end: 0 }, 'elst');
@@ -260,14 +193,14 @@ function videoTrack(r: Reader, moov: Box): TrackInfo {
     const stsd = r.need(stbl, 'stsd');
     const entries = r.children(stsd.start + 8, stsd.end);
     const entry = entries[0];
-    if (!entry) throw new Mp4Unsupported('no sample entry');
-    if (entry.type === 'encv') throw new Mp4Unsupported('encrypted track');
+    if (!entry) throw new VideoUnsupported('no sample entry');
+    if (entry.type === 'encv') throw new VideoUnsupported('encrypted track');
     const { codec, description } = codecOf(r, entry);
     const width = r.u16(entry.start + 24);
     const height = r.u16(entry.start + 26);
     return { id, timescale, mdhdDuration, editStart, editDelay, codec, ...(description ? { description } : {}), width, height, stbl };
   }
-  throw new Mp4Unsupported('no video track');
+  throw new VideoUnsupported('no video track');
 }
 
 /** Decode-order samples before times are converted: offsets, sizes, decode and composition times
@@ -282,11 +215,6 @@ interface RawSamples {
   end: number;
 }
 
-function capped(n: number, max: number): number {
-  if (n > max) throw new Mp4Unsupported(`${n} samples, more than ${max}`);
-  return n;
-}
-
 function stblSamples(r: Reader, stbl: Box, maxSamples: number): RawSamples {
   const stsz = r.child(stbl, 'stsz');
   const stz2 = r.child(stbl, 'stz2');
@@ -297,13 +225,13 @@ function stblSamples(r: Reader, stbl: Box, maxSamples: number): RawSamples {
     for (let k = 0; k < n; k++) sizes.push(fixed || r.u32(stsz.start + 12 + 4 * k));
   } else if (stz2) {
     const bits = r.u8(stz2.start + 7);
-    if (bits !== 4 && bits !== 8 && bits !== 16) throw new Mp4Unsupported(`stz2 field size ${bits}`);
+    if (bits !== 4 && bits !== 8 && bits !== 16) throw new VideoUnsupported(`stz2 field size ${bits}`);
     const n = capped(r.u32(stz2.start + 8), maxSamples);
     for (let k = 0; k < n; k++) {
       const at = stz2.start + 12;
       sizes.push(bits === 16 ? r.u16(at + 2 * k) : bits === 8 ? r.u8(at + k) : (r.u8(at + (k >> 1)) >> ((k & 1) ? 0 : 4)) & 15);
     }
-  } else throw new Mp4Unsupported('no stsz box');
+  } else throw new VideoUnsupported('no stsz box');
   const n = sizes.length;
 
   const stco = r.child(stbl, 'stco');
@@ -311,7 +239,7 @@ function stblSamples(r: Reader, stbl: Box, maxSamples: number): RawSamples {
   const chunks: number[] = [];
   if (stco) for (let k = 0, m = r.u32(stco.start + 4); k < m; k++) chunks.push(r.u32(stco.start + 8 + 4 * k));
   else if (co64) for (let k = 0, m = r.u32(co64.start + 4); k < m; k++) chunks.push(r.u64(co64.start + 8 + 8 * k));
-  else if (n > 0) throw new Mp4Unsupported('no chunk offsets');
+  else if (n > 0) throw new VideoUnsupported('no chunk offsets');
 
   const stsc = r.need(stbl, 'stsc');
   const runs: { first: number; per: number }[] = [];
@@ -328,7 +256,7 @@ function stblSamples(r: Reader, stbl: Box, maxSamples: number): RawSamples {
       at += sizes[sample]!;
     }
   }
-  if (offset.length !== n) throw new Mp4Unsupported('sample table does not cover its samples');
+  if (offset.length !== n) throw new VideoUnsupported('sample table does not cover its samples');
 
   const stts = r.need(stbl, 'stts');
   const dts: number[] = [];
@@ -392,7 +320,7 @@ function fragmentSamples(r: Reader, moof: Box, moofOffset: number, id: number, t
       let data = dataEnd;
       if (rf & 0x1) {
         const offset = r.i32(p);
-        if (offset < 0) throw new Mp4Unsupported('negative fragment data offset');
+        if (offset < 0) throw new VideoUnsupported('negative fragment data offset');
         data = base + offset;
         p += 4;
       }
@@ -416,11 +344,11 @@ function fragmentSamples(r: Reader, moof: Box, moofOffset: number, id: number, t
   }
 }
 
-/** Reads the first video track of the MP4 in `src`. Throws `Mp4Unsupported` for anything else. */
-export async function readMp4VideoTrack(src: ByteSource, { maxSamples }: Mp4ReadOptions): Promise<Mp4VideoTrack> {
+/** Reads the first video track of the MP4 in `src`. Throws `VideoUnsupported` for anything else. */
+export async function readMp4VideoTrack(src: ByteSource, { maxSamples }: TrackReadOptions): Promise<VideoTrack> {
   const top = await topLevelBoxes(src);
   const moovBox = top.find((b) => b.type === 'moov');
-  if (!moovBox) throw new Mp4Unsupported('no moov box');
+  if (!moovBox) throw new VideoUnsupported('no moov box');
   const { r, box: moov } = await readTop(src, moovBox);
   const track = videoTrack(r, moov);
   const raw = stblSamples(r, track.stbl, maxSamples);
@@ -438,8 +366,6 @@ export async function readMp4VideoTrack(src: ByteSource, { maxSamples }: Mp4Read
     }
   }
   const n = raw.offset.length;
-  if (n === 0) throw new Mp4Unsupported('no samples');
-
   const samples: SampleTable = {
     count: n,
     offset: new Float64Array(raw.offset),
@@ -448,16 +374,8 @@ export async function readMp4VideoTrack(src: ByteSource, { maxSamples }: Mp4Read
     key: new Uint8Array(raw.key),
   };
   const shift = track.editDelay - track.editStart;
-  let end = 0;
-  for (let k = 0; k < n; k++) {
-    if (samples.offset[k]! + samples.size[k]! > src.size) throw new Mp4Unsupported('sample past the end of the file');
-    samples.time[k] = Math.round(((raw.cts[k]! + shift) * 1e6) / track.timescale);
-    end = Math.max(end, samples.time[k]!);
-  }
-  if (samples.key[0] !== 1) throw new Mp4Unsupported('the first sample is not a key frame');
-  // Frames are told apart by presentation time.
-  const order = Float64Array.from(samples.time).sort();
-  for (let k = 1; k < n; k++) if (order[k] === order[k - 1]) throw new Mp4Unsupported('two samples share a presentation time');
+  for (let k = 0; k < n; k++) samples.time[k] = Math.round(((raw.cts[k]! + shift) * 1e6) / track.timescale);
+  const end = checkSamples(samples, src.size);
   const duration = Math.max(track.mdhdDuration / track.timescale, end / 1e6);
   return { codec: track.codec, ...(track.description ? { description: track.description } : {}), codedWidth: track.width, codedHeight: track.height, duration, samples };
 }

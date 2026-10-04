@@ -54,6 +54,7 @@ const EXPECTED_STORE_FIELDS: readonly string[] = [
   'toggleSelection', 'tourRunning', 'uiZoom', 'viewMode', 'whatsThis',
   'planetMaterial', 'planetReturn', 'planetReviewShown', 'planetSession', 'setPlanetMaterial', 'setPlanetReturn', 'setPlanetReviewShown', 'setPlanetSession',
   'restoreEditMode', 'restoreParkedEditor',
+  'handedImport', 'handImport', 'takeHandedImport',
 ];
 
 describe('the store composes six slices', () => {

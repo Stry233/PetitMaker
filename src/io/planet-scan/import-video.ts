@@ -12,6 +12,8 @@ import { isScanFailure, type ScanFailure } from './errors';
 import type { ScanPreview } from './preview';
 import type { DecodeReply, DecodeRequest, ScanReply, ScanRequest } from './protocol';
 import type { ScanOutcome } from './run';
+import type { ScanFraming } from './framing';
+import { surveyFraming, surveyTimes } from './survey';
 
 /** The stages the import reports, in order. */
 export const SCAN_STAGES = ['reading', 'tracking', 'ground'] as const;
@@ -209,7 +211,19 @@ async function scan(deps: ScanVideoDeps, file: Blob, { signal, onProgress }: Sca
       throw playbackFailure(error);
     }
     const { duration } = video;
-    await ask(video.picture ? { op: 'start', picture: video.picture } : { op: 'start' });
+    const v = video;
+    // The calibrated framing where the picture's size is unknown.
+    let framing: ScanFraming | null | undefined;
+    try {
+      framing = v.picture ? await surveyFraming(v.picture, async (at, each) => {
+        v.place(at);
+        for (const t of surveyTimes(duration)) each(await v.frameAt(t, signal));
+      }) : undefined;
+    } catch (error) {
+      throw playbackFailure(error);
+    }
+    if (framing) v.place(framing.placement);
+    await ask(framing === undefined ? { op: 'start' } : { op: 'start', framing });
 
     // Pass 1: every frame, until the recording leaves the map view.
     let accepting = true;

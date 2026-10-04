@@ -14,6 +14,19 @@ import type { BlockRef } from '../../core/model/types';
 import type { CameraAngle } from '../../canvas/map3d/capture';
 import { detectPortraitBlocked } from '../../core/runtime/portrait-signals';
 import { readPref, writePref, type DockSide } from '../../core/runtime/prefs';
+import type { ImportKind } from '../../io/import-kind';
+
+/** A file one import surface hands to the window that reads its kind. */
+export interface HandedImport { kind: Exclude<ImportKind, 'unknown'>; file: File }
+
+/** The windows each handed kind opens over the map, all others among them closed: a map goes to
+ *  Import map, a planet file to Change Planet (which reads it as From a planet file does), a video
+ *  to Import planet's window over Change Planet. */
+const HAND_DESTINATION: Record<HandedImport['kind'], Partial<Record<ModalId, boolean>>> = {
+  map: { import: true, newProject: false, planetImport: false },
+  planet: { import: false, newProject: true, planetImport: false },
+  video: { import: false, newProject: true, planetImport: true },
+};
 
 /** Every overlay the editor can open. Adding a modal is one member here plus its component. */
 export const MODAL_IDS = [
@@ -98,9 +111,15 @@ export interface ShellSlice {
   /** The block targeted by the delete-confirmation popover; null hides it. */
   deletePopover: BlockRef | null;
   setDeletePopover: (sel: BlockRef | null) => void;
+  /** A file waiting for the window that reads its kind; that window takes it as it opens. */
+  handedImport: HandedImport | null;
+  /** Opens the window that reads `hand.kind` and leaves the file there for it. */
+  handImport: (hand: HandedImport) => void;
+  /** The handed file if it is of `kind`, cleared as it is taken; null otherwise. */
+  takeHandedImport: (kind: HandedImport['kind']) => File | null;
 }
 
-export const createShellSlice: StateCreator<ShellSlice, [], [], ShellSlice> = (set) => ({
+export const createShellSlice: StateCreator<ShellSlice, [], [], ShellSlice> = (set, get) => ({
   modals: Object.fromEntries(MODAL_IDS.map((id) => [id, false])) as Record<ModalId, boolean>,
   setModal: (id, open) => set((st) => (st.modals[id] === open ? st : { modals: { ...st.modals, [id]: open } })),
   aboutTarget: null,
@@ -156,4 +175,12 @@ export const createShellSlice: StateCreator<ShellSlice, [], [], ShellSlice> = (s
   setContextMenu: (menu) => set((s) => (menu && s.tourRunning ? s : { contextMenu: menu })),
   deletePopover: null,
   setDeletePopover: (sel) => set((s) => (sel && s.tourRunning ? s : { deletePopover: sel })),
+  handedImport: null,
+  handImport: (hand) => set((st) => ({ handedImport: hand, modals: { ...st.modals, ...HAND_DESTINATION[hand.kind] } })),
+  takeHandedImport: (kind) => {
+    const hand = get().handedImport;
+    if (hand?.kind !== kind) return null;
+    set({ handedImport: null });
+    return hand.file;
+  },
 });

@@ -12,8 +12,8 @@ export type ScanFailure =
   | 'different-zoom'
   /** The scan covers too little of a planet to read. */
   | 'too-little'
-  /** The scan has more distinct frames than one import reads: it went over the same ground many
-   *  times or ran much longer than a planet needs. */
+  /** The scan keeps more distinct frames than one import holds: it went over the same ground
+   *  many times or ran much longer than a planet needs. */
   | 'too-long'
   /** The camera jumped further than tracking can follow and no revisit placed the jump. */
   | 'too-fast'

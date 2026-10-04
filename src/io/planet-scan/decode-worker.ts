@@ -1,6 +1,7 @@
 /**
- * The planet scan's decode worker: decodes one MP4 with WebCodecs for the scan worker at the other
- * end of the request's port (`decode-side.ts`), and answers once the scan has what it asked for.
+ * The planet scan's decode worker: decodes one video file with WebCodecs for the scan worker at
+ * the other end of the request's port (`decode-side.ts`), and answers once the scan has what it
+ * asked for.
  */
 import { platformCodecs } from './decode-webcodecs';
 import { serveFile } from './decode-side';

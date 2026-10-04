@@ -1,4 +1,5 @@
 import type { ScanFailure } from './errors';
+import type { ScanFraming } from './framing';
 import type { ScanPreview } from './preview';
 import type { ScanOutcome } from './run';
 
@@ -17,8 +18,9 @@ export type ScanRequest =
   /** Reads the frames arriving on `port`: answered `done`, `failed`, `unreadable`, or `unsupported`
    *  when the page must read the file through playback, after any number of `progress` messages. */
   | { readonly op: 'scan'; readonly port: MessagePort }
-  /** Starts a session for the playback path, with the decoded picture's size where known. */
-  | { readonly op: 'start'; readonly picture?: { readonly width: number; readonly height: number } }
+  /** Starts a session for the playback path, with the framing the page's survey found (null for
+   *  none; the calibrated framing where the picture's size is unknown). */
+  | { readonly op: 'start'; readonly framing?: ScanFraming | null }
   /** Pass 1: the next frame, shown at `time` seconds. */
   | { readonly op: 'frame'; readonly time: number; readonly width: number; readonly height: number; readonly buffer: ArrayBuffer }
   /** Ends pass 1. */

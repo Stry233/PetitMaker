@@ -3,6 +3,7 @@ import { SUPPORTS_JSON_FILES } from '../core/runtime/edition';
 import { isOwnImageExport } from './image-ownership';
 import { deserializeParsed, templateOfSave } from './json-codec';
 import { MAX_IMPORT_BYTES } from './import-limits';
+import { isImageFile, isJsonFile } from './import-kind';
 import { verifyIntegrity } from './export-json';
 import { applyOptionalSections, type SectionRestoreDeps } from './import-sections';
 import { importFromRaster, type ShareErrorCode } from './share';
@@ -44,16 +45,6 @@ export interface ImportFileDeps {
   loadMap: (state: GridState) => void;
   /** Read after loadMap so optional sections restore into the new executor and state. */
   getSectionDeps: () => SectionRestoreDeps;
-}
-
-function isJsonFile(file: File | Blob, name: string): boolean {
-  return name.toLowerCase().endsWith('.json') || file.type === 'application/json';
-}
-
-/** Some drag sources omit MIME types, so supported extensions are also accepted. */
-function isImageFile(file: File | Blob, name: string): boolean {
-  if (file.type.startsWith('image/')) return true;
-  return /\.(png|jpe?g|webp)$/i.test(name);
 }
 
 /** A decoded map ready to install: its preview, and the commit that installs it and reports the

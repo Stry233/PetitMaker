@@ -1,7 +1,7 @@
 /**
  * The scanning half of a file scan, in the scan worker: frames come over a port from the decode
  * worker (`decode-side.ts`), already decoded with WebCodecs and prepared, pass 1 every frame and
- * pass 2 the distinct frames only, which the decoder decodes again from their key frames. A file
+ * pass 2 the kept distinct frames only, which the decoder decodes again from their key frames. A file
  * the decoder cannot read answers `unsupported` before the scan reports a result, and the page reads
  * it through video playback instead; a decoder failing during pass 1 answers the same, since the
  * page's path starts over.
@@ -9,7 +9,8 @@
 import { DecodeError } from './decode-webcodecs';
 import { Inbox, type DecoderMessage, type LinkPort, type ScanMessage } from './frame-link';
 import { PreviewClock, type ScanPreview } from './preview';
-import type { PictureSize, PreparedFrame, ScanOutcome } from './run';
+import type { ScanFraming } from './framing';
+import type { PreparedFrame, ScanOutcome } from './run';
 import type { RgbaImage } from './types';
 
 /** The passes of a `ScanSession` this path drives. */
@@ -36,7 +37,7 @@ const REPORT_MS = 100;
  * and `DecodeError` when pass 2 cannot decode a frame pass 1 read.
  */
 export async function scanFromPort(
-  port: LinkPort<DecoderMessage, ScanMessage>, session: (picture: PictureSize) => ScanPasses,
+  port: LinkPort<DecoderMessage, ScanMessage>, session: (framing: ScanFraming | null) => ScanPasses,
   onProgress: (stage: FileScanStage, share: number | null, preview?: ScanPreview) => void,
 ): Promise<FileScanResult> {
   const inbox = new Inbox<DecoderMessage>(port);
@@ -58,7 +59,7 @@ export async function scanFromPort(
   if (opened.op !== 'opened') return { kind: 'unsupported', why: `unexpected ${opened.op}` };
   const duration = opened.duration > 0 ? opened.duration : 1;
 
-  s = session({ width: opened.width, height: opened.height });
+  s = session(opened.framing);
   report('reading', 0, true);
   let stopping = false;
   for (;;) {

@@ -9,7 +9,8 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 // @ts-ignore
 import { join } from 'node:path';
-import { Mp4Unsupported, readMp4VideoTrack, type ByteSource } from '../../../io/planet-scan/mp4';
+import { VideoUnsupported, type ByteSource } from '../../../io/planet-scan/container';
+import { readMp4VideoTrack } from '../../../io/planet-scan/mp4';
 
 const read = (src: ByteSource) => readMp4VideoTrack(src, { maxSamples: 1000 });
 
@@ -199,7 +200,7 @@ describe('reading MP4 boxes built here', () => {
   ];
   for (const [what, bytes] of refused) {
     it(`leaves ${what} to playback`, async () => {
-      await expect(read(source(bytes).src)).rejects.toBeInstanceOf(Mp4Unsupported);
+      await expect(read(source(bytes).src)).rejects.toBeInstanceOf(VideoUnsupported);
     });
   }
 

@@ -2,8 +2,8 @@
  * Decoded frames of a video file in the browser, scaled to the scan's frame size: the fallback for
  * browsers without WebCodecs.
  *
- * The file plays muted in a detached video element and each presented frame is drawn, placed as
- * `framing.ts` places a picture, onto a canvas
+ * The file plays muted in a detached video element and each presented frame is drawn, placed where
+ * the recording's framing puts it (`framing.ts`), onto a canvas
  * at the frame size and read back as RGBA, so a 4K recording costs no more than a 1080p one past
  * the decoder. `requestVideoFrameCallback` hands over every frame the element presents; while the
  * consumer is busy the element pauses. A page too busy to present every frame slows the playback,
@@ -13,7 +13,7 @@
  * measured frame rate. Nothing leaves the page: the file is read through an object URL that is
  * revoked on close.
  */
-import { placePicture } from './framing';
+import { surveyPlacement, type Placement } from './framing';
 import { SCAN_PROFILE } from './profile';
 import type { RgbaImage } from './types';
 
@@ -61,6 +61,8 @@ export interface VideoFrames {
   play(sink: FrameSink, options: PlayOptions): Promise<void>;
   /** The frame the file shows at presentation time `time`. */
   frameAt(time: number, signal: AbortSignal): Promise<VideoFrameImage>;
+  /** Where the next frames' pictures land in the scan's frame; the whole picture, fit, until then. */
+  place(at: Placement): void;
   close(): void;
 }
 
@@ -382,7 +384,7 @@ export async function openVideo(file: Blob, signal: AbortSignal): Promise<VideoF
   }
   if (!(video.videoWidth > 0 && video.videoHeight > 0 && Number.isFinite(video.duration))) { close(); throw new VideoReadError(); }
 
-  const at = placePicture(video.videoWidth, video.videoHeight);
+  let at = surveyPlacement({ width: video.videoWidth, height: video.videoHeight });
   ctx.fillStyle = '#000';
   const draw = (): VideoFrameImage => {
     ctx.fillRect(0, 0, width, height);
@@ -421,6 +423,7 @@ export async function openVideo(file: Blob, signal: AbortSignal): Promise<VideoF
       await seekTo(video, time, interval, signal);
       return draw();
     },
+    place(placement) { at = placement; },
     close,
   };
 }

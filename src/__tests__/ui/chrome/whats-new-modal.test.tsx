@@ -13,6 +13,13 @@ vi.mock('../../../version', async (importOriginal) => ({
   APP_VERSION: '1.2.0',
 }));
 
+// The window reads the bundled changelog, whose content changes with every release; these tests read a fixed one.
+vi.mock('../../../legal/registry', async (importOriginal) => {
+  const real = await importOriginal<typeof import('../../../legal/registry')>();
+  const changelog = '# Changelog\n\n## [Unreleased]\n\n_No user-facing changes._\n\n## [1.2.0] - 2026-01-01\n\n### Added\n\n- A new window.\n';
+  return { ...real, docBody: (id: Parameters<typeof real.docBody>[0], ...rest: [Parameters<typeof real.docBody>[1], Parameters<typeof real.docBody>[2]]) => (id === 'changelog' ? changelog : real.docBody(id, ...rest)) };
+});
+
 beforeEach(() => {
   localStorage.clear();
   setStoreState({ locale: 'en', aboutTarget: null });

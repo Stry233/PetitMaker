@@ -4,17 +4,19 @@
 //
 // Usage:
 //   vite-node scripts/export-public-repo.mts --out <dir>              copy the allowlist
-//   vite-node scripts/export-public-repo.mts --out <dir> --verify      + npm ci --ignore-scripts &&
-//                                                                       npm run build && npm run
-//                                                                       test:run in <dir>
-//                                                                       (SLOW — installs a
-//                                                                       full node_modules;
-//                                                                       manual/CI use only)
+//   vite-node scripts/export-public-repo.mts --out <dir> --verify      + install, build, typecheck
+//                                                                       and run the tests whose inputs
+//                                                                       differ from this checkout's
+//                                                                       commit inside <dir>
+//   vite-node scripts/export-public-repo.mts --list-verify-tests      print that test scope as JSON
+//
+// --verify does not rerun the whole suite: a release requires it to have passed on this commit
+// first. It needs this checkout's own node_modules to compute the scope.
 
 // @ts-ignore - node:fs is untyped here (no @types/node)
 import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 // @ts-ignore - node:path is untyped here (no @types/node)
-import { dirname, join, resolve } from 'node:path';
+import { dirname, join, relative, resolve, sep } from 'node:path';
 // @ts-ignore - node:child_process is untyped here (no @types/node)
 import { execFileSync, spawnSync } from 'node:child_process';
 
@@ -25,30 +27,37 @@ import {
   findAgentDocPointers,
   findAiAttribution,
   findByBasename,
-  isProbablyText,
   findLeakedPaths,
+  isProbablyText,
   listFiles,
   parseManifest,
   publicGitignore,
   selectPublicPaths,
+  selectSnapshotTests,
   shouldRefuseVerify,
+  snapshotTestSeeds,
   type ManifestGlobs,
 } from './export-public-repo-core.mts';
 
 declare const process: { argv: string[]; cwd(): string; exitCode?: number };
 
-function parseArgs(argv: string[]): { out: string; verify: boolean } {
+interface Args { out?: string; verify: boolean; listTests: boolean; assumeChanged: string[] }
+
+function parseArgs(argv: string[]): Args {
   if (argv.includes('--allow-open-audit')) {
     throw new Error('--allow-open-audit is no longer supported; omit --verify for an inspection-only export.');
   }
   const outIdx = argv.indexOf('--out');
   const out = outIdx !== -1 ? argv[outIdx + 1] : undefined;
-  if (!out) {
+  const listTests = argv.includes('--list-verify-tests');
+  // Treats a path as changed since the commit, as a publication refresh would leave it.
+  const assumeChanged = argv.flatMap((arg, i) => (arg === '--assume-changed' && argv[i + 1] ? [argv[i + 1]!] : []));
+  if (!out && !listTests) {
     throw new Error(
-      'usage: vite-node scripts/export-public-repo.mts --out <dir> [--verify]'
+      'usage: vite-node scripts/export-public-repo.mts --out <dir> [--verify] | --list-verify-tests [--assume-changed <path>]...'
     );
   }
-  return { out, verify: argv.includes('--verify') };
+  return { out, verify: argv.includes('--verify'), listTests, assumeChanged };
 }
 
 /** `git ls-files -z` — NUL-separated so filenames with non-ASCII bytes aren't quote-escaped. */
@@ -90,15 +99,55 @@ function initGitSnapshot(outDir: string): void {
   run(['-c', 'user.email=export@localhost', '-c', 'user.name=export-public-repo', 'commit', '-q', '-m', 'export snapshot']);
 }
 
-function runVerify(outDir: string): void {
-  console.log(`[export-public-repo] --verify: npm ci --ignore-scripts && npm run build && npm run test:run in ${outDir}`);
-  console.log('[export-public-repo] this is SLOW (installs a full node_modules) — manual/CI use only.');
+/** Tracked paths whose working-tree content differs from the checked-out commit. */
+function gitChangedFiles(rootDir: string): string[] {
+  const out = execFileSync('git', ['diff', '--name-only', '-z', 'HEAD'], { cwd: rootDir, maxBuffer: 1024 * 1024 * 16 }) as {
+    toString(enc: string): string;
+  };
+  return out.toString('utf8').split('\0').filter((p) => p.length > 0);
+}
+
+/** Test files Vitest's import graph relates to any of `seeds`, from this checkout's config. */
+async function relatedTests(rootDir: string, seeds: readonly string[]): Promise<string[]> {
+  const { createVitest } = await import('vitest/node');
+  const vitest = await createVitest('test', {
+    watch: false, run: true, passWithNoTests: true, related: seeds.map((p) => join(rootDir, p)),
+  });
+  try {
+    const specs = await vitest.getRelevantTestSpecifications();
+    return specs.map((spec) => relative(rootDir, spec.moduleId).split(sep).join('/'));
+  } finally {
+    await vitest.close();
+  }
+}
+
+/** The public tests whose inputs can differ between the snapshot and this checkout's commit. */
+async function snapshotTestScope(rootDir: string, tracked: readonly string[], published: readonly string[], assumeChanged: readonly string[]): Promise<string[]> {
+  const changed = [...new Set([...gitChangedFiles(rootDir), ...assumeChanged])];
+  const sources = published
+    .filter((p) => /\.[cm]?[jt]sx?$/.test(p))
+    .map((path) => ({ path, text: readFileSync(join(rootDir, path), 'utf8') as string }));
+  const seeds = snapshotTestSeeds({ tracked, published, changed, sources });
+  return selectSnapshotTests(published, seeds, await relatedTests(rootDir, seeds));
+}
+
+// The snapshot runs its own install, the full production build (whose `tsc -b` typechecks every
+// shipped source and test, so an import of a withheld file fails here), the scripts typecheck, and
+// the scoped tests.
+function runVerify(outDir: string, tests: readonly string[]): void {
+  console.log(`[export-public-repo] --verify: install, build, typecheck and ${tests.length} scoped test file(s) in ${outDir}`);
+  for (const test of tests) console.log(`  ${test}`);
   initGitSnapshot(outDir);
   try {
-    for (const args of [['ci', '--ignore-scripts'], ['run', 'build'], ['run', 'test:run']]) {
+    for (const args of [
+      ['ci', '--ignore-scripts'],
+      ['run', 'build'],
+      ['exec', '--', 'tsc', '--noEmit', '-p', 'tsconfig.scripts.json'],
+      ['exec', '--', 'vitest', 'run', ...tests],
+    ]) {
       const result = spawnSync('npm', args, { cwd: outDir, stdio: 'inherit' });
       if (result.status !== 0) {
-        throw new Error(`[export-public-repo] verify step failed: npm ${args.join(' ')} (exit ${result.status})`);
+        throw new Error(`[export-public-repo] verify step failed: npm ${args.slice(0, 5).join(' ')} (exit ${result.status})`);
       }
     }
   } finally {
@@ -107,12 +156,18 @@ function runVerify(outDir: string): void {
       rmSync(join(outDir, artifact), { recursive: true, force: true });
     }
   }
-  console.log('[export-public-repo] --verify passed: the exported public repo builds and tests green.');
+  console.log('[export-public-repo] --verify passed: the exported public repo builds and its scoped tests pass.');
 }
 
 async function main(): Promise<void> {
-  const { out, verify } = parseArgs(process.argv.slice(2));
+  const { out, verify, listTests, assumeChanged } = parseArgs(process.argv.slice(2));
   const rootDir = process.cwd();
+  if (listTests) {
+    const manifest = parseManifest(readFileSync(join(rootDir, 'docs', 'internal', 'deployment', 'public-repo-manifest.md'), 'utf8'));
+    const tracked = gitTrackedFiles(rootDir);
+    console.log(JSON.stringify(await snapshotTestScope(rootDir, tracked, selectPublicPaths(tracked, manifest), assumeChanged)));
+    return;
+  }
   const status = auditStatus(rootDir);
   if (verify && shouldRefuseVerify(status)) {
     throw new Error(
@@ -122,7 +177,7 @@ async function main(): Promise<void> {
     );
   }
   // Callers may provide a relative or absolute output path.
-  const outDir = resolve(rootDir, out);
+  const outDir = resolve(rootDir, out!);
 
   const manifestPath = join(rootDir, 'docs', 'internal', 'deployment', 'public-repo-manifest.md');
   const manifest: ManifestGlobs = parseManifest(readFileSync(manifestPath, 'utf8'));
@@ -198,7 +253,7 @@ async function main(): Promise<void> {
     );
   }
 
-  if (verify) runVerify(outDir);
+  if (verify) runVerify(outDir, await snapshotTestScope(rootDir, tracked, toCopy, assumeChanged));
 }
 
 main().catch((err) => {

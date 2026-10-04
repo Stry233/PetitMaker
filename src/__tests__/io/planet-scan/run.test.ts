@@ -7,7 +7,7 @@ import { firstPassFailure, latticeFailure, ScanSession, solveTracked, type First
 import type { ScanSolution } from '../../../io/planet-scan/scan-solve';
 import { Tracker } from '../../../io/planet-scan/track';
 import type { GreyImage } from '../../../io/planet-scan/types';
-import { broadbandField, cropAt, latticeDeviation, plainFrame, rasterPath, rng, toLine } from './synthetic';
+import { broadbandField, cropAt, hudFrame, latticeDeviation, plainFrame, rasterPath, rng, toLine } from './synthetic';
 
 const { width: TW, height: TH } = SCAN_PROFILE.tile;
 const origin = { x: 37.3, y: 51.9 };
@@ -68,6 +68,13 @@ describe('what pass 1 tells about a recording', () => {
     expect(Math.abs(seen.scale - 1.25)).toBeLessThan(0.03);
     expect(firstPassFailure(reading({ runs }))).toBe('different-zoom');
     expect(Math.abs(periodScale(lined).scale - 1)).toBeLessThan(0.03);
+  });
+
+  it('blames the window\'s shape for another period only where its world scale was never measured and the knob shows the calibrated zoom', () => {
+    const runs = runsOf(Array.from({ length: 10 }, (_, k) => scaledDeviation(150 * k + 13.4, 40 * k - 7.1, 1.25, 80 + k)));
+    expect(firstPassFailure(reading({ runs, worldMeasured: false }))).toBe('framing');
+    expect(firstPassFailure(reading({ runs, worldMeasured: false, knobRows: [] }))).toBe('different-zoom');
+    expect(firstPassFailure(reading({ runs, worldMeasured: true }))).toBe('different-zoom');
   });
 });
 
@@ -149,7 +156,7 @@ describe('the scan session\'s bounds', () => {
   const { width: FW, height: FH } = SCAN_PROFILE.frame;
   const hud = { mapView: true, whole: true, knob: SCAN_PROFILE.hud.zoom.knobCentre };
 
-  it('refuses a scan past its distinct-frame cap as too long, before it holds another tile', () => {
+  it('refuses a scan past its kept-frame cap as too long, before it holds another tile', () => {
     const session = new ScanSession({ maxDistinct: 20 });
     const frame = { width: FW, height: FH, data: plainFrame() };
     const r = rng(3);
@@ -163,15 +170,32 @@ describe('the scan session\'s bounds', () => {
     expect(session.distinct).toBe(20);
   });
 
-  it('caps one import at the profile\'s distinct frames by default', () => {
+  it('keeps a long slow pan under its cap by thinning its distinct frames', () => {
+    const cap = 60;
+    const session = new ScanSession({ maxDistinct: cap });
+    const frame = { width: FW, height: FH, data: plainFrame() };
+    const field = broadbandField(31, 2048, 512)(0, 0, 2048, 512);
+    // Three times the cap's frames when the gap limit allows; without thinning each is kept.
+    const frames = Math.min(3, SCAN_PROFILE.tracking.thinning.maxGap * 0.75) * cap;
+    for (let k = 0; k < frames; k++) session.pushPrepared(frame, { hud, tile: cropAt(field, 4 + 1.5 * k, 4 + 0.2 * k, TW, TH).data as Float32Array<ArrayBuffer> }, k / 60);
+    expect(frames).toBeGreaterThan(cap);
+    expect(session.distinct).toBeGreaterThan(frames / 20);
+    expect(session.distinct).toBeLessThan(cap);
+  });
+
+  it('caps one import at the profile\'s kept frames by default', () => {
     expect(SCAN_PROFILE.import.maxDistinct).toBeGreaterThan(1000);
   });
 
-  it('refuses a recording that shows no map view as framed wrong when its picture is neither the game\'s view nor a 16:9 screen', () => {
-    const none = reading({ mapFrames: 0 });
-    expect(firstPassFailure({ ...none, picture: { width: 1080, height: 1920 } })).toBe('framing');
-    expect(firstPassFailure({ ...none, picture: { width: 1920, height: 1080 } })).toBe('not-map-view');
-    expect(firstPassFailure({ ...none, picture: { width: 1728, height: 1080 } })).toBe('not-map-view');
-    expect(firstPassFailure(none)).toBe('not-map-view');
+  it('refuses a recording whose survey found no game window as framed wrong', () => {
+    expect(firstPassFailure(reading({ mapFrames: 0, unframed: true }))).toBe('framing');
+    expect(firstPassFailure(reading({ mapFrames: 0 }))).toBe('not-map-view');
+  });
+
+  it('reads nothing of a recording without a game window and refuses it as framed wrong', () => {
+    const session = new ScanSession({ framing: null });
+    expect(session.accepting).toBe(false);
+    session.push({ width: FW, height: FH, data: hudFrame() }, 0);
+    expect(() => session.endFirstPass()).toThrow(expect.objectContaining({ reason: 'framing' }));
   });
 });

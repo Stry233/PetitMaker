@@ -1,3 +1,4 @@
+import type { ScanFraming } from './framing';
 import type { HudReading } from './hud';
 
 // The message port between the decode worker and the scan worker when a file is decoded with
@@ -11,8 +12,9 @@ export const LINK_CREDITS = 4;
 
 /** Decoder to scan. */
 export type DecoderMessage =
-  /** The file opened: its duration in seconds and its picture's size. */
-  | { readonly op: 'opened'; readonly duration: number; readonly width: number; readonly height: number }
+  /** The file opened: its duration in seconds, its picture's size and the framing its survey
+   *  found, null when it found no window to read (no frames follow then). */
+  | { readonly op: 'opened'; readonly duration: number; readonly width: number; readonly height: number; readonly framing: ScanFraming | null }
   /** The file cannot be decoded here; `why` is for diagnostics. */
   | { readonly op: 'unsupported'; readonly why: string }
   /** Pass 1: a frame shown at `time` seconds, its HUD, and its rectified grey tile for a map-view
