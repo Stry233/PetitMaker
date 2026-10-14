@@ -1,21 +1,11 @@
 /*
- * The choreography of the two IDLE DRESSINGS: the sketchbook's rotation and the
- * dreaming office's beat sheet.
- *
- * A DECLARED EXEMPTION FROM THE REGISTRY, on the same footing as `character/poses.ts` and named in
- * `__tests__/ui/agent/motion-wiring.test.ts`. The registry answers "what moves, how long and why"
- * for the panel's INTERFACE motions — a card arriving, a paper repainting, a badge popping — each of
- * which is one declaration a component reads at one call site. What is here is a different kind of
- * thing: a LOOP with several beats in it, whose numbers are only meaningful against each other (the
- * wipe lands 800ms before the next idea, the ritual halfway through the hold, the dream's glyph
- * inside its own hold). Cutting that into registry entries would spread one piece of timing across
- * a dozen ids and still leave the reader unable to see the sheet.
- *
- * Both loops are AMBIENT in the registry's own sense: they say nothing the interface needs to say,
- * so reduced motion drops them outright and each dressing paints the complete still instead. Neither
- * runs while its card is off screen: the card's presence IS the engine's gate.
+ * The beat sheets of the two idle dressings, the sketchbook and the dreaming office. Like
+ * `character/poses.ts`, an exemption from the motion registry named in `motion-wiring.test.ts`:
+ * each is a loop whose beats are meaningful only against each other. Both are ambient, so reduced
+ * motion drops them for a complete still, and neither runs while its card is off screen.
  */
 
+import type { Garnish } from '../character/intent';
 import { easing } from '../../design/styles';
 import { CURVES } from '../character/poses';
 
@@ -37,7 +27,7 @@ export interface Beat {
 }
 
 /**
- * THE SKETCHBOOK'S CYCLE. One idea per `cycle`: it draws, it stands, it is wiped at `erase`, and the
+ * The sketchbook's cycle. One idea per `cycle`: it draws, it stands, it is wiped at `erase`, and the
  * next cycle brings the next idea. `ritual` is the point inside the hold where she may take one, and
  * `ritualEvery` how many cycles apart those are — sparse garnish, never a show.
  */
@@ -46,7 +36,7 @@ export const SKETCH = {
   erase: 6800,
   ritual: 3600,
   ritualEvery: 3,
-  /** The pencil: the MASK's dashoffset runs, so the dashes appear tip-first and stay dashes.
+  /** The pencil: the mask's dashoffset runs, so the dashes appear tip-first and stay dashes.
    *  (Running the shape's own dashoffset replaces the pattern and reads as a solid line.) */
   draw: { dur: 1200, easing: DRAW, stagger: 250 } as Beat,
   /** The ghost of the built thing, arriving under the dashes once the line is most of the way in. */
@@ -64,23 +54,8 @@ export const SKETCH = {
   ghostAlpha: { band: 0.55, fill: 0.45 },
 } as const;
 
-/** A one-shot played on the character's own parts (`CharacterHandle.parts`). */
-interface Garnish {
-  part: 'pose' | 'body';
-  dur: number;
-  easing: string;
-  delay?: number;
-  composite?: CompositeOperation;
-  keyframes: Keyframe[];
-}
 
-/**
- * WHAT SHE DOES WHILE THE PENCIL MOVES, and between sketches.
- *
- * Every one ENDS AT IDENTITY with no forwards fill, so nothing here can strand the idle pose: the
- * pose machine's own transform is underneath, and a filled endpoint would replace it for good (the
- * dream engine's Chromium lesson, `character/Character.tsx`).
- */
+/** Her gestures while the pencil moves. Each ends at identity with no forwards fill, so the pose machine's transform underneath survives. */
 export const GARNISH: Record<'scribble' | 'tea' | 'stretch', readonly Garnish[]> = {
   scribble: [
     {
@@ -134,7 +109,7 @@ export const SCRIBBLE_BADGE_MS = 2100;
 export const RITUALS = ['tea', 'stretch'] as const;
 
 /**
- * THE DREAMING OFFICE'S BEAT SHEET. The board is a queue that turns over once a `cycle`; inside the
+ * The dreaming office's beat sheet. The board is a queue that turns over once a `cycle`; inside the
  * cycle she twitches, the dreamed order's glyph takes the zzz's place, and the zzz come back on one
  * breath. `resettleEvery` is how many cycles apart she resettles inside the hold.
  */
@@ -145,25 +120,11 @@ export const DREAM = {
   resettle: 2050,
   resettleEvery: 2,
   glyphOut: 3050,
-  /**
-   * THE SWAP IS THREE MOVES, NOT ONE, and the board turns over as a board: the top order departs
-   * (`rowOut`), the two under it GLIDE UP into the places it and its neighbour left (`rowGlide`), and
-   * the new one lands softly at the foot after them (`rowIn`, which is why it carries a delay). Drop
-   * the glide and the two survivors teleport up one slot while a ghost fades over the top of them,
-   * which is the whole move reading as a jump cut.
-   */
+  /** The board's swap: the top order departs (`rowOut`), the two below glide up (`rowGlide`), and the new one lands after them (`rowIn`). */
   rowOut: { dur: 260, easing: PUNCHY } as Beat,
   rowGlide: { dur: 480, easing: 'cubic-bezier(.3,0,.1,1)' } as Beat,
   rowIn: { dur: 420, delay: 160, easing: SPRING } as Beat,
-  /**
-   * THE BREATH THAT CARRIES THE ZZZ BACK: one bubble off the plume's lower-left, drifting up and out.
-   *
-   * It leaves at its OWN size and grows as it goes, which is what makes it read as a breath rather
-   * than as a dot popping into existence: the opacity comes up over the first fifth and the rest of
-   * the track is the drift, so the bubble is already there before it starts travelling. `fill: both`
-   * holds it at the last frame's nothing, since the element's resting opacity is 0 anyway and a
-   * `none` fill flashes the rest state for one frame at each end.
-   */
+  /** The breath that carries the zzz back: one bubble growing as it drifts up. `fill: both` holds its last frame, as its resting opacity is 0. */
   puff: { dur: 900, easing: PUNCHY } as Beat,
   puffFrames: [
     { opacity: 0, transform: 'none', offset: 0 },
@@ -178,7 +139,7 @@ export const DREAM = {
   glyphRise: { dur: 300, easing: SPRING } as Beat,
   /** How small the arriving glyph's disc starts, as a fraction of itself. */
   glyphFrom: 0.55,
-  /** The twitch, played ON the sleeping pose (composited, so the sleep is not replaced). */
+  /** The twitch, played on the sleeping pose (composited, so the sleep is not replaced). */
   twitchFrames: {
     part: 'body', dur: 220, easing: CURVE_OUT, composite: 'add',
     keyframes: [
@@ -189,7 +150,7 @@ export const DREAM = {
     ],
   } as Garnish,
   /**
-   * SHE RESETTLES INSIDE THE HOLD, every second cycle at `resettle`: a sleeper shifts, sinks a little
+   * She resettles inside the hold, every second cycle at `resettle`: a sleeper shifts, sinks a little
    * further and settles back. It is the one beat that keeps a long sleep from reading as a still
    * image, and it is composited for the same reason the twitch is — the sleeping pose's own fill is
    * what holds her slumped, and a replacing animation would take that away and stand her up.
@@ -204,7 +165,7 @@ export const DREAM = {
     ],
   } as Garnish,
   /** The stir a pointer passing over the board raises: she is asleep, and something moved. It plays
-   *  OVER the sleep like the other two, so it composites as well. */
+   *  over the sleep like the other two, so it composites as well. */
   stirFrames: {
     part: 'pose', dur: 620, easing: 'ease-in-out', composite: 'add',
     keyframes: [

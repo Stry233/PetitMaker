@@ -1,32 +1,23 @@
+// @vitest-environment jsdom
 /**
- * THE BOARD RESERVES THE TALLEST TRIO ITS OWN ROTATION CAN EVER SHOW, NOT A
- * UNIFORM PER-ROW CLAMP AND NOT THREE TALL SLIPS THAT NEVER STAND TOGETHER.
+ * The board reserves the tallest trio its own rotation can ever show, not a uniform per-row clamp
+ * and not three tall slips that never stand together. Slips wrap per order and per locale, so each
+ * stands at its natural height and only the board's outer height is fixed, to the tallest window of
+ * consecutive shown orders; a lighter trio leaves empty room under the rows.
  *
- * A slip's height is its own two lines wrapped at the panel's width, so it differs per order and per
- * locale — which made the board grow and shrink by tens of px every time it turned over, taking the
- * note under it and (wherever the panel was not already at its cap) the whole column with it. Each
- * slip stands at its OWN natural height: only the board's outer height is fixed, to the tallest sum
- * any window of SHOWN consecutive orders in the cycle adds up to, so a rotation that lands a lighter
- * trio leaves the difference as empty room under the rows rather than moving the board.
+ * The reserve is in the rows' own CSS px. The ruler's rects are screen px (the frame's and the UI's
+ * zoom multiply into `getBoundingClientRect`), so a scale probe beside the stack divides them out.
  *
- * THE RESERVE IS IN THE ROWS' OWN CSS PX. The rects the ruler reads are screen px — the frame's css
- * zoom and the UI zoom both multiply into `getBoundingClientRect` — while the reserve is written
- * back as a css height inside those same zooms, so a rect taken for a css px reserves zoom-times the
- * room (measured live: 204 css px reserved against a 216 css px trio at zoom .864, the last slip's
- * second line cut). The scale probe beside the stack is what divides the units back out.
- *
- * jsdom HAS NO LAYOUT, so the geometry is supplied: `getBoundingClientRect` is stubbed to answer a
- * row's height from the length of the text inside it (which is the same thing a wrap does and makes
- * the per-locale case real rather than notional), times a zoom the probe reports, which makes the
- * unit conversion real too.
+ * jsdom has no layout: `getBoundingClientRect` is stubbed to answer a row's height from its text
+ * length times the probe's zoom.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { act, fireEvent, render, within } from '@testing-library/react';
 import { I18nProvider } from '../../../i18n/context';
 import { useEditorStore } from '../../../state/store';
-import { DreamOffice, DREAMS, boardHeight } from '../../../ui/agent/DreamOffice';
-import { translations } from '../../../i18n/translations';
-import type { Locale } from '../../../core/model/types';
+import { DreamOffice, DREAMS, boardHeight } from '../../../ui/agent/desk/DreamOffice';
+import { translations } from '../../_support/locale-tables';
+import type { Locale } from '../../../core/model/locale';
 
 /** How tall a row of `n` characters stands, in css px in the stub: strictly increasing with the text
  *  it holds, so two slips of different length never tie by coincidence. The numbers matter only in
@@ -74,7 +65,7 @@ function board(container: HTMLElement): { height: string; rows: number[] } {
   };
 }
 
-/** Every order in the pool's own natural height IN CSS PX, read off the hidden ruler stack: the
+/** Every order in the pool's own natural height in CSS px, read off the hidden ruler stack: the
  *  stubbed rects answer in screen px, so the stub's own zoom divides back out. */
 function measuredPool(container: HTMLElement): number[] {
   return [...container.querySelectorAll('[data-testid="dream-measure"] > *')]
@@ -113,7 +104,7 @@ describe('the dreaming board reserves one height', () => {
       const first = board(container);
       expect(first.height, 'the board reserves a height at mount').toBe(`${expected}px`);
 
-      // TWO ROTATIONS. The board is driven by a rAF loop off `performance.now()`, so the clock is
+      // Two rotations. The board is driven by a rAF loop off `performance.now()`, so the clock is
       // what turns it over; the beat is 3800ms.
       const seen = new Set<string>([first.height]);
       for (const _ of [0, 1]) {
@@ -124,9 +115,9 @@ describe('the dreaming board reserves one height', () => {
     });
   }
 
-  /** The rotation shows SHOWN consecutive orders of the cycle, so the tallest trio it can ever show
+  /** The rotation shows shown consecutive orders of the cycle, so the tallest trio it can ever show
    *  is the tallest cyclic window — not the pool's three tallest from anywhere (three tall slips that
-   *  never stand together buy room no real trio uses) and not the tallest slip repeated SHOWN times
+   *  never stand together buy room no real trio uses) and not the tallest slip repeated shown times
    *  (a uniform clamp, which overshoots the same way). */
   it('reserves the tallest trio the rotation can actually show, not the pool\'s three tallest from anywhere', () => {
     // Cyclic windows of three: 201, 102, 201, 201, 201. The three tallest from anywhere sum to 300.
@@ -141,7 +132,7 @@ describe('the dreaming board reserves one height', () => {
   });
 
   /** The rects the ruler reads carry the frame's zoom; the reserve is a css height inside it. A rect
-   *  written back unconverted reserves zoom-times the room: too tall above 1, CLIPPING below 1. */
+   *  written back unconverted reserves zoom-times the room: too tall above 1, clipping below 1. */
   it('writes the reserve in the rows\' own css px, not the screen px the rects answer in', () => {
     const { container } = mount();
     const cssPool = measuredPool(container);
@@ -169,17 +160,10 @@ describe('the dreaming board reserves one height', () => {
   });
 
   /**
-   * THE RULER CANNOT REACH THE BOARD'S SCROLLABLE OVERFLOW. The stack sizes itself to the WHOLE pool,
-   * unclamped, so it is taller than the reserve whenever the pool holds anything past the shown trio —
-   * and an absolutely positioned descendant's box counts toward its scrolling ancestor's scrollable
-   * overflow whatever its visibility, so the bare stack left `dream-rows` reporting a full pool of
-   * scrollHeight below the reserve (measured live: 303 against a 201 box). jsdom does no layout, so
-   * what is pinned here is the containment that removes it — the ruler stands inside its own
-   * zero-height overflow-hidden box, which contributes nothing and clips its descendants out of the
-   * board's accounting — plus the board's own `overflow: hidden`, the backstop over the rotation's
-   * transient geometry (the departing ghost overlaid on the rows, the incoming row's entrance
-   * travel). The live number is verified in the rotation sweep: `dream-rows` scrollHeight equals its
-   * clientHeight at rest, in every locale swept.
+   * The ruler cannot reach the board's scrollable overflow. The stack sizes itself to the whole pool,
+   * and an absolutely positioned descendant counts toward its scrolling ancestor's overflow whatever
+   * its visibility. So the ruler stands in its own zero-height overflow-hidden box, and the board's
+   * own `overflow: hidden` backs that up over the rotation's transient geometry.
    */
   it('contains the ruler in a box the board\'s scrollable overflow cannot see', () => {
     const { container } = mount();
@@ -192,16 +176,7 @@ describe('the dreaming board reserves one height', () => {
   });
 
   /**
-   * THE POOL'S OWN TEXT IS WHAT SIZES THE RESERVE, so a title or sub line that runs long enough to
-   * wrap is what makes it grow. Measured live (panel-harness, `state=disconnected`, 1280x800, the
-   * frame's own 1.25 zoom): a SUB or TITLE line wraps at 39-43 chars in en and 33-38 chars in ru,
-   * which puts its order in the pool's own tallest trio and grows the reserve (294.5px in en and
-   * 364.5px in ru with three such lines). At the lengths below none of the three longest lines wraps
-   * in either locale, and the reserve measures 222px in en and 293px in ru: en still under ru, since
-   * ru's own outliers (village's and forest's title, road's sub) still run one wrapped line.
-   */
-  /**
-   * DOCKED, THE BOARD TAKES THE ROOM THAT EXISTS: the zone is the window tall, so a three-row window
+   * Docked, the board takes the room that exists: the zone is the window tall, so a three-row window
    * over a five-order pool showed three slips against hundreds of px of empty cream. The whole pool
    * stands, at its own natural height — no rotation window, so no reserve and no ruler either.
    */
@@ -229,6 +204,11 @@ describe('the dreaming board reserves one height', () => {
     });
   });
 
+  /**
+   * A title or sub line long enough to wrap grows the reserve: in the live panel at 1280x800 and
+   * the frame's 1.25 zoom such a line wraps at 39-43 chars in en and 33-38 in ru. At the lengths
+   * below none of the three longest lines wraps in either locale.
+   */
   it('keeps the pool\'s known-tall lines short enough not to wrap, in en and in ru', () => {
     const village = DREAMS.find((o) => o.id === 'village')!;
     const forest = DREAMS.find((o) => o.id === 'forest')!;
@@ -250,7 +230,7 @@ describe('the keyless office points at Help', () => {
   it('opens the setup page at its key steps from Learn more', () => {
     useEditorStore.getState().setHelpTarget(null);
     const { container } = mount();
-    fireEvent.click(within(container).getByRole('button', { name: translations.en['agent3.learn_more'] }));
+    fireEvent.click(within(container).getByRole('button', { name: translations.en['agent.learn_more'] }));
     expect(useEditorStore.getState().helpTarget).toEqual({ page: 'agent-setup', anchor: 'agsetup-keys' });
     expect(useEditorStore.getState().modals.help).toBe(true);
   });

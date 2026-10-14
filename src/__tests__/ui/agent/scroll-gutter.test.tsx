@@ -1,15 +1,14 @@
+// @vitest-environment jsdom
 import { describe, it, expect, beforeEach } from 'vitest';
 import { render } from '@testing-library/react';
-import { MotionConfig } from 'framer-motion';
-import { I18nProvider } from '../../../i18n/context';
 import { useEditorStore } from '../../../state/store';
 import { PanelShell } from '../../../ui/agent/PanelShell';
-import { useAgentPanelSettings } from '../../../ui/agent/settings';
+import { useAgentConnection } from '../../../agent/connection/store';
 import { PROVIDER_IDS, type ProviderId } from '../../../agent/providers/defaults';
 import type { PanelView } from '../../../agent/core/project-view';
+import { makeView, panelProps, Wrapper } from '../../_support/agent-panel';
 
 const backing = new Map<string, string>();
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 (globalThis as any).localStorage = {
   getItem: (k: string) => backing.get(k) ?? null,
   setItem: (k: string, v: string) => void backing.set(k, String(v)),
@@ -17,35 +16,15 @@ const backing = new Map<string, string>();
   clear: () => backing.clear(),
 };
 
-function Wrapper({ children }: { children: React.ReactNode }) {
-  return (
-    <MotionConfig reducedMotion="always">
-      <I18nProvider>{children}</I18nProvider>
-    </MotionConfig>
-  );
-}
-
 beforeEach(() => {
   backing.clear();
   useEditorStore.setState({ locale: 'en' });
-  useAgentPanelSettings.setState({
+  useAgentConnection.setState({
     provider: 'claude',
     model: Object.fromEntries(PROVIDER_IDS.map((id) => [id, ''])) as Record<ProviderId, string>,
     oversight: 'checkpoint', customBaseUrl: '', keyed: [], hydrated: true,
   });
 });
-
-function makeView(over: Partial<PanelView> = {}): PanelView {
-  return {
-    phase: 'idle',
-    jobs: [],
-    queuedSteers: [],
-    vitals: { cells: 0, objects: 0, reverts: 0, jobs: 0 },
-    suggestion: null,
-    lastEventAt: 0,
-    ...over,
-  };
-}
 
 const VERBS = { onSend: () => {}, onStop: () => {}, onPause: () => {}, onGateAnswer: () => {} };
 
@@ -77,12 +56,13 @@ describe('panel scroll ownership', () => {
   for (const screen of screens) {
     it(`on the ${screen.name} screen`, () => {
       const { container, unmount } = render(
-        <PanelShell
-          view={screen.view}
-          connected={screen.connected}
-          pinned={screen.pinned}
-          now={0}
-          {...VERBS}
+        <PanelShell {...panelProps({
+          view: screen.view,
+          connected: screen.connected,
+          pinned: screen.pinned,
+          now: 0,
+          ...VERBS,
+        })}
         />,
         { wrapper: Wrapper },
       );

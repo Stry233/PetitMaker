@@ -2,7 +2,8 @@ import type { CSSProperties, RefObject } from 'react';
 import { useScrollFade } from './scroll-fade';
 import { useWheelToHorizontal } from './wheel-horizontal';
 
-type Bleed = number | string | { top: number; right: number; bottom: number; left: number };
+type Side = number | string;
+export type Bleed = number | string | { top: Side; right: Side; bottom: Side; left: Side };
 
 /** The focus ring and optional halo share their extent with clipping containers. */
 export const CONTROL_CLEARANCE = 'var(--control-clearance)';
@@ -12,7 +13,10 @@ export function scrollBleed(bleed: Bleed): CSSProperties {
   if (typeof bleed === 'number') return { padding: bleed, margin: -bleed };
   if (typeof bleed === 'string') return { padding: bleed, margin: `calc(0px - ${bleed})` };
   const values = [bleed.top, bleed.right, bleed.bottom, bleed.left];
-  return { padding: values.map((n) => `${n}px`).join(' '), margin: values.map((n) => `${-n}px`).join(' ') };
+  return {
+    padding: values.map((n) => (typeof n === 'number' ? `${n}px` : n)).join(' '),
+    margin: values.map((n) => (typeof n === 'number' ? `${-n}px` : `calc(0px - ${n})`)).join(' '),
+  };
 }
 
 export function useScrollRow(ref: RefObject<HTMLElement | null>, { zoom, bleed, pointerEvents, fade }: {

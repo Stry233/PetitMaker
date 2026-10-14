@@ -1,21 +1,26 @@
 /*
  * Group edits: move, rotate and delete a whole selection.
  *
- * Move and rotate are geometric, so they are ALL-OR-NOTHING and name the member that refused —
+ * Move and rotate are geometric, so they are all-or-nothing and name the member that refused —
  * a half-applied move leaves an arrangement nobody asked for. Delete removes what it can and
- * reports the rest, so selecting everything and pressing delete clears the map and keeps the plaza.
+ * reports the rest, so selecting everything and pressing delete clears the map and keeps the landmarks.
  *
  * `groupMembers` re-resolves ids every time: another path may have removed one since the
  * selection was built.
  */
+import { placeObjectCommand, removeObjectCommand } from '../../core/model/command-build';
 import { type Command, type GridState, type MacroCoord, type PlacedObject, type Refusal, type ValidationError, turnRotation } from '../../core/model/types';
-import type { CommandExecutor, StrokeTransaction } from '../../core/commands/command-executor';
-import { getFootprint } from '../../core/model/grid-model';
-import { movedObject, objectPlacementCommand, removeObjectCommand, stripCoatingsFor, withObjectsLifted } from './object-placer';
+import type { CommandExecutor, Stroke } from '../../core/commands/command-executor';
+import { getFootprint } from '../../core/grid/footprint';
+import { movedObject, probeWithout } from '../placement/probe';
+import { stripCoatingsFor } from '../placement/coatings';
 import { getCatalogItem } from '../../state/catalog';
 import { objectRect } from '../../state/object-geometry';
-import type { GroupRotation } from '../../canvas/group-arc';
+import { groupBounds, groupMembers } from '../../state/selection';
+import type { GroupRotation } from './group-rotation';
 import { removeObject } from './actions';
+import { PLACEMENT_GRID } from '../../core/game/profile';
+import { evidenceOn } from '../../core/grid/grids';
 
 interface GroupOpResult {
   /** Members re-placed. Zero on a refusal: a geometric group operation is all-or-nothing. */
@@ -26,28 +31,21 @@ interface GroupOpResult {
   refusal: Refusal | null;
 }
 
+/** Group membership and bounds live with the selection; the group's callers read them here too. */
+export { groupBounds, groupMembers };
+
 const NOTHING: GroupOpResult = { moved: 0, blockedBy: null, refusal: null };
 
-/** The objects `ids` still resolve to, in the given order. A selection may name an object that
- *  another path (the agent, a post-stroke revert, an undo) has since removed, and nothing validates
- *  membership centrally, so every group operation resolves through here. */
-export function groupMembers(state: GridState, ids: readonly string[]): PlacedObject[] {
-  return ids.flatMap((id) => {
-    const obj = state.objects.get(id);
-    return obj ? [obj] : [];
-  });
-}
-
 function refuse(
-  tx: StrokeTransaction, blockedBy: string | null, cmd: Command, errors: ValidationError[],
+  tx: Stroke, blockedBy: string | null, cmd: Command, errors: ValidationError[],
 ): GroupOpResult {
   tx.rollback();
   return { moved: 0, blockedBy, refusal: { cmd, errors } };
 }
 
 /**
- * Visual hook invoked once per member right before ITS OWN place command executes — the moment its
- * new geometry is about to appear. By then every member's OLD wrapper is already gone
+ * Visual hook invoked once per member right before its own place command executes — the moment its
+ * new geometry is about to appear. By then every member's old wrapper is already gone
  * (`applyGroupTransform` removes the whole group before placing any of it, so there is no
  * "old wrapper still exists" moment to animate a departure from, unlike a single delete's poof).
  * Lets a caller request a landing animation on the view it owns; never invoked for a member the
@@ -56,20 +54,13 @@ function refuse(
 export type GroupPlaceHook = (member: PlacedObject, next: PlacedObject) => void;
 
 /**
- * Lift every member off the map, then place each one where `destination` puts it, as ONE stroke
- * group and one undo entry.
- *
- * EVERY removal must land before ANY placement: a move is RemoveObject then a validated
- * PlaceObject, and a destination inside the group's own footprint collides as long as the group is
- * still standing there, so member-by-member validation cannot slide a tightly packed group one cell.
- *
- * Every removal's RESULT is checked: V-LOCK-02 refuses a locked object's removal while nothing gates
- * the placement that follows, so an unchecked removal silently relocates an object the map still holds.
- *
- * All-or-nothing: any refusal rewinds to the start, leaving the map and the undo stack as they
- * were. Move and rotate have that contract; `deleteGroup` applies partially.
+ * Lift every member off the map, then place each where `destination` puts it, as one stroke group
+ * and one undo entry. Every removal lands before any placement, or a destination inside the group's
+ * own footprint collides. Every removal's result is checked, since V-LOCK-02 refuses a locked
+ * removal while nothing gates the placement after it. Any refusal rewinds to the start; move and
+ * rotate share this contract, `deleteGroup` applies partially.
  */
-export function applyGroupTransform(
+function applyGroupTransform(
   executor: CommandExecutor, state: GridState, members: readonly PlacedObject[],
   destination: (obj: PlacedObject) => PlacedObject,
   onWillPlace?: GroupPlaceHook,
@@ -91,7 +82,7 @@ export function applyGroupTransform(
       // loop above, so a member's own cells are already free and a road it was sitting on is not
       // mistaken for one to strip.
       stripCoatingsFor(executor, state, next);
-      const cmd = objectPlacementCommand(next);
+      const cmd = placeObjectCommand(next);
       last = cmd;
       const res = executor.execute(cmd);
       if (!res.success) return refuse(tx, obj.id, cmd, res.errors);
@@ -106,11 +97,11 @@ export function applyGroupTransform(
   });
 }
 
-/** Move every member of `ids` by (dx, dy). Stale ids are skipped; see `applyGroupTransform` for
+/** Move every member of `ids` by `delta`. Stale ids are skipped; see `applyGroupTransform` for
  *  the ordering and the all-or-nothing contract. `onWillPlace` fires for every member (a move never
  *  turns anything, so there is no "carried vs spun" distinction here — see `rotateGroup`). */
 export function moveGroup(
-  executor: CommandExecutor, state: GridState, ids: readonly string[], dx: number, dy: number,
+  executor: CommandExecutor, state: GridState, ids: readonly string[], { dx, dy }: { dx: number; dy: number },
   onWillPlace?: GroupPlaceHook,
 ): GroupOpResult {
   return applyGroupTransform(
@@ -126,35 +117,14 @@ export function moveGroup(
 export type QuarterTurn = 1 | -1;
 
 /**
- * The pivot of a group rotation, held DOUBLED so the arithmetic stays integral:
- * `s2 = 2(cx + cy)`, `t2 = 2(cy - cx)`, where (cx, cy) is the centre of the selection's macro
- * bounding box.
- *
- * A turn moves the whole FOOTPRINT, not the anchor: the half-open rect [x, x+w) x [y, y+h) turns
- * into a rect whose extents are swapped, so a member's anchor moves by its own height (clockwise)
- * or its own width (counter-clockwise). An anchor-only turn drifts every non-square member outward
- * a little per turn.
- *
- * A member lands on the lattice exactly when s2 and t2 are even, i.e. when the box's width + height
- * is even. When it is odd the true centre sits on a cell-EDGE midpoint, half a cell off the grid in
- * both axes, and the whole rigid arrangement is nudged half a cell to land on it. The nudge keys on
- * the box's aspect, which SWAPS with every turn, so successive nudges cancel in pairs and four turns
- * return every member to its exact starting cell and rotation.
+ * The pivot of a group rotation, doubled to stay integral: `s2 = 2(cx + cy)`, `t2 = 2(cy - cx)`
+ * about the centre of the selection's macro bounding box. A turn moves the whole footprint, so a
+ * member's anchor shifts by its own height (clockwise) or width; turning the anchor alone drifts
+ * non-square members outward. When the box's width + height is odd the centre is half a cell off the
+ * grid and the arrangement is nudged onto it; the nudge keys on the box's aspect, which swaps every
+ * turn, so four turns return every member to its exact start.
  */
 interface RotationPivot { s2: number; t2: number }
-
-/** The macro bounds of a group's footprints, half-open (`maxX`/`maxY` are exclusive edges). The
- *  group's geometric centre — what a rotation turns the body about, and what the chrome anchors its
- *  control row to — is this box's centre, so both read it from here. */
-export function groupBounds(members: readonly PlacedObject[]): { minX: number; minY: number; maxX: number; maxY: number } {
-  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-  for (const obj of members) {
-    const r = objectRect(obj);
-    minX = Math.min(minX, r.x); minY = Math.min(minY, r.y);
-    maxX = Math.max(maxX, r.x + r.w); maxY = Math.max(maxY, r.y + r.h);
-  }
-  return { minX, minY, maxX, maxY };
-}
 
 function rotationPivot(members: readonly PlacedObject[], turn: QuarterTurn): RotationPivot {
   const { minX, minY, maxX, maxY } = groupBounds(members);
@@ -179,14 +149,14 @@ function spanRefusal(obj: PlacedObject): ValidationError {
   const { x, y, w, h } = objectRect(obj);
   return {
     ruleId: 'V-ROTATE-SPAN', message: 'error.span_no_group_rotate',
-    cells: getFootprint(x, y, w, h), grid: 'macro', severity: 'error',
+    ...evidenceOn(PLACEMENT_GRID, getFootprint(x, y, w, h)),
   };
 }
 
 /**
- * Visual hook for a group rotation, invoked ONCE with the WHOLE turn after every member has landed
+ * Visual hook for a group rotation, invoked once with the whole turn after every member has landed
  * — not per member like `GroupPlaceHook`. A rigid rotation is one body turning about one point, so
- * it is one tween: one pivot, one sweep, one clock over every member (see `canvas/group-arc.ts`). A
+ * it is one tween: one pivot, one sweep, one clock over every member (see `view/shared/motion/group-arc.ts`). A
  * per-member hook could not share a clock, and a stagger here would dissolve the one-body reading.
  *
  * Never invoked for a refused rotation: the transform is all-or-nothing, so there is nothing to
@@ -196,22 +166,15 @@ function spanRefusal(obj: PlacedObject): ValidationError {
 type GroupRotateHook = (turn: GroupRotation) => void;
 
 /**
- * Turn the selection as ONE rigid body: every member's position turns about the centre of the
- * selection's macro bounding box, and a member's own rotation advances by the same 90 degrees when
- * its catalog item is rotatable. Stale ids are skipped; see `applyGroupTransform` for the ordering
- * and the all-or-nothing contract.
+ * Turn the selection as one rigid body about the centre of its macro bounding box; a rotatable
+ * member's rotation advances by the same 90 degrees. Stale ids are skipped; ordering and the
+ * all-or-nothing contract are `applyGroupTransform`'s.
  *
- * A NON-ROTATABLE member with a SQUARE footprint is carried: its position turns, its facing stays.
- *
- * A non-rotatable member whose footprint is NON-SQUARE refuses the whole rotation by name. It cannot
- * swap its extent, so the selection's bounding box changes shape from turn to turn and the whole
- * arrangement walks away from where it started. The set is exactly the bridges, the ramps and the
- * plaza. Every halfStep item is one of these (non-rotatable, non-square), so a half-anchored member
- * always refuses here — it never reaches `rotationPivot`'s arithmetic below, which assumes integral
- * doubled coordinates.
- *
- * A LOCKED member refuses too: V-LOCK-02 refuses its removal, which refuses the whole rotation with
- * the rule's own error. So does any member landing illegally.
+ * A non-rotatable square member is carried (position turns, facing stays). A non-rotatable
+ * non-square member (the bridges, ramps and landmarks, including every halfStep item) refuses the whole
+ * rotation by name, since the box would change shape every turn; so `rotationPivot` only ever sees
+ * integral doubled coordinates. A locked member refuses through V-LOCK-02, as does any illegal
+ * landing.
  */
 export function rotateGroup(
   executor: CommandExecutor, state: GridState, ids: readonly string[], quarterTurns: QuarterTurn,
@@ -235,8 +198,8 @@ export function rotateGroup(
       rotation: turns ? turnRotation(obj.rotation, quarterTurns) : obj.rotation,
     };
   });
-  // The turn as ONE animation spec, handed over once the whole body has landed. `members` still
-  // holds the objects as they WERE, so the pre-rotation footprint centres are read from here: the
+  // The turn as one animation spec, handed over once the whole body has landed. `members` still
+  // holds the objects as they were, so the pre-rotation footprint centres are read from here: the
   // commands have already applied, and a view's own geometry stands at the destination, so where
   // each member came from is the one thing it cannot look up for itself.
   if (res.moved > 0 && onRotate) {
@@ -261,25 +224,17 @@ export interface DeleteGroupResult {
   deleted: number;
   /** Members left in place because their removal was refused (locked). */
   kept: number;
-  /** Set only when NOTHING was removed (every member refused), and named by the first member.
+  /** Set only when nothing was removed (every member refused), and named by the first member.
    *  `reportDeleteGroup` keys the error-vs-info register off it. */
   refusal: Refusal | null;
 }
 
 /**
- * Delete every member of `ids` that isn't locked, as one stroke group and one undo entry. Stale ids
- * are skipped. PARTIAL, unlike `applyGroupTransform`'s all-or-nothing contract: a deleted subset
- * leaves the survivors exactly where they were, so no arrangement is deformed by a partial result.
- *
- * `onWillRemove` fires for a member right before ITS OWN remove command executes — the same timing
- * `applyGroupTransform`'s `onWillPlace` gives a landing, mirrored for a departure (a caller supplies
- * the poof; below `canvas` nothing here can play one itself). Gated on the same pre-command probe
- * `removeObject` itself runs, so a member the probe refuses never fires the hook.
- *
- * Runs `removeObject` per member in one silent transaction, so a skipped lock doesn't fire a
- * `validation-failed` toast per member and a throw restores every member, then collapses the
- * per-member undo entries into one. The caller reports `kept` (and which ids survive, by
- * re-checking `state.objects`).
+ * Delete every unlocked member of `ids` as one stroke group and one undo entry, skipping stale ids.
+ * Partial, unlike `applyGroupTransform`: survivors stay where they were. `onWillRemove` fires right
+ * before a member's remove executes (the caller supplies the poof), gated on `removeObject`'s own
+ * probe. One silent transaction, so skipped locks raise no toast each and a throw restores every
+ * member; the caller reports `kept`.
  */
 export function deleteGroup(
   executor: CommandExecutor, state: GridState, ids: readonly string[],
@@ -290,14 +245,14 @@ export function deleteGroup(
   // A throw part-way takes the removals already applied back with it.
   const deleted = executor.transaction({ silent: true }, (tx) => {
     const n = members.reduce((count, obj) => {
-      // Probed BEFORE the command, or the hook has nothing left to animate once execute() emits
+      // Probed before the command, or the hook has nothing left to animate once execute() emits
       // objects-changed and the view destroys the wrapper for this id.
       if (executor.getRegistry().validatePreCommand(removeObjectCommand(obj), state).length === 0) {
         onWillRemove?.(obj);
       }
       return count + (removeObject(executor, obj).ok ? 1 : 0);
     }, 0);
-    if (n > 0) executor.collapseHistory(tx.start);
+    if (n > 0) tx.collapse();
     return n;
   });
   if (deleted > 0) return { deleted, kept: members.length - deleted, refusal: null };
@@ -316,8 +271,9 @@ export function previewGroupMove(
 ): boolean {
   const members = groupMembers(state, ids);
   if (members.length === 0 || members.some((obj) => obj.locked)) return false;
-  return withObjectsLifted(state, members, () => members.every((obj) => {
-    const cmd = objectPlacementCommand(movedObject(state, obj, obj.position.x + dx, obj.position.y + dy));
-    return executor.getRegistry().validatePreCommand(cmd, state).length === 0;
-  }));
+  const probe = probeWithout(state, members);
+  return members.every((obj) => {
+    const cmd = placeObjectCommand(movedObject(state, obj, obj.position.x + dx, obj.position.y + dy));
+    return executor.getRegistry().validatePreCommand(cmd, probe.view, probe.scope).length === 0;
+  });
 }

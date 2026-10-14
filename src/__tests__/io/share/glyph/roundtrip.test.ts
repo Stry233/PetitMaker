@@ -1,10 +1,16 @@
 import { describe, it, expect } from 'vitest';
-import { encodeGlyph, encodeGlyphV2 } from '../../../../io/share/glyph/encode';
+import { encodeGlyph } from '../../../../io/share/glyph/encode';
+import { BG, dataModuleRect, encodeGlyphV2 } from '../../../_support/glyph-v2';
 import { decodeGlyph } from '../../../../io/share/glyph/decode';
-import { currentBandSize, dataModuleRect, type Tier } from '../../../../io/share/glyph/geometry';
-import { BG, PALETTE16 } from '../../../../io/share/glyph/palette';
+import { currentBandSize, type Tier } from '../../../../io/share/glyph/geometry';
+import { paletteForVersion } from '../../../../io/share/glyph/palette';
 
-const payload = (n: number, seed = 5) => { const a = new Uint8Array(n); let s = seed >>> 0; for (let i = 0; i < n; i++) { s = (Math.imul(s, 1664525) + 1013904223) >>> 0; a[i] = s >>> 24; } return a; };
+const payload = (n: number, seed = 5) => {
+  const a = new Uint8Array(n);
+  let s = seed >>> 0;
+  for (let i = 0; i < n; i++) { s = (Math.imul(s, 1664525) + 1013904223) >>> 0; a[i] = s >>> 24; }
+  return a;
+};
 const eq = (a: Uint8Array | null, b: Uint8Array) => !!a && a.length === b.length && a.every((v, i) => v === b[i]);
 
 /** Paste the band into a taller white "composition" at an offset (title/map above, footer below). */
@@ -46,7 +52,7 @@ describe('glyph exact round-trip', () => {
     const n = 1100;
     const mb = 12;
     const g = encodeGlyphV2(payload(n), mb)!;
-    const darkest = PALETTE16.reduce((a, b) => (a[0] + a[1] + a[2] <= b[0] + b[1] + b[2] ? a : b));
+    const darkest = paletteForVersion(2)!.reduce((a, b) => (a[0] + a[1] + a[2] <= b[0] + b[1] + b[2] ? a : b));
     expect(darkest[0] + darkest[1] + darkest[2]).toBeLessThan(150);
 
     const rgba = new Uint8Array(g.rgba);

@@ -1,8 +1,7 @@
 // @vitest-environment node
 import { describe, it, expect } from 'vitest';
-// @ts-ignore - node:fs is untyped here (no @types/node)
 import { readFileSync } from 'node:fs';
-import { DEPLOY_TARGETS } from '../../legal/deploy-targets';
+import { DEPLOY_TARGETS } from '../../platform/build/deploy-targets';
 import { LEGAL } from '../../legal/config';
 import { canonicalPagePath } from '../../legal/site-paths';
 import { pagePlan } from '../../../scripts/legal-pages-core.mts';

@@ -1,7 +1,7 @@
 // Systematic Reed–Solomon over GF(256), FCR=0, generator
 // root α^0..α^(nsym-1). Supports combined erasure + error correction (Berlekamp–Massey error
 // locator seeded by the erasure locator, Chien search, Forney magnitudes). Returns the
-// corrected DATA (parity stripped), or null when the codeword is uncorrectable.
+// corrected data (parity stripped), or null when the codeword is uncorrectable.
 import { gfMul, gfDiv, gfInv, gfPow } from './gf256';
 
 // Polynomials are big-endian: index 0 = highest degree (Horner-friendly).

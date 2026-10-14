@@ -1,6 +1,6 @@
 /**
  * The card a map selection wears: the item's name and its actions on one row, with its details grown
- * from that row on request. Tracks the selection through the ACTIVE view's projection, imperatively,
+ * from that row on request. Tracks the selection through the active view's projection, imperatively,
  * on viewport, object, cell, resize, chrome-scale and active-view changes (`viewMode` flips before the
  * replacement projection registers).
  *
@@ -11,41 +11,36 @@
  * card follows and keeps its side of the selection.
  */
 import { AnimatePresence, motion, useReducedMotionConfig } from 'framer-motion';
-import { useCallback, useEffect, useLayoutEffect, useReducer, useRef, useState, type CSSProperties, type ReactNode } from 'react';
-import { viewportSize } from '../../../core/runtime/viewport-space';
+import { useState, type CSSProperties, type ReactNode } from 'react';
 import { getCell } from '../../../core/model/grid-model';
-import { turnsInSession } from '../../../kit/operations/planet-session';
-import { surfaceElevation } from '../../../core/edge-cut/terrain-silhouette';
-import { TerrainType, type BlockRef, type GridState, type PlacedObject, type Rotation, turnRotation } from '../../../core/model/types';
-import { getActiveView, onProjectionChange } from '../../../canvas/active-view';
-import { forwardMapWheel } from '../../../canvas/interaction/map-wheel';
-import type { ViewProjection } from '../../../canvas/view-projection';
+import { surfaceElevation } from '../../../core/domain/terrain/terrain-surface';
+import { TerrainType, type GridState, type Rotation } from '../../../core/model/types';
+import { groupSummary, narrowToCatalog, objectSummary, selectedObjectIds } from '../../../state/selection';
+import { getActiveView } from '../../../view/active-view';
 import { useEditorStore } from '../../../state/store';
-import { singleSelection, selectedObjectIds } from '../../../state/selection';
 import { getCatalogItem } from '../../../state/catalog';
-import { subscribeMapStats } from '../../../state/map-stats';
-import { getPlacedObjectSize } from '../../../state/object-geometry';
-import { groupMembers, groupBounds } from '../../../tools/objects';
 import { formatLoad } from '../../../i18n/load';
-import { useT, localizedName } from '../../../i18n/context';
+import { localizedName, useLocale, useT } from '../../../i18n/context';
 import { iconUrl } from '../../../assets/icon-urls';
-import { pickedMaterial, pickSelection } from '../../../kit/pick-selection';
-import { rotateGroupAction, rotateObjectAction, rotateSessionPlazaAction, deleteSelection, isGroupRotationInFlight } from '../../../kit/group-edit';
+import { pickSelection } from '../../../editor/editing/pick-selection';
+import {
+  deleteSelection, faceSelected, rotateSelection, selectionTarget, type SelectionTarget as Target,
+} from '../../../editor/editing/group-edit';
 import { touchFloorZoom, useChromeScale, useDenseScript, useDevicePixelRatio, useTouchPrimary } from '../../design/scale';
-import { colors, cursors, exitTransition, font, interactionProfiles, radii, springs, z } from '../../design/styles';
-import { INK, INSET, LINE, PLATE, PLATE_INK } from '../../design/tokens';
+import { cursors, font, interactionProfiles, radii, z } from '../../design/styles';
+import { INK, INSET, LINE, PLATE, PLATE_INK, ERROR } from '../../design/tokens';
 import { ShapeEdge, isWebKitEngine } from '../../design/shape-edge';
 import { skin } from '../../design/window-skin';
 import { roleFont, weightVars } from '../../design/text-weight';
-import { amplitude, easingCss, framerMotion, seconds } from '../../design/motion';
-import { visualRect } from '../../design/visual-rect';
+import { amplitude, framerMotion } from '../../design/motion';
 import { SegmentedControl } from '../../primitives/SegmentedControl';
-import { Glyph, TrashIcon } from '../../primitives/line-glyphs';
-import { MODES } from '../../shell/frame';
-import { layerName } from '../../shell/layer-name';
-import { helpTargetAttr } from '../modals/help/targets';
-import { clearMapArea } from '../../primitives/map-edge';
-import { CARD_MARGIN, placeSelectionCard, type CardSide, type ScreenBounds } from './selection-card-layout';
+import { Glyph, TrashIcon, ChevronIcon } from '../../primitives/line-glyphs';
+import { MODE_ICONS } from '../../design/mode-icons';
+import { layerName } from '../../session/layer-name';
+import { helpTargetAttr } from '../../session/help-targets';
+import { facingAngle, useSelectionCardPlace } from './use-selection-card-place';
+import { useObservedSize } from '../../primitives/use-observed-size';
+import { useMapRevision } from '../../session/use-map-revision';
 
 /** Header row height in css px; its ends are half-circles. */
 const ROW = 48;
@@ -55,93 +50,6 @@ const THUMB = 36;
 const TAIL = 14;
 const FACINGS = ['0', '90', '180', '270'] as const;
 type Facing = typeof FACINGS[number];
-
-/** The action a selection can take; locked objects (the plaza) and bare ground take none. */
-interface Target {
-  key: string;
-  plural: boolean;
-  block: BlockRef | null;
-  object: PlacedObject | null;
-  rotatable: boolean;
-  deletable: boolean;
-  pickable: boolean;
-  /** The planet session's plaza: it turns about its centre with its footprint swapped, so it has no facing. */
-  sessionPlaza: boolean;
-}
-
-function readTarget(selection: readonly BlockRef[], gs: GridState | null, inSession: boolean): Target | null {
-  const plural = selection.length > 1;
-  if (plural) {
-    return { key: `g:${selectedObjectIds(selection).join(',')}`, plural, block: null, object: null, rotatable: true, deletable: true, pickable: false, sessionPlaza: false };
-  }
-  const block = singleSelection(selection);
-  if (!block || !gs) return null;
-  const object = block.kind === 'object' ? gs.objects.get(block.id) ?? null : null;
-  const item = object ? getCatalogItem(object.catalogId) : null;
-  const terrain = block.kind === 'terrain' ? getCell(gs.cells, block.x, block.y)?.terrain ?? null : null;
-  const sessionPlaza = turnsInSession(object, inSession);
-  const rotatable = (!!item?.rotatable && !object?.locked) || sessionPlaza;
-  const deletable = (!!object && !object.locked) || !!terrain;
-  const pickable = pickedMaterial(gs, selection) !== null;
-  if (!deletable && !pickable) return null;
-  return { key: block.kind === 'object' ? block.id : `t:${block.x},${block.y}`, plural, block, object, rotatable, deletable, pickable, sessionPlaza };
-}
-
-/** Screen bounds of what is selected, in visual px, or null when it cannot be placed. */
-function selectionBounds(sel: readonly BlockRef[], gs: GridState, proj: ViewProjection): ScreenBounds | null {
-  const boxOf = (corners: { x: number; y: number; behind?: boolean }[]) => {
-    if (corners.some((p) => p.behind)) return null;
-    const x = Math.min(...corners.map((p) => p.x)), y = Math.min(...corners.map((p) => p.y));
-    return { x, y, w: Math.max(...corners.map((p) => p.x)) - x, h: Math.max(...corners.map((p) => p.y)) - y };
-  };
-  const footprint = (x: number, y: number, w: number, h: number) => boxOf([
-    proj.cellToScreen(x, y), proj.cellToScreen(x + w, y), proj.cellToScreen(x, y + h), proj.cellToScreen(x + w, y + h),
-  ]);
-  if (sel.length > 1) {
-    const members = groupMembers(gs, selectedObjectIds(sel));
-    if (members.length === 0) return null;
-    if (proj.objectScreenBox) {
-      const boxes = members.map((m) => proj.objectScreenBox!(m.id)).filter((b): b is ScreenBounds => !!b);
-      if (boxes.length === 0) return null;
-      const x = Math.min(...boxes.map((b) => b.x)), y = Math.min(...boxes.map((b) => b.y));
-      return { x, y, w: Math.max(...boxes.map((b) => b.x + b.w)) - x, h: Math.max(...boxes.map((b) => b.y + b.h)) - y };
-    }
-    const b = groupBounds(members);
-    return footprint(b.minX, b.minY, b.maxX - b.minX, b.maxY - b.minY);
-  }
-  const block = singleSelection(sel);
-  if (block?.kind === 'object') {
-    const obj = gs.objects.get(block.id);
-    if (!obj) return null;
-    if (proj.objectScreenBox) return proj.objectScreenBox(block.id);
-    const size = getPlacedObjectSize(obj);
-    return footprint(obj.position.x, obj.position.y, size.w, size.h);
-  }
-  // Terrain's rendered footprint is shifted half a macro cell up-left.
-  if (block?.kind === 'terrain') return footprint(block.x - 0.5, block.y - 0.5, 1, 1);
-  return null;
-}
-
-/** Changes whenever the camera does, and only then. */
-function cameraSignature(proj: ViewProjection): string {
-  return [[0, 0], [8, 0], [0, 8]].map(([x, y]) => {
-    const p = proj.cellToScreen(x!, y!);
-    return `${Math.round(p.x * 2)},${Math.round(p.y * 2)}${p.behind ? 'b' : ''}`;
-  }).join(';');
-}
-
-function memberPositions(sel: readonly BlockRef[], gs: GridState): string {
-  return sel.map((b) => {
-    if (b.kind !== 'object') return `${b.x},${b.y}`;
-    const o = gs.objects.get(b.id);
-    return o ? `${o.position.x},${o.position.y}` : '-';
-  }).join(';');
-}
-
-/** A turn can shift a footprint's anchor cell; a change of facing marks that shift as the member's own. */
-function memberRotations(sel: readonly BlockRef[], gs: GridState): string {
-  return sel.map((b) => (b.kind === 'object' ? gs.objects.get(b.id)?.rotation ?? '-' : '')).join(';');
-}
 
 const btnReset: CSSProperties = { border: 'none', padding: 0, margin: 0, background: 'transparent', fontFamily: font.family, cursor: cursors.clickable, WebkitTapHighlightColor: 'transparent' };
 
@@ -166,19 +74,6 @@ const FacingArrow = ({ facing, deg }: { facing: string; deg: number }) => (
     <path d="M12 19V5M6 11l6-6 6 6" />
   </svg>
 );
-
-/** Map direction of an item's front for each facing: south at 0 degrees, turning clockwise. */
-const FRONT: Record<string, [number, number]> = { '0': [0, 1], '90': [-1, 0], '180': [0, -1], '270': [1, 0] };
-
-/** Screen angle, clockwise from up, of a facing's front through the active projection. */
-function facingAngle(facing: string, obj: PlacedObject | null, proj: ViewProjection | undefined): number {
-  const [dx, dy] = FRONT[facing] ?? [0, 1];
-  if (!obj || !proj) return Math.atan2(dx, -dy) * 180 / Math.PI;
-  const size = getPlacedObjectSize(obj);
-  const cx = obj.position.x + size.w / 2, cy = obj.position.y + size.h / 2;
-  const a = proj.cellToScreen(cx, cy), b = proj.cellToScreen(cx + dx, cy + dy);
-  return Math.atan2(b.x - a.x, a.y - b.y) * 180 / Math.PI;
-}
 
 function Thumb({ src, color, count }: { src?: string; color?: string; count?: number }) {
   return (
@@ -205,14 +100,10 @@ export function SelectionCard() {
   const t = useT();
   const selection = useEditorStore((s) => s.selection);
   const gridState = useEditorStore((s) => s.gridState);
-  const eventBus = useEditorStore((s) => s.eventBus);
-  const locale = useEditorStore((s) => s.locale);
-  const [, repaint] = useReducer((n: number) => n + 1, 0);
-  useEffect(() => selection.length > 0
-    ? subscribeMapStats(eventBus, () => useEditorStore.getState().gridState, repaint)
-    : undefined, [eventBus, selection.length]);
+  const locale = useLocale();
+  useMapRevision(selection.length > 0, 'frame');
   const inSession = useEditorStore((s) => !!s.planetSession);
-  const target = readTarget(selection, gridState, inSession);
+  const target = selectionTarget(selection, gridState, inSession);
   const chrome = useChromeScale();
   const touch = useTouchPrimary();
   const zoom = touchFloorZoom(chrome, touch, BUTTON);
@@ -236,186 +127,23 @@ function CardBody({ target, gs, zoom, weights, t, locale }: {
   t: ReturnType<typeof useT>;
   locale: ReturnType<typeof useEditorStore.getState>['locale'];
 }) {
-  const boxRef = useRef<HTMLDivElement>(null);
-  const headerRef = useRef<HTMLDivElement>(null);
-  const bodyRef = useRef<HTMLDivElement>(null);
-  const tailRef = useRef<HTMLSpanElement>(null);
-  const scrollRef = useRef<HTMLDivElement>(null);
+  const { refs, growUp } = useSelectionCardPlace(zoom, locale, ROW, TAIL);
   const [open, setOpen] = useState(false);
-  const [growUp, setGrowUp] = useState(true);
-  // The unfold animates to the body's LAYOUT height. A height of 'auto' is measured on screen, so under
+  // The unfold animates to the body's layout height. A height of 'auto' is measured on screen, so under
   // a chrome zoom below 1 it stops short and then snaps to the real height.
   const [bodyHeight, setBodyHeight] = useState(0);
   const reduced = useReducedMotionConfig() === true;
-  const reducedRef = useRef(reduced);
-  reducedRef.current = reduced;
-  const moveAnim = useRef<Animation | null>(null);
-  useLayoutEffect(() => {
-    const body = bodyRef.current;
-    if (!body) return;
-    const measure = () => setBodyHeight(body.offsetHeight);
-    measure();
-    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(measure) : null;
-    ro?.observe(body);
-    return () => ro?.disconnect();
-  }, []);
-  const zoomRef = useRef(zoom);
-  zoomRef.current = zoom;
-  const hold = useRef<{ members: string; positions: string; rotations: string; camera: string; frame: string; bounds: ScreenBounds; side?: CardSide } | null>(null);
-  const adoptPositions = useRef(false);
-
-  const place = useCallback(() => {
-    const box = boxRef.current, header = headerRef.current;
-    const proj = getActiveView()?.projection;
-    const state = useEditorStore.getState();
-    const gsLive = state.gridState;
-    if (!box || !header || !proj || !gsLive) return;
-    // Mid group rotation the members are briefly off the map; the card keeps its place and adopts
-    // the members' new positions once the operation has finished.
-    if (isGroupRotationInFlight()) { adoptPositions.current = true; return; }
-    const sel = state.selection;
-    const z = zoomRef.current;
-    const vp = viewportSize();
-    const size = { w: header.offsetWidth * z, h: header.offsetHeight * z, body: (bodyRef.current?.offsetHeight ?? 0) * z };
-    const positions = memberPositions(sel, gsLive);
-    // A move or a turn removes a member before placing it back; wait for it to land.
-    if (hold.current && positions.includes('-')) return;
-    const next = {
-      members: sel.map((b) => (b.kind === 'object' ? b.id : `${b.x},${b.y}`)).join(','),
-      positions,
-      rotations: memberRotations(sel, gsLive),
-      camera: cameraSignature(proj),
-      frame: `${z}|${vp.width}x${vp.height}|${Math.round(size.w)}x${Math.round(size.h)}`,
-    };
-    const held = hold.current;
-    const keep = !!held && held.members === next.members && held.camera === next.camera && held.frame === next.frame
-      && (held.positions === next.positions || held.rotations !== next.rotations || adoptPositions.current);
-    adoptPositions.current = false;
-    const bounds = keep ? held!.bounds : selectionBounds(sel, gsLive, proj);
-    if (!bounds) { box.style.visibility = 'hidden'; hold.current = null; return; }
-    // While the camera moves over the same selection the card keeps its side instead of flipping.
-    const prefer = held && held.members === next.members ? held.side : undefined;
-    // A relocation of the card's own (a moved member, a new side, a new size) travels; following
-    // the camera does not, or the card would trail the map it rides on.
-    const travel = !!held && held.members === next.members && held.camera === next.camera && !reducedRef.current
-      && box.style.visibility === 'visible';
-    const from = travel ? visualRect(header) : null;
-    if (!travel) { moveAnim.current?.cancel(); moveAnim.current = null; }
-    const area = clearMapArea(vp);
-    const p = placeSelectionCard(bounds, size, vp, area, undefined, undefined, prefer);
-    hold.current = { ...next, bounds, side: p.visible ? p.side : undefined };
-    if (!p.visible) { box.style.visibility = 'hidden'; return; }
-    box.style.visibility = 'visible';
-    box.dataset.grow = p.growUp ? 'up' : 'down';
-    // Where nothing holds the whole opened card, the details scroll inside the room there is.
-    const room = p.growUp ? p.top - area.top - CARD_MARGIN : area.bottom - CARD_MARGIN - p.top - size.h;
-    box.style.setProperty('--details-max', `${Math.max(ROW * 2, room / z)}px`);
-    const obj = sel.length === 1 && sel[0]!.kind === 'object' ? gsLive.objects.get(sel[0]!.id) ?? null : null;
-    for (const arrow of box.querySelectorAll<SVGElement>('[data-facing]')) {
-      arrow.style.transform = `rotate(${facingAngle(arrow.dataset.facing!, obj, proj)}deg)`;
-    }
-    box.style.left = `${p.left / z}px`;
-    if (p.growUp) { box.style.top = 'auto'; box.style.bottom = `${(vp.height - p.top - size.h) / z}px`; }
-    else { box.style.bottom = 'auto'; box.style.top = `${p.top / z}px`; }
-    setGrowUp(p.growUp);
-    // Applied now as well as on render, so the travel below measures the header where it will stand.
-    (box.firstElementChild as HTMLElement | null)?.style.setProperty('flex-direction', p.growUp ? 'column-reverse' : 'column');
-    const tail = tailRef.current;
-    if (tail) {
-      const lx = (p.tail.x - p.left) / z, ly = (p.tail.y - p.top) / z;
-      // The pointer's centre sits on the header's selection-facing edge; half of it is inside the
-      // plate's silhouette, so the shared outline runs from the plate down one side and back up.
-      // ShapeEdge paints WebKit at double size, so lengths inside it double there.
-      const k = isWebKitEngine() ? 2 : 1, half = TAIL / 2;
-      const px = (v: number) => `${v * k}px`;
-      const style: Record<string, string> = { left: '', right: '', top: '', bottom: '', width: px(TAIL), height: px(TAIL) };
-      if (p.side === 'above' || p.side === 'below') {
-        style.left = px(lx - half);
-        style[p.side === 'above' ? 'bottom' : 'top'] = px(-half);
-      } else {
-        style[p.side === 'right' ? 'left' : 'right'] = px(-half);
-        if (p.growUp) style.bottom = px(ROW - ly - half); else style.top = px(ly - half);
-      }
-      Object.assign(tail.style, style);
-      const card = box.firstElementChild as HTMLElement | null;
-      if (card) card.style.transformOrigin = p.side === 'right' ? `0 ${ly}px` : p.side === 'left' ? `100% ${ly}px` : `${lx}px ${p.growUp ? '100%' : '0'}`;
-    }
-    if (from) {
-      // FLIP from where the header row was drawn, including any travel still under way.
-      moveAnim.current?.cancel();
-      const to = visualRect(header);
-      const dx = (from.left - to.left) / z, dy = (from.top - to.top) / z;
-      if (Math.abs(dx) + Math.abs(dy) > 1 && typeof box.animate === 'function') {
-        moveAnim.current = box.animate(
-          [{ transform: `translate(${dx}px, ${dy}px)` }, { transform: 'none' }],
-          { duration: seconds('selection.card.move') * 1000, easing: easingCss('selection.card.move') },
-        );
-      }
-    }
-  }, []);
-
-  useLayoutEffect(() => {
-    const state = useEditorStore.getState();
-    const bus = state.eventBus;
-    const onEvent = () => place();
-    place();
-    const offProjection = onProjectionChange(bus, onEvent, { objects: true });
-    const header = headerRef.current;
-    const ro = typeof ResizeObserver !== 'undefined' && header ? new ResizeObserver(onEvent) : null;
-    if (ro && header) ro.observe(header);
-    // The card rides on the map: a wheel it does not use itself (only its details scroll) keeps
-    // driving the map, so a touchpad pan or zoom does not stop when the pointer crosses the card.
-    const box = boxRef.current;
-    const onWheel = (e: WheelEvent) => {
-      const scroller = scrollRef.current;
-      if (scroller && e.target instanceof Node && scroller.contains(e.target) && !e.ctrlKey) {
-        const room = e.deltaY > 0 ? scroller.scrollHeight - scroller.clientHeight - scroller.scrollTop : scroller.scrollTop;
-        if (Math.abs(e.deltaY) > Math.abs(e.deltaX) && room > 0) return;
-      }
-      forwardMapWheel(e);
-    };
-    box?.addEventListener('wheel', onWheel, { passive: false });
-    return () => {
-      offProjection();
-      ro?.disconnect();
-      box?.removeEventListener('wheel', onWheel);
-    };
-  }, [place]);
-
-  // A chrome-scale change rescales the `zoom` subtree without emitting anything.
-  useLayoutEffect(() => { place(); }, [zoom, locale, place]);
+  useObservedSize(() => refs.body.current, ([body]) => setBodyHeight(body!.offsetHeight), []);
 
   const exec = () => useEditorStore.getState();
-  const rotate = () => {
-    const s = exec();
-    if (!s.commandExecutor || !s.gridState) return;
-    if (target.plural) {
-      rotateGroupAction(s.commandExecutor, s.gridState, s.eventBus, selectedObjectIds(s.selection), 1);
-      return;
-    }
-    if (target.sessionPlaza) {
-      rotateSessionPlazaAction(s.eventBus);
-      return;
-    }
-    const sel = singleSelection(s.selection);
-    const cur = sel?.kind === 'object' ? s.gridState.objects.get(sel.id) : undefined;
-    if (!cur || !getCatalogItem(cur.catalogId)?.rotatable) return;
-    rotateObjectAction(s.commandExecutor, s.gridState, s.eventBus, cur, turnRotation(cur.rotation, 1), { from: cur.rotation, to: cur.rotation + 90 });
-  };
-  const face = (angle: Facing) => {
-    const s = exec();
-    const sel = singleSelection(s.selection);
-    const cur = sel?.kind === 'object' ? s.gridState?.objects.get(sel.id) : undefined;
-    const to = Number(angle) as Rotation;
-    if (!cur || !s.commandExecutor || !s.gridState || cur.rotation === to) return;
-    rotateObjectAction(s.commandExecutor, s.gridState, s.eventBus, cur, to, { from: cur.rotation, to });
-  };
+  const rotate = () => rotateSelection(90);
+  const face = (angle: Facing) => faceSelected(Number(angle) as Rotation);
   const remove = () => {
     const s = exec();
     if (target.plural) {
       // A group has no confirm step, matching the delete shortcut; one undo restores it.
       const ids = selectedObjectIds(s.selection);
-      if (s.commandExecutor && s.gridState && ids.length > 1) deleteSelection(s.commandExecutor, s.gridState, s.eventBus, t, ids);
+      if (ids.length > 1) deleteSelection(t, ids);
       return;
     }
     // The confirmation the Delete shortcut opens, unrolled from this button.
@@ -423,8 +151,8 @@ function CardBody({ target, gs, zoom, weights, t, locale }: {
   };
   const narrow = (catalogId: string) => {
     const s = exec();
-    const ids = selectedObjectIds(s.selection).filter((id) => s.gridState?.objects.get(id)?.catalogId === catalogId);
-    if (ids.length) s.setSelection(ids.map((id) => ({ kind: 'object', id })));
+    const refs = s.gridState ? narrowToCatalog(s.selection, s.gridState, catalogId) : [];
+    if (refs.length) s.setSelection(refs);
   };
 
   // What the card says about its selection.
@@ -433,38 +161,34 @@ function CardBody({ target, gs, zoom, weights, t, locale }: {
   const facts: [string, string][] = [];
   let kinds: { catalogId: string; name: string; icon?: string; n: number }[] = [];
   if (target.plural) {
-    const members = groupMembers(gs, selectedObjectIds(useEditorStore.getState().selection));
-    const byKind = new Map<string, number>();
-    for (const m of members) byKind.set(m.catalogId, (byKind.get(m.catalogId) ?? 0) + 1);
-    kinds = [...byKind].sort((a, b) => b[1] - a[1]).map(([catalogId, n]) => {
+    const group = groupSummary(gs, selectedObjectIds(useEditorStore.getState().selection));
+    kinds = group.kinds.map(({ catalogId, n }) => {
       const item = getCatalogItem(catalogId);
       return { catalogId, n, name: item ? localizedName(item.name, locale) : catalogId, icon: item?.icon ? iconUrl(item.icon) : undefined };
     });
-    title = t('selection.items', { n: members.length });
-    thumb = <Thumb src={kinds[0]?.icon} count={members.length} />;
+    title = t('units.objects', { n: group.count });
+    thumb = <Thumb src={kinds[0]?.icon} count={group.count} />;
     facts.push([t('selection.kinds'), String(kinds.length)]);
-    facts.push([t('selection.load'), formatLoad(locale, members.reduce((sum, m) => sum + (getCatalogItem(m.catalogId)?.loadValue ?? 0), 0), members.some((m) => getCatalogItem(m.catalogId)?.loadUnknown))]);
-    facts.push([t('selection.count'), String(members.length)]);
+    facts.push([t('selection.load'), formatLoad(locale, group.load, group.loadUnknown)]);
+    facts.push([t('selection.count'), String(group.count)]);
   } else if (target.object) {
     const obj = target.object;
     const item = getCatalogItem(obj.catalogId);
-    const size = getPlacedObjectSize(obj);
-    let placed = 0;
-    for (const o of gs.objects.values()) if (o.catalogId === obj.catalogId) placed++;
+    const one = objectSummary(gs, obj);
     title = item ? localizedName(item.name, locale) : obj.catalogId;
     thumb = <Thumb src={item?.icon ? iconUrl(item.icon) : undefined} color={item?.color} />;
-    facts.push([t('selection.size'), `${size.w}×${size.h}`]);
-    facts.push([t('selection.load'), formatLoad(locale, item?.loadValue ?? 0, item?.loadUnknown)]);
-    facts.push([t('selection.placed'), item?.maxCount ? `${placed}/${item.maxCount}` : String(placed)]);
+    facts.push([t('selection.size'), `${one.size.w}×${one.size.h}`]);
+    facts.push([t('selection.load'), formatLoad(locale, one.load, one.loadUnknown)]);
+    facts.push([t('selection.placed'), one.maxCount ? `${one.placed}/${one.maxCount}` : String(one.placed)]);
     facts.push([t('selection.layer'), layerName(t, obj.elevation)]);
   } else if (target.block?.kind === 'terrain') {
     const terrain = getCell(gs.cells, target.block.x, target.block.y)?.terrain;
     const mountain = terrain?.type === TerrainType.Mountain;
     title = t(mountain ? 'mode.mountain' : 'mode.water');
-    thumb = <Thumb src={MODES.find((m) => m.id === (mountain ? 'mountain' : 'water'))?.src} />;
+    thumb = <Thumb src={MODE_ICONS[mountain ? 'mountain' : 'water'].rest} />;
     if (terrain) facts.push([t('selection.layer'), layerName(t, mountain ? surfaceElevation(terrain) : terrain.elevation)]);
   }
-  const facing = target.object && target.rotatable && !target.sessionPlaza ? String(target.object.rotation) as Facing : null;
+  const facing = target.object && target.rotatable && !target.sessionLandmark ? String(target.object.rotation) as Facing : null;
   const proj = getActiveView()?.projection;
 
   const arrive = 1 - amplitude('selection.card.arrive');
@@ -474,7 +198,7 @@ function CardBody({ target, gs, zoom, weights, t, locale }: {
       transition={framerMotion('selection.fade')}
     >
       <div
-        ref={boxRef}
+        ref={refs.box}
         {...helpTargetAttr('select')}
         data-testid="selection-card"
         style={{
@@ -485,34 +209,34 @@ function CardBody({ target, gs, zoom, weights, t, locale }: {
         <motion.div
           initial={{ scale: arrive, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
-          exit={{ scale: arrive, opacity: 0, transition: exitTransition }}
+          exit={{ scale: arrive, opacity: 0, transition: framerMotion('surface.leave') }}
           transition={framerMotion('selection.card.arrive')}
           style={{
             display: 'flex', flexDirection: growUp ? 'column-reverse' : 'column', width: 'max-content',
             position: 'relative', color: INK, fontFamily: font.family, pointerEvents: 'auto',
           }}
         >
-          {/* The plate and its pointer are ONE silhouette under the map's hairline, so the outline
+          {/* The plate and its pointer are one silhouette under the map's hairline, so the outline
               runs on around the pointer without a seam wherever the pointer stands. */}
           <ShapeEdge style={{ position: 'absolute', inset: 0 }}>
             <span style={{ position: 'absolute', inset: 0, background: PLATE, borderRadius: (ROW / 2) * (isWebKitEngine() ? 2 : 1) }} />
-            <span ref={tailRef} style={{ position: 'absolute', background: PLATE, borderRadius: 3 * (isWebKitEngine() ? 2 : 1), transform: 'rotate(45deg)' }} />
+            <span ref={refs.tail} style={{ position: 'absolute', background: PLATE, borderRadius: radii.sm * (isWebKitEngine() ? 2 : 1), transform: 'rotate(45deg)' }} />
           </ShapeEdge>
-          <div ref={headerRef} style={{ position: 'relative', display: 'flex', alignItems: 'center', height: ROW, padding: '0 6px 0 6px', gap: 4, width: 'max-content' }}>
+          <div ref={refs.header} style={{ position: 'relative', display: 'flex', alignItems: 'center', height: ROW, padding: '0 6px 0 6px', gap: 4, width: 'max-content' }}>
             {thumb}
             <motion.button
               type="button"
               data-testid="selection-details"
               {...interactionProfiles.pill}
               aria-expanded={open}
-              aria-label={`${title}, ${t('selection.details')}`}
+              aria-label={t('selection.details_for', { name: title })}
               onClick={() => setOpen((v) => !v)}
               style={{ ...btnReset, display: 'flex', alignItems: 'center', gap: 4, height: BUTTON, padding: '0 8px 0 6px', borderRadius: radii.pill, color: PLATE_INK }}
             >
               <span style={{ ...roleFont('head'), maxWidth: 220, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{title}</span>
-              <motion.svg aria-hidden viewBox="0 0 24 24" width={13} height={13} animate={{ rotate: open !== growUp ? 180 : 0 }} transition={springs.stiff} style={{ color: skin.muted, flex: 'none' }}>
-                <path d="M 6 9 L 12 15.4 L 18 9" fill="none" stroke="currentColor" strokeWidth={3.6} strokeLinecap="round" strokeLinejoin="round" />
-              </motion.svg>
+              <motion.span aria-hidden animate={{ rotate: open !== growUp ? 180 : 0 }} transition={framerMotion('surface.arrive')} style={{ display: 'flex', color: skin.muted, flex: 'none' }}>
+                <ChevronIcon size={13} />
+              </motion.span>
             </motion.button>
             <span aria-hidden style={{ width: 1, alignSelf: 'stretch', margin: '12px 4px', background: LINE, flex: 'none' }} />
             {target.rotatable && (
@@ -526,14 +250,14 @@ function CardBody({ target, gs, zoom, weights, t, locale }: {
               </motion.button>
             )}
             {target.deletable && (
-              <motion.button type="button" data-testid="handle-delete" data-selection-delete {...interactionProfiles.tile} style={{ ...iconButton, color: colors.statusError }} onClick={remove} aria-label={t('a11y.delete')} title={t('a11y.delete')}>
+              <motion.button type="button" data-testid="handle-delete" data-selection-delete {...interactionProfiles.tile} style={{ ...iconButton, color: ERROR }} onClick={remove} aria-label={t('a11y.delete')} title={t('a11y.delete')}>
                 <TrashIcon />
               </motion.button>
             )}
           </div>
           {/* The body keeps its natural height laid out while closed, so the row is placed where the
               opened card will fit. It takes the header's width rather than widening the card. */}
-          <div ref={scrollRef} style={{ position: 'relative', width: 0, minWidth: '100%', maxHeight: 'var(--details-max)', overflowY: 'auto', overscrollBehavior: 'contain' }}>
+          <div ref={refs.scroll} style={{ position: 'relative', width: 0, minWidth: '100%', maxHeight: 'var(--details-max)', overflowY: 'auto', overscrollBehavior: 'contain' }}>
             <motion.div
               initial={false}
               animate={{ height: open ? bodyHeight : 0, opacity: open ? 1 : 0 }}
@@ -542,7 +266,7 @@ function CardBody({ target, gs, zoom, weights, t, locale }: {
               {...(open ? {} : { inert: '' })}
               style={{ overflow: 'hidden', pointerEvents: open ? undefined : 'none' }}
             >
-              <div ref={bodyRef} style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: growUp ? '12px 12px 4px' : '4px 12px 12px' }}>
+              <div ref={refs.body} style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: growUp ? '12px 12px 4px' : '4px 12px 12px' }}>
                 <div aria-hidden style={{ height: 1, background: LINE, margin: '0 4px', order: growUp ? 9 : 0 }} />
                 {facts.length > 0 && (
                   <div style={{ display: 'grid', gridTemplateColumns: `repeat(${facts.length > 1 ? 2 : 1}, minmax(0, 1fr))`, gap: 8 }}>
@@ -572,7 +296,7 @@ function CardBody({ target, gs, zoom, weights, t, locale }: {
                       idPrefix="selection-facing"
                       stretch={false}
                       render={(o) => <FacingArrow facing={o} deg={facingAngle(o, target.object, proj)} />}
-                      label={(o) => `${t('selection.facing')} ${t(`context.rotate_${o}`)}`}
+                      label={(o) => t('selection.facing_value', { angle: t(`context.rotate_${o}`) })}
                     />
                   </div>
                 )}

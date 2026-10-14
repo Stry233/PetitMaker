@@ -1,16 +1,14 @@
 /** A rule that throws part-way through a tool's stroke leaves the map and the undo stack as they were before that stroke. */
 import { describe, it, expect, afterEach, vi } from 'vitest';
-import { CommandExecutor } from '../../core/commands/command-executor';
-import { EventBus } from '../../core/commands/event-bus';
-import { CommandType, type Command, type EditorEvents, type GridState, type PlacedObject } from '../../core/model/types';
+import { CommandType, type Command, type GridState, type PlacedObject } from '../../core/model/types';
 import { createDefaultRegistry } from '../../rules/index';
-import { roadLookup } from '../../state/object-index';
 import { deleteGroup } from '../../tools/objects/group-actions';
-import { ObjectPlacerTool } from '../../tools/objects/object-placer';
-import { MacroTool } from '../../tools/macros/macro-tool';
-import type { ToolContext } from '../../tools/runtime/types';
-import { makeState } from '../rules/_helpers';
-import { makeToolCtx, objectsByCatalog } from './_tool-ctx';
+import { ObjectPlacerTool } from '../../tools/pointer/objects/object-placer';
+import { MacroTool } from '../../tools/pointer/macros/macro-tool';
+import { HEADLESS_OVERLAY, type HostedToolContext } from '../../tools/pointer/runtime/host';
+import { makeState, makeExecutor } from '../_support/map-state';
+import { makeToolCtx, objectsByCatalog } from '../_support/tool-ctx';
+import { cell, point } from '../_support/grid';
 
 /** A live map whose pre-command rules include one that throws whenever `throws` says so. */
 function world(throws: (cmd: Command, state: GridState) => boolean, size = 20) {
@@ -20,7 +18,7 @@ function world(throws: (cmd: Command, state: GridState) => boolean, size = 20) {
     id: 'T-THROW', phase: 'pre-command', appliesTo: [CommandType.PlaceObject, CommandType.RemoveObject],
     validate: (cmd, s) => { if (throws(cmd, s)) throw new Error('rule fault'); return []; },
   });
-  const executor = new CommandExecutor(state, new EventBus<EditorEvents>(), registry, roadLookup(state));
+  const executor = makeExecutor(state, registry);
   return { state, executor };
 }
 
@@ -35,7 +33,7 @@ describe('a throwing rule', () => {
     state.objects.set('b', house('b', 8, 4));
     expect(() => deleteGroup(executor, state, ['a', 'b'])).toThrow('rule fault');
     expect([...state.objects.keys()].sort()).toEqual(['a', 'b']);
-    expect(executor.getUndoStackSize()).toBe(0);
+    expect(executor.historyDepth()).toBe(0);
   });
 
   it('brings back the road the placer stripped when the placement throws', () => {
@@ -43,11 +41,11 @@ describe('a throwing rule', () => {
     const { state, executor } = world((cmd) => cmd.type === CommandType.PlaceObject && cmd.object.catalogId === 'building-stall' && ++placements === 2);
     state.objects.set('road', { id: 'road', catalogId: 'path-overgrown-dirt', position: { x: 5, y: 5 }, rotation: 0, elevation: 0 });
     const ctx = makeToolCtx(state, executor, 1, 1, { armedItem: 'building-stall' });
-    expect(() => new ObjectPlacerTool().onPointerDown({ x: 5, y: 5 }, { x: 5, y: 5 }, ctx)).toThrow('rule fault');
+    expect(() => new ObjectPlacerTool().onPointerDown(cell({ x: 5, y: 5 }), point({ x: 5, y: 5 }), ctx)).toThrow('rule fault');
     expect(placements, 'the probe passed and the placement threw').toBe(2);
     expect(objectsByCatalog(state, 'path-overgrown-dirt')).toHaveLength(1);
     expect(objectsByCatalog(state, 'building-stall')).toHaveLength(0);
-    expect(executor.getUndoStackSize()).toBe(0);
+    expect(executor.historyDepth()).toBe(0);
   });
 
   it('ends a planting spray at the faulted burst, keeps the earlier bursts as one step and stops the clock', () => {
@@ -57,14 +55,14 @@ describe('a throwing rule', () => {
     let live: GridState | null = null;
     const { state, executor } = world((cmd, s) => armed && s === live && cmd.type === CommandType.PlaceObject, 40);
     live = state;
-    const ctx: ToolContext = makeToolCtx(state, executor, undefined, undefined, {
+    const ctx: HostedToolContext = makeToolCtx(state, executor, undefined, undefined, {
       armedMacro: 'patch-tree',
-      overlay: { showGhost: vi.fn(), clearGhost: vi.fn() } as unknown as ToolContext['overlay'],
+      overlay: { ...HEADLESS_OVERLAY, showGhost: vi.fn(), clearGhost: vi.fn() },
     });
     const tool = new MacroTool();
     tool.onActivate();
 
-    tool.onPointerDown({ x: 10, y: 10 }, { x: 10, y: 10 }, ctx);
+    tool.onPointerDown(cell({ x: 10, y: 10 }), point({ x: 10, y: 10 }), ctx);
     const planted = state.objects.size;
     expect(planted).toBeGreaterThan(0);
     armed = true;
@@ -72,10 +70,10 @@ describe('a throwing rule', () => {
     expect(console.error).toHaveBeenCalledTimes(1);
     armed = false;
     vi.advanceTimersByTime(2000);
-    tool.onPointerMove({ x: 20, y: 20 }, { x: 20, y: 20 }, ctx);
-    tool.onPointerUp({ x: 20, y: 20 }, { x: 20, y: 20 }, ctx);
+    tool.onPointerMove(cell({ x: 20, y: 20 }), point({ x: 20, y: 20 }), ctx);
+    tool.onPointerUp(cell({ x: 20, y: 20 }), point({ x: 20, y: 20 }), ctx);
     expect(state.objects.size, 'nothing planted after the fault').toBe(planted);
-    expect(executor.getUndoStackSize()).toBe(1);
+    expect(executor.historyDepth()).toBe(1);
     executor.undo();
     expect(state.objects.size).toBe(0);
   });

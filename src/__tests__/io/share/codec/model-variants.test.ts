@@ -5,8 +5,11 @@ import { RangeDecoder, RangeEncoder } from '../../../../io/share/codec/bitio';
 import { tokenOf, type CellFields } from '../../../../io/share/codec/grid-io';
 import { SHARE_CATALOG_ORDER } from '../../../../io/share/codec/catalog-order';
 import { getMapTemplate } from '../../../../config/maps';
-import { CellZone } from '../../../../core/model/types';
-import type { SaveObject } from '../../../../io/save-format';
+import { CellZone } from '../../../../core/game/zones';
+import { templateAnchor } from '../../../../core/model/landmarks';
+import { wholeCellsOf } from '../../../../core/grid/footprint';
+import { rectContains } from '../../../../core/grid/rect';
+import type { SaveObject } from '../../../../io/save/format';
 import { frozenTemplateMask } from '../../../../io/share/codec/template-mask';
 
 const WIRE_PREFIX = [
@@ -42,19 +45,31 @@ describe('share codec model-shape wire order', () => {
 describe('template-mask model shapes', () => {
   const template = getMapTemplate('hexia');
   const count = template.width * template.height;
-  const inMask = (index: number) => template.zones[Math.floor(index / template.width)]?.[index % template.width] === CellZone.Grass;
+  const frozen = frozenTemplateMask(template, 1)!;
+  const inMask = (index: number) => frozen[index] === 1;
   const terrain = (): CellFields => ({ type: 1, elevation: 2, corners: null, patchOnly: false, patchBase: null });
 
+  // Revision 1 froze each planet's grass while the plaza stood at its earlier place: the cells that
+  // plaza covered are outside the mask, and the moved plaza covers masked cells. Tafa's coast has moved
+  // since: masked cells that turned to sand or rim, and new grass outside the mask.
   it('pins revision 1 coordinates for both built-in templates', () => {
-    for (const [id, expectedCount] of [['hexia', 15_846], ['tafa', 15_914]] as const) {
+    for (const [id, expectedCount, freed, covered, receded] of [['hexia', 15_846, 137, 183, 0], ['tafa', 15_914, 156, 166, 59]] as const) {
       const current = getMapTemplate(id);
       const mask = frozenTemplateMask(current, 1)!;
       expect(mask.reduce((sum, value) => sum + value, 0), id).toBe(expectedCount);
+      const anchor = templateAnchor(current)!;
+      const plaza = wholeCellsOf({ x: anchor.x, y: anchor.y, w: anchor.width, h: anchor.height });
+      let grassOutside = 0, plazaInside = 0, notGrass = 0;
       for (let index = 0; index < mask.length; index++) {
         const x = index % current.width;
         const y = Math.floor(index / current.width);
-        expect(mask[index] === 1, `${id} ${x},${y}`).toBe(current.zones[y]?.[x] === CellZone.Grass);
+        const zone = current.zones[y]?.[x];
+        const underPlaza = rectContains(plaza, x, y);
+        if (mask[index] === 1 && zone !== CellZone.Grass) notGrass++;
+        if (mask[index] !== 1 && zone === CellZone.Grass && !underPlaza) grassOutside++;
+        if (mask[index] === 1 && underPlaza) plazaInside++;
       }
+      expect([grassOutside, plazaInside, notGrass], id).toEqual([freed, covered, receded]);
     }
   });
 

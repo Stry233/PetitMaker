@@ -1,16 +1,16 @@
 /**
- * WHAT THE EDITOR OPENS WITH, and the one thing about the assistant that survives a reload.
+ * What the editor opens with, and the one thing about the assistant that survives a reload.
  *
- * EVERY SESSION BOOTS COLLAPSED, DOCK REMEMBERED OR NOT. A surface standing on arrival
+ * Every session boots collapsed, dock remembered or not. A surface standing on arrival
  * is one the visitor has to deal with before they can build, and that is as true of a docked panel,
- * which takes a fifth of the window with it. What the pin remembers is the SHAPE the panel opens in:
+ * which takes a fifth of the window with it. What the pin remembers is the shape the panel opens in:
  * pressing her in a remembered-pinned session goes to the dock rather than to the floating card, which
- * is `useAssistantDocked`'s own arithmetic (asked for AND open AND room) and needs no second seed.
+ * is `useAssistantDocked`'s own arithmetic (asked for and open and room) and needs no second seed.
  *
  * The store is a singleton built at import, so each reading here needs its own module graph.
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { PREFS } from '../../core/runtime/prefs';
+import { PREFS } from '../../platform/storage/prefs';
 
 const backing = new Map<string, string>();
 Object.defineProperty(globalThis, 'localStorage', {
@@ -45,7 +45,7 @@ describe('the assistant boots the way it was left', () => {
     // The intent survives; nothing stands.
     expect(state.assistantPinned).toBe(true);
     expect(state.assistantOpen).toBe(false);
-    // And the press that opens it opens the DOCKED shape, since docked is the intent AND being open.
+    // And the press that opens it opens the docked shape, since docked is the intent and being open.
     state.setAssistantOpen(true);
     const live = (await import('../../state/store')).useEditorStore.getState();
     expect(live.assistantOpen && live.assistantPinned).toBe(true);
@@ -68,7 +68,7 @@ describe('the assistant boots the way it was left', () => {
     expect(backing.get(PREFS.assistantPinned.key)).toBe('0');
   });
 
-  /** Whether the panel is merely OPEN is deliberately not persisted: only the dock is. */
+  /** Whether the panel is merely open is deliberately not persisted: only the dock is. */
   it('never persists the open flag on its own', async () => {
     const state = await bootStore();
     state.setAssistantOpen(true);

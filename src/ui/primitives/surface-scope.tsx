@@ -79,10 +79,37 @@ function onKeyDown(event: KeyboardEvent): void {
   }
 }
 
+/** The click that completes a swallowed press, which must not reach what lies under it either. The
+ *  surface has closed by the time it fires, so its listener outlives the surface stack. */
+let swallowClickUntil = -Infinity;
+let clickGuard = false;
+/** A click this long after the swallowed press is a new press of its own. */
+const CLICK_WINDOW_MS = 1500;
+
+function onClick(event: MouseEvent): void {
+  if (performance.now() > swallowClickUntil) return;
+  swallowClickUntil = -Infinity;
+  event.preventDefault();
+  event.stopImmediatePropagation();
+}
+
+/**
+ * A press outside the foreground floating surface only puts the surface away: the press and the
+ * click it completes stop here, so nothing under them (the map, another control) acts on it.
+ */
 function onPointerDown(event: PointerEvent): void {
   const surface = surfaces[surfaces.length - 1];
   if (!surface?.outside || !(event.target instanceof Node)) return;
   if (surface.root.current?.contains(event.target) || surface.trigger?.current?.contains(event.target)) return;
+  event.preventDefault();
+  event.stopImmediatePropagation();
+  swallowClickUntil = performance.now() + CLICK_WINDOW_MS;
+  if (!clickGuard) {
+    clickGuard = true;
+    window.addEventListener('click', onClick, true);
+    // A press that ends without a click (a drag) must not leave the guard armed for a later click.
+    window.addEventListener('pointerup', () => { setTimeout(() => { swallowClickUntil = -Infinity; }, 0); }, true);
+  }
   surface.onClose();
 }
 
@@ -109,6 +136,7 @@ export function useSurfaceScope({ open, onClose, root, trigger, focus = 'none', 
   useLayoutEffect(() => {
     if (!open) return;
     openerRef.current = trigger?.current ?? document.activeElement as HTMLElement | null;
+    swallowClickUntil = -Infinity;
     entry.restore = true;
     const child = surfaces.findIndex((surface) => belongsTo(surface, id));
     if (child < 0) surfaces.push(entry);

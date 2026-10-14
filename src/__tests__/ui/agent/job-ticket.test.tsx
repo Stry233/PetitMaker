@@ -1,34 +1,31 @@
+// @vitest-environment jsdom
 /**
- * The job ticket at its final grammar: the sticky order line, the region it
- * was filed under, the tape, the says line, the op rows with their end marks and result chips, the
- * plan rail's rollups and flags, and a hold's own mark and verbs.
- *
- * `JobTicket`/`OpRow`/`PlanRail` all read `useT()`, so every render here goes through
- * `I18nProvider` (matching `__tests__/ui/agent/header-row.test.tsx`'s own wrapper) with a stubbed
- * `localStorage` the store's persistence can write to safely in jsdom.
- *
- * Colour assertions push both sides of a comparison through the same DOM round-trip
- * (`asColor`), mirroring atoms.test.tsx — jsdom's cssstyle can normalize a hex differently from a
- * var()-free literal though the two agree in meaning.
+ * The job ticket: the sticky order line, its region, the tape, the says line, the op rows with end
+ * marks and result chips, the plan rail's rollups and flags, and a hold's mark and verbs. Colour
+ * assertions push both sides through the same DOM round-trip (`asColor`), since jsdom's cssstyle can
+ * normalize equal colours differently.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { act, render, fireEvent, waitFor } from '@testing-library/react';
-import { I18nProvider } from '../../../i18n/context';
-import { translations } from '../../../i18n/translations';
+import { I18nProvider, formatNumber } from '../../../i18n/context';
+import { translations } from '../../_support/locale-tables';
 import { useEditorStore } from '../../../state/store';
-import { JobTicket } from '../../../ui/agent/JobTicket';
-import { OpRow } from '../../../ui/agent/OpRow';
-import { tickInk } from '../../../ui/agent/tokens';
+import { JobTicket } from '../../../ui/agent/record/JobTicket';
+import { OpsList } from '../../../ui/agent/record/OpRow';
+import { tickInk } from '../../../ui/agent/panel-skin';
 import { ACTIVE, INK } from '../../../ui/design/tokens';
 import type { JobView, OpRow as OpRowData } from '../../../agent/core/project-view';
-import type { Locale } from '../../../core/model/types';
-import { formatNumber } from '../../../i18n/context';
-import { BASE_SUPPORT, CHUNK_LOAD_LIMIT } from '../../../core/model/game-profile';
-import { deserializeLog } from '../../../agent/session/persist';
+import type { Locale } from '../../../core/model/locale';
+import { BASE_SUPPORT, CHUNK_LOAD_LIMIT } from '../../../core/game/profile';
+import { deserializeLog } from '../../../agent/session/log-codec';
 import { eventsOf } from '../../../agent/core/log';
 
+/** One operation row as every list draws it: a single-row `OpsList`. */
+function OpRow({ op }: { op: OpRowData }) {
+  return <OpsList ops={[op]} />;
+}
+
 const backing = new Map<string, string>();
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 (globalThis as any).localStorage = {
   getItem: (k: string) => backing.get(k) ?? null,
   setItem: (k: string, v: string) => void backing.set(k, String(v)),
@@ -251,8 +248,9 @@ describe('PlanRail (via JobTicket): stages and the active stage\'s nested ops', 
 
     const boxes = getAllByTestId('stage-box');
     expect(boxes[0]!.querySelector('use')?.getAttribute('href')).toBe('#pw-check');
-    // The stage being worked is the one place on the rail where something is happening.
-    expect(boxes[1]!.querySelector('.pw-busy')).not.toBeNull();
+    // One loader per state: the tape carries the plan's progress, so the active box holds no spinner.
+    expect(boxes[1]!.querySelector('.pw-busy')).toBeNull();
+    expect(boxes[1]!.style.background).not.toBe('');
 
     const pendingLabel = stages[2]!.querySelector('[data-testid="plan-stage-label"]') as HTMLElement;
     expect(Number(pendingLabel.style.opacity)).toBeLessThan(1);
@@ -298,7 +296,7 @@ describe('PlanRail (via JobTicket): stages and the active stage\'s nested ops', 
     expect(stages[2]!.querySelector('[data-testid="op-row"]')).toBeNull();
   });
 
-  it('offers a done stage its own rewind, and hands the press the whole checkpoint', () => {
+  it('offers a done stage its own rewind, asks first, and hands the answer the whole checkpoint', () => {
     const onRewind = vi.fn();
     const checkpoints: JobView['checkpoints'] = [
       { undoIndex: 7, label: 'stage', stageIndex: 0 },
@@ -307,11 +305,12 @@ describe('PlanRail (via JobTicket): stages and the active stage\'s nested ops', 
     const job = makeJob({ plan, ops: [], checkpoints });
     const { getAllByTestId } = renderWithI18n(<JobTicket job={job} live onRewind={onRewind} />);
     const buttons = getAllByTestId('plan-rewind');
-    // Only the DONE stage the checkpoint named, so one control on a three-stage rail.
+    // Only the done stage the checkpoint named, so one control on a three-stage rail.
     expect(buttons.length).toBe(1);
     fireEvent.click(buttons[0]!);
-    // The checkpoint ITSELF, not its index: `undoIndex` is the watermark the shell rewinds to, and
-    // FlipTicket's rewind speaks the same shape.
+    expect(onRewind, 'the press asks, as every take-back does').not.toHaveBeenCalled();
+    fireEvent.click(document.querySelector<HTMLElement>('[data-testid="plan-rewind-confirm"]')!);
+    // The checkpoint itself: `undoIndex` is the watermark the shell rewinds to.
     expect(onRewind).toHaveBeenCalledWith({ undoIndex: 7, label: 'stage', stageIndex: 0 });
   });
 
@@ -365,7 +364,7 @@ describe('OpRow: a reverted row', () => {
   });
 
   it('shows the amber mark and a friendly reason, and never the raw REVERTED prefix', () => {
-    // What the fold hands the row is already the rule LINE rather than the tool's own banner
+    // What the fold hands the row is already the rule line rather than the tool's own banner
     // (`project-view.ts:resultLine`), which is the whole point of that treatment.
     const op = makeOp({
       name: 'carve_river',
@@ -390,13 +389,13 @@ describe('OpRow: a reverted row', () => {
   it('does not expose diagnostics from older tool failures', () => {
     const op = makeOp({ name: 'place_object', status: 'error', summary: '[V-PLACE-TRAIT] Placement: catalogId=building-house failed in place_object' });
     const { getByTestId } = renderWithI18n(<OpRow op={op} />);
-    expect(getByTestId('op-detail').textContent).toBe(translations.en['agent3.op_detail_failed']);
+    expect(getByTestId('op-detail').textContent).toBe(translations.en['agent.op_detail_failed']);
   });
 
   /**
-   * A REFUSAL REACHES THE READER IN THEIR OWN LANGUAGE, and the model's copy stays English.
+   * A refusal reaches the reader in their own language, and the model's copy stays English.
    *
-   * `tools-common.ts:formatErrors` writes the tool result FOR the model (`translateFor('en', …)`),
+   * `tools/feedback.ts:formatErrors` writes the tool result for the model (`translateFor('en', …)`),
    * which is right — the model reasons over stable rule feedback. A panel that lifted the rule out
    * of that copy and showed it as-is would hand a Russian card three lines of English for a sentence
    * that ships keyed in all seven locales. The refusal travels as its rule
@@ -459,16 +458,16 @@ describe('OpRow: a reverted row', () => {
     act(() => useEditorStore.setState({ locale: 'en' }));
   });
 
-  /** Every locale says the app sent something TO the model; ru's genitive said the model had
-   *  ANSWERED, which is the opposite of what happened — a rule refused the call. */
+  /** Every locale says the app sent something to the model; ru's genitive said the model had
+   *  Answered, which is the opposite of what happened — a rule refused the call. */
   it('names the direction of a sent-back refusal the same way in every locale', () => {
     for (const locale of Object.keys(translations) as Locale[]) {
-      const line = translations[locale]['agent3.op_detail_sent_back']!;
+      const line = translations[locale]['agent.op_detail_sent_back']!;
       expect(line, locale).toContain('{text}');
-      expect(line, locale).not.toBe(translations[locale]['agent3.op_detail_put_back']);
+      expect(line, locale).not.toBe(translations[locale]['agent.op_detail_put_back']);
     }
     // The one that reversed: the Russian wording reads as the model's own answer.
-    expect(translations.ru['agent3.op_detail_sent_back']).not.toContain('Ответ модели');
+    expect(translations.ru['agent.op_detail_sent_back']).not.toContain('Ответ модели');
   });
 
   /** A region rollback is refused work rather than broken work: the outline shield in the revert
@@ -525,7 +524,7 @@ describe('OpRow: a reverted row', () => {
     expect(asColor(getByTestId('tick-dot').style.color)).not.toBe(asColor(tickInk.error));
   });
 
-  /** A playbook says whose recipe the ops below it follow. Only a STYLE skill is one. */
+  /** A playbook says whose recipe the ops below it follow. Only a style skill is one. */
   it('chips a loaded skill with its title and stamps a playbook under the row', () => {
     const styled = renderWithI18n(
       <OpRow op={makeOp({ name: 'load_skill', isRead: true, skill: { name: 'cozy', kind: 'style', title: 'Cozy Village' } })} />,
@@ -543,7 +542,7 @@ describe('OpRow: a reverted row', () => {
 });
 
 describe('JobTicket: steer notes and side stamps', () => {
-  /** A revised plan stands OVER the rail it revised: the rail would otherwise change shape under
+  /** A revised plan stands over the rail it revised: the rail would otherwise change shape under
    *  the user with nothing saying it had. */
   it('stamps a re-filed plan with its new stage count, above the rail', () => {
     const plan: NonNullable<JobView['plan']> = {
@@ -593,7 +592,7 @@ describe('JobTicket: steer notes and side stamps', () => {
     expect(stamps[3]!.querySelector('use')?.getAttribute('href')).toBe('#pw-pause');
   });
 
-  /** The compaction case: the run went ON after the tidying, so the stamp stands where it happened
+  /** The compaction case: the run went on after the tidying, so the stamp stands where it happened
    *  rather than under the rows that came after it. */
   it('files a stamp inside the flat op list, above the row it preceded', () => {
     const job = makeJob({
@@ -682,7 +681,7 @@ describe('JobTicket: the says-line', () => {
   });
 
   /**
-   * THE MODEL WRITES MARKDOWN HERE TOO, and this seat is one clamped run of it: the emphasis is
+   * The model writes markdown here too, and this seat is one clamped run of it: the emphasis is
    * rendered rather than printed, and the breaks it wrote survive as breaks. Printed flat the line
    * read `1. **Create a Lake**:` with its markers standing and every paragraph joined by a space.
    */
@@ -746,7 +745,7 @@ describe('JobTicket: a job on hold', () => {
       stages: [{ label: 'A' }, { label: 'B' }, { label: 'C' }, { label: 'D' }],
       currentIndex: 1, doneCount: 1, revision: 1,
     };
-    // AFTER step n is a count of what is BANKED: one stage done reads "after step 1", never the
+    // After step n is a count of what is banked: one stage done reads "after step 1", never the
     // index of the stage the job was working on when it stopped.
     const planned = renderWithI18n(<JobTicket job={makeJob({ plan })} live paused />);
     expect(planned.getByTestId('pausemark').textContent).toContain('paused after step 1 of 4');

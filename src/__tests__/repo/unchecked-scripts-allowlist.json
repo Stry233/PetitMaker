@@ -1,0 +1,3 @@
+{
+  "scripts/internal/compat/page-driver.js": "Not a module: a function body that compat/capture.mts sends to a released build's page, written against whichever modules that release shipped."
+}

@@ -2,14 +2,14 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { useEditorStore } from '../../state/store';
 import { getMapStats } from '../../state/map-stats';
 import { createDefaultRegistry } from '../../rules';
-import { makeObject, makeState } from '../rules/_helpers';
-import { readPref, removePref } from '../../core/runtime/prefs';
+import { makeObject, makeState } from '../_support/map-state';
+import { readPref, removePref } from '../../platform/storage/prefs';
 import { cloneGridState, bumpObjectsVersion } from '../../core/model/grid-model';
 import { encodeGridState, decodeGridState } from '../../core/model/grid-wire';
 import { isChunkLoadEnforced } from '../../core/model/load';
-import { CHUNK_LOAD_LIMIT } from '../../core/model/game-profile';
+import { CHUNK_LOAD_LIMIT } from '../../core/game/profile';
 import { catalogLoadValue } from '../../state/catalog';
-import { mapFingerprint } from '../../tools/macros';
+import { mapFingerprint } from '../../core/model/fingerprint';
 
 beforeEach(() => removePref('enforceChunkLoad'));
 

@@ -1,23 +1,23 @@
 import { describe, it, expect } from 'vitest';
 import { traitPlacementRule } from '../../rules/placement';
 import { objectBlocksTerrainRule } from '../../rules/object-blocks-terrain';
-import { CellZone, CommandType, TerrainType, type Rotation } from '../../core/model/types';
+import { CommandType, TerrainType, type GridState, type Rotation } from '../../core/model/types';
 import type { PlaceObjectCommand, PaintTerrainCommand, EraseTerrainCommand } from '../../core/model/types';
-import { makeState, setTerrain, setZone } from './_helpers';
-import { registerCatalogItem } from '../../state/catalog';
-import { ItemCategory } from '../../core/model/types';
+import { makeState, setTerrain } from '../_support/map-state';
+import { __setCatalogItem } from '../../state/catalog';
+import { ItemCategory } from '../../config/catalog/categories';
 
 // 2x2 flat-trait fixture (the shipped catalog has no 2x2 building; these tests
 // exercise the flat-trait rule at small scale).
-registerCatalogItem({
+__setCatalogItem({
   id: 'test-house', category: ItemCategory.Building, name: { en: 'Test House', zh: '测试屋' },
   width: 2, height: 2, loadValue: 200, rotatable: true, placementMode: 'point',
   traits: [{ type: 'flat' }],
 });
 
-// 1x3 non-square rotatable fixture: exercises the flat trait against the ROTATED
+// 1x3 non-square rotatable fixture: exercises the flat trait against the rotated
 // footprint (a square fixture can't, since rotation leaves its extent unchanged).
-registerCatalogItem({
+__setCatalogItem({
   id: 'test-bench', category: ItemCategory.Building, name: { en: 'Test Bench', zh: '测试长椅' },
   width: 1, height: 3, loadValue: 50, rotatable: true, placementMode: 'point',
   traits: [{ type: 'flat' }],
@@ -26,15 +26,18 @@ registerCatalogItem({
 function placeItemRot(id: string, x: number, y: number, rotation: Rotation): PlaceObjectCommand {
   return {
     type: CommandType.PlaceObject,
-    timestamp: 0,
     object: { id: 'test', catalogId: id, position: { x, y }, rotation, elevation: 0 },
   };
+}
+
+/** `cmd` as the trait resolves it, the command every rule judges. */
+function landed(cmd: PlaceObjectCommand, state: GridState): PlaceObjectCommand {
+  return traitPlacementRule.resolve!(cmd, state) as PlaceObjectCommand;
 }
 
 function placeItem(id: string, x: number, y: number): PlaceObjectCommand {
   return {
     type: CommandType.PlaceObject,
-    timestamp: 0,
     object: { id: 'test', catalogId: id, position: { x, y }, rotation: 0, elevation: 0 },
   };
 }
@@ -149,19 +152,6 @@ describe('V-PLACE-TRAIT: Trait-based placement', () => {
       // House at (3,4): footprint (3,4)-(4,5) elev 2, extension (5,4),(5,5) elev 2, (3,6),(4,6) elev 2
       expect(traitPlacementRule.validate(placeItem('test-house', 3, 4), state)).toHaveLength(0);
     });
-
-    it('allows a flat object flush against the plaza (plaza is overlap-only, not a cliff)', () => {
-      // A raised plaza block at (6..7, 5..6): zone Plaza + terrain elev 1.
-      const state = makeState(10, 10);
-      for (const [px, py] of [[6, 5], [7, 5], [6, 6], [7, 6]] as const) {
-        setZone(state, px, py, CellZone.Plaza);
-        setTerrain(state, px, py, TerrainType.Mountain, 1);
-      }
-      // 1x1 stall at (5,5): footprint (5,5) is grass; its flat-trait +1 extension
-      // reaches plaza cells (6,5)/(6,6) at elev 1 — those are skipped, so the stall
-      // is allowed flush against the plaza (overlap itself is V-ZONE-01's job).
-      expect(traitPlacementRule.validate(placeItem('building-stall', 5, 5), state)).toHaveLength(0);
-    });
   });
 
   describe('waterSpan trait (bridges)', () => {
@@ -177,7 +167,7 @@ describe('V-PLACE-TRAIT: Trait-based placement', () => {
       }
       setTerrain(state, 8, 5, TerrainType.Mountain, 1);
       setTerrain(state, 8, 6, TerrainType.Mountain, 1);
-      const cmd = placeItem('bridge-plank', 6, 5);
+      const cmd = landed(placeItem('bridge-plank', 6, 5), state);
       const errors = traitPlacementRule.validate(cmd, state);
       expect(errors).toHaveLength(0);
     });
@@ -190,7 +180,7 @@ describe('V-PLACE-TRAIT: Trait-based placement', () => {
         setTerrain(state, x, 5, TerrainType.Water, 0);
       }
       setTerrain(state, 8, 5, TerrainType.Mountain, 1);
-      const cmd = placeItem('bridge-plank', 6, 5);
+      const cmd = landed(placeItem('bridge-plank', 6, 5), state);
       const errors = traitPlacementRule.validate(cmd, state);
       expect(errors.length).toBeGreaterThan(0);
     });
@@ -206,7 +196,7 @@ describe('V-PLACE-TRAIT: Trait-based placement', () => {
       }
       setTerrain(state, 8, 5, TerrainType.Mountain, 1);
       setTerrain(state, 8, 6, TerrainType.Mountain, 1);
-      const cmd = placeItem('bridge-plank', 6, 5);
+      const cmd = landed(placeItem('bridge-plank', 6, 5), state);
       traitPlacementRule.validate(cmd, state);
       // 3 water + 1 land end = 4 total (0.5 macro land on each visual end)
       expect(cmd.object.spanLength).toBe(4);
@@ -226,7 +216,7 @@ describe('V-PLACE-TRAIT: Trait-based placement', () => {
       setTerrain(state, 8, 5, TerrainType.Mountain, 1);
       setTerrain(state, 8, 6, TerrainType.Mountain, 1);
       setTerrain(state, 8, 7, TerrainType.Mountain, 1);
-      const cmd = placeItem('bridge-park-arch', 6, 5);
+      const cmd = landed(placeItem('bridge-park-arch', 6, 5), state);
       const errors = traitPlacementRule.validate(cmd, state);
       expect(errors).toHaveLength(0);
     });
@@ -241,7 +231,7 @@ describe('V-PLACE-TRAIT: Trait-based placement', () => {
       }
       setTerrain(state, 7, 5, TerrainType.Mountain, 1);
       setTerrain(state, 7, 6, TerrainType.Mountain, 1);
-      const cmd = placeItem('bridge-plank', 5, 5);
+      const cmd = landed(placeItem('bridge-plank', 5, 5), state);
       expect(traitPlacementRule.validate(cmd, state).length).toBeGreaterThan(0);
     });
 
@@ -256,7 +246,7 @@ describe('V-PLACE-TRAIT: Trait-based placement', () => {
       }
       setTerrain(state, 10, 5, TerrainType.Mountain, 1);
       setTerrain(state, 10, 6, TerrainType.Mountain, 1);
-      const cmd = placeItem('bridge-plank', 6, 5);
+      const cmd = landed(placeItem('bridge-plank', 6, 5), state);
       expect(traitPlacementRule.validate(cmd, state).length).toBeGreaterThan(0);
     });
 
@@ -267,7 +257,7 @@ describe('V-PLACE-TRAIT: Trait-based placement', () => {
         setTerrain(state, 4, y, TerrainType.Mountain, 2);
         setTerrain(state, 8, y, TerrainType.Mountain, 2);
       }
-      const cmd = placeItem('bridge-plank', 6, 5);
+      const cmd = landed(placeItem('bridge-plank', 6, 5), state);
       expect(traitPlacementRule.validate(cmd, state)).toHaveLength(0);
       expect(cmd.object.spanLength).toBe(4);
       expect(cmd.object.elevation).toBe(2); // deck sits at the ends' shared height
@@ -281,7 +271,7 @@ describe('V-PLACE-TRAIT: Trait-based placement', () => {
         setTerrain(state, 8, y, TerrainType.Mountain, 3);
         for (let x = 5; x <= 7; x++) setTerrain(state, x, y, TerrainType.Mountain, 1);
       }
-      const cmd = placeItem('bridge-plank', 6, 5);
+      const cmd = landed(placeItem('bridge-plank', 6, 5), state);
       expect(traitPlacementRule.validate(cmd, state)).toHaveLength(0);
       expect(cmd.object.elevation).toBe(3);
     });
@@ -292,7 +282,7 @@ describe('V-PLACE-TRAIT: Trait-based placement', () => {
         setTerrain(state, 4, y, TerrainType.Mountain, 2);
         setTerrain(state, 8, y, TerrainType.Mountain, 3); // far end higher → not equal
       }
-      const cmd = placeItem('bridge-plank', 6, 5);
+      const cmd = landed(placeItem('bridge-plank', 6, 5), state);
       expect(traitPlacementRule.validate(cmd, state).length).toBeGreaterThan(0);
     });
   });
@@ -359,11 +349,10 @@ describe('V-PLACE-BLOCK: mountain over roads', () => {
     });
   }
   function paint(x: number, y: number, type: TerrainType): PaintTerrainCommand {
-    return { type: CommandType.PaintTerrain, timestamp: 0,
-      cells: [{ x, y }], terrainType: type, elevation: 1 };
+    return { type: CommandType.PaintTerrain,       cells: [{ x, y }], terrainType: type, elevation: 1 };
   }
   function erase(x: number, y: number): EraseTerrainCommand {
-    return { type: CommandType.EraseTerrain, timestamp: 0, cells: [{ x, y }] };
+    return { type: CommandType.EraseTerrain, cells: [{ x, y }] };
   }
 
   it('allows mountain paint on a road cell', () => {

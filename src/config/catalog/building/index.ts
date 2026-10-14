@@ -10,4 +10,8 @@ import building_forest_cabin from './building-forest-cabin.json';
 import building_starbay_cabin from './building-starbay-cabin.json';
 import building_plush_cabin from './building-plush-cabin.json';
 
-export const building: CatalogItem[] = [building_stall, building_myhouse, building_bamboo_cabin, building_sunset_cabin, building_wave_cabin, building_fluorite_cabin, building_boat_cabin, building_forest_cabin, building_starbay_cabin, building_plush_cabin] as CatalogItem[];
+export const building: CatalogItem[] = [
+  building_stall, building_myhouse, building_bamboo_cabin, building_sunset_cabin, building_wave_cabin,
+  building_fluorite_cabin, building_boat_cabin, building_forest_cabin, building_starbay_cabin,
+  building_plush_cabin,
+] as CatalogItem[];

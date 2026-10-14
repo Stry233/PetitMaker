@@ -1,5 +1,4 @@
 import { describe, it, expect } from 'vitest';
-// @ts-ignore - node:fs is untyped here (no @types/node)
 import { readFileSync } from 'node:fs';
 
 describe('scrollbars', () => {

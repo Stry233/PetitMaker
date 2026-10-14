@@ -3,9 +3,9 @@ import { append, createLog } from '../../../agent/core/log';
 import { COMPACTION_RESERVE, compact, needsCompaction } from '../../../agent/core/compaction';
 import { deriveMessages } from '../../../agent/core/project-messages';
 import { FIRST_EVENT_IDLE_MS } from '../../../agent/core/stream-idle';
-import { createScriptedAdapter } from '../../../agent/eval/scripted-adapter';
+import { createScriptedAdapter } from '../../_support/agent/scripted-adapter';
 import type { Part, StreamEvent } from '../../../agent/core/types';
-import type { Adapter, AdapterRequest } from '../../../agent/providers/types';
+import type { Adapter, AdapterRequest } from '../../../agent/core/adapter';
 
 afterEach(() => vi.useRealTimers());
 
@@ -14,6 +14,7 @@ const estimate = (s: string): number => s.length;
 // genuine fold (something precedes the retained tail) whenever a fixture carries 2+ groups, and is
 // used wherever a test needs `compact` to actually run the adapter rather than bail early.
 const bigEstimate = (): number => 9000;
+const UNBOUNDED = Number.MAX_SAFE_INTEGER;
 
 describe('needsCompaction', () => {
   it('is false at exactly the reserve boundary and true one token past it', () => {
@@ -61,7 +62,7 @@ describe('compact', () => {
     const adapter = createScriptedAdapter([
       { events: [{ t: 'text', delta: 'summary of jobs 1-5' }, { t: 'done', stop: 'stop' }] },
     ]);
-    const ok = await compact(log, { adapter, model: 'm', signal: new AbortController().signal, estimate: () => 1000 });
+    const ok = await compact(log, { adapter, model: 'm', budgetTokens: UNBOUNDED, signal: new AbortController().signal, estimate: () => 1000 });
     expect(ok).toBe(true);
 
     const compactionEvent = log.events.find((e) => e.kind === 'compaction');
@@ -84,8 +85,29 @@ describe('compact', () => {
     expect(out[0]).toEqual({ role: 'user', text: '(conversation summary, reference only) <summary_data>"summary of jobs 1-5"</summary_data>' });
   });
 
+  it('summarizes only the evicted prefix, within the window\'s budget, so an overflow recovery fits', async () => {
+    const log = createLog(() => 0);
+    // At 1000 per event and per message, groups 3 to 5 are retained (see the first case); the
+    // evicted prefix is groups 1 and 2, of which a 3500-token budget holds only the newer.
+    for (let i = 1; i <= 5; i++) seedGroup(log, `job ${i}`, `c${i}`);
+    let captured: AdapterRequest | undefined;
+    const adapter = createScriptedAdapter([
+      (req) => {
+        captured = req;
+        return [{ t: 'text', delta: 'summary' }, { t: 'done', stop: 'stop' }];
+      },
+    ]);
+    const ok = await compact(log, { adapter, model: 'm', budgetTokens: 3500, signal: new AbortController().signal, estimate: () => 1000 });
+    expect(ok).toBe(true);
+    const sent = JSON.stringify(captured?.messages);
+    expect(sent).toContain('job 2');
+    expect(sent).not.toContain('job 1');
+    for (const retained of ['job 3', 'job 4']) expect(sent).not.toContain(retained);
+    expect(captured?.messages.filter((m) => m.role !== 'user' || !m.text.startsWith('(map ledger)'))).toHaveLength(3);
+  });
+
   it('folds INSIDE a single exchange at an assistant boundary when no group boundary can be used', async () => {
-    // One order, no steer, so the whole job is ONE group and the group walk can only return the
+    // One order, no steer, so the whole job is one group and the group walk can only return the
     // order's own seq. Without the emergency boundary this would bail and the caller would settle
     // the job as an overflow incident - skill kept, job lost.
     const log = createLog(() => 0);
@@ -105,8 +127,8 @@ describe('compact', () => {
       { events: [{ t: 'text', delta: 'summary of the one big job' }, { t: 'done', stop: 'stop' }] },
     ]);
     // 1000 per event: walking back from the newest assistant, the suffix cost reaches KEEP_RECENT
-    // (8000) exactly at the SECOND assistant (8 events x 1000), which is therefore the oldest kept.
-    const ok = await compact(log, { adapter, model: 'm', signal: new AbortController().signal, estimate: () => 1000 });
+    // (8000) exactly at the second assistant (8 events x 1000), which is therefore the oldest kept.
+    const ok = await compact(log, { adapter, model: 'm', budgetTokens: UNBOUNDED, signal: new AbortController().signal, estimate: () => 1000 });
     expect(ok).toBe(true);
 
     const ev = log.events.find((e) => e.kind === 'compaction');
@@ -130,16 +152,16 @@ describe('compact', () => {
   it('bails before spending the adapter call when even the assistant walk reaches the window\'s first event', async () => {
     const log = createLog(() => 0);
     // No assistant turn has landed yet, so there is no seq inside the window to cut at: a summary
-    // would only ADD a message ahead of the order, never remove one.
+    // would only add a message ahead of the order, never remove one.
     append(log, { kind: 'order', text: 'one enormous order', mapContext: 'x'.repeat(50) });
     const before = log.events.length;
 
-    // A well-behaved adapter that WOULD succeed if called: this proves the false result comes from
+    // A well-behaved adapter that would succeed if called: this proves the false result comes from
     // the early bail (nothing to fold), not from an adapter failure.
     const adapter = createScriptedAdapter([
       { events: [{ t: 'text', delta: 'would-be summary' }, { t: 'done', stop: 'stop' }] },
     ]);
-    const ok = await compact(log, { adapter, model: 'm', signal: new AbortController().signal, estimate: bigEstimate });
+    const ok = await compact(log, { adapter, model: 'm', budgetTokens: UNBOUNDED, signal: new AbortController().signal, estimate: bigEstimate });
 
     expect(ok).toBe(false);
     expect(log.events.length).toBe(before);
@@ -170,7 +192,7 @@ describe('compact', () => {
     ]);
     // Two groups, and bigEstimate guarantees the second alone crosses KEEP_RECENT: the fold is
     // genuine (the first group is left behind), so the request is actually sent.
-    const ok = await compact(log, { adapter, model: 'm', signal: new AbortController().signal, estimate: bigEstimate });
+    const ok = await compact(log, { adapter, model: 'm', budgetTokens: UNBOUNDED, signal: new AbortController().signal, estimate: bigEstimate });
     expect(ok).toBe(true);
 
     expect(captured?.tools).toEqual([]);
@@ -186,7 +208,7 @@ describe('compact', () => {
     // Five groups whose every event cost is its own character count. The order text is sized so a
     // group costs ~3008, and accumulating from the newest crosses KEEP_RECENT (8000) at the third
     // group back: the cut lands at group 3 whatever the model thought along the way. An 8,000-char
-    // reasoning part in the NEWEST group is the trap — counted, it alone crosses KEEP_RECENT and
+    // reasoning part in the newest group is the trap — counted, it alone crosses KEEP_RECENT and
     // the tail collapses to that one group, spending the whole retention on bytes deriveMessages
     // never sends.
     const build = (thought: string | undefined): { log: ReturnType<typeof createLog>; group3StartSeq: number } => {
@@ -208,7 +230,7 @@ describe('compact', () => {
       const adapter = createScriptedAdapter([
         (r) => { req = r; return [{ t: 'text', delta: 'summary' }, { t: 'done', stop: 'stop' }]; },
       ]);
-      expect(await compact(log, { adapter, model: 'm', signal: new AbortController().signal, estimate })).toBe(true);
+      expect(await compact(log, { adapter, model: 'm', budgetTokens: UNBOUNDED, signal: new AbortController().signal, estimate })).toBe(true);
       const ev = log.events.find((e) => e.kind === 'compaction');
       return { seq: ev && ev.kind === 'compaction' ? ev.retainedFromSeq : -1, req };
     };
@@ -236,7 +258,7 @@ describe('compact', () => {
     seedGroup(log, 'second job', 'c2');
 
     const adapter = createScriptedAdapter([{ error: { cls: 'network', detail: 'boom' } }]);
-    const ok = await compact(log, { adapter, model: 'm', signal: new AbortController().signal, estimate: bigEstimate });
+    const ok = await compact(log, { adapter, model: 'm', budgetTokens: UNBOUNDED, signal: new AbortController().signal, estimate: bigEstimate });
 
     expect(ok).toBe(true);
     expect(adapter.requests).toHaveLength(1);
@@ -251,7 +273,7 @@ describe('compact', () => {
     seedGroup(log, 'second job', 'c2');
 
     const adapter = createScriptedAdapter([{ events: [{ t: 'done', stop: 'stop' }] }]);
-    const ok = await compact(log, { adapter, model: 'm', signal: new AbortController().signal, estimate: bigEstimate });
+    const ok = await compact(log, { adapter, model: 'm', budgetTokens: UNBOUNDED, signal: new AbortController().signal, estimate: bigEstimate });
 
     expect(ok).toBe(true);
     expect(adapter.requests).toHaveLength(1);
@@ -281,7 +303,7 @@ describe('compact', () => {
       async listModels() { return ['m']; },
     };
 
-    const pending = compact(log, { adapter, model: 'm', signal: new AbortController().signal, estimate: bigEstimate });
+    const pending = compact(log, { adapter, model: 'm', budgetTokens: UNBOUNDED, signal: new AbortController().signal, estimate: bigEstimate });
     await vi.advanceTimersByTimeAsync(FIRST_EVENT_IDLE_MS);
 
     expect(await pending).toBe(true);
@@ -301,7 +323,7 @@ describe('compact', () => {
     const controller = new AbortController();
     controller.abort();
     const adapter = createScriptedAdapter([{ events: [{ t: 'text', delta: 'never arrives' }, { t: 'done', stop: 'stop' }] }]);
-    const ok = await compact(log, { adapter, model: 'm', signal: controller.signal, estimate: bigEstimate });
+    const ok = await compact(log, { adapter, model: 'm', budgetTokens: UNBOUNDED, signal: controller.signal, estimate: bigEstimate });
 
     expect(ok).toBe(false);
     expect(log.events.length).toBe(before);
@@ -309,7 +331,7 @@ describe('compact', () => {
 
   it('a second compaction summarizes from the first\'s boundary, carrying the prior summary forward', async () => {
     const log = createLog(() => 0);
-    // Two groups up front so the FIRST compaction is itself a genuine fold (group 1 dropped,
+    // Two groups up front so the first compaction is itself a genuine fold (group 1 dropped,
     // group 2 retained) rather than the degenerate single-exchange case.
     seedGroup(log, 'first job part one', 'c1');
     seedGroup(log, 'first job part two', 'c2');
@@ -317,7 +339,7 @@ describe('compact', () => {
     const firstAdapter = createScriptedAdapter([
       { events: [{ t: 'text', delta: 'summary one' }, { t: 'done', stop: 'stop' }] },
     ]);
-    expect(await compact(log, { adapter: firstAdapter, model: 'm', signal: new AbortController().signal, estimate: bigEstimate })).toBe(true);
+    expect(await compact(log, { adapter: firstAdapter, model: 'm', budgetTokens: UNBOUNDED, signal: new AbortController().signal, estimate: bigEstimate })).toBe(true);
     const firstRetained = log.events.find((e) => e.kind === 'compaction');
     const firstRetainedFromSeq = firstRetained && firstRetained.kind === 'compaction' ? firstRetained.retainedFromSeq : -1;
     // Non-degenerate: the retained tail starts strictly after the window's first event (job one).
@@ -334,7 +356,7 @@ describe('compact', () => {
         return [{ t: 'text', delta: 'summary two' }, { t: 'done', stop: 'stop' }];
       },
     ]);
-    expect(await compact(log, { adapter: secondAdapter, model: 'm', signal: new AbortController().signal, estimate: bigEstimate })).toBe(true);
+    expect(await compact(log, { adapter: secondAdapter, model: 'm', budgetTokens: UNBOUNDED, signal: new AbortController().signal, estimate: bigEstimate })).toBe(true);
 
     // The second request's derived messages already carry the first summary as a plain user
     // message, since deriveMessages replays from the latest compaction forward.

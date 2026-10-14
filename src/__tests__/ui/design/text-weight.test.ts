@@ -1,8 +1,12 @@
 import { describe, it, expect } from 'vitest';
-import {
-  BOLD, BOLD_MIN, DENSE_BUMP, HEAVY, HEAVY_MIN, MAX_DENSITY_GAIN, MEDIUM, MEDIUM_MIN, REGULAR, TEXT_FLOOR, TEXT_ROLES,
-  isDenseScript, readableWeight, roleFont, roleWeight, weightVar, weightVars,
-} from '../../../ui/design/text-weight';
+import { TEXT_ROLES, isDenseScript, readableWeight, roleFont, roleWeight, weightVars } from '../../../ui/design/text-weight';
+
+/** The weights the shipped faces draw, and the 1x CSS-px size each heavier rung needs. */
+const HEAVY = 900, BOLD = 700, MEDIUM = 500, REGULAR = 400;
+const HEAVY_MIN = 24, BOLD_MIN = 16, MEDIUM_MIN = 12;
+/** Display density adds at most this factor; dense scripts need this many px more per rung. */
+const MAX_DENSITY_GAIN = 1.4, DENSE_BUMP = 2;
+const weightVar = (role: string) => `--fw-${role}`;
 
 describe('readableWeight', () => {
   it.each([1, 2, 3])('keeps tiny labels light at %sx display density', dpr => {
@@ -78,8 +82,9 @@ describe('isDenseScript', () => {
 
 describe('the role table', () => {
   it('keeps authored sizes above the shared text floor', () => {
-    expect(TEXT_FLOOR).toBe(12);
-    for (const [name, role] of Object.entries(TEXT_ROLES)) expect(role.px, name).toBeGreaterThanOrEqual(TEXT_FLOOR);
+    for (const [name, role] of Object.entries(TEXT_ROLES)) expect(role.px, name).toBeGreaterThanOrEqual(12);
+    expect(TEXT_ROLES.caption.px).toBe(12);
+    expect(TEXT_ROLES.small.px).toBe(12);
   });
 
   it('shares each role weight between styles and its custom property', () => {

@@ -1,0 +1,8 @@
+{
+  "typeOnly": {
+    "src/assets/agent/provider-logos.tsx -> src/agent/panel": "A provider mark is keyed by the assistant's ProviderId; the provider table is the agent's to own.",
+    "src/state/slices/shell.ts -> src/legal/registry": "The shell slice holds the open document modal by DocId; the document table is legal's to own.",
+    "src/state/slices/shell.ts -> src/io/import/kind": "The shell slice hands a dropped file on with its ImportKind, which the import sniffer in io owns.",
+    "src/state/stylize-versions.ts -> src/pipelines/stylize": "A kept illustration records the StylizeDirection the stylize pipeline defines."
+  }
+}

@@ -5,24 +5,26 @@
  * gap — half a block of mountain either side of a one-block gap — which the
  * whole-cell grid cannot express.
  *
- * Terrain renders at -HALF_TILE, so a terrain cell's visual extent is
- * [c - 0.5, c + 0.5): a footprint anchored on a WHOLE coordinate straddles one
+ * Terrain renders on the terrain grid, so a terrain cell's visual extent is
+ * [c - 0.5, c + 0.5): a footprint anchored on a whole coordinate straddles one
  * extra cell on each axis (the dual-grid bleed), while a HALF-anchored one lands
  * exactly on the cells it covers. That is the whole of the unlock.
  */
 import { describe, it, expect } from 'vitest';
 import { traitPlacementRule } from '../../rules/placement';
 import { createDefaultRegistry } from '../../rules/index';
-import { detectBridgeSpan } from '../../core/model/bridge-span';
-import { CellZone, CommandType, ItemCategory, TerrainType } from '../../core/model/types';
+import { detectBridgeSpan } from '../../core/domain/terrain/bridge-span';
+import { CommandType, TerrainType } from '../../core/model/types';
+import { CellZone } from '../../core/game/zones';
 import type { GridState, PlaceObjectCommand } from '../../core/model/types';
-import { makeState, setTerrain, setZone } from './_helpers';
-import { registerCatalogItem } from '../../state/catalog';
+import { makeState, setTerrain, setZone } from '../_support/map-state';
+import { __setCatalogItem } from '../../state/catalog';
+import { ItemCategory } from '../../config/catalog/categories';
 
-// A bridge WITHOUT the halfStep trait: the gate. Its detection must answer exactly
+// A bridge without the halfStep trait: the gate. Its detection must answer exactly
 // as the shipped (halfStep) bridges do on a whole anchor, and it must never reach
 // detection at all on a half one.
-registerCatalogItem({
+__setCatalogItem({
   id: 'hsd-plain-bridge', category: ItemCategory.Bridge, name: { en: 'Plain Bridge' },
   width: 1, height: 1, loadValue: 0, rotatable: false, placementMode: 'point',
   traits: [{ type: 'waterSpan', min: 3, max: 6 }],
@@ -31,14 +33,13 @@ registerCatalogItem({
 function place(id: string, x: number, y: number): PlaceObjectCommand {
   return {
     type: CommandType.PlaceObject,
-    timestamp: 0,
     object: { id: 'test', catalogId: id, position: { x, y }, rotation: 0, elevation: 0 },
   };
 }
 
-/** The snapped placement a trait writes back onto the command, or null when refused. */
+/** The placement the trait resolves the command to, or null when the trait refuses it. */
 function snap(id: string, x: number, y: number, state: GridState) {
-  const cmd = place(id, x, y);
+  const cmd = traitPlacementRule.resolve!(place(id, x, y), state) as PlaceObjectCommand;
   const errors = traitPlacementRule.validate(cmd, state);
   if (errors.length > 0) return null;
   const { position, rotation, elevation, spanLength } = cmd.object;
@@ -46,10 +47,11 @@ function snap(id: string, x: number, y: number, state: GridState) {
 }
 
 /** Same, through the whole pre-command registry — the snapped footprint then also
- *  faces V-ZONE-01 / V-PLACE-OVERLAP, which read the position the trait wrote. */
+ *  faces V-ZONE-01 / V-PLACE-OVERLAP, which judge the command as it lands. */
 function snapThroughRegistry(id: string, x: number, y: number, state: GridState) {
-  const cmd = place(id, x, y);
-  const errors = createDefaultRegistry().validatePreCommand(cmd, state);
+  const registry = createDefaultRegistry();
+  const cmd = registry.resolve(place(id, x, y), state);
+  const errors = registry.validatePreCommand(cmd, state);
   if (errors.length > 0) return null;
   const { position, rotation, elevation, spanLength } = cmd.object;
   return { position, rotation, elevation, spanLength };
@@ -168,7 +170,7 @@ describe('a doubly-half anchor (both axes on the half grid — a hover near a co
   }
 
   it('bridge: the along axis still resolves whole, the across axis keeps its half offset', () => {
-    // The gap walk's own induction (see bridge-span.ts's header) rescues a half ALONG input: the
+    // The gap walk's own induction (see bridge-span.ts's header) rescues a half along input: the
     // first raised read can only land on a whole cell, whichever axis carries it. Anchoring at
     // x = 6.5 (half on the span axis too, not just y) must reach the exact same span as the whole-
     // and single-half-axis anchors already pinned above.
@@ -180,8 +182,8 @@ describe('a doubly-half anchor (both axes on the half grid — a hover near a co
   });
 
   it('ramp: the along axis rounds onto a whole cell instead of leaking the anchor\'s own half', () => {
-    // A ramp read from the HIGH side (anchorIsHigh) takes the anchor's own coordinate as the
-    // along-axis position verbatim — so a hover that rounds BOTH axes to the half grid can hand
+    // A ramp read from the high side (anchorIsHigh) takes the anchor's own coordinate as the
+    // along-axis position verbatim — so a hover that rounds both axes to the half grid can hand
     // it a fractional along value the terrain-support sweep never actually validated at (it reads
     // the same cell via floor(v + 0.5) regardless). The rule must round it to that cell, not store
     // the half, while the across axis (x) keeps the offset the anchor supplied.

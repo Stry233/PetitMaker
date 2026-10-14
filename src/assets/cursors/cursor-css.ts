@@ -5,40 +5,23 @@
  * Hotspots always use the intrinsic 32-pixel grid. `busy` selects an animated frame.
  */
 import { busyFrame, cursorArt } from './cursor-art';
-import { classicCursorArt } from './cursor-art-classic';
-import { USE_CLASSIC_CURSORS } from './cursor-set';
-import { CURSORS, type CursorId } from '../../core/runtime/cursor-spec';
+import { CURSORS, type CursorId } from './cursor-spec';
 
 const cache = new Map<string, string>();
 
 /**
- * When on, every id resolves to its bare keyword, so the OS draws the cursors and they follow
- * the size and theme the user configured there — which an image cursor cannot. Published by
- * `ui/design/cursors/cursor-vars` from the store; a module flag so callers on the pointer path and in
- * components need not thread it.
+ * `opts.system` is the user's system-cursors preference (`state/slices/prefs.ts:systemCursors`):
+ * on, every id resolves to its bare keyword, so the OS draws the cursors at the size and theme the
+ * user configured there, which an image cursor cannot follow.
  */
-let systemCursors = false;
-
-/** Publish the preference. Idempotent. */
-export function setSystemCursors(on: boolean): void {
-  systemCursors = on;
-}
-
-/** The live preference, for the one resolver decision that depends on it (the controller's
- *  system-mode pan). */
-export function isSystemCursors(): boolean {
-  return systemCursors;
-}
-
 export function cursorCss(
   id: CursorId,
   opts: { forbidden?: boolean; system?: boolean; frame?: number } = {},
 ): string {
   const { fallback } = CURSORS[id];
   // Ahead of the cache, so the memo only ever holds url values and a preference flip cannot
-  // return a stale one. `opts.system` lets a React caller pass the value it is subscribed to,
-  // which is fresher than the module flag during that render.
-  if (opts.system ?? systemCursors) return fallback;
+  // return a stale one.
+  if (opts.system === true) return fallback;
 
   const forbidden = opts.forbidden === true;
   const frame = id === 'busy' ? (opts.frame ?? 0) : 0;
@@ -46,16 +29,13 @@ export function cursorCss(
   const hit = cache.get(key);
   if (hit !== undefined) return hit;
 
-  // The two sets are drawn independently, so each carries its own hotspot; an id the classic set
-  // never had falls through to the generated art rather than losing its cursor.
-  const classic = USE_CLASSIC_CURSORS ? classicCursorArt(id, { forbidden }) : null;
-  const url = classic?.url ?? (id === 'busy' ? busyFrame(frame) : cursorArt(id, { forbidden }));
+  const url = id === 'busy' ? busyFrame(frame) : cursorArt(id, { forbidden });
   let value: string;
   if (url === null) {
     value = fallback;
   } else {
     // The hotspot is in CSS pixels of the intrinsic 32, whatever scale the engine rasterises at.
-    const [hx, hy] = classic?.hotspot ?? CURSORS[id].hotspot;
+    const [hx, hy] = CURSORS[id].hotspot;
     const fn = imageSetFn();
     value = fn !== null
       ? `${fn}(url("${url}") ${svgDensity()}) ${hx} ${hy}, ${fallback}`

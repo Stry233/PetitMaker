@@ -4,7 +4,7 @@
  * A session-only `motionPref`, `showGrid` or `showChunkBounds` reads as a broken panel: a choice
  * made in Settings is silently gone the next visit, while its neighbours (uiZoom, quality3d,
  * systemCursors) stick. Each pin here is the same shape: the
- * setter writes through the PREFS table's key, and a freshly-booted slice reads it back.
+ * setter writes through the prefs table's key, and a freshly-booted slice reads it back.
  */
 import { describe, it, expect, beforeEach } from 'vitest';
 import { useEditorStore } from '../../state/store';

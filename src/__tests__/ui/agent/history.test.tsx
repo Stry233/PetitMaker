@@ -1,16 +1,19 @@
+// @vitest-environment jsdom
 /** Past-job grouping, row actions, and rollback eligibility. Tests use a fixed clock so day groups
  * remain deterministic across midnight. */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { render, fireEvent } from '@testing-library/react';
+import { useState, type ComponentProps } from 'react';
+import { render, fireEvent, waitFor } from '@testing-library/react';
 import { MotionConfig } from 'framer-motion';
 import { I18nProvider } from '../../../i18n/context';
 import { translations } from '../../../i18n/translations';
-import { dayOf, HistoryStrip } from '../../../ui/agent/HistoryStrip';
+import { HistoryStrip } from '../../../ui/agent/record/HistoryStrip';
+import { dayOf } from '../../../ui/agent/derive/days';
 import { PanelShell } from '../../../ui/agent/PanelShell';
 import type { JobView, OpRow as OpRowData, PanelView } from '../../../agent/core/project-view';
+import { panelProps, type FlatPanelProps } from '../../_support/agent-panel';
 
 const backing = new Map<string, string>();
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 (globalThis as any).localStorage = {
   getItem: (k: string) => backing.get(k) ?? null,
   setItem: (k: string, v: string) => void backing.set(k, String(v)),
@@ -20,6 +23,21 @@ const backing = new Map<string, string>();
 
 function Wrapper({ children }: { children: React.ReactNode }) {
   return <I18nProvider>{children}</I18nProvider>;
+}
+
+/** The strip with its open flag held the way `PanelShell` holds it. */
+function Strip(props: Omit<ComponentProps<typeof HistoryStrip>, 'open' | 'onOpenChange'> & { open?: boolean }) {
+  const [open, setOpen] = useState(props.open ?? false);
+  return <HistoryStrip {...props} open={open} onOpenChange={setOpen} />;
+}
+
+/** The question the roll-back square unrolled. */
+function question(): string {
+  return document.querySelector('[data-testid="history-roll-back-ask"] h2')?.textContent ?? '';
+}
+
+function confirm(): void {
+  fireEvent.click(document.querySelector<HTMLElement>('[data-testid="history-roll-back-confirm"]')!);
 }
 
 function renderWithI18n(node: React.ReactElement) {
@@ -48,7 +66,7 @@ function makeJob(over: Partial<JobView> = {}): JobView {
     orderAt: NOW,
     ops: [],
     steerNotes: [],
-    // A settled BUILD banks a watermark before its first write; a row with none has nothing to roll
+    // A settled build banks a watermark before its first write; a row with none has nothing to roll
     // back to and offers no take-back, so the default here is the shape the rows are about.
     checkpoints: [{ undoIndex: 0, label: 'job' }],
     stamps: [],
@@ -62,13 +80,13 @@ function makeJob(over: Partial<JobView> = {}): JobView {
 
 describe('HistoryStrip: the collapsed row', () => {
   it('renders nothing at all when no job has settled yet', () => {
-    const { queryByTestId } = renderWithI18n(<HistoryStrip jobs={[]} />);
+    const { queryByTestId } = renderWithI18n(<Strip jobs={[]} />);
     expect(queryByTestId('history-strip')).toBeNull();
   });
 
   it('shows the settled-job count and lists nothing until it is opened', () => {
     const jobs = [makeJob({ orderSeq: 1 }), makeJob({ orderSeq: 2 }), makeJob({ orderSeq: 3 })];
-    const { getByTestId, queryAllByTestId } = renderWithI18n(<HistoryStrip jobs={jobs} now={NOW} />);
+    const { getByTestId, queryAllByTestId } = renderWithI18n(<Strip jobs={jobs} now={NOW} />);
     expect(getByTestId('history-count').textContent).toBe('3');
     expect(getByTestId('history-toggle').getAttribute('aria-expanded')).toBe('false');
     expect(queryAllByTestId('history-item').length).toBe(0);
@@ -83,7 +101,7 @@ describe('HistoryStrip: the expanded list', () => {
   ];
 
   it('lists one line per settled job, newest first', () => {
-    const { getByTestId, getAllByTestId } = renderWithI18n(<HistoryStrip jobs={jobs} now={NOW} />);
+    const { getByTestId, getAllByTestId } = renderWithI18n(<Strip jobs={jobs} now={NOW} />);
     fireEvent.click(getByTestId('history-toggle'));
     expect(getByTestId('history-toggle').getAttribute('aria-expanded')).toBe('true');
     const items = getAllByTestId('history-item');
@@ -94,7 +112,7 @@ describe('HistoryStrip: the expanded list', () => {
   });
 
   it('reads each job\'s own edit count off its ops', () => {
-    const { getByTestId, getAllByTestId } = renderWithI18n(<HistoryStrip jobs={jobs} now={NOW} />);
+    const { getByTestId, getAllByTestId } = renderWithI18n(<Strip jobs={jobs} now={NOW} />);
     fireEvent.click(getByTestId('history-toggle'));
     const stats = getAllByTestId('history-item-stat').map((el) => el.textContent);
     expect(stats).toEqual(['24 edits', '36 edits', '6 edits']);
@@ -103,13 +121,13 @@ describe('HistoryStrip: the expanded list', () => {
   /** The reachable n=1 case: a job that touched exactly one cell names it as one edit. */
   it('names a single-cell job as one edit, not the plural', () => {
     const single = [makeJob({ orderSeq: 4, ops: [makeOp({ detail: { objects: 1 } })] })];
-    const { getByTestId, getAllByTestId } = renderWithI18n(<HistoryStrip jobs={single} now={NOW} />);
+    const { getByTestId, getAllByTestId } = renderWithI18n(<Strip jobs={single} now={NOW} />);
     fireEvent.click(getByTestId('history-toggle'));
     expect(getAllByTestId('history-item-stat')[0]!.textContent).toBe('1 edit');
   });
 
   /**
-   * `kind` IS A DONE-JOB READING (`project-view.ts:settle` sets it only for `outcome: 'done'`), so
+   * `kind` is a done-job reading (`project-view.ts:settle` sets it only for `outcome: 'done'`), so
    * an aborted, capped or errored run had none and fell straight through to the count — every one of
    * those rows read "0 edits" for a run that was cut off before it could make any. A row with
    * nothing to count says so; a row with edits keeps the count, which is the fact a rollback acts on.
@@ -117,16 +135,16 @@ describe('HistoryStrip: the expanded list', () => {
   describe('a row with nothing to count does not count zero', () => {
     it.each(['aborted', 'capped', 'incident'] as const)('says so for a %s run that wrote nothing', (outcome) => {
       const rows = [makeJob({ orderSeq: 5, outcome, ops: [makeOp({ detail: {} })] })];
-      const { getByTestId, getAllByTestId } = renderWithI18n(<HistoryStrip jobs={rows} now={NOW} />);
+      const { getByTestId, getAllByTestId } = renderWithI18n(<Strip jobs={rows} now={NOW} />);
       fireEvent.click(getByTestId('history-toggle'));
       expect(getAllByTestId('history-item-stat')[0]!.textContent)
-        .toBe(translations.en['agent3.dock_no_edits']);
+        .toBe(translations.en['agent.dock_no_edits']);
     });
 
-    /** A stop that DID leave work on the map still names it: that count is what the take-back pops. */
+    /** A stop that did leave work on the map still names it: that count is what the take-back pops. */
     it('keeps the count where an aborted run left edits standing', () => {
       const rows = [makeJob({ orderSeq: 6, outcome: 'aborted', ops: [makeOp({ detail: { cells: 9 } })] })];
-      const { getByTestId, getAllByTestId } = renderWithI18n(<HistoryStrip jobs={rows} now={NOW} />);
+      const { getByTestId, getAllByTestId } = renderWithI18n(<Strip jobs={rows} now={NOW} />);
       fireEvent.click(getByTestId('history-toggle'));
       expect(getAllByTestId('history-item-stat')[0]!.textContent).toBe('9 edits');
     });
@@ -135,10 +153,10 @@ describe('HistoryStrip: the expanded list', () => {
      *  "All done. / 0 edits" defect, in the row it becomes). */
     it('says so for a finished build the user declined every write of', () => {
       const rows = [makeJob({ orderSeq: 7, kind: 'build', ops: [makeOp({ status: 'skipped', detail: {} })] })];
-      const { getByTestId, getAllByTestId } = renderWithI18n(<HistoryStrip jobs={rows} now={NOW} />);
+      const { getByTestId, getAllByTestId } = renderWithI18n(<Strip jobs={rows} now={NOW} />);
       fireEvent.click(getByTestId('history-toggle'));
       expect(getAllByTestId('history-item-stat')[0]!.textContent)
-        .toBe(translations.en['agent3.dock_no_edits']);
+        .toBe(translations.en['agent.dock_no_edits']);
     });
   });
 
@@ -146,13 +164,13 @@ describe('HistoryStrip: the expanded list', () => {
     const onOpen = vi.fn();
     const onRollBack = vi.fn();
     const { getByTestId, getAllByTestId } = renderWithI18n(
-      <HistoryStrip jobs={jobs} now={NOW} onOpen={onOpen} onRollBack={onRollBack} />,
+      <Strip jobs={jobs} now={NOW} onOpen={onOpen} onRollBack={onRollBack} />,
     );
     fireEvent.click(getByTestId('history-toggle'));
     fireEvent.click(getAllByTestId('history-open')[0]!);
     // Roll back is the one destructive press on a row, so it asks before it fires.
     fireEvent.click(getAllByTestId('history-roll-back')[0]!);
-    fireEvent.click(getAllByTestId('history-roll-back')[0]!);
+    confirm();
     expect(onOpen).toHaveBeenCalledWith(jobs[2]);
     expect(onRollBack).toHaveBeenCalledWith(jobs[2]);
   });
@@ -160,12 +178,12 @@ describe('HistoryStrip: the expanded list', () => {
   it('opens the ticket from the row body, through a button stretched over the whole row', () => {
     const onOpen = vi.fn();
     const { getByTestId, getAllByTestId } = renderWithI18n(
-      <HistoryStrip jobs={jobs} now={NOW} onOpen={onOpen} onRollBack={() => {}} />,
+      <Strip jobs={jobs} now={NOW} onOpen={onOpen} onRollBack={() => {}} />,
     );
     fireEvent.click(getByTestId('history-toggle'));
     const row = getAllByTestId('history-item')[0]!;
     const open = row.querySelector('[data-testid="history-open"]') as HTMLElement;
-    // The row body IS the button: it covers the row, so a press anywhere but the roll-back square
+    // The row body is the button: it covers the row, so a press anywhere but the roll-back square
     // lands on it. Its parent is the row itself, which must carry no transform of its own.
     expect(open.tagName).toBe('BUTTON');
     expect(open.parentElement).toBe(row);
@@ -183,7 +201,7 @@ describe('HistoryStrip: the expanded list', () => {
 
   it('swaps the count for the roll-back square on hover, and keeps both in the row either way', () => {
     const { getByTestId, getAllByTestId } = renderWithI18n(
-      <HistoryStrip jobs={jobs} now={NOW} onOpen={() => {}} onRollBack={() => {}} />,
+      <Strip jobs={jobs} now={NOW} onOpen={() => {}} onRollBack={() => {}} />,
     );
     fireEvent.click(getByTestId('history-toggle'));
     const row = getAllByTestId('history-item')[1]!;
@@ -204,7 +222,7 @@ describe('HistoryStrip: the expanded list', () => {
 
   it('reveals the roll-back square for a keyboard tab into it, with no pointer involved', () => {
     const { getByTestId, getAllByTestId } = renderWithI18n(
-      <HistoryStrip jobs={jobs} now={NOW} onOpen={() => {}} onRollBack={() => {}} />,
+      <Strip jobs={jobs} now={NOW} onOpen={() => {}} onRollBack={() => {}} />,
     );
     fireEvent.click(getByTestId('history-toggle'));
     const row = getAllByTestId('history-item')[0]!;
@@ -216,14 +234,14 @@ describe('HistoryStrip: the expanded list', () => {
   });
 
   /**
-   * A QUESTION OPENS WITHOUT MOVING THE ROW. The pair is wider than the square it replaces, so the
+   * A question opens without moving the row. The pair is wider than the square it replaces, so the
    * only thing that may change is the seat's own contents: every other landmark in the row is the
    * same node, under the same parent, at the same index. jsdom lays nothing out, so that structural
    * reading is what stands in for the rects.
    */
   it('holds every landmark in the row still when the roll-back asks', () => {
     const { getByTestId, getAllByTestId } = renderWithI18n(
-      <HistoryStrip jobs={jobs} now={NOW} onOpen={() => {}} onRollBack={() => {}} />,
+      <Strip jobs={jobs} now={NOW} onOpen={() => {}} onRollBack={() => {}} />,
     );
     fireEvent.click(getByTestId('history-toggle'));
     const row = getAllByTestId('history-item')[0]!;
@@ -239,15 +257,13 @@ describe('HistoryStrip: the expanded list', () => {
     fireEvent.click(row.querySelector('[data-testid="history-roll-back"]')!);
 
     expect(landmarks()).toEqual(before);
-    // The open-the-ticket square is drawing, so it is hushed where it stands rather than dropped.
-    const mark = row.querySelector('[data-testid="history-open-mark"]') as HTMLElement;
-    expect(mark.style.pointerEvents).toBe('none');
+    expect(question(), 'the question unrolls beside the row rather than inside it').not.toBe('');
   });
 
   it('keeps a rolled-back record readable and openable with no further rollback', () => {
     const onOpen = vi.fn();
     const { getByTestId, getAllByTestId, queryAllByTestId } = renderWithI18n(
-      <HistoryStrip jobs={jobs} now={NOW} rolledBack={new Set([3])} onRollBack={() => {}} onOpen={onOpen} />,
+      <Strip jobs={jobs} now={NOW} rolledBack={new Set([3])} onRollBack={() => {}} onOpen={onOpen} />,
     );
     fireEvent.click(getByTestId('history-toggle'));
     const items = getAllByTestId('history-item');
@@ -284,7 +300,7 @@ describe('HistoryStrip: the day headers', () => {
   ];
 
   it('groups the rows under Today, Yesterday and Earlier, in that order', () => {
-    const { getByTestId, getAllByTestId } = renderWithI18n(<HistoryStrip jobs={spread} now={NOW} />);
+    const { getByTestId, getAllByTestId } = renderWithI18n(<Strip jobs={spread} now={NOW} />);
     fireEvent.click(getByTestId('history-toggle'));
     expect(getAllByTestId('history-day-head').map((el) => el.textContent))
       .toEqual(['Today', 'Yesterday', 'Earlier']);
@@ -297,7 +313,7 @@ describe('HistoryStrip: the day headers', () => {
   /** A header over no rows says a day has jobs in it that the list is not showing. */
   it('grows no header for a day with nothing in it', () => {
     const todayOnly = [makeJob({ orderSeq: 1, orderAt: NOW })];
-    const { getByTestId, getAllByTestId } = renderWithI18n(<HistoryStrip jobs={todayOnly} now={NOW} />);
+    const { getByTestId, getAllByTestId } = renderWithI18n(<Strip jobs={todayOnly} now={NOW} />);
     fireEvent.click(getByTestId('history-toggle'));
     expect(getAllByTestId('history-day-head').map((el) => el.textContent)).toEqual(['Today']);
   });
@@ -311,7 +327,7 @@ describe('HistoryStrip: the rollback guard', () => {
 
   it('stands the other map\'s records in their own group, last', () => {
     const { getByTestId, getAllByTestId } = renderWithI18n(
-      <HistoryStrip jobs={jobs} now={NOW} otherMap={new Set([1])} onOpen={() => {}} onRollBack={() => {}} />,
+      <Strip jobs={jobs} now={NOW} otherMap={new Set([1])} onOpen={() => {}} onRollBack={() => {}} />,
     );
     fireEvent.click(getByTestId('history-toggle'));
     expect(getAllByTestId('history-day-head').map((el) => el.textContent))
@@ -321,14 +337,14 @@ describe('HistoryStrip: the rollback guard', () => {
   });
 
   /**
-   * A ROLLBACK MAY NOT AIM AT A MAP THAT IS NOT STANDING. The refusal is the absent control (a
+   * A rollback may not aim at a map that is not standing. The refusal is the absent control (a
    * control that refuses must not answer the pointer), and the row still opens: reading a record
    * built elsewhere costs the open map nothing.
    */
   it('offers that record no roll-back at all, and still opens it', () => {
     const onOpen = vi.fn();
     const { getByTestId, getAllByTestId } = renderWithI18n(
-      <HistoryStrip jobs={jobs} now={NOW} otherMap={new Set([1])} onOpen={onOpen} onRollBack={() => {}} />,
+      <Strip jobs={jobs} now={NOW} otherMap={new Set([1])} onOpen={onOpen} onRollBack={() => {}} />,
     );
     fireEvent.click(getByTestId('history-toggle'));
     const other = getAllByTestId('history-item').find((el) => el.getAttribute('data-order-seq') === '1')!;
@@ -352,14 +368,14 @@ describe('HistoryStrip: a record that names no map at all', () => {
   ];
 
   /**
-   * UNVERIFIABLE IS NOT ELSEWHERE. A log written before an order carried a map id says nothing about
+   * Unverifiable is not elsewhere. A log written before an order carried a map id says nothing about
    * which map its edits are on, so the take-back is refused for the same reason and said in its own
    * words: a record that may well be this map's must not be told it is another's.
    */
   it('stands it in its own group under its own header, refusing the roll back and still opening', () => {
     const onOpen = vi.fn();
     const { getByTestId, getAllByTestId } = renderWithI18n(
-      <HistoryStrip jobs={jobs} now={NOW} unknownMap={new Set([1])} onOpen={onOpen} onRollBack={() => {}} />,
+      <Strip jobs={jobs} now={NOW} unknownMap={new Set([1])} onOpen={onOpen} onRollBack={() => {}} />,
     );
     fireEvent.click(getByTestId('history-toggle'));
     expect(getAllByTestId('history-day-head').map((el) => el.textContent))
@@ -380,7 +396,7 @@ describe('HistoryStrip: a record that names no map at all', () => {
   /** A record in both sets names a map, and what it names is the sharper fact. */
   it('reports a record that is in both sets as the other map\'s', () => {
     const { getByTestId, getAllByTestId } = renderWithI18n(
-      <HistoryStrip
+      <Strip
         jobs={jobs}
         now={NOW}
         otherMap={new Set([1])}
@@ -411,12 +427,11 @@ function baseView(over: Partial<PanelView> = {}): PanelView {
 
 const VERBS = { onSend: () => {}, onStop: () => {}, onPause: () => {}, onGateAnswer: () => {} };
 
-function renderShell(props: Record<string, unknown>) {
+function renderShell(props: Partial<FlatPanelProps>) {
   return render(
     <MotionConfig reducedMotion="always">
       <I18nProvider>
-        {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-        <PanelShell connected now={NOW} {...VERBS} {...(props as any)} />
+        <PanelShell {...panelProps({ connected: true, now: NOW, ...VERBS, ...props } as FlatPanelProps)} />
       </I18nProvider>
     </MotionConfig>,
   );
@@ -437,7 +452,7 @@ describe('PanelShell: the other-map notice', () => {
     expect(getByTestId('history-strip')).toBeTruthy();
   });
 
-  /** The SHARPER fact where both are present: a record proven to be another map's is a stronger
+  /** The sharper fact where both are present: a record proven to be another map's is a stronger
    *  thing to report than one that merely says nothing. */
   it('stands the unverifiable notice in its own words, and yields to the other-map one', () => {
     const view = baseView({ jobs: filedJobs });
@@ -461,7 +476,7 @@ describe('PanelShell: the other-map notice', () => {
 });
 
 describe('PanelShell: a cleared record leaves the list', () => {
-  /** Clearing FILES the record too, so it already has no card; this is what makes the removal a
+  /** Clearing files the record too, so it already has no card; this is what makes the removal a
    *  removal rather than a card quietly becoming a row. */
   it('drops it from the strip and from the count', () => {
     const jobs = [makeJob({ orderSeq: 1 }), makeJob({ orderSeq: 2 }), makeJob({ orderSeq: 3 })];
@@ -491,22 +506,21 @@ describe('HistoryStrip: the roll back asks before it fires', () => {
   it('fires nothing on the first press, and names both numbers', () => {
     const onRollBack = vi.fn();
     const { getByTestId, getAllByTestId } = renderWithI18n(
-      <HistoryStrip jobs={[jobAt()]} now={NOW} undoDepth={19} onRollBack={onRollBack} />,
+      <Strip jobs={[jobAt()]} now={NOW} undoDepth={19} onRollBack={onRollBack} />,
     );
     fireEvent.click(getByTestId('history-toggle'));
     fireEvent.click(getAllByTestId('history-roll-back')[0]!);
     expect(onRollBack).not.toHaveBeenCalled();
-    // The SQUARE is the question now, and its words are the cost.
-    const square = getAllByTestId('history-roll-back')[0]!;
-    expect(square.textContent).toBe('Rewind 16 steps, 12 yours?');
-    expect(square.getAttribute('aria-label')).toBe('Rewind 16 steps, 12 yours?');
-    fireEvent.click(square);
+    // The question's words are the cost; the square itself stays as it was.
+    expect(question()).toBe('Rewind 16 steps, 12 yours?');
+    expect(getAllByTestId('history-roll-back')[0]!.textContent).toBe('');
+    confirm();
     expect(onRollBack).toHaveBeenCalledTimes(1);
   });
 
   it('marks the row it would take, and drops the count while the question stands', () => {
     const { getByTestId, getAllByTestId } = renderWithI18n(
-      <HistoryStrip jobs={[jobAt()]} now={NOW} undoDepth={19} onRollBack={() => {}} />,
+      <Strip jobs={[jobAt()]} now={NOW} undoDepth={19} onRollBack={() => {}} />,
     );
     fireEvent.click(getByTestId('history-toggle'));
     fireEvent.click(getAllByTestId('history-roll-back')[0]!);
@@ -517,36 +531,37 @@ describe('HistoryStrip: the roll back asks before it fires', () => {
   it('cancels without firing, and puts the row back', () => {
     const onRollBack = vi.fn();
     const { getByTestId, getAllByTestId } = renderWithI18n(
-      <HistoryStrip jobs={[jobAt()]} now={NOW} undoDepth={19} onRollBack={onRollBack} />,
+      <Strip jobs={[jobAt()]} now={NOW} undoDepth={19} onRollBack={onRollBack} />,
     );
     fireEvent.click(getByTestId('history-toggle'));
     fireEvent.click(getAllByTestId('history-roll-back')[0]!);
-    fireEvent.pointerDown(document.body);
+    // A press elsewhere in the panel; a press outside the list puts the whole list away.
+    fireEvent.pointerDown(getByTestId('history-toggle'));
     expect(onRollBack).not.toHaveBeenCalled();
     expect(getAllByTestId('history-item')[0]!.getAttribute('data-preview')).toBe('false');
     expect(getAllByTestId('history-roll-back')[0]!.textContent).toBe('');
   });
 
   /** A standing question is a destructive press still aimed. It may not survive the row leaving. */
-  it('drops a standing question when the record it aims at leaves the list', () => {
+  it('drops a standing question when the record it aims at leaves the list', async () => {
     const { getByTestId, getAllByTestId, queryByTestId, rerender } = renderWithI18n(
-      <HistoryStrip jobs={[jobAt()]} now={NOW} undoDepth={19} open onRollBack={() => {}} />,
+      <Strip jobs={[jobAt()]} now={NOW} undoDepth={19} open onRollBack={() => {}} />,
     );
     fireEvent.click(getAllByTestId('history-roll-back')[0]!);
-    expect(queryByTestId('inline-confirm-seat')!.getAttribute('data-confirm-armed')).toBe('true');
+    expect(question()).not.toBe('');
     rerender(
       <I18nProvider>
-        <HistoryStrip jobs={[jobAt({ orderSeq: 9 })]} now={NOW} undoDepth={19} open onRollBack={() => {}} />
+        <Strip jobs={[jobAt({ orderSeq: 9 })]} now={NOW} undoDepth={19} open onRollBack={() => {}} />
       </I18nProvider>,
     );
-    expect(queryByTestId('inline-confirm-seat')!.getAttribute('data-confirm-armed')).toBeNull();
+    await waitFor(() => expect(queryByTestId('history-roll-back-ask')).toBeNull());
     expect(getByTestId('history-strip')).toBeTruthy();
   });
 
   /** A press that would pop nothing is not a take-back. */
   it('offers no roll back once the stack already stands at the job\'s watermark', () => {
     const { getByTestId, queryAllByTestId } = renderWithI18n(
-      <HistoryStrip jobs={[jobAt()]} now={NOW} undoDepth={3} onRollBack={() => {}} />,
+      <Strip jobs={[jobAt()]} now={NOW} undoDepth={3} onRollBack={() => {}} />,
     );
     fireEvent.click(getByTestId('history-toggle'));
     expect(queryAllByTestId('history-roll-back').length).toBe(0);
@@ -554,7 +569,7 @@ describe('HistoryStrip: the roll back asks before it fires', () => {
 });
 
 /**
- * THE STANDING RECEIPT READS THE SAME GUARD THE ROWS DO.
+ * The standing receipt reads the same guard the rows do.
  *
  * The session is not cleared by a map change, so a job run on map A leaves its receipt standing over
  * map B with a live take-back aimed at B's undo stack. Were the guard read one surface down only,
@@ -622,7 +637,7 @@ describe('PanelShell: the settled card and the rollback guard', () => {
 });
 
 /**
- * A ROLLBACK VERB IS DISABLED WHILE A JOB RUNS, and says so. A past job's watermark is BELOW the
+ * A rollback verb is disabled while a job runs, and says so. A past job's watermark is below the
  * running job's writes, so the pop takes the live job's edits too and the loop keeps writing onto a
  * stack whose depths no longer mean what its checkpoints say. Disabled rather than absent: the
  * refusal lifts the moment the job does, and a control that vanishes moves the row.
@@ -631,9 +646,9 @@ describe('PanelShell: the take-backs while a job is in flight', () => {
   const past = makeJob({ orderSeq: 1, orderText: 'Orchard on the slope' });
   const live = makeJob({ orderSeq: 2, orderText: 'Quay by the bay', outcome: undefined });
 
-  function running(props: Record<string, unknown> = {}) {
+  function running(props: Partial<FlatPanelProps> = {}) {
     const view = baseView({ phase: 'executing', jobs: [past], current: live });
-    return renderShell({ view, onOpenTicket: () => {}, onRollBack: () => {}, ...props });
+    return renderShell({ view, onRollBack: () => {}, ...props });
   }
 
   it('stands the row\'s roll back disabled, with the reason readable', () => {
@@ -646,14 +661,14 @@ describe('PanelShell: the take-backs while a job is in flight', () => {
   });
 
   it('refuses the row\'s own press rather than deferring it', () => {
-    const onOpenTicket = vi.fn();
-    const { getByTestId, getAllByTestId } = running({ onOpenTicket });
+    const { getByTestId, getAllByTestId } = running();
     fireEvent.click(getByTestId('history-toggle'));
     const open = getAllByTestId('history-open')[0] as HTMLButtonElement;
     expect(open.disabled).toBe(true);
     expect(open.title).toBe('Not while a job is running.');
     fireEvent.click(open);
-    expect(onOpenTicket).not.toHaveBeenCalled();
+    // The record stays filed in the list rather than opening over the live job.
+    expect(getAllByTestId('history-open')[0]).toBe(open);
   });
 
   it('fires no roll back from a press on the disabled square', () => {

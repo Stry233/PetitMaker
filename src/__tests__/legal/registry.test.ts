@@ -1,37 +1,133 @@
-import { providerName } from '../../i18n/providers';
+// @vitest-environment jsdom
+import { illustrationProviderName, providerName } from '../../i18n/providers';
 import { describe, it, expect } from 'vitest';
-import { DOCS, docBody, docNodes, localizeZhSlug, type DocId } from '../../legal/registry';
+import { DOCS, docBody, docNodes, localizeZhSlug } from '../../legal/registry';
+import { DOC_IDS, type DocId } from '../../legal/site-paths';
 import type { Inline, MdNode } from '../../legal/markdown';
-import { LEGAL } from '../../legal/config';
+import { LEGAL, memberUrl } from '../../legal/config';
 import { agentProviderDisclosureList, illustrationProviderDisclosureList } from '../../legal/providers-list';
 import { PROVIDER_IDS, PROVIDER_META } from '../../agent/providers/defaults';
-import { STYLIZE_PROVIDERS } from '../../io/stylize/providers';
+import { STYLIZE_PROVIDERS } from '../../pipelines/stylize/providers';
 import { en as enStrings } from '../../i18n/locales/en';
 import { zh as zhStrings } from '../../i18n/locales/zh';
-import { parseLegalMarkdown, sanitizeHref } from '../../legal/markdown';
+import { parseLegalMarkdown } from '../../legal/markdown';
+import { renderedLink } from '../_support/legal-links';
 import { renderHtml } from '../../legal/markdown-html';
-import { APP_NAME } from '../../version';
+import { APP_NAME } from '../../i18n/brand';
 
-// Doc registry + per-doc schema. `src/legal/content/*` carry the authored
-// prose; this test locks in the structural contract they must preserve:
-// every DocId resolves a source, zh is present exactly where the schema
-// demands it, and `docBody` substitutes tokens without ever leaking an
-// unresolved `{...}` placeholder.
-
-const ALL_DOC_IDS: DocId[] = [
-  'privacy',
-  'terms',
-  'license',
-  'third-party',
-  'asset-licenses',
-  'about',
-  'security',
-  'contact',
-  'changelog',
+const TERMS_SECTIONS_EN = [
+  "Scope and Definitions",
+  "Reading and Acceptance",
+  "Service Description",
+  "AI Features, Keys and Fees",
+  "Content Rules and User Responsibility",
+  "Creative Rights and Asset Use",
+  "Exports, Sharing and Recoverable Data",
+  "Service Changes and Discontinuation",
+  "Saving and Backups",
+  "Functional Limits and Warranties",
+  "Allocation and Limitation of Liability",
+  "Statutory Rights",
+  "Content and Intellectual-Property Complaints",
+  "Governing Law and Disputes",
+  "Relationship Between Documents",
+  "Severability",
+  "Exercise of Rights",
+  "Changes of Operator",
+  "Notices and Contact",
+  "Language and Interpretation",
+  "Updates to These Terms",
 ];
 
+const TERMS_SECTIONS_ZH = [
+  "适用范围与用语",
+  "阅读与接受",
+  "本工具提供什么",
+  "AI 功能、密钥与费用",
+  "内容规范与使用责任",
+  "作品权利与素材使用",
+  "导出、分享与可恢复数据",
+  "服务变化与停止提供",
+  "保存与备份",
+  "功能局限与保证",
+  "责任分担与限制",
+  "法定权利",
+  "内容问题与知识产权投诉",
+  "适用法律与争议处理",
+  "文件之间的关系",
+  "部分条款无效",
+  "权利的行使",
+  "运营主体变化",
+  "通知与联系",
+  "语言与解释",
+  "条款更新",
+];
+
+const PRIVACY_SECTIONS_EN = [
+  "Scope",
+  "How Information Is Used",
+  "Information Stored in Your Browser",
+  "Exported Files and Content Checks",
+  "Clearing Local Data",
+  "Online AI and Model Information",
+  "API-Key Storage and Protection",
+  "Site Visits, Logs and Analytics",
+  "Where Information May Be Processed",
+  "Retention",
+  "Content Checks and Automated Processing",
+  "Your Choices and Rights",
+  "Minors",
+  "Security Measures and Incident Handling",
+  "Policy Updates",
+  "Contact and Complaints",
+];
+
+const PRIVACY_SECTIONS_ZH = [
+  "适用范围",
+  "信息处理方式",
+  "保存在浏览器中的信息",
+  "导出文件与内容检查",
+  "清除本地数据",
+  "在线 AI 与模型信息服务",
+  "API 密钥的保存与保护",
+  "网站访问、日志与数据分析",
+  "信息可能在哪里处理",
+  "保留期限",
+  "内容检查与自动化处理",
+  "您的选择与权利",
+  "未成年人",
+  "安全措施与事件处理",
+  "政策更新",
+  "联系与投诉",
+];
+
+const ABOUT_SECTIONS_EN = ["The Team", "Acknowledgements", "Using and Saving Your Work", "Fan-Project Disclosure", "Operator and Filing Information", "Support the Project"];
+const ABOUT_SECTIONS_ZH = ["团队", "鸣谢", "使用与保存", "同人项目说明", "运营与备案", "支持项目"];
+
+const CONTACT_SECTIONS_EN = ["Questions and Suggestions", "Security Reports", "Asset Permission and IP Complaints", "Content-Check Feedback", "Privacy Requests", "Community Updates"];
+const CONTACT_SECTIONS_ZH = ["使用问题与建议", "安全漏洞", "素材授权与知识产权投诉", "内容检查反馈", "隐私请求", "社区动态"];
+
+/** The headings each document must keep, per language; English-only documents list no Chinese. */
+const REQUIRED_HEADINGS: Record<DocId, { en: string[]; zh: string[] }> = {
+  privacy: { en: PRIVACY_SECTIONS_EN, zh: PRIVACY_SECTIONS_ZH },
+  terms: { en: TERMS_SECTIONS_EN, zh: TERMS_SECTIONS_ZH },
+  license: { en: ['Apache License'], zh: [] },
+  'third-party': { en: ['Third-Party Notices'], zh: [] },
+  'asset-licenses': { en: ['Asset Licenses'], zh: ['素材许可与来源'] },
+  about: { en: ABOUT_SECTIONS_EN, zh: ABOUT_SECTIONS_ZH },
+  security: { en: ['Security Policy'], zh: ['安全政策'] },
+  contact: { en: CONTACT_SECTIONS_EN, zh: CONTACT_SECTIONS_ZH },
+  changelog: { en: ['Changelog'], zh: ['更新日志'] },
+};
+
+// Doc registry and required headings. `src/legal/content/*` carry the authored
+// prose; this test locks in the structural contract they must preserve:
+// every DocId resolves a source, each language keeps its required headings,
+// and `docBody` substitutes tokens without ever leaking an unresolved `{...}`
+// placeholder.
+
 // '{providers}' and '{team}' are both wired, and the deployment facts are written directly into the
-// privacy body, so NO token is deferred: every doc/lang pair must resolve fully.
+// privacy body, so no token is deferred: every doc/lang pair must resolve fully.
 const DEFERRED_TOKENS: string[] = [];
 
 function unresolvedTokens(body: string): string[] {
@@ -41,7 +137,7 @@ function unresolvedTokens(body: string): string[] {
 
 describe('DOCS registry', () => {
   it('has an entry for every DocId with matching id/slug', () => {
-    for (const id of ALL_DOC_IDS) {
+    for (const id of DOC_IDS) {
       const meta = DOCS[id];
       expect(meta).toBeDefined();
       expect(meta.id).toBe(id);
@@ -52,13 +148,13 @@ describe('DOCS registry', () => {
 
   it('every DOCS entry titleKey matches the legal.doc_* naming convention', () => {
     const titleKeyPattern = /^legal\.doc_[a-z_]+$/;
-    for (const id of ALL_DOC_IDS) {
+    for (const id of DOC_IDS) {
       expect(DOCS[id].titleKey, `${id} titleKey should match legal.doc_* pattern`).toMatch(titleKeyPattern);
     }
   });
 
   it('every DocId resolves a non-empty en source', () => {
-    for (const id of ALL_DOC_IDS) {
+    for (const id of DOC_IDS) {
       expect(DOCS[id].source.en.trim().length).toBeGreaterThan(0);
     }
   });
@@ -79,11 +175,11 @@ describe('DOCS registry', () => {
   // Systemic guard: a link the sanitizer strips renders as dead
   // plain text (e.g. a dot-relative `./SECURITY.md`). No doc body, in any
   // language, may carry one. Mirrors the parser's own link pattern.
-  it('no doc body (any language) carries a link that sanitizeHref strips', () => {
+  it('no doc body (any language) carries a link the parser strips', () => {
     // Same link grammar the inline tokenizer uses (one level of balanced parens).
     const LINK_RE = /\[([^\]]*)\]\(((?:[^()]|\([^()]*\))*)\)/g;
     const offenders: string[] = [];
-    for (const id of ALL_DOC_IDS) {
+    for (const id of DOC_IDS) {
       const langs: Array<'en' | 'zh'> = DOCS[id].source.zh ? ['en', 'zh'] : ['en'];
       for (const lang of langs) {
         const body = docBody(id, lang, LEGAL);
@@ -91,13 +187,13 @@ describe('DOCS registry', () => {
         let m: RegExpExecArray | null;
         while ((m = LINK_RE.exec(body)) !== null) {
           const href = m[2] ?? '';
-          if (sanitizeHref(href) === null) {
+          if (renderedLink(href) === null) {
             offenders.push(`${id}.${lang}: [${m[1]}](${href})`);
           }
         }
       }
     }
-    expect(offenders, `these links are stripped by sanitizeHref and render dead:\n${offenders.join('\n')}`).toEqual(
+    expect(offenders, `these links are stripped by the parser and render dead:\n${offenders.join('\n')}`).toEqual(
       [],
     );
   });
@@ -109,31 +205,27 @@ describe('DOCS registry', () => {
     }
   });
 
-  it('privacy and terms require effectiveDate/policyVersion; others do not', () => {
-    expect(DOCS.privacy.schema.requiresEffectiveDate).toBe(true);
-    expect(DOCS.privacy.schema.requiresPolicyVersion).toBe(true);
-    expect(DOCS.terms.schema.requiresEffectiveDate).toBe(true);
-    expect(DOCS.terms.schema.requiresPolicyVersion).toBe(true);
-
-    for (const id of ALL_DOC_IDS.filter((i) => i !== 'privacy' && i !== 'terms')) {
-      expect(DOCS[id].schema.requiresEffectiveDate).toBe(false);
-      expect(DOCS[id].schema.requiresPolicyVersion).toBe(false);
+  it('privacy and terms state an effective date and policy version; others do not', () => {
+    expect(DOCS.privacy.dated).toBe(true);
+    expect(DOCS.terms.dated).toBe(true);
+    for (const id of DOC_IDS.filter((i) => i !== 'privacy' && i !== 'terms')) {
+      expect(DOCS[id].dated).toBe(false);
     }
   });
 
-  it('terms schema lists all twenty-one §9 section markers, found in order in both languages', () => {
-    const { en, zh } = DOCS.terms.schema.requiredTokens;
+  it('terms lists all twenty-one §9 section markers, found in order in both languages', () => {
+    const { en, zh } = REQUIRED_HEADINGS.terms;
     expect(en.length).toBe(21);
     expect(zh.length).toBe(21);
 
     const enBody = docBody('terms', 'en', LEGAL);
     const zhBody = docBody('terms', 'zh', LEGAL);
 
-    // Match each section marker at its HEADING line, not as a bare substring:
+    // Match each section marker at its heading line, not as a bare substring:
     // a section name legitimately recurs in prose (e.g. a Definitions entry or
     // a cross-reference), and in zh a heading slug is the section name verbatim,
     // so a bare `indexOf` would find an out-of-order prose occurrence. "Found
-    // in order" means the twenty-one section HEADINGS appear in order.
+    // in order" means the twenty-one section headings appear in order.
     const headingIdx = (body: string, token: string): number => {
       let offset = 0;
       for (const line of body.split('\n')) {
@@ -157,8 +249,8 @@ describe('DOCS registry', () => {
     }
   });
 
-  it('privacy schema tokens are found in both language bodies', () => {
-    const { en, zh } = DOCS.privacy.schema.requiredTokens;
+  it('privacy headings are found in both language bodies', () => {
+    const { en, zh } = REQUIRED_HEADINGS.privacy;
     expect(en.length).toBeGreaterThan(0);
     expect(zh.length).toBeGreaterThan(0);
 
@@ -168,9 +260,9 @@ describe('DOCS registry', () => {
     for (const token of zh) expect(zhBody).toContain(token);
   });
 
-  it('every other doc schema carries requiredTokens found in its en body (zh only when present)', () => {
-    for (const id of ALL_DOC_IDS.filter((i) => i !== 'privacy' && i !== 'terms')) {
-      const { requiredTokens } = DOCS[id].schema;
+  it('every other doc keeps its required headings in its en body (zh only when present)', () => {
+    for (const id of DOC_IDS.filter((i) => i !== 'privacy' && i !== 'terms')) {
+      const requiredTokens = REQUIRED_HEADINGS[id];
       const enBody = docBody(id, 'en', LEGAL);
       for (const token of requiredTokens.en) expect(enBody).toContain(token);
 
@@ -210,9 +302,9 @@ describe('docBody — token substitution', () => {
     }
   });
 
-  // The effective-date/version stamp is emitted ONCE, programmatically — the
+  // The effective-date/version stamp is emitted once, programmatically — the
   // static page's `updatedLineHtml` and the in-app footer (`legal.updated`) —
-  // NOT authored into the doc body (that would duplicate it). So the raw
+  // Not authored into the doc body (that would duplicate it). So the raw
   // `{effectiveDate}`/`{policyVersion}` tokens must not survive in any body, and
   // no unsubstituted token may leak either. The programmatic surface carrying
   // the date is proven by build-pages.test.ts ("shows effective date + policy
@@ -227,10 +319,9 @@ describe('docBody — token substitution', () => {
     }
   });
 
-  it('substitutes {operator} from operatorDisplayName, and {origin}', () => {
+  it('substitutes {operator} from the operator name in each language, and {origin}', () => {
     // The reader sees the plain team label, with no "pending" qualifier on it.
-    const enName = LEGAL.operatorDisplayName.split(' / ')[0] ?? LEGAL.operatorDisplayName;
-    const zhName = LEGAL.operatorDisplayName.split(' / ')[1] ?? LEGAL.operatorDisplayName;
+    const { en: enName, zh: zhName } = LEGAL.operatorName;
 
     const en = docBody('about', 'en', LEGAL);
     expect(en).not.toContain('{operator}');
@@ -267,7 +358,7 @@ describe('docBody — token substitution', () => {
   });
 
   it('leaves no unresolved {...} tokens beyond the deferred allowlist', () => {
-    for (const id of ALL_DOC_IDS) {
+    for (const id of DOC_IDS) {
       for (const lang of ['en', 'zh'] as const) {
         const body = docBody(id, lang, LEGAL);
         const unresolved = unresolvedTokens(body).filter((t) => !DEFERRED_TOKENS.includes(t));
@@ -279,7 +370,7 @@ describe('docBody — token substitution', () => {
   });
 
   it('the retired {deployment-facts} token appears in no document (any language)', () => {
-    for (const id of ALL_DOC_IDS) {
+    for (const id of DOC_IDS) {
       for (const lang of ['en', 'zh'] as const) {
         if (lang === 'zh' && DOCS[id].source.zh === null) continue;
         expect(docBody(id, lang, LEGAL)).not.toContain('{deployment-facts}');
@@ -289,7 +380,7 @@ describe('docBody — token substitution', () => {
 });
 
 // Render-time zh slug localization. A zh reader must stay in
-// Chinese across cross-doc references: an internal link to a slug that HAS a zh
+// Chinese across cross-doc references: an internal link to a slug that has a zh
 // page routes to /zh/<slug>; en-only-doc links and en rendering stay untouched.
 describe('zh slug localization (docNodes / localizeZhSlug)', () => {
   function linkHrefs(nodes: MdNode[]): string[] {
@@ -356,12 +447,12 @@ describe('zh slug localization (docNodes / localizeZhSlug)', () => {
   });
 });
 
-// Factual anchors for material privacy disclosures beyond the schema's required headings.
+// Factual anchors for material privacy disclosures beyond the required headings.
 describe('privacy — required substance tokens', () => {
   const PRIVACY_TOKENS_EN = [
       "Maps are edited and saved in the current browser",
       "image includes a PetitGlyph ribbon",
-      "Turning off Show notes does not remove annotations from the code",
+      "Turning off Show annotations does not remove annotations from the code",
       "After you submit or resume a task",
       "cannot establish these conditions from a key alone",
       "malicious extensions, a compromised device",
@@ -445,7 +536,7 @@ describe('privacy — deployment-facts disclosure (§8)', () => {
   });
 });
 
-// Factual anchors for material terms beyond the schema's required headings.
+// Factual anchors for material terms beyond the required headings.
 describe('terms — required substance tokens', () => {
   const TERMS_TOKENS_EN = [
       "Scope and Definitions",
@@ -570,7 +661,7 @@ describe('about — required substance tokens', () => {
       const body = docBody('about', lang, LEGAL);
       for (const member of LEGAL.team) {
         expect(body, `about.${lang} missing ${member.name}`).toContain(member.name);
-        expect(body, `about.${lang} missing ${member.name}'s link`).toContain(member.url);
+        expect(body, `about.${lang} missing ${member.name}'s link`).toContain(memberUrl(member));
       }
     }
   });
@@ -578,7 +669,7 @@ describe('about — required substance tokens', () => {
 
 // The Contact document's binding substance:
 // a purpose-routed set of channels — general & bugs (GitHub
-// issues + email), security ([SECURITY] → SECURITY.md), IP/takedown ([IP]),
+// issues + email), security ([security] → SECURITY.md), IP/takedown ([IP]),
 // community (the four Bilibili spaces) — plus the "aim to respond within 14
 // days" expectation. Parity across en+zh.
 describe('contact — required substance tokens', () => {
@@ -620,7 +711,7 @@ describe('contact — required substance tokens', () => {
     for (const lang of ['en', 'zh'] as const) {
       const body = docBody('contact', lang, LEGAL);
       for (const member of LEGAL.team) {
-        expect(body, `contact.${lang} missing Bilibili space ${member.url}`).toContain(member.url);
+        expect(body, `contact.${lang} missing Bilibili space ${memberUrl(member)}`).toContain(memberUrl(member));
       }
     }
   });
@@ -651,7 +742,7 @@ describe('provider disclosure lists', () => {
 
   it('uses the same localized provider names as the interface', () => {
     for (const lang of ['en', 'zh'] as const) {
-      const strings = lang === 'zh' ? zhStrings : enStrings;
+      const strings: Readonly<Record<string, string>> = lang === 'zh' ? zhStrings : enStrings;
       const list = agentProviderDisclosureList(lang);
       const ids = PROVIDER_IDS.filter(id => id !== 'custom');
       expect(list.slice(0, -1)).toEqual(ids.map(id => providerName(id, key => strings[key] ?? key)));
@@ -672,16 +763,17 @@ describe('provider disclosure lists', () => {
         expect(en[index]).toMatch(/custom endpoint/i);
         expect(zh[index]).toContain('自定义端点');
       } else {
-        expect(en[index]).toBe(enStrings[`stylize.provider_${provider.id}`]);
-        expect(zh[index]).toBe(zhStrings[`stylize.provider_${provider.id}`]);
+        const name = (table: Readonly<Record<string, string>>) => illustrationProviderName(provider.id, (key) => table[key] ?? key);
+        expect(en[index]).toBe(name(enStrings));
+        expect(zh[index]).toBe(name(zhStrings));
       }
     }
   });
 });
 
 // The authored docs use GitHub-style in-doc anchors ([Share Images](#share-images)), so both
-// emitters must emit a heading `id` — without one, every such link is DEAD (clicking it does
-// nothing). This probes ALL doc-id × language pairs generically, so it also catches a future doc
+// emitters must emit a heading `id` — without one, every such link is dead (clicking it does
+// nothing). This probes all doc-id × language pairs generically, so it also catches a future doc
 // that adds an internal link with no matching heading.
 function internalFragmentHrefs(html: string): string[] {
   const doc = new DOMParser().parseFromString(`<!doctype html><html><body>${html}</body></html>`, 'text/html');
@@ -728,12 +820,12 @@ describe('internal anchor links resolve to a real heading id (every doc x langua
 });
 
 // Every web link must be clickable and every email address must carry a mailto: link wherever it
-// appears in a rendered doc. Scans the PLAIN-TEXT content of every doc x language for a bare
-// `http(s)://` URL or a bare email address — one that survives OUTSIDE any `<a>` element, and so
+// appears in a rendered doc. Scans the plain-text content of every doc x language for a bare
+// `http(s)://` URL or a bare email address — one that survives outside any `<a>` element, and so
 // renders as dead, unclickable text. A URL or email that is itself a link's visible label (the
 // Bilibili "space.bilibili.com/…" links in contact.*.md, or an `{email}`/`{securityEmail}` token,
-// substituted as `[addr](mailto:addr)` by registry.ts `tokensFor`) is NOT bare: its whole subtree
-// is excluded by skipping `<a>` nodes entirely (their label AND href).
+// substituted as `[addr](mailto:addr)` by registry.ts `tokensFor`) is not bare: its whole subtree
+// is excluded by skipping `<a>` nodes entirely (their label and href).
 describe('link hygiene: no bare URL or bare email outside a link (every doc x language)', () => {
   const BARE_URL_RE = /https?:\/\/[^\s<>]+/g;
   // A conservative bare-email matcher (local@domain.tld) — good enough to
@@ -741,7 +833,7 @@ describe('link hygiene: no bare URL or bare email outside a link (every doc x la
   // strings or file paths, which never contain '@'.
   const BARE_EMAIL_RE = /[A-Za-z0-9][A-Za-z0-9._%+-]*@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+/g;
 
-  // Concatenates every text node's content EXCEPT text inside an <a>.
+  // Concatenates every text node's content except text inside an <a>.
   function nonLinkText(html: string): string {
     const doc = new DOMParser().parseFromString(`<!doctype html><html><body>${html}</body></html>`, 'text/html');
     const parts: string[] = [];
@@ -758,12 +850,12 @@ describe('link hygiene: no bare URL or bare email outside a link (every doc x la
   }
 
   // Two exceptions, neither of them prose this project authors:
-  //   - 'license': LICENSE is the Apache-2.0 text reproduced BYTE-EXACT
+  //   - 'license': License is the Apache-2.0 text reproduced byte-exact
   //     (pinned by license-files.test.ts — 201 lines / 11,357 bytes), so its two
   //     `http://www.apache.org/licenses/...` occurrences are the official
   //     license text and markdown link syntax would break the byte-exact pin.
   //   - 'third-party': the npm-dependency audit table (one big markdown
-  //     `<table>`, ~100 rows) is MACHINE-GENERATED from package-lock.json +
+  //     `<table>`, ~100 rows) is machine-generated from package-lock.json +
   //     each package's own package.json metadata by
   //     scripts/license-audit-core.mts (`npm run legal:licenses`), so only the
   //     `<table>` is excised. The hand-authored Fonts section below it (the
@@ -776,7 +868,7 @@ describe('link hygiene: no bare URL or bare email outside a link (every doc x la
     return nonLinkText(html);
   }
 
-  for (const id of ALL_DOC_IDS) {
+  for (const id of DOC_IDS) {
     for (const lang of ['en', 'zh'] as const) {
       if (lang === 'zh' && DOCS[id].source.zh === null) continue;
 

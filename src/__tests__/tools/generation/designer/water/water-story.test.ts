@@ -1,25 +1,25 @@
-// THE WATER STORY, read on ground the test itself shapes.
+// The water story, read on ground the test itself shapes.
 //
-// Two kinds of claim. The GEOMETRY claims are read off the pure shape functions: a pond shape is
+// Two kinds of claim. The geometry claims are read off the pure shape functions: a pond shape is
 // symmetric about its own box, which is what makes it read as composed rather than as a blob.
 //
-// The COURSE claims are read off a synthetic terraced map — a staircase of tiers with nothing
+// The course claims are read off a synthetic terraced map — a staircase of tiers with nothing
 // standing on it — because that is the one place the story's own arguments can be checked without a
 // whole designed map in the way: the course has a source and an arrival, it bends, its width varies,
 // it never runs straight for longer than the bound it declares, and the terrain it leaves behind
-// commits through the LIVE rules with no violation. The last is the only proof that matters for the
+// commits through the live rules with no violation. The last is the only proof that matters for the
 // falls: V-WTR-02's caps and V-WTR-03's uniform landing are claims about a finished map.
 import { describe, it, expect } from 'vitest';
 import { MAP_TEMPLATES } from '../../../../../config/maps';
-import { flatIndex } from '../../../../../core/model/grid-model';
+import { flatIndex } from '../../../../../core/grid/rect';
 import { TerrainType, type MacroCoord, type MapTemplate } from '../../../../../core/model/types';
 import { createDefaultRegistry } from '../../../../../rules';
-import { applyPlanToScratch } from '../../../../../tools/generation/core/repair';
-import type { TerrainPlan } from '../../../../../tools/generation/core/types';
-import { paintableMask } from '../../../../../tools/generation/designer/composition/composition';
-import {
-  carveWaterStory, pondCells, STRAIGHT_MAX, type PondShape, type WaterStory,
-} from '../../../../../tools/generation/designer/water/water-story';
+import { applyPlanToScratch } from '../../../../../tools/generation/terrain-plan/repair';
+import type { TerrainPlan } from '../../../../../tools/generation/terrain-plan/types';
+import { paintableMask } from '../../../../../tools/generation/designer/planet';
+import { carveWaterStory } from '../../../../../tools/generation/designer/water/water-story';
+import { pondCells } from '../../../../../tools/generation/designer/water/story-model';
+import type { PondShape, WaterStory } from '../../../../../tools/generation/designer/water/story-model';
 import type { DesignPlan } from '../../../../../tools/generation/designer/types';
 
 const HEXIA = MAP_TEMPLATES['hexia']!;
@@ -29,7 +29,7 @@ const SEEDS = [12345, 777, 42, 2026, 7, 31337];
 function emptyPlan(template: MapTemplate): DesignPlan {
   return {
     seedInfo: { seed: 0, richness: 1, templateId: template.id },
-    plazaHub: { x: 0, y: 0, w: 0, h: 0 },
+    hubArea: { x: 0, y: 0, w: 0, h: 0 },
     backingBand: { x: 0, y: 0, w: 0, h: 0 },
     regions: [], unplaced: [],
   };
@@ -63,7 +63,7 @@ function carve(seed: number, richness = 1): { story: WaterStory | null; t: Terra
   return { story, t, grass };
 }
 
-/** The longest run of the spine that keeps one heading, in CELLS — a fall moves the head two cells
+/** The longest run of the spine that keeps one heading, in cells — a fall moves the head two cells
  *  at once — and how many times the heading changes. */
 function spineShape(spine: readonly MacroCoord[]): { straight: number; bends: number } {
   let run = 0, longest = 0, bends = 0;
@@ -141,7 +141,7 @@ describe('the course, on a staircase map', () => {
     for (const seed of SEEDS) {
       const { story } = carve(seed);
       const { straight, bends } = spineShape(story!.spine);
-      expect(straight, `seed ${seed} straight run`).toBeLessThanOrEqual(STRAIGHT_MAX);
+      expect(straight, `seed ${seed} straight run`).toBeLessThanOrEqual(14);   // no stretch runs straight past fourteen cells
       expect(bends, `seed ${seed} bends`).toBeGreaterThan(2);
     }
   });

@@ -1,16 +1,13 @@
+import { placeObjectCommand } from '../../../../core/model/command-build';
 import { describe, expect, it } from 'vitest';
-import { CommandExecutor } from '../../../../core/commands/command-executor';
-import { EventBus } from '../../../../core/commands/event-bus';
-import { CHUNK_LOAD_LIMIT } from '../../../../core/model/game-profile';
-import { CommandType, type EditorEvents, type GridState, type Stencil, type StencilPlan } from '../../../../core/model/types';
-import { createDefaultRegistry } from '../../../../rules';
+import { CHUNK_LOAD_LIMIT } from '../../../../core/game/profile';
+import { CommandType, type GridState } from '../../../../core/model/types';
+import { type Stencil, type StencilPlan } from '../../../../tools/generation/recipe';
 import { getMapStats } from '../../../../state/map-stats';
-import { roadLookup } from '../../../../state/object-index';
 import { budgetStencil } from '../../../../tools/generation/stencil/stencil-budget';
 import { layStencilDecor, runStencilPlan } from '../../../../tools/generation/stencil/stencil-generator';
-import { objectPlacementCommand } from '../../../../tools/objects/object-placer';
 import { LoadBudget } from '../../../../state/load-budget';
-import { makeState } from '../../../rules/_helpers';
+import { makeState, makeExecutor } from '../../../_support/map-state';
 
 const flower = { catalogId: 'flower-protea', rgb: 0x808080 };
 function slab(size: number): Stencil {
@@ -20,14 +17,15 @@ function plan(size = 16): StencilPlan {
   return { read: 'color', stencil: slab(size), origin: { x: 0, y: 0 }, objectPalette: [flower] };
 }
 function run(state: GridState, source: StencilPlan) {
-  const executor = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
+  const executor = makeExecutor(state);
+  const whole = executor.beginStroke();
   const refusals: string[] = [];
   const result = runStencilPlan(state, source, 3, command => {
     const out = executor.execute(command);
     refusals.push(...out.errors.map(error => error.ruleId));
     return out;
   });
-  expect(executor.commitStroke(0)).toEqual([]);
+  expect(whole.commit()).toEqual([]);
   return { result, refusals };
 }
 
@@ -45,15 +43,15 @@ describe('complete stencils under regional budgets', () => {
 
   it('restores the base object when a decoration fails a non-budget placement check', () => {
     const state = makeState();
-    const executor = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
+    const executor = makeExecutor(state);
     const base = { id: 'base', catalogId: 'road-asphalt', position: { x: 1, y: 1 }, rotation: 0 as const, elevation: 0 };
-    expect(executor.execute(objectPlacementCommand(base)).success).toBe(true);
+    expect(executor.execute(placeObjectCommand(base)).success).toBe(true);
     const stencil = slab(3);
     stencil.color[4] = 0xff0000;
     const result = layStencilDecor(state, { stencil, origin: { x: 0, y: 0 } }, { palette: [{ ...flower, rgb: 0xff0000 }] }, cmd => {
       if (cmd.type === CommandType.PlaceObject && cmd.object.catalogId === flower.catalogId) return { success: false, errors: [] };
       return executor.execute(cmd);
-    }, new Set([base.id]), [{ rgb: 0x808080 }], true);
+    }, { replaceable: new Set([base.id]), primary: [{ rgb: 0x808080 }], paved: true });
     expect(result.placed).toBe(0);
     expect(state.objects.get(base.id)).toEqual(base);
   });

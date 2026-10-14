@@ -1,12 +1,15 @@
+// @vitest-environment jsdom
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { useContextHelp } from '../../../ui/chrome/modals/help/use-context-help';
-import { helpTargetAt } from '../../../ui/chrome/modals/help/targets';
+import { useContextHelp } from '../../../ui/help/use-context-help';
+import { helpTargetAt } from '../../../ui/session/help-targets';
 import { inheritedHelpTarget } from '../../../ui/primitives/help-target';
-import { COMMAND_META, effectiveCombo, PRESETS, presetBinds, useKeybinds } from '../../../core/runtime/keybindings';
+import { COMMAND_META, PRESETS } from '../../../state/keymap/registry';
+import { effectiveCombo, presetBinds } from '../../../state/keymap/resolve';
+import { useKeybinds } from '../../../state/keymap/store';
 import { KEY_ROWS, comboFor } from '../../../ui/chrome/modals/keyboard/layout';
 import { useEditorStore } from '../../../state/store';
-import { setStoreState } from '../../_store';
+import { setStoreState } from '../../_support/store';
 
 function Harness() {
   useContextHelp();
@@ -70,10 +73,10 @@ describe('context help shortcut', () => {
     helpKey(); expect(useEditorStore.getState().whatsThis).toBe(false);
   });
   it('leaves shortcut recording and text entry alone', () => {
-    const { container } = render(<Harness />);
-    container.setAttribute('data-shortcut-recording', 'true');
+    render(<Harness />);
+    act(() => useKeybinds.getState().setRecording(true));
     helpKey(); expect(useEditorStore.getState().whatsThis).toBe(false);
-    container.removeAttribute('data-shortcut-recording');
+    act(() => useKeybinds.getState().setRecording(false));
     const input = screen.getByRole('textbox'); input.focus();
     expect(fireEvent.keyDown(input, { key: 'H', code: 'KeyH', shiftKey: true })).toBe(true);
     expect(useEditorStore.getState().whatsThis).toBe(false);

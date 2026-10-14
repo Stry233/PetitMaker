@@ -1,11 +1,11 @@
-# Security + cache headers for Netlify-style static hosts. Vite copies public/ to the build root,
+# Security and cache headers for the static-asset host. Vite copies public/ to the build root,
 # so this lands at dist/_headers. GENERATED — do not hand-edit; run
 # `npx vite-node scripts/generate-headers.mts` after changing security/headers-policy.ts.
-# (Vercel uses vercel.json; the CSP <meta> in index.html is the portable fallback. Production
-# deploys to Alibaba OSS/ESA, where neither file applies — those headers are set as ESA rules
-# generated from this same policy.)
+# (Cloudflare's static-asset layer serves the international site from this file; the CSP <meta>
+# in index.html is the portable fallback. The mainland site on Aliyun ESA reads no header file:
+# its headers are ESA rules generated from this same policy.)
 /*
-  Content-Security-Policy: default-src 'self'; base-uri 'self'; object-src 'none'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: blob:; media-src 'self' blob:; form-action 'self'; frame-ancestors 'none'; connect-src 'self' data: https://api.anthropic.com https://api.openai.com https://api.deepseek.com https://generativelanguage.googleapis.com https://openrouter.ai https://api.z.ai https://open.bigmodel.cn https://dashscope-intl.aliyuncs.com https://dashscope.aliyuncs.com https://api.moonshot.ai https://api.moonshot.cn https://ark.cn-beijing.volces.com https://api.perplexity.ai https://api.siliconflow.cn https://api.stepfun.com https://api-inference.modelscope.cn https: http://localhost:* http://127.0.0.1:*
+  Content-Security-Policy: default-src 'self'; base-uri 'self'; object-src 'none'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: blob:; media-src 'self' blob:; form-action 'self'; frame-ancestors 'none'; connect-src 'self' data: https: http://localhost:* http://127.0.0.1:*
   X-Frame-Options: DENY
   X-Content-Type-Options: nosniff
   Referrer-Policy: strict-origin-when-cross-origin
@@ -14,8 +14,10 @@
   Cross-Origin-Opener-Policy: same-origin
   Cross-Origin-Resource-Policy: same-origin
 
-# Fingerprinted assets are immutable; HTML must always re-validate so new builds ship.
+# Fingerprinted assets are immutable; files under a stable name re-validate so new builds ship.
 /assets/*
   Cache-Control: public, max-age=31536000, immutable
 /index.html
   Cache-Control: public, max-age=0, must-revalidate
+/moderation/*
+  Cache-Control: public, max-age=31536000, immutable

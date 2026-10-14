@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { mountainFloatingRule, waterFloatingRule } from '../../rules/floating-block';
 import { TerrainType } from '../../core/model/types';
-import { makeState, setTerrain, paintCmd } from './_helpers';
+import { makeState, setTerrain, paintCmd } from '../_support/map-state';
 
 describe('V-MTN-02: No Floating Mountain', () => {
   it('allows mountain at elevation 1 (ground support)', () => {

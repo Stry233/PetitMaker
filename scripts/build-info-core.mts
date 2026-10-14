@@ -1,43 +1,31 @@
 /**
- * Build identity (build number, commit sha, date). ONE source of truth: the
- * committed `build-info.json`, stamped from THIS repository's history.
+ * Build identity (build number, commit sha, date). The one source is the committed
+ * `build-info.json`, stamped from this repository's history.
  *
- * Deriving it per build (`git rev-list --count HEAD`) is right only inside the
- * full-history private repo, and quietly wrong everywhere else: a shallow clone (CI's
- * default checkout) counts the fetch depth, a source tarball or Docker `COPY` without
- * `.git` has no count at all, and the public-repo export carries a FRESH history that
- * starts over at 1. A build-time date has the same problem from the other side: it is
- * whenever the build ran, so two people building identical source disagree about which
- * build they have.
+ * A build only reads the stamp; no build derives a number from the commit count, the
+ * date or a deploy-host variable. A shallow clone counts its fetch depth, a tarball has
+ * no history and the public export's history starts over at 1, so a derived number
+ * would identify nothing. A production build with no valid stamp fails; a dev server
+ * says it has none.
  *
- * So a BUILD never derives the identity — it only reads the stamp. Nothing else may
- * supply a number: no deploy-host environment variable, no local git, no default.
- * A number that did not come from this repository's history would not identify
- * anything, so a production build with no valid stamp FAILS instead of inventing
- * one, and a dev server says so rather than showing a plausible-looking 0.
+ * `npm run stamp` (scripts/stamp-build.mts) is the one reader of the history. It
+ * refuses to write a number from a missing or shallow history and never lowers an
+ * existing one, so a truncated or re-created history cannot clobber the real number.
+ * `stamp:check` verifies that the stamped commit is an ancestor of HEAD.
  *
- * Git is used in exactly one place: `npm run stamp` (scripts/stamp-build.mts), which
- * writes the file from the private repo's history. It refuses to write a number it
- * cannot trust (no git, or a shallow clone whose count is the fetch depth) and
- * refuses to LOWER an existing number, so re-running it inside a truncated or
- * re-created history (the public export, a squashed migration) cannot clobber the
- * real number. `stamp:check` then verifies that the committed stamp's commit is an
- * ancestor of HEAD, which is what proves the number came from this history and not
- * from somewhere else.
- *
- * Pure: every effect (file read, git) is injected, so each context is unit-testable
- * — see `src/__tests__/build-info.test.ts`.
+ * Pure: every effect (file read, history) is injected
+ * (`src/__tests__/scripts/build-info.test.ts`).
  */
 
 export interface BuildInfo {
   buildNumber: string;
   sha: string;
   date: string;
-  /** The version this snapshot was PUBLISHED as. Present only in a published snapshot:
+  /** The version this snapshot was published as. Present only in a published snapshot:
    *  the publish workflow writes it, and its presence is what makes a build a release
    *  rather than a dev build (see `resolveVersion`). */
   release?: string;
-  /** What the last publish put out, copied back into THIS repository by the publish workflow.
+  /** What the last publish put out, copied back into this repository by the publish workflow.
    *  Only a dev version reads it — see `resolveVersion`. */
   lastRelease?: { version: string; buildNumber: string };
 }
@@ -58,7 +46,7 @@ export const UNSTAMPED: BuildInfo = { buildNumber: 'dev', sha: 'dev', date: '' }
 const SEMVER = /^\d+\.\d+\.\d+$/;
 
 /** Parse a stamp file, tolerating anything malformed — a broken stamp must read as
- *  ABSENT (so the caller fails or warns), never as a partially-trusted identity. */
+ *  absent (so the caller fails or warns), never as a partially-trusted identity. */
 export function parseStamp(raw: string | null): Partial<BuildInfo> {
   if (!raw) return {};
   try {
@@ -89,7 +77,7 @@ export function isShallow(git: (args: string) => string | null): boolean {
   return git('rev-parse --is-shallow-repository') === 'true';
 }
 
-/** The identity git can vouch for in THIS tree. Only `npm run stamp` calls this;
+/** The identity git can vouch for in this tree. Only `npm run stamp` calls this;
  *  a build never does. The count is withheld for a shallow clone (its sha and
  *  commit date are still real, only the count is meaningless). */
 export function buildInfoFromGit(git: (args: string) => string | null): Partial<BuildInfo> {
@@ -125,23 +113,14 @@ export function resolveBuildInfo(deps: BuildInfoDeps): { info: BuildInfo; stampe
 
 /**
  * The version string a build displays: `MAJOR.MINOR.BUILD`, with `-dev` unless this is a
- * published snapshot.
+ * published snapshot. A DEV build shows the version its tree would be released as: the `nextReleaseVersion` a
+ * publish would compute from the same inputs, so it sorts above the release it descends from.
+ * That needs `lastRelease`, which the publish workflow copies back from the public stamp;
+ * without it the version falls back to package.json's MAJOR.MINOR over the absolute build
+ * number, which can sort below a release.
  *
- * A DEV build shows the version its tree WOULD be released as, marked `-dev`. That is the same
- * `nextReleaseVersion` a publish would compute, from the same inputs, so a dev build always sorts
- * ABOVE the release it descends from: MINOR advances on every sync, and the next sync's MINOR is
- * one past the last one's.
- *
- * It needs to know what was last published, which the source repository does not otherwise track
- * — the record lives in the PUBLIC repository's committed stamp. The publish workflow copies it
- * back here as `lastRelease`. Without it (before the first publish, or an older stamp) the version
- * falls back to package.json's own MAJOR.MINOR over the absolute build number; that is a valid
- * version but it can sort BELOW a release, which is the whole reason `lastRelease` exists.
- *
- * `-dev` is decided by data, not by configuration: only the publish workflow writes
- * `release` into a snapshot's stamp, so ANY build from the source repository is a dev
- * build and any build of a published snapshot is a release. Nothing has to be remembered
- * or set per environment.
+ * Only the publish workflow writes `release` into a snapshot's stamp, so any build of the
+ * source repository is a dev build and any build of a published snapshot is a release.
  */
 export function resolveVersion(opts: {
   pkgVersion: string; buildNumber: string; release?: string;
@@ -154,12 +133,12 @@ export function resolveVersion(opts: {
         lastVersion: opts.lastRelease.version, lastBuildNumber: opts.lastRelease.buildNumber,
       })}-dev`;
     } catch {
-      // Building a commit OLDER than the last publish; `nextReleaseVersion` refuses to count
+      // Building a commit older than the last publish; `nextReleaseVersion` refuses to count
       // backwards, and the fallback below is a truthful version for a tree that is behind.
     }
   }
   const [major = '0', minor = '0'] = opts.pkgVersion.split('.');
-  // An unstamped build has no number to use as PATCH; 0 keeps the string valid semver.
+  // An unstamped build has no number to use as patch; 0 keeps the string valid semver.
   const patch = /^\d+$/.test(opts.buildNumber) ? opts.buildNumber : '0';
   return `${major}.${minor}.${patch}-dev`;
 }
@@ -172,7 +151,7 @@ export interface SeriesState {
   lastBuildNumber?: string;
 }
 
-/** PATCH counts source commits; same-line releases add them to the published PATCH. */
+/** Patch counts source commits; same-line releases add them to the published patch. */
 export function nextReleaseVersion(
   pkgVersion: string,
   buildNumber: string,
@@ -207,7 +186,7 @@ export function nextReleaseVersion(
     if (since === 0) throw new Error('A patch release requires new source commits');
     return `${major}.${lastMinor}.${Number(previous[3]) + since}`;
   }
-  // A newly declared MAJOR opens its line at X.0; otherwise the sync count advances.
+  // A newly declared major opens its line at X.0; otherwise the sync count advances.
   return major === lastMajor ? `${major}.${lastMinor + 1}.${since}` : `${major}.0.${since}`;
 }
 
@@ -233,10 +212,10 @@ export function unstampedMessage(production: boolean): string {
 }
 
 /**
- * The stamp file's contents for the CURRENT git tree. Throws rather than writing a
+ * The stamp file's contents for the current git tree. Throws rather than writing a
  * number it cannot vouch for.
  *
- * `previous` is the stamp already committed. A new number must never be LOWER than
+ * `previous` is the stamp already committed. A new number must never be lower than
  * it: a lower count means this history is not the one that produced the number (a
  * fresh-history export, a squashed migration, a shallow clone that slipped past the
  * check), and stamping there would replace the real identity with a meaningless
@@ -266,7 +245,7 @@ export function stampFromGit(
   }
   const full: BuildInfo = {
     buildNumber: info.buildNumber, sha: info.sha ?? head, date: info.date ?? '',
-    // CARRIED, not recomputed: stamping answers "which commit is this", and what was last
+    // Carried, not recomputed: stamping answers "which commit is this", and what was last
     // published is a different fact that only the publish workflow learns. Rewriting the stamp
     // without it would drop the record on the next build — including the dev site's, which
     // stamps in its own runner.
@@ -288,17 +267,11 @@ export type StampVerdict =
   | { ok: false; reason: string };
 
 /**
- * Verify the committed stamp against this repository. The hard requirement is
- * PROVENANCE: the stamped commit must be an ancestor of HEAD, which is what proves
- * the number was produced by this history rather than injected from elsewhere. How
- * far HEAD has moved since is reported, not enforced — the number identifies the
- * release it was cut for, so being behind is information for the maintainer, and
- * requiring equality would be unsatisfiable (committing the stamp itself moves HEAD).
- *
- * Where the stamped commit is simply unknown to the local repository (the public
- * export's fresh history, a tarball with no git), provenance cannot be checked here
- * at all; that is reported as `unverifiable` rather than failed, since those trees
- * are consumers of the number, not owners of it.
+ * Verify the committed stamp against this repository: the stamped commit must be an
+ * ancestor of HEAD, which proves the number came from this history. How far HEAD has
+ * moved since is reported, not enforced, since committing the stamp itself moves HEAD.
+ * A stamped commit the local repository does not know (the public export's fresh
+ * history, a tarball) reads as `unverifiable`: those trees consume the number.
  */
 export function checkStamp(
   raw: string | null,

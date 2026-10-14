@@ -1,19 +1,20 @@
 import { describe, it, expect } from 'vitest';
-import { CommandExecutor } from '../../../core/commands/command-executor';
 import { EventBus } from '../../../core/commands/event-bus';
 import { createDefaultRegistry } from '../../../rules';
-import type { EditorEvents } from '../../../core/model/types';
-import { makeState } from '../../rules/_helpers';
-import { roadLookup } from '../../../state/object-index';
+import type { EditorEvents } from '../../../state/editing/events';
+import { makeState } from '../../_support/map-state';
 import type { AgentToolDeps } from '../../../agent/tools';
-import { createExecutor, wireSchemas, type DelegateOpts } from '../../../agent/exec/executor';
-import { createScriptedAdapter, type ScriptedTurn } from '../../../agent/eval/scripted-adapter';
+import { createExecutor, type DelegateOpts } from '../../../agent/exec/executor';
+import { wireSchemas } from '../../../agent/tools';
+import { createScriptedAdapter, type ScriptedTurn } from '../../_support/agent/scripted-adapter';
 import { append, createLog, eventsOf } from '../../../agent/core/log';
 import type { SessionLog } from '../../../agent/core/log';
 import { answerGate, type Oversight } from '../../../agent/core/gates';
 import { runJob, type LoopDeps } from '../../../agent/core/loop';
-import { retainedWrite } from '../../../agent/core/governor';
+import { COMPACTION_RESERVE } from '../../../agent/core/compaction';
+import { retainedWrite } from '../../../agent/core/tool-result';
 import type { SessionEvent } from '../../../agent/core/types';
+import { createExecutor as createCommandExecutor } from '../../../state/executor';
 
 /** Drains the microtask queue: every scripted turn here resolves through promise chains alone
  *  (no real timers), so a fixed, generous number of `await`s is enough to run a child job up to
@@ -37,19 +38,21 @@ function toolTurn(calls: { callId: string; name: string; args?: Record<string, u
 function setup(w = 20, h = 20) {
   const state = makeState(w, h);
   const bus = new EventBus<EditorEvents>();
-  const exec = new CommandExecutor(state, bus, createDefaultRegistry(), roadLookup(state));
+  const exec = createCommandExecutor(state, createDefaultRegistry(), bus);
   const deps: AgentToolDeps = { getState: () => state, getExecutor: () => exec, getRegion: () => [] };
   return { state, exec, deps };
 }
 
 /** A `DelegateOpts` wired to a fresh parent log + a supplied scripted child adapter. */
 function makeDelegate(
-  turns: ScriptedTurn[], opts: { oversight?: Oversight; parentLog?: SessionLog; signal?: AbortSignal } = {},
+  turns: ScriptedTurn[],
+  opts: { oversight?: Oversight; parentLog?: SessionLog; signal?: AbortSignal; capabilities?: DelegateOpts['capabilities'] } = {},
 ): DelegateOpts & { adapter: ReturnType<typeof createScriptedAdapter> } {
   const adapter = createScriptedAdapter(turns);
   return {
     adapter,
     model: 'scripted-model',
+    ...(opts.capabilities ? { capabilities: opts.capabilities } : {}),
     system: 'you are a helper',
     oversight: opts.oversight ?? 'yolo',
     signal: opts.signal ?? new AbortController().signal,
@@ -57,7 +60,7 @@ function makeDelegate(
   };
 }
 
-/** A PARENT job's `LoopDeps`, wired to the real executor (so `delegate_task` reaches the scripted
+/** A parent job's `LoopDeps`, wired to the real executor (so `delegate_task` reaches the scripted
  *  child adapter through `opts.delegate`, exactly as the runner wires it live). */
 function parentDeps(
   deps: AgentToolDeps, parentTurns: ScriptedTurn[], delegate: DelegateOpts,
@@ -71,9 +74,8 @@ function parentDeps(
     executor: createExecutor(deps, { delegate }),
     oversight: 'yolo',
     sameModel: true,
-    budgetTokens: 100_000,
     signal: new AbortController().signal,
-    undoStackSize: () => deps.getExecutor().getUndoStackSize(),
+    undoStackSize: () => deps.getExecutor().historyDepth(),
   };
 }
 
@@ -98,9 +100,20 @@ describe('exec/executor: delegate_task', () => {
     expect(JSON.stringify(req?.messages)).toContain('build a small house at (2,2)');
   });
 
+  it("budgets the child job against the model's own context window", async () => {
+    const { deps } = setup();
+    // A task larger than the window's free space cannot be folded, so the child ends before any request.
+    const delegate = makeDelegate([textTurn('Built it.')], { capabilities: { context: COMPACTION_RESERVE + 1_000 } });
+    const executor = createExecutor(deps, { delegate });
+
+    await executor.execute({ callId: 'd0', name: 'delegate_task', args: { task: 'Add a pond by the gate. '.repeat(400) } });
+
+    expect(delegate.adapter.requests).toHaveLength(0);
+  });
+
   it("the child's write lands ONE undo step on the shared executor, and detail sums its counts", async () => {
     const { exec, deps } = setup();
-    const before = exec.getUndoStackSize();
+    const before = exec.historyDepth();
     const delegate = makeDelegate([
       toolTurn([{ callId: 'c1', name: 'paint_terrain', args: { rect: { x1: 2, y1: 2, x2: 4, y2: 4 }, terrain: 'mountain', elevation: 1 } }]),
       textTurn('Painted the hill.'),
@@ -111,7 +124,7 @@ describe('exec/executor: delegate_task', () => {
 
     expect(r.isError).toBe(false);
     expect(r.content).toBe('Painted the hill.');
-    expect(exec.getUndoStackSize()).toBe(before + 1); // one stroke group, on the SAME executor
+    expect(exec.historyDepth()).toBe(before + 1); // one stroke group, on the same executor
     expect(r.detail?.cells).toBeGreaterThan(0);
   });
 
@@ -136,7 +149,7 @@ describe('exec/executor: delegate_task', () => {
 
   it("a parent-strict oversight gates the child's write through the mirrored parent gate", async () => {
     const { exec, deps } = setup();
-    const before = exec.getUndoStackSize();
+    const before = exec.historyDepth();
     const parentLog = createLog();
     const delegate = makeDelegate(
       [
@@ -151,13 +164,13 @@ describe('exec/executor: delegate_task', () => {
     await flush();
 
     // The child's own gate asks land on a log the caller never sees directly; only the mirrored
-    // copy on the PARENT log is what a human (or this test) can answer.
+    // copy on the parent log is what a human (or this test) can answer.
     const mirrored = eventsOf(parentLog).find(
       (e): e is Extract<SessionEvent, { kind: 'gateAsked' }> => e.kind === 'gateAsked',
     );
     expect(mirrored).toBeDefined();
     expect(mirrored?.summary).toContain('Painting terrain');
-    expect(exec.getUndoStackSize()).toBe(before); // nothing has run yet: still waiting on the gate
+    expect(exec.historyDepth()).toBe(before); // nothing has run yet: still waiting on the gate
 
     answerGate(parentLog, mirrored!.gateId, 'allow');
     await flush();
@@ -165,14 +178,14 @@ describe('exec/executor: delegate_task', () => {
     const r = await resultPromise;
     expect(r.isError).toBe(false);
     expect(r.content).toBe('Painted after approval.');
-    expect(exec.getUndoStackSize()).toBe(before + 1);
+    expect(exec.historyDepth()).toBe(before + 1);
   });
 
   it('aborting the parent signal mid-child ends the child aborted and the delegate result reflects it', async () => {
     const { deps } = setup();
     const controller = new AbortController();
     const turns: ScriptedTurn[] = [
-      // Aborts the SAME signal the child adapter streams under, synchronously before it ever
+      // Aborts the same signal the child adapter streams under, synchronously before it ever
       // yields an event: the scripted adapter's own abort check then turns this into a
       // `stop: 'aborted'` turn, exactly what a real cancellation mid-stream looks like.
       () => { controller.abort(); return [{ t: 'text', delta: 'never seen' }, { t: 'done', stop: 'stop' }]; },
@@ -372,11 +385,11 @@ describe('exec/executor: delegate_task', () => {
     expect(result?.content).toBe('Helper report: the village already stood; nothing needed building.');
   });
 
-  it('with no opts.delegate, delegate_task still reports itself unwired', async () => {
+  it('with no opts.delegate, delegate_task is an unknown tool', async () => {
     const { deps } = setup();
     const executor = createExecutor(deps);
     const r = await executor.execute({ callId: 'd7', name: 'delegate_task', args: { task: 'x' } });
     expect(r.isError).toBe(true);
-    expect(r.content).toBe('Delegation is not wired yet.');
+    expect(r.content).toBe('Unknown tool "delegate_task".');
   });
 });

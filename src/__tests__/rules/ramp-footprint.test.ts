@@ -1,12 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { objectInstance } from '../../canvas/map3d/build/object-meshes';
-import { CommandType, ItemCategory, TerrainType, type PlaceObjectCommand } from '../../core/model/types';
+import { objectInstance } from '../../view/map3d/geometry/object-meshes';
+import { CommandType, TerrainType, type PlaceObjectCommand } from '../../core/model/types';
 import { createDefaultRegistry } from '../../rules';
 import { getCatalogByCategory } from '../../state/catalog';
 import { objectRect } from '../../state/object-geometry';
-import { crossingExitCells } from '../../tools/placement/network';
-import { crossingEnds } from '../../tools/placement/themes';
-import { makeState, setTerrain } from './_helpers';
+import { crossingExitCells } from '../../tools/macros/roads/network';
+import { crossingEnds } from '../../tools/placement/crossings';
+import { makeState, setTerrain } from '../_support/map-state';
+import { ItemCategory } from '../../config/catalog/categories';
 
 const faces = [
   { rotation: 0, x: 12.5, y: 19, axis: 'y', sign: 1, high: 19 },
@@ -25,11 +26,11 @@ describe.each(ramps)('$id footprint and connections', (item) => {
         const elevation = x >= 8 && x <= 19 && y >= 8 && y <= 19 ? low + 1 : low;
         if (elevation) setTerrain(state, x, y, TerrainType.Mountain, elevation);
       }
-      const cmd: PlaceObjectCommand = {
-        type: CommandType.PlaceObject, timestamp: 0,
-        object: { id: 'ramp', catalogId: item.id, position: { x: face.x, y: face.y }, rotation: 0, elevation: 0 },
-      };
-      expect(createDefaultRegistry().validatePreCommand(cmd, state)).toEqual([]);
+      const registry = createDefaultRegistry();
+      const cmd = registry.resolve<PlaceObjectCommand>({
+        type: CommandType.PlaceObject,         object: { id: 'ramp', catalogId: item.id, position: { x: face.x, y: face.y }, rotation: 0, elevation: 0 },
+      }, state);
+      expect(registry.validatePreCommand(cmd, state)).toEqual([]);
       expect(cmd.object.rotation).toBe(face.rotation);
       expect(cmd.object.elevation).toBe(low + 1);
       const r = objectRect(cmd.object);

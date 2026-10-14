@@ -2,42 +2,46 @@
  * The anchors of a just-drawn curve, still adjustable.
  *
  * The curve is painted terrain; these are HTML controls anchored to the same screen points, in the
- * shape `SelectionCard` established: project each anchor through the ACTIVE view, re-track
+ * shape `SelectionCard` established: project each anchor through the `ACTIVE` view, re-track
  * imperatively on viewport-changed / resize / an active-view swap (React gets no per-frame signal),
  * and divide the chrome zoom back out of the rect-derived coordinates.
  *
- * Each anchor is a round grab, with a DIRECTION LINE through it ending in a smaller knob either
+ * Each anchor is a round grab, with a direction line through it ending in a smaller knob either
  * side. Dragging the grab moves the anchor; dragging a knob turns the tangent, and its opposite
  * mirrors so the path stays smooth through the anchor — hold the break key (Alt) and the two sides
- * turn apart, making the anchor a corner. Only the END of a drag re-lays the map, so a drag costs
+ * turn apart, making the anchor a corner. Only the end of a drag re-lays the map, so a drag costs
  * one undo step and the frames in between are free.
  *
- * They are deliberately absent WHILE the curve is being drawn — a handle under the cursor is in the
+ * They are deliberately absent while the curve is being drawn — a handle under the cursor is in the
  * way of the next click, and there is nothing to tune until there is a curve. They arrive one after
  * another when it finishes, and fade out together when it is dismissed.
  */
-import { interactionProfiles, colors, cursors, shadows, springs, z } from '../../design/styles';
+import { interactionProfiles, cursors, shadows, z } from '../../design/styles';
 import { framerMotion, NO_MOTION, staggerDelay } from '../../design/motion';
-import { helpTargetAttr } from '../modals/help/targets';
-import { clientPoint } from '../../../core/runtime/viewport-space';
-import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
+import { helpTargetAttr } from '../../session/help-targets';
+import { clientPoint } from '../../../platform/device/viewport-space';
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { AnimatePresence, motion, useReducedMotionConfig } from 'framer-motion';
-import { getActiveView, onActiveViewChange, onProjectionChange } from '../../../canvas/active-view';
-import {
-  anchorHandles, splineCells, endCurveSession, getCurveSession, moveCurveAnchor, setCurveHandle, subscribeCurveSession,
-} from '../../../tools/paint';
-import { isBreakHandleHeld } from '../../../core/runtime/modifier-state';
+import { getActiveView, onActiveViewChange, onProjectionChange } from '../../../view/active-view';
+import { curveArmingKeyOf, editorCurves, endCurveOnHistory } from '../../../editor/session/tool-wiring';
+import { useMapRevision } from '../../session/use-map-revision';
+import { splineCells } from '../../../core/grid/shapes';
+import { anchorHandles } from '../../../core/base/spline';
+import { isCommandHeld } from '../../../state/keymap/held';
 import { useEditorStore } from '../../../state/store';
 import { useChromeScale } from '../../design/scale';
 import { useT } from '../../../i18n/context';
-import { TILE_SIZE } from '../../../core/model/constants';
-import { microToTerrain } from '../../../core/model/grid-model';
+import { TILE_SIZE } from '../../../view/map2d/geometry/world';
+import { cellAtPoint, halfPoint } from '../../../core/grid/pointer';
+import { gridCellCentre, cellSet } from '../../../core/grid/grids';
+import { GRIDS } from '../../../core/game/profile';
+import { FRAME_INK, ACTIVE, PLATE } from '../../design/tokens';
 
 /**
  * Anchor grab and tangent knob at full map zoom, in css px — around the size of the selection's
  * corner buttons.
  *
- * Unlike those, these DO shrink as the map zooms out, down to `MIN_SCALE`. A selection has one box
+ * Unlike those, these do shrink as the map zooms out, down to `MIN_SCALE`. A selection has one box
  * and a fixed control reads right over it at any zoom; a curve has an anchor every few cells, so
  * fixed controls swell to cover the very shape they are meant to be adjusting once the map is small.
  * The floor is what keeps them grabbable, and they never grow past the sizes below.
@@ -45,7 +49,7 @@ import { microToTerrain } from '../../../core/model/grid-model';
 export const GRAB = 30;
 export const KNOB = 18;
 const MIN_SCALE = 0.45;
-/** Every control gets at least this much clickable width, whatever it LOOKS like. A tangent knob is
+/** Every control gets at least this much clickable width, whatever it looks like. A tangent knob is
  *  a small dot by design — it must not also be a small target, and at low zoom it shrinks further.
  *  The extra is transparent padding around the face, so precision does not cost visual weight. */
 const MIN_HIT = 30;
@@ -108,10 +112,8 @@ export function CurveHandles() {
   const chrome = useChromeScale();
   const reduced = useReducedMotionConfig();
   const eventBus = useEditorStore((s) => s.eventBus);
-  const armingEpoch = useEditorStore(s => s.armingEpoch);
-  const eraserShape = useEditorStore(s => s.eraserShape);
-  const contentType = useEditorStore(s => s.contentType);
-  useEffect(() => () => endCurveSession(), [eraserShape, contentType]);
+  const armingKey = useEditorStore(curveArmingKeyOf);
+  useEffect(() => () => editorCurves.end(), []);
   const [, bump] = useState(0);
   const [screen, setScreen] = useState<ScreenAnchor[]>([]);
   const [zoomK, setZoomK] = useState(1);
@@ -119,56 +121,47 @@ export function CurveHandles() {
 
   // The session is a module singleton (it is owned by the tool, not by React), so re-render on its
   // revision rather than holding a copy that could go stale mid-drag.
-  useEffect(() => subscribeCurveSession(() => bump((n) => n + 1)), []);
+  useEffect(() => editorCurves.subscribe(() => bump((n) => n + 1)), []);
 
-  const session = getCurveSession();
+  const session = editorCurves.get();
   useEffect(() => {
-    if (session?.armingEpoch !== undefined && session.armingEpoch !== armingEpoch) endCurveSession();
-  }, [session?.armingEpoch, armingEpoch]);
+    if (session?.armingKey !== undefined && session.armingKey !== armingKey) editorCurves.end();
+  }, [session?.armingKey, armingKey]);
+  useEffect(() => endCurveOnHistory(eventBus), [eventBus]);
+  // The footprint repaints once in the frame after the map changes under it.
+  const revision = useMapRevision(!!session?.footprint, 'frame');
+  const cells = useMemo(() => (session?.footprint ? splineCells(session.anchors, session.width) : null), [session]);
   useEffect(() => {
-    const close = () => endCurveSession();
-    eventBus.on('history-applied', close);
-    return () => eventBus.off('history-applied', close);
-  }, [eventBus]);
-  useEffect(() => {
-    if (!session?.footprint) return;
-    const cells = splineCells(session.anchors, session.width);
+    if (!session?.footprint || !cells) return;
     let overlay = getActiveView()?.overlay;
-    let frame = 0;
     const draw = () => {
       const next = getActiveView()?.overlay;
       if (next !== overlay) overlay?.clearCurveFootprint();
       overlay = next;
-      overlay?.showCurveFootprint(cells, session.terrainGrid);
-    };
-    const schedule = () => {
-      if (!frame) frame = requestAnimationFrame(() => { frame = 0; draw(); });
+      overlay?.showCurveFootprint(cellSet(session.grid, cells));
     };
     draw();
     const offView = onActiveViewChange(draw);
-    eventBus.on('cells-changed', schedule);
     return () => {
-      cancelAnimationFrame(frame);
-      offView(); eventBus.off('cells-changed', schedule);
+      offView();
       overlay?.clearCurveFootprint();
     };
-  }, [session, eventBus]);
+  }, [session, cells, revision]);
 
   const anchorCount = session?.anchors.length ?? 0;
 
   /** Project every anchor, and the two ends of its direction line, into screen px. */
   const reproject = useCallback(() => {
-    const live = getCurveSession();
+    const live = editorCurves.get();
     const proj = getActiveView()?.projection;
     if (!live || !proj) { setScreen([]); return; }
     setZoomK(handleScale(proj.cellToScreen(0, 0).scale));
     const handles = anchorHandles(live.anchors);
-    // Terrain renders on the micro grid (half a cell up and left of the macro corner); anchors are
-    // macro coords, so a terrain curve's handles sit on the cell CENTRE of that shifted grid. A
+    // Anchors are cells of the session's grid, so the handles sit on those cells' centres. A
     // free-coord session's anchors already carry their own fractions.
-    const shift = live.terrainGrid || live.freeCoords ? 0 : 0.5;
+    const shift = live.freeCoords ? { x: 0, y: 0 } : gridCellCentre(GRIDS[live.grid], { x: 0, y: 0 });
     const point = (x: number, y: number) => {
-      const p = proj.cellToScreen(x + shift, y + shift);
+      const p = proj.cellToScreen(x + shift.x, y + shift.y);
       return { x: p.x / chrome, y: p.y / chrome };
     };
     setScreen(live.anchors.map((a, i) => ({
@@ -192,30 +185,25 @@ export function CurveHandles() {
     const cellOf = (e: PointerEvent) => {
       const proj = getActiveView()?.projection;
       if (!proj) return undefined;
-      if (getCurveSession()?.freeCoords) {
-        return proj.screenToHalf?.(clientPoint(e).x, clientPoint(e).y)
-          ?? (() => { const c = proj.screenToMacro(clientPoint(e).x, clientPoint(e).y); return { x: c.x + 0.5, y: c.y + 0.5 }; })();
-      }
-      if (getCurveSession()?.terrainGrid) {
-        const micro = proj.screenToMicro(clientPoint(e).x, clientPoint(e).y);
-        return microToTerrain(micro.x, micro.y);
-      }
-      return proj.screenToMacro(clientPoint(e).x, clientPoint(e).y);
+      const live = editorCurves.get();
+      if (!live) return undefined;
+      const point = proj.screenToPoint(clientPoint(e).x, clientPoint(e).y);
+      return live.freeCoords ? halfPoint(point) : cellAtPoint(point, live.grid);
     };
     const apply = (e: PointerEvent, commit: boolean) => {
       const g = grab.current;
-      const live = getCurveSession();
+      const live = editorCurves.get();
       if (!g || !live) return;
       const cell = cellOf(e);
       if (!cell) return;
-      if (g.kind === 'anchor') { moveCurveAnchor(g.index, cell.x, cell.y, commit); return; }
+      if (g.kind === 'anchor') { editorCurves.moveAnchor(g.index, cell.x, cell.y, commit); return; }
       const a = live.anchors[g.index];
       if (!a) return;
-      // The knob's offset from its anchor IS that side of the handle. Read the break key from the
+      // The knob's offset from its anchor is that side of the handle. Read the break key from the
       // event rather than at press time: pressing or releasing it mid-drag takes effect there and
       // then, the way it does in a drawing app.
-      setCurveHandle(g.index, g.kind, cell.x - a.x, cell.y - a.y, {
-        commit, mirror: !isBreakHandleHeld(),
+      editorCurves.setHandle(g.index, g.kind, cell.x - a.x, cell.y - a.y, {
+        commit, mirror: !isCommandHeld('tool.break_handle'),
       });
     };
     const onMove = (e: PointerEvent) => { if (grab.current) { e.preventDefault(); apply(e, false); reproject(); } };
@@ -227,7 +215,7 @@ export function CurveHandles() {
     };
     const onCancel = () => {
       if (!grab.current) return;
-      grab.current = null; endCurveSession(); reproject();
+      grab.current = null; editorCurves.end(); reproject();
     };
     window.addEventListener('pointermove', onMove);
     window.addEventListener('pointerup', onUp);
@@ -264,7 +252,7 @@ export function CurveHandles() {
             pointerEvents: 'none', zoom: chrome,
           }}
         >
-          {/* Every direction line in ONE full-screen svg. Not one per anchor: an svg sized to the
+          {/* Every direction line in one full-screen svg. Not one per anchor: an svg sized to the
               viewport cannot be inside an element that scales, or the entrance animation scales the
               whole coordinate space and the line sweeps in from the corner. */}
           <svg width="100%" height="100%" aria-hidden
@@ -276,7 +264,7 @@ export function CurveHandles() {
                 key={i}
                 points={`${s.into.x},${s.into.y} ${s.x},${s.y} ${s.out.x},${s.out.y}`}
                 fill="none"
-                stroke={colors.frameDark} strokeWidth={3 * zoomK} strokeLinecap="round"
+                stroke={FRAME_INK} strokeWidth={3 * zoomK} strokeLinecap="round"
                 strokeLinejoin="round"
                 initial={reduced ? false : { strokeOpacity: 0 }}
                 animate={{ strokeOpacity: 0.35 }}
@@ -285,14 +273,14 @@ export function CurveHandles() {
             ))}
           </svg>
 
-          {/* The grabs. The pop is on each DOT, so it scales about its own centre and lands where it
+          {/* The grabs. The pop is on each dot, so it scales about its own centre and lands where it
               belongs; one after another rather than together, which reads as the curve's direction. */}
           {screen.map((s, i) => {
             const grabPx = GRAB * zoomK;
             const knobPx = KNOB * zoomK;
             const pop = (extra: number) => (reduced
               ? NO_MOTION
-              : { ...springs.bouncy, delay: staggerDelay('curve.fade', i) + extra / 1000 });
+              : { ...framerMotion('surface.pop'), delay: staggerDelay('curve.fade', i) + extra / 1000 });
             return (
               <div key={i}>
                 <motion.button
@@ -302,7 +290,7 @@ export function CurveHandles() {
                   initial={reduced ? false : { scale: 0 }} animate={{ scale: 1 }} transition={pop(0)}
                   style={{ ...hitBox(grabPx), left: s.x, top: s.y }}
                 >
-                  <span style={face(grabPx, colors.tileYellow)} />
+                  <span style={face(grabPx, ACTIVE)} />
                 </motion.button>
                 {session?.tangents && <><motion.button
                   type="button" aria-label={t('a11y.curve_out', { n: i + 1 })}
@@ -311,7 +299,7 @@ export function CurveHandles() {
                   initial={reduced ? false : { scale: 0 }} animate={{ scale: 1 }} transition={pop(40)}
                   style={{ ...hitBox(knobPx), left: s.out.x, top: s.out.y }}
                 >
-                  <span style={face(knobPx, colors.panelCream)} />
+                  <span style={face(knobPx, PLATE)} />
                 </motion.button>
                 <motion.button
                   type="button" aria-label={t('a11y.curve_in', { n: i + 1 })}
@@ -320,7 +308,7 @@ export function CurveHandles() {
                   initial={reduced ? false : { scale: 0 }} animate={{ scale: 1 }} transition={pop(40)}
                   style={{ ...hitBox(knobPx), left: s.into.x, top: s.into.y }}
                 >
-                  <span style={face(knobPx, colors.panelCream)} />
+                  <span style={face(knobPx, PLATE)} />
                 </motion.button></>}
               </div>
             );

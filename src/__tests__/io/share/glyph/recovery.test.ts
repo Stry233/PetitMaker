@@ -1,5 +1,4 @@
 import { describe, expect, it } from 'vitest';
-// @ts-ignore - node:fs is untyped here (no @types/node)
 import { readFileSync } from 'node:fs';
 import { BlockRecovery } from '../../../../io/share/glyph/recovery';
 import { choosePlan } from '../../../../io/share/glyph/profiles';
@@ -7,8 +6,8 @@ import { rsEncode } from '../../../../io/share/glyph/rs';
 import { interleaveBlocks } from '../../../../io/share/glyph/interleave';
 import { bytesToSymbols } from '../../../../io/share/glyph/bitpack';
 import { whiten } from '../../../../io/share/glyph/encode';
-import { crc32 } from '../../../../io/share/crypto/crc32';
-import { bytesToHex, sha256 } from '../../../../io/share/crypto/sha256';
+import { crc32 } from '../../../../core/base/crc32';
+import { bytesToHex, sha256 } from '../../../../core/base/sha256';
 import { decodePng } from '../../../../io/share/raster/png-raster';
 import { decodeGlyph } from '../../../../io/share/glyph/decode';
 
@@ -72,7 +71,7 @@ describe('image recovery', () => {
     ['social-1080-double-jpeg', 3702, '684b1ccf8634a2505e3c6eceb278484e8e9773b4fca8868eaed538c221f670da'],
     ['dense-1080-jpeg75', 6879, 'b1927b60412e369fa59b32488879f6280efb9f2af12072e7143d88bd22c9acf0'],
   ])('recovers the frozen %s raster exactly', async (name, length, hash) => {
-    const image = await decodePng(new Uint8Array(readFileSync(`src/__tests__/io/share/glyph/fixtures/${name}.png`)));
+    const image = await decodePng(new Uint8Array(readFileSync(`src/__tests__/fixtures/glyph/${name}.png`)));
     const payload = decodeGlyph(image.data, image.width, image.height);
     expect(payload?.length).toBe(length);
     expect(bytesToHex(await sha256(payload!))).toBe(hash);

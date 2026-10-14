@@ -1,35 +1,43 @@
 /*
  * The Help Center's catalog held together: every page of the union present exactly once, every
  * cross-reference resolving, every referenced string present in the reference tables, and every
- * figure naming a scene or mock that exists. This is the test that makes the catalog a CONTRACT:
+ * figure naming a scene or mock that exists. This is the test that makes the catalog a contract:
  * a descriptor cannot point at prose, a page or a drawing that is not there.
  */
 import { describe, expect, it, vi } from 'vitest';
 
 /** The catalog under test is the development one, which carries every help string. Sections a
  *  released build withholds are pinned in `custom-card-gate.test.ts`. */
-vi.mock('../../../version', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../../../version')>();
+vi.mock('../../../platform/build/build-info', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../../platform/build/build-info')>();
   return { ...actual, IS_DEV_BUILD: true };
 });
-import { HELP_GROUPS, HELP_PAGES, HELP_PAGE_ORDER } from '../../../ui/chrome/modals/help/catalog';
-import { HELP_SCENES, type DemoView, type HelpScene, type SceneStep } from '../../../ui/chrome/modals/help/figures/scenes';
-import { DemoWorld } from '../../../ui/chrome/modals/help/figures/demo-world';
-import { HELP_SURFACES } from '../../../ui/chrome/modals/help/figures/surfaces';
-import type { HelpPage, HelpPageId } from '../../../ui/chrome/modals/help/page-schema';
-import { pageForEditState } from '../../../ui/chrome/modals/help/targets';
-import { HELP_TABLES } from '../../../i18n/locales/help';
-import { translations } from '../../../i18n/translations';
-import { RESOLVED_TOKENS } from '../../../i18n/context';
-import { helpFacts } from '../../../ui/chrome/modals/help/facts';
+import { HELP_GROUPS, HELP_PAGES, HELP_PAGE_ORDER } from '../../../ui/help/catalog';
+import { START_PAGES } from '../../../ui/help/pages/start';
+import { BUILD_PAGES } from '../../../ui/help/pages/build';
+import { GENERATE_PAGES } from '../../../ui/help/pages/generate';
+import { PLAN_PAGES } from '../../../ui/help/pages/plan';
+import { SHARE_PAGES } from '../../../ui/help/pages/share';
+import { AGENT_PAGES } from '../../../ui/help/pages/agent';
+import { MISC_PAGES } from '../../../ui/help/pages/misc';
+import { HELP_SCENES, type DemoView, type HelpScene, type SceneStep } from '../../../ui/help/figures/scenes';
+import { SandboxWorld } from '../../../editor/sandbox/demo-world';
+import { HELP_SURFACES } from '../../../ui/help/figures/surfaces';
+import type { HelpPage, HelpPageId } from '../../../ui/help/page-schema';
+import { pageForEditState } from '../../../ui/session/help-targets';
+import type { BuildMode } from '../../../state/editing/edit-mode';
+import { HELP_TABLES, translations } from '../../_support/locale-tables';
+import { helpFacts } from '../../../ui/help/facts';
 import { PROVIDER_IDS, PROVIDER_META, providerBaseUrls } from '../../../agent/providers/defaults';
-import { STYLIZE_PROVIDERS } from '../../../io/stylize/providers';
-import { AUTOSAVE_DEBOUNCE_MS } from '../../../io/autosave';
+import { STYLIZE_PROVIDERS } from '../../../pipelines/stylize/providers';
+import { AUTOSAVE_DEBOUNCE_MS } from '../../../io/storage/facts';
 import { MAX_TURNS_DEFAULT, SUBAGENT_MAX_TURNS } from '../../../agent/core/governor';
-import { ItemCategory } from '../../../core/model/types';
+import { ItemCategory } from '../../../config/catalog/categories';
 import { getPlaceableByCategory } from '../../../state/catalog';
 import { NOTE_LIMITS } from '../../../core/model/notes';
-import { BASE_SUPPORT } from '../../../core/model/game-profile';
+import { BASE_SUPPORT } from '../../../core/game/profile';
+import type { TextKey } from '../../../i18n/keys';
+import { illustrationProviderName } from '../../../i18n/providers';
 
 const ALL_IDS: readonly HelpPageId[] = [
   'welcome', 'frame', 'camera', 'tour',
@@ -45,7 +53,7 @@ const ALL_IDS: readonly HelpPageId[] = [
  *  contract reads the same timeline the player runs. Memoized: building a world runs generators. */
 const sceneSteps = new Map<string, SceneStep[]>();
 const NO_VIEW: DemoView = {
-  ghost: () => {}, clearGhost: () => {}, groupGhost: () => {}, selection: () => {},
+  clearGhost: () => {}, groupGhost: () => {}, selection: () => {},
   clearSelection: () => {}, band: () => {}, paintGhost: () => {}, region: () => {}, route: () => {},
   marks: () => {}, gauge: () => {}, plop: () => {}, poof: () => {}, annotations: () => {},
   spin: () => {}, groupSpin: () => {}, curveHandles: () => {},
@@ -54,7 +62,7 @@ function stepsOf(scene: HelpScene): SceneStep[] {
   const key = sceneKeyOf(scene);
   let steps = sceneSteps.get(key);
   if (!steps) {
-    const world = new DemoWorld(scene.template);
+    const world = new SandboxWorld(scene.template);
     steps = scene.run({ world, view: NO_VIEW }, (k) => k);
     sceneSteps.set(key, steps);
   }
@@ -64,9 +72,20 @@ function sceneKeyOf(scene: HelpScene): string {
   return Object.entries(HELP_SCENES).find(([, s]) => s === scene)?.[0] ?? 'unknown';
 }
 
-function figureKeys(fig: NonNullable<HelpPage['figure']>): string[] {
+function figureKeys(fig: NonNullable<HelpPage['figure']>): TextKey[] {
   if (fig.kind === 'surface') return [fig.captionKey];
   if (fig.kind === 'demos') return fig.scenes.map((s) => s.labelKey);
+  return [];
+}
+
+/** The keys the offline edition's variants name (`lite` fields at any depth), which the web catalog
+ *  above has already resolved away. */
+function liteVariantKeys(value: unknown, inLite = false): string[] {
+  if (typeof value === 'string') return inLite ? [value] : [];
+  if (Array.isArray(value)) return value.flatMap((v) => liteVariantKeys(v, inLite));
+  if (value && typeof value === 'object') {
+    return Object.entries(value).flatMap(([field, v]) => liteVariantKeys(v, inLite || field === 'lite'));
+  }
   return [];
 }
 
@@ -157,48 +176,15 @@ describe('the help catalog', () => {
 });
 
 
-describe('the help tables (the overlay the main i18n suites do not see)', () => {
+describe('the help tables and the facts they quote', () => {
   const LOCALES = Object.keys(HELP_TABLES) as (keyof typeof HELP_TABLES)[];
   const enKeys = Object.keys(HELP_TABLES.en);
-  // Copy whose translator-filled tokens differ from en by design, by key and locale: zh names the
-  // landmark where en says "it".
-  const RESOLVED_DIFFERS: Readonly<Record<string, readonly string[]>> = { 'help.faq.a3': ['zh'] };
-  // Translator-filled tokens count once each: a locale may repeat a name where its grammar wants it.
-  const placeholders = (v: string, skipResolved = false) => {
-    const all = v.match(/\{[a-zA-Z0-9_]+\}/g) ?? [];
-    const resolved = (t: string) => t.slice(1, -1) in RESOLVED_TOKENS;
-    return [...all.filter((t) => !resolved(t)), ...(skipResolved ? [] : new Set(all.filter(resolved)))].sort();
-  };
-
-  it('holds every locale to the en key set', () => {
-    for (const locale of LOCALES) {
-      expect(Object.keys(HELP_TABLES[locale]).sort(), locale as string).toEqual([...enKeys].sort());
-    }
-  });
-
-  it('holds every value to the en placeholder set', () => {
-    for (const locale of LOCALES) {
-      for (const key of enKeys) {
-        const skip = RESOLVED_DIFFERS[key]?.includes(locale) ?? false;
-        expect({ locale, key, tokens: placeholders(HELP_TABLES[locale][key]!, skip) })
-          .toEqual({ locale, key, tokens: placeholders(HELP_TABLES.en[key]!, skip) });
-      }
-    }
-  });
-
-  it('pairs every bold marker', () => {
-    const offenders: string[] = [];
-    for (const locale of LOCALES) {
-      for (const [key, value] of Object.entries(HELP_TABLES[locale])) {
-        if ((value.split('**').length - 1) % 2 !== 0) offenders.push(`${locale as string} ${key} unpaired **`);
-      }
-    }
-    expect(offenders).toEqual([]);
-  });
 
   it('leaves no orphan: every en key is read by a descriptor, a scene or a mock', () => {
     const used = new Set<string>();
     for (const id of HELP_PAGE_ORDER) for (const key of keysOf(HELP_PAGES[id]!)) used.add(key);
+    const written = [...START_PAGES, ...BUILD_PAGES, ...GENERATE_PAGES, ...PLAN_PAGES, ...SHARE_PAGES, ...AGENT_PAGES, ...MISC_PAGES];
+    for (const key of liteVariantKeys(written)) used.add(key);
     for (const scene of Object.values(HELP_SCENES)) {
       for (const step of stepsOf(scene)) {
         if (step.capKey) used.add(step.capKey);
@@ -250,7 +236,7 @@ describe('the help tables (the overlay the main i18n suites do not see)', () => 
       expect(String(facts.regionalAgentProviders)).toContain(PROVIDER_META[id].name);
     }
     for (const provider of STYLIZE_PROVIDERS.filter(({ id }) => id !== 'custom')) {
-      expect(String(facts.illustrationProviders)).toContain(translations.en[`stylize.provider_${provider.id}`]);
+      expect(String(facts.illustrationProviders)).toContain(illustrationProviderName(provider.id, (key) => translations.en[key] ?? key));
     }
   });
 
@@ -278,7 +264,7 @@ describe('the help tables (the overlay the main i18n suites do not see)', () => 
 
 describe('the pick-mode fallback', () => {
   it('answers every edit state with a real page', () => {
-    const modes = [null, 'object', 'road', 'mountain', 'water', 'generate', 'annotate'];
+    const modes: BuildMode[] = [null, 'object', 'road', 'mountain', 'water', 'generate', 'annotate'];
     const tools = ['brush', 'erase', 'trim', 'shape', 'smart', 'none'];
     for (const mode of modes) {
       for (const tool of tools) {

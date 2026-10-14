@@ -1,5 +1,5 @@
 /**
- * Display/session preferences. Persisted ones delegate to `core/runtime/prefs`'s `PREFS` table
+ * Display/session preferences. Persisted ones delegate to `platform/storage/prefs`'s `PREFS` table
  * (the only declaration site for a storage key); `showLayerNumbers` is the one session-only
  * toggle beside them — a LayerPanel inspection aid rather than a Settings choice, so a fresh
  * session starting with it off is the expected state, not a lost preference.
@@ -8,8 +8,8 @@
  * takes no cross-slice dependency and imports nothing from `engine`/`edit`/`shell`.
  */
 import type { StateCreator } from 'zustand';
-import type { Locale } from '../../core/model/types';
-import { readPref, writePref, type HintLevel, type MotionPref, type Quality3d, type ViewMode, clampUiZoom } from '../../core/runtime/prefs';
+import type { Locale } from '../../core/model/locale';
+import { readPref, writePref, type HintLevel, type MotionPref, type PrefId, type Quality3d, type ValueOf, type ViewMode, clampUiZoom } from '../../platform/storage/prefs';
 
 export type { HintLevel, Quality3d, ViewMode };
 
@@ -45,53 +45,34 @@ export interface PrefsSlice {
   setShowLayerNumbers: (show: boolean) => void;
 }
 
-export const createPrefsSlice: StateCreator<PrefsSlice, [], [], PrefsSlice> = (set) => ({
-  uiZoom: readPref('uiZoom'),
-  setUiZoom: (zoom) => {
-    const z = clampUiZoom(zoom);
-    set({ uiZoom: z });
-    writePref('uiZoom', z);
-  },
-  locale: readPref('locale'),
-  setLocale: (locale) => {
-    set({ locale });
-    writePref('locale', locale);
-  },
-  viewMode: readPref('viewMode'),
-  setViewMode: (mode) => {
-    set({ viewMode: mode });
-    writePref('viewMode', mode);
-  },
-  motionPref: readPref('motionPref'),
-  setMotionPref: (p) => {
-    set({ motionPref: p });
-    writePref('motionPref', p);
-  },
-  systemCursors: readPref('systemCursors'),
-  setSystemCursors: (on) => {
-    set({ systemCursors: on });
-    writePref('systemCursors', on);
-  },
-  hintLevel: readPref('hintLevel'),
-  setHintLevel: (level) => {
-    set({ hintLevel: level });
-    writePref('hintLevel', level);
-  },
-  quality3d: readPref('quality3d'),
-  setQuality3d: (q) => {
-    set({ quality3d: q });
-    writePref('quality3d', q);
-  },
-  showGrid: readPref('showGrid'),
-  setShowGrid: (show) => {
-    set({ showGrid: show });
-    writePref('showGrid', show);
-  },
-  showChunkBounds: readPref('showChunkBounds'),
-  setShowChunkBounds: (show) => {
-    set({ showChunkBounds: show });
-    writePref('showChunkBounds', show);
-  },
-  showLayerNumbers: false,
-  setShowLayerNumbers: (show) => set({ showLayerNumbers: show }),
-});
+type PersistedField = Extract<keyof PrefsSlice, PrefId>;
+
+export const createPrefsSlice: StateCreator<PrefsSlice, [], [], PrefsSlice> = (set) => {
+  /** The setter for a field stored under the pref of the same name: the store first, then storage. */
+  const persisted = <K extends PersistedField>(key: K) => (value: ValueOf<K> & PrefsSlice[K]): void => {
+    set({ [key]: value } as Partial<PrefsSlice>);
+    writePref(key, value);
+  };
+  return {
+    uiZoom: readPref('uiZoom'),
+    setUiZoom: (zoom) => persisted('uiZoom')(clampUiZoom(zoom)),
+    locale: readPref('locale'),
+    setLocale: persisted('locale'),
+    viewMode: readPref('viewMode'),
+    setViewMode: persisted('viewMode'),
+    motionPref: readPref('motionPref'),
+    setMotionPref: persisted('motionPref'),
+    systemCursors: readPref('systemCursors'),
+    setSystemCursors: persisted('systemCursors'),
+    hintLevel: readPref('hintLevel'),
+    setHintLevel: persisted('hintLevel'),
+    quality3d: readPref('quality3d'),
+    setQuality3d: persisted('quality3d'),
+    showGrid: readPref('showGrid'),
+    setShowGrid: persisted('showGrid'),
+    showChunkBounds: readPref('showChunkBounds'),
+    setShowChunkBounds: persisted('showChunkBounds'),
+    showLayerNumbers: false,
+    setShowLayerNumbers: (show) => set({ showLayerNumbers: show }),
+  };
+};

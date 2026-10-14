@@ -4,7 +4,7 @@
   "icon": "path-classic-basketweave-brick",
   "name": {
     "en": "Classic Basketweave Brick Path",
-    "zh": "经典编织纹砖路",
+    "zh": "经典木纹砖路",
     "ja": "クラシック編み模様レンガの道",
     "ru": "Классическая кирпичная дорожка «плетёнка»",
     "th": "ทางอิฐลายสานคลาสสิก",
@@ -24,5 +24,27 @@
     {
       "type": "surfaceCoating"
     }
-  ]
+  ],
+  "roadMaterial": {
+    "feather": 0.035,
+    "edge": {
+      "color": "#b48b61"
+    },
+    "edgeJoints": {
+      "spacing": 0.5,
+      "width": 0.012,
+      "color": "#967654"
+    },
+    "layers": [
+      {
+        "inset": 0.18,
+        "color": "#ffffff",
+        "pattern": {
+          "kind": "image",
+          "image": "path-classic-basketweave-brick",
+          "repeat": 2
+        }
+      }
+    ]
+  }
 }

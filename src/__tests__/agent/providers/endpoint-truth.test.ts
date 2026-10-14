@@ -1,36 +1,33 @@
 /**
- * A KEY FOR THE USER'S OWN SERVER NEVER LEAVES FOR SOMEBODY ELSE'S.
+ * A key for the user's own server never leaves for somebody else's.
  *
  * The `openai` SDK treats an absent `baseURL` as "use my own default host", which is correct for the
  * `openai` provider and catastrophic for `custom`: the address is the user's, the key was issued by
- * whatever runs at it, and the SDK's fallback is another company's API. So the adapter REFUSES to be
+ * whatever runs at it, and the SDK's fallback is another company's API. So the adapter refuses to be
  * built for `custom` with no address rather than building a client aimed anywhere.
  *
- * THE REFUSAL IS A CLASSIFIED FAULT, not a raw crash: it carries its own `ErrorClass` (`config`),
+ * The refusal is a classified fault, not a raw crash: it carries its own `ErrorClass` (`config`),
  * which is unretryable — another attempt with the same absent address does the same nothing — and
  * the panel's repair for it is the endpoint field.
  *
- * The floor is asserted THROUGH the runner too, which is the caller that would otherwise reach a
+ * The floor is asserted through the runner too, which is the caller that would otherwise reach a
  * client on a stale settings record: the job settles as a config incident and no request is made.
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { CommandExecutor } from '../../../core/commands/command-executor';
-import { EventBus } from '../../../core/commands/event-bus';
-import type { EditorEvents } from '../../../core/model/types';
 import { createDefaultRegistry } from '../../../rules';
-import { roadLookup } from '../../../state/object-index';
-import { makeState } from '../../rules/_helpers';
+import { makeState, makeExecutor } from '../../_support/map-state';
 import { classify, isRetryable, NO_ENDPOINT_ADDRESS } from '../../../agent/core/errors';
 import { baseUrlFor, PROVIDER_IDS, QUIRKS, type ProviderId } from '../../../agent/providers/defaults';
 import { createOpenAIAdapter } from '../../../agent/providers/openai';
 import { createRunner } from '../../../agent/exec/runner';
+import { agentSessionPort } from '../../../agent/exec/session-port';
 import { eventsOf } from '../../../agent/core/log';
 import { useAgentSession } from '../../../agent/session/store';
 import type { AgentToolDeps } from '../../../agent/tools';
 
 function toolDeps(): AgentToolDeps {
   const state = makeState(20, 20);
-  const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
+  const exec = makeExecutor(state);
   return { getState: () => state, getExecutor: () => exec, getRegion: () => [] };
 }
 
@@ -44,9 +41,9 @@ beforeEach(() => {
 
 describe('the custom endpoint has no default host', () => {
   it('refuses to build an OpenAI-dialect adapter for custom with no address', () => {
-    expect(() => createOpenAIAdapter({ apiKey: 'sk-test', quirks: QUIRKS.custom }))
+    expect(() => createOpenAIAdapter({ apiKey: 'sk-test', providerId: 'custom', quirks: QUIRKS.custom }))
       .toThrow(NO_ENDPOINT_ADDRESS);
-    expect(() => createOpenAIAdapter({ apiKey: 'sk-test', baseUrl: '', quirks: QUIRKS.custom }))
+    expect(() => createOpenAIAdapter({ apiKey: 'sk-test', baseUrl: '', providerId: 'custom', quirks: QUIRKS.custom }))
       .toThrow(NO_ENDPOINT_ADDRESS);
   });
 
@@ -56,7 +53,7 @@ describe('the custom endpoint has no default host', () => {
   });
 
   it('builds for custom the moment an address is given', () => {
-    expect(() => createOpenAIAdapter({ apiKey: 'sk-test', baseUrl: 'https://gw.example/v1', quirks: QUIRKS.custom }))
+    expect(() => createOpenAIAdapter({ apiKey: 'sk-test', baseUrl: 'https://gw.example/v1', providerId: 'custom', quirks: QUIRKS.custom }))
       .not.toThrow();
   });
 
@@ -72,7 +69,7 @@ describe('the custom endpoint has no default host', () => {
     for (const id of dialect) {
       const baseUrl = baseUrlFor(id as ProviderId, {});
       expect(() => createOpenAIAdapter({
-        apiKey: 'sk-test', ...(baseUrl ? { baseUrl } : {}), quirks: QUIRKS[id],
+        apiKey: 'sk-test', ...(baseUrl ? { baseUrl } : {}), providerId: id as ProviderId, quirks: QUIRKS[id],
       })).not.toThrow();
     }
   });
@@ -92,6 +89,7 @@ describe('the custom endpoint has no default host', () => {
       oversight: 'yolo',
       makeToolDeps: toolDeps,
       registry: createDefaultRegistry(),
+      session: agentSessionPort,
     });
 
     runner.send('build a house');

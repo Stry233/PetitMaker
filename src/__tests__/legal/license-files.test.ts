@@ -1,19 +1,18 @@
 import { describe, it, expect } from 'vitest';
-// @ts-ignore - node:fs is untyped here (no @types/node)
 import { existsSync, readFileSync } from 'node:fs';
-import { APP_NAME } from '../../version';
+import { APP_NAME } from '../../i18n/brand';
 import { LEGAL } from '../../legal/config';
 
-// LICENSE is the official Apache-2.0 text from
-// https://www.apache.org/licenses/LICENSE-2.0.txt, with ONE deliberate edit: the appendix's
+// `LICENSE` is the official Apache-2.0 text from
+// https://www.apache.org/licenses/LICENSE-2.0.txt, with one deliberate edit: the appendix's
 // "how to apply" template carries this project's actual copyright line instead of the
 // bracketed `[yyyy] [name of copyright owner]` placeholder, which reads as unfinished in a
 // shipped file. The terms themselves (sections 1-9) are untouched and asserted below, and the
-// line matches NOTICE exactly, so the project states its copyright once and in two places
+// line matches `NOTICE` exactly, so the project states its copyright once and in two places
 // that cannot drift apart. Canonical is 201 lines / 11,357 bytes; the substitution is 4 shorter.
 const LICENSE = readFileSync('LICENSE', 'utf8');
 
-// NOTICE is narrow BY DESIGN: Apache-2.0 section 4(d) makes downstream reproduce whatever it
+// `NOTICE` is narrow by design: Apache-2.0 section 4(d) makes downstream reproduce whatever it
 // holds, so it carries attribution and pointers, never terms. It exists at all because
 // shipping one is what creates that propagation duty in the first place.
 const NOTICE = readFileSync('NOTICE', 'utf8');
@@ -64,7 +63,7 @@ describe('LICENSE — Apache-2.0 verbatim', () => {
   it('fills the appendix placeholder, since a shipped file should not read as a template', () => {
     // The appendix is the license's own "how to apply this" example, not part of the terms,
     // so filling it changes nothing legally while removing an unfinished-looking line. The
-    // owner is the collective "contributors", matching NOTICE and naming no individual.
+    // owner is the collective "contributors", matching `NOTICE` and naming no individual.
     expect(LICENSE).not.toContain('[yyyy]');
     expect(LICENSE).not.toContain('[name of copyright owner]');
     expect(LICENSE).toMatch(/^   Copyright 2026 \S.* contributors$/m);
@@ -73,7 +72,6 @@ describe('LICENSE — Apache-2.0 verbatim', () => {
   it('pins full content by SHA-256 hash', async () => {
     // Full-content pin: byte/line counts alone can't catch same-length internal edits.
     const buffer = new TextEncoder().encode(LICENSE);
-    // @ts-ignore - crypto.subtle is untyped in vitest
     const digest = await crypto.subtle.digest('SHA-256', buffer);
     const hash = Array.from(new Uint8Array(digest))
       .map(b => b.toString(16).padStart(2, '0'))
@@ -90,14 +88,14 @@ describe('NOTICE — narrow attribution, and every reference real', () => {
   });
 
   it('points at documents that exist, by a path a reader can follow', () => {
-    // A NOTICE travels in source tarballs and downstream forks, so a bare "/about" is
+    // A `NOTICE` travels in source tarballs and downstream forks, so a bare "/about" is
     // unresolvable there: site references have to be absolute.
     for (const path of ['LICENSE', 'docs/THIRD_PARTY_NOTICES.md', 'docs/ASSET_LICENSES.md']) {
       expect(NOTICE).toContain(path);
       expect(existsSync(path), `${path} is referenced by NOTICE`).toBe(true);
     }
     // Every site reference is the full URL, and pinned to the configured origin so a domain
-    // change cannot leave NOTICE pointing at the old one.
+    // change cannot leave `NOTICE` pointing at the old one.
     expect(NOTICE).toContain(`${LEGAL.canonicalOrigin}/about`);
     expect((NOTICE.match(/\/about/g) ?? []).length)
       .toBe((NOTICE.match(new RegExp(`${LEGAL.canonicalOrigin}/about`, 'g')) ?? []).length);

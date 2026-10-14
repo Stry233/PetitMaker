@@ -1,6 +1,7 @@
 // CLI that renders the canonical headers policy into the committed host configurations, deployment
-// reference and index CSP meta tag. Pure renderers live in generate-headers-core.mts and
-// security/headers-policy.ts so tests can import them without running this file's filesystem writes.
+// reference (private tree only) and index CSP meta tag. The policy lives in
+// security/headers-policy.ts and the pure renderers in generate-headers-core.mts, so tests can
+// import them without running this file's filesystem writes.
 //
 // Usage (see package.json):
 //   vite-node scripts/generate-headers.mts            regenerate all outputs
@@ -8,15 +9,11 @@
 //                                                       memory/temp, diff against
 //                                                       committed, exit 1 on drift
 
-// @ts-ignore - node:fs is untyped here (no @types/node)
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-// @ts-ignore - node:path is untyped here (no @types/node)
 import { dirname, join } from 'node:path';
 
-import { HEADERS_POLICY, toEsaDoc, toNetlifyHeaders, toVercelJson, type VercelJsonLike } from '../security/headers-policy';
-import { rewriteIndexHtmlCsp, stringifyVercelJson } from './generate-headers-core.mts';
-
-declare const process: { argv: string[]; cwd(): string; exitCode?: number };
+import { HEADERS_POLICY } from '../security/headers-policy';
+import { headerOutputs } from './generate-headers-core.mts';
 
 function writeIfChanged(path: string, content: string, drift: { paths: string[] }, check: boolean): void {
   const prev = existsSync(path) ? readFileSync(path, 'utf8') : null;
@@ -34,26 +31,12 @@ async function main(): Promise<void> {
   const rootDir = process.cwd();
   const drift: { paths: string[] } = { paths: [] };
 
-  // public/_headers
-  const headersPath = join(rootDir, 'public', '_headers');
-  writeIfChanged(headersPath, toNetlifyHeaders(HEADERS_POLICY), drift, check);
-
-  // vercel.json — merge into the existing parsed object so unrelated keys
-  // ($schema, the "//" comment, the /assets/(.*) cache rule) survive untouched.
-  const vercelPath = join(rootDir, 'vercel.json');
-  const existingVercel: VercelJsonLike = existsSync(vercelPath) ? JSON.parse(readFileSync(vercelPath, 'utf8')) : {};
-  const nextVercel = stringifyVercelJson(toVercelJson(existingVercel, HEADERS_POLICY));
-  writeIfChanged(vercelPath, nextVercel, drift, check);
-
-  // Deployment-operator copy of the ESA headers.
-  const esaPath = join(rootDir, 'docs', 'internal', 'deployment', 'esa-headers.md');
-  writeIfChanged(esaPath, toEsaDoc(HEADERS_POLICY), drift, check);
-
-  // index.html — surgical CSP <meta> (+ comment) rewrite only.
-  const indexPath = join(rootDir, 'index.html');
-  const existingIndex = readFileSync(indexPath, 'utf8');
-  const nextIndex = rewriteIndexHtmlCsp(existingIndex, HEADERS_POLICY);
-  writeIfChanged(indexPath, nextIndex, drift, check);
+  const outputs = headerOutputs(HEADERS_POLICY, {
+    internalDocs: existsSync(join(rootDir, 'docs', 'internal')),
+    indexHtml: readFileSync(join(rootDir, 'index.html'), 'utf8'),
+  });
+  for (const { path, content } of outputs) writeIfChanged(join(rootDir, path), content, drift, check);
+  const names = outputs.map((o) => o.path).join(', ');
 
   if (check) {
     if (drift.paths.length > 0) {
@@ -61,10 +44,10 @@ async function main(): Promise<void> {
       for (const p of drift.paths) console.error(`  ${p}`);
       process.exitCode = 1;
     } else {
-      console.log('[generate-headers] up to date (public/_headers, vercel.json, docs/internal/deployment/esa-headers.md, index.html).');
+      console.log(`[generate-headers] up to date (${names}).`);
     }
   } else {
-    console.log('[generate-headers] wrote public/_headers, vercel.json, docs/internal/deployment/esa-headers.md; rewrote index.html CSP meta.');
+    console.log(`[generate-headers] wrote ${names}.`);
   }
 }
 

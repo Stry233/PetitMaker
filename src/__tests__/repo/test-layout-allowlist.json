@@ -1,0 +1,13 @@
+{
+  "crossCutting": {
+    "src/__tests__/_support": "Builders and stubs shared by tests across folders.",
+    "src/__tests__/fixtures": "Test data, one folder per domain.",
+    "src/__tests__/repo": "Repository hygiene and guard checks that read the whole tree.",
+    "src/__tests__/scripts": "Tests of the root scripts/ toolchain and the security/ policy that ship in the public snapshot; scripts/__tests__/ is withheld from it.",
+    "src/__tests__/e2e": "Browser journeys through the whole app.",
+    "src/__tests__/perf": "Timing benches of the operation layer."
+  },
+  "files": {
+    "src/__tests__/boot-guard.test.ts": "Exercises public/boot-guard.js inside the real index.html, the page the src root entries boot in; no src folder holds either file."
+  }
+}

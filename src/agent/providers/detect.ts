@@ -13,6 +13,3 @@ export function detectProviderFromKey(key: string): ProviderId | null {
   // keys, Qwen, Moonshot and self-hosted gateways ("custom") — require an explicit provider choice.
   return null;
 }
-
-/** Maximum duration of a model-list request to the selected endpoint. */
-export const PROBE_DEADLINE_MS = 8000;

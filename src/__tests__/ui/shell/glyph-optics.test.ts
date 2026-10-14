@@ -5,14 +5,14 @@
  * The drawings come from the design source at whatever size and offset the artist worked at, and
  * those are not comparable: a dense ring and an open arrow of the same span do not read as the same
  * size, and a shape is rarely centred in its own box. The two functions here turn a measured ink
- * into the one number and the one point the rail uses, and what this pins is that the FAMILY comes
+ * into the one number and the one point the rail uses, and what this pins is that the `FAMILY` comes
  * out even — which is the thing a reader sees, and the thing box-height sizing got wrong.
  *
  * The rule holds for solid drawings. One glyph is an outline, and it takes its own correction on
  * top; that exception is pinned here too, so it cannot quietly become a second rule.
  *
  * The block row is the same question with a better answer available: five of its six drawings share
- * a grass cube, so they are held to one WIDTH, which is what a cube's size is. The sixth has no cube
+ * a grass cube, so they are held to one width, which is what a cube's size is. The sixth has no cube
  * and falls back to the ink rule.
  */
 import { describe, it, expect } from 'vitest';
@@ -54,7 +54,7 @@ describe('sizing a glyph by what it reads as', () => {
     // The fit icon is four corner brackets: a fifth of the solid drawings' ink over the same span.
     // The area term reads that as small and scales it up, so the rule alone hands the rail its
     // widest glyph. What an outline is read by is its span, and `FIT_TRIM` is what puts that span
-    // back inside the family — the WEIGHT stays low, because a hollow square has no more ink to
+    // back inside the family — the weight stays low, because a hollow square has no more ink to
     // give.
     const sizes = Object.values(DRAWN_FAMILY).map((ink) => span(drawn(ink)));
     expect(span(drawn(FIT_INK))).toBeGreaterThan(Math.max(...sizes));
@@ -63,7 +63,7 @@ describe('sizing a glyph by what it reads as', () => {
   });
 
   it('is the improvement over drawing each glyph to its own box', () => {
-    // The alternative: every glyph scaled so its BOX is one height.
+    // The alternative: every glyph scaled so its box is one height.
     const byBox = (ink: GlyphInk, boxH: number) => {
       const k = RAIL.glyph / boxH;
       return Math.hypot(ink.w * k, ink.h * k);
@@ -150,7 +150,7 @@ describe('sizing the block row by the cube its drawings share', () => {
   it('keeps the line the top of the window shares off the assistant', () => {
     // The top-right cluster is placed to end on `MODE_ROW_BASE`, so anything that line is derived
     // from can move a cluster in the opposite corner. It is derived from the mode row's own box:
-    // the margin, plus room for the tallest drawing that box has to hold, which is a SELECTED mode.
+    // the margin, plus room for the tallest drawing that box has to hold, which is a selected mode.
     // The character is not in it at all, so resizing that block cannot reach the other corner.
     const tallestSelected = Math.max(...MODES.map((art) => art.selected.h));
     expect(MODE.height).toBe(Math.round(tallestSelected * MODE_SCALE));

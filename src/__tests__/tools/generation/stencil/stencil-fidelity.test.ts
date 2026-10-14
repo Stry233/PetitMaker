@@ -1,5 +1,5 @@
 /**
- * HOW WELL A SMALL REGION REPRODUCES A PICTURE, measured rather than argued.
+ * How well a small region reproduces a picture, measured rather than argued.
  *
  * The harness reconstructs: a fixture is drawn at source resolution, read into a stencil at the cell
  * count a small region gives (20x20 to 40x40, the sizes reported as losing the shape), matched to a
@@ -7,11 +7,11 @@
  * is the mean over cells in a luma-weighted RGB space, 0 for a perfect reproduction and about 200 for
  * two unrelated pictures.
  *
- * TWO NUMBERS, because dithering is not meant to win per cell: a dithered cell is deliberately the
- * wrong colour so that its NEIGHBOURHOOD is the right one. So the per-cell distance is reported and
+ * Two numbers, because dithering is not meant to win per cell: a dithered cell is deliberately the
+ * wrong colour so that its neighbourhood is the right one. So the per-cell distance is reported and
  * the 2x2-averaged one — the one the eye actually takes — is what the thresholds are set on.
  *
- * THE FIXTURES ARE OURS: three pieces of pixel art written as characters and a colour key
+ * The fixtures are ours: three pieces of pixel art written as characters and a colour key
  * (`_stencil-art.ts`). Fixed shapes, fixed colours, no fetching and nothing borrowed.
  */
 import { describe, it, expect } from 'vitest';
@@ -20,7 +20,7 @@ import { nearestByColor, nearestTerrain, terrainPalette, type Stencil } from '..
 import { FACE, HEART, LETTER, pixels, type Art } from './_stencil-art';
 
 /**
- * POINT SAMPLING, the baseline the area-integrating reading is measured against: one source pixel per
+ * Point sampling, the baseline the area-integrating reading is measured against: one source pixel per
  * destination quadrant, taken at its centre. It is what a canvas downscaling by a large factor does,
  * and at a small cell count it drops whole features of the picture.
  */
@@ -54,8 +54,8 @@ function pointSampled(src: SourcePixels, box: { width: number; height: number })
   return { width, height, coverage, color, quad };
 }
 
-/** What the picture TRULY is at this cell count: the area average of the source under each cell,
- *  asked for explicitly, since the sampler's own reading of a DRAWING is deliberately not that. */
+/** What the picture truly is at this cell count: the area average of the source under each cell,
+ *  asked for explicitly, since the sampler's own reading of a drawing is deliberately not that. */
 function truth(src: SourcePixels, box: { width: number; height: number }): Stencil {
   return stencilFromPixels(src, box, { nature: 'photographic', background: false })!;
 }
@@ -63,8 +63,8 @@ function truth(src: SourcePixels, box: { width: number; height: number }): Stenc
 /**
  * The reading these cases are about: integrate the area, keep the whole footprint.
  *
- * ASKED FOR EXPLICITLY, because it is one of the two the sampler chooses between and this file
- * measures it against POINT sampling — the reduction, and nothing else. A drawing is read by
+ * Asked for explicitly, because it is one of the two the sampler chooses between and this file
+ * measures it against point sampling — the reduction, and nothing else. A drawing is read by
  * majority in production and a backdrop is dropped from it, and both of those change the answer in
  * ways that are meaningless against an area-average truth (a majority reading is deliberately not
  * the mean). What they do to the map is measured where it can be: `stencil-image.test.ts`.

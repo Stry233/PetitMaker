@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { append, createLog, eventsOf } from '../../../agent/core/log';
-import { answerGate, askGate, awaitGate, pendingGate, shouldGate } from '../../../agent/core/gates';
+import { answerGate, askGate, awaitGate, pendingGate, shouldGate, shouldGatePlan } from '../../../agent/core/gates';
 import type { Oversight } from '../../../agent/core/gates';
 
 describe('shouldGate', () => {
-  const base = { tool: 'paint_terrain', isWrite: true, isWide: true, oversight: 'strict' as Oversight, allowAll: false };
+  const base = { isWrite: true, isWide: true, oversight: 'strict' as Oversight, allowAll: false };
 
   it('allowAll never gates, whatever else is true', () => {
     expect(shouldGate({ ...base, allowAll: true })).toBe(false);
@@ -26,6 +26,15 @@ describe('shouldGate', () => {
   it('checkpoint gates every wide write and no narrow one', () => {
     expect(shouldGate({ ...base, oversight: 'checkpoint', isWide: true })).toBe(true);
     expect(shouldGate({ ...base, oversight: 'checkpoint', isWide: false })).toBe(false);
+  });
+});
+
+describe('shouldGatePlan', () => {
+  it('gates a plan under strict and checkpoint oversight until the session allows all', () => {
+    expect(shouldGatePlan({ oversight: 'strict', allowAll: false })).toBe(true);
+    expect(shouldGatePlan({ oversight: 'checkpoint', allowAll: false })).toBe(true);
+    expect(shouldGatePlan({ oversight: 'yolo', allowAll: false })).toBe(false);
+    expect(shouldGatePlan({ oversight: 'checkpoint', allowAll: true })).toBe(false);
   });
 });
 
@@ -69,7 +78,7 @@ describe('askGate / pendingGate / answerGate', () => {
   });
 
   /**
-   * THE SETTLE RACE, which is the reachable one. The double answer above cannot happen through the
+   * The settle race, which is the reachable one. The double answer above cannot happen through the
    * UI (the buttons unmount the moment the verdict lands), but a press landing in the frame between
    * `jobEnd` reaching the log and React removing the card takes this path: the append was legal, the
    * fold attached it to nothing, and the event sat in the persisted session invisible forever.
@@ -89,7 +98,7 @@ describe('askGate / pendingGate / answerGate', () => {
     expect(() => answerGate(log, gateId, 'skip')).toThrow();
   });
 
-  /** A PAUSE is not a settle: the loop re-enters the same gate on resume, so the question is held
+  /** A pause is not a settle: the loop re-enters the same gate on resume, so the question is held
    *  rather than lost and an answer to it is still legal. */
   it('answerGate still accepts an answer across a pause', () => {
     const log = createLog();
@@ -99,7 +108,7 @@ describe('askGate / pendingGate / answerGate', () => {
     expect(() => answerGate(log, gateId, 'allow')).not.toThrow();
   });
 
-  /** A gate answered in an EARLIER job is untouched by the settle of a later one. */
+  /** A gate answered in an earlier job is untouched by the settle of a later one. */
   it('answerGate does not look past a jobEnd that came BEFORE the ask', () => {
     const log = createLog();
     append(log, { kind: 'jobEnd', outcome: 'done' });

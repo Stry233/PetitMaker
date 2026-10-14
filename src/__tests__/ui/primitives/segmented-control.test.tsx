@@ -1,10 +1,11 @@
+// @vitest-environment jsdom
 /**
- * The Save/Share toggle bounce: in stretch mode, animating `SegmentedControl`'s pill to a PIXEL box
+ * The Save/Share toggle bounce: in stretch mode, animating `SegmentedControl`'s pill to a pixel box
  * measured off the active button's DOM offset re-measures on every tick of a host card's resize (e.g.
  * tweening to fit a new panel) and re-aims the pill's spring at a moving target — a spring chasing a
  * moving destination reads as bounce no matter how the resize itself is eased.
  *
- * The target is instead a FRACTION of the track — gap-aware, since the buttons flex in a
+ * The target is instead a fraction of the track — gap-aware, since the buttons flex in a
  * `gap`ped row: `left: calc((100% + gap) * i/n)`, `width: calc((100% - gap*(n-1)) / n)` — which a
  * resize cannot move: the fraction is exact by construction and the track carries the pill
  * passively under a resize. These assertions pin the DOM fraction for each index and ensure track
@@ -27,8 +28,8 @@ type Opt = (typeof OPTIONS)[number];
 const pillOf = (container: HTMLElement) => container.querySelector('[aria-hidden]') as HTMLElement;
 
 /** The gap-aware fraction the component aims at (TRACK_GAP = 4): button i of n in a gapped flex
- *  row sits at i*(W+gap)/n with width (W - gap*(n-1))/n. */
-// Serialized in the CSSOM's normalized factor-first order.
+ *  row sits at i*(W+gap)/n with width (W - gap*(n-1))/n, serialized in the cssom's factor-first
+ *  order. */
 const leftOf = (i: number, n: number) => `calc(${i / n} * (100% + 4px))`;
 const widthOf = (n: number) => `calc(${1 / n} * (100% - ${4 * (n - 1)}px))`;
 

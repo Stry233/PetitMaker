@@ -1,0 +1,29 @@
+{
+  "id": "ramp-grassy",
+  "category": "ramp",
+  "name": {
+    "en": "Grassy Ramp",
+    "zh": "自然草坡",
+    "ja": "草地のスロープ",
+    "ru": "Травяной склон",
+    "th": "ทางลาดหญ้า",
+    "id": "Tanjakan Rumput",
+    "fr": "Rampe herbeuse"
+  },
+  "width": 2,
+  "height": 2,
+  "loadValue": 0,
+  "loadUnknown": true,
+  "rotatable": false,
+  "placementMode": "point",
+  "traits": [
+    {
+      "type": "heightDrop",
+      "layers": 1
+    },
+    {
+      "type": "halfStep"
+    }
+  ],
+  "icon": "ramp-grassy"
+}

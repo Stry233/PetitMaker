@@ -1,33 +1,23 @@
 /*
- * The session's contact sheet: Original first, then every take in the order it was
- * drawn, then the card standing in for a job in flight.
- *
- * THE SHELF IS ALWAYS THE SAME ROW. Ghost slots keep it drawn to its six visible slots, so a take
- * arriving fills a slot that was already there and the row never grows under the pointer; past six
- * the row SCROLLS sideways under the house fade rather than wrapping, since a second row would
- * take its height out of the canvas above. A fresh take (and the card painting one) glides into
- * view on its own. Hovering a card TRIES it on the canvas and pressing KEEPS it, which is what
- * lets someone walk the sheet without committing to anything.
- *
- * The retire square is a SIBLING of the card, never a child: a button cannot nest in a button, and
- * the card is the picture's own press.
- *
- * AND THIS SHELF IS WHERE A RUNNING JOB IS REPORTED — the only place. The footer's status slot says
- * nothing while a take is painting, because two indicators for one wait ask the eye which of them
- * is the job.
+ * The session's contact sheet: Original, every take in order, then the card for a job in flight (the one
+ * place a running job is reported). Ghost slots keep six slots drawn, so a take fills a slot rather than
+ * growing the row; past six it scrolls sideways. Hover tries a take on the canvas, a press keeps it; the
+ * retire square is the card's sibling, since a button cannot nest in a button.
  */
+import { ActionButton } from '../../../../primitives/ActionButton';
 import { useChromeScale } from '../../../../design/scale';
 import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { motion, AnimatePresence, useReducedMotionConfig } from 'framer-motion';
-import { buttonMotion, colors, cursors, pressable, radii } from '../../../../design/styles';
+import { cursors, pressable, radii } from '../../../../design/styles';
+import { DANGER_INK, DANGER_SURFACE, ACTIVE, inkTint, rgbaOf } from '../../../../design/tokens';
 import { skin } from '../../../../design/window-skin';
 import { roleFont } from '../../../../design/text-weight';
 import { useT } from '../../../../../i18n/context';
-import type { StylizeVersion } from '../../../../../io/stylize';
+import { versionSrc, type StylizeVersion } from '../../../../../state/stylize-versions';
 import { useScrollFade } from '../../../../primitives/scroll-fade';
 import { useWheelToHorizontal } from '../../../../primitives/wheel-horizontal';
 import { MAP_ASPECT } from './sample-art';
-import { entering } from './atoms';
+import { entering } from './stylize-parts';
 import { amplitude, cssMotion, framerMotion, NO_MOTION } from '../../../../design/motion';
 
 /** How many slots stand in view; the row scrolls once the session has made more. */
@@ -38,10 +28,6 @@ const SLOTS = 6;
 const CREEP_PCT = amplitude('stylize.progress.creep') * 100;
 
 /** The picture a card shows, where the browser can be given one. */
-export function versionSrc(version: StylizeVersion): string | null {
-  const image = version.image as { src?: unknown };
-  return typeof image.src === 'string' ? image.src : null;
-}
 
 export function VersionShelf({ versions, selectedId, running, runningBand, originalSrc, onTry, onPick, onRetire, enterIndex = 0 }: {
   versions: readonly StylizeVersion[];
@@ -61,7 +47,7 @@ export function VersionShelf({ versions, selectedId, running, runningBand, origi
   const reduced = useReducedMotionConfig() === true;
   const [hover, setHover] = useState<string | null>(null);
   const painting = running;
-  // What the loader's leave should say: a job that MINTED hands its exact spot to the take (the
+  // What the loader's leave should say: a job that minted hands its exact spot to the take (the
   // slot collapses on the same frame, so the card pops where the bar stood); a job that ended
   // with nothing folds shut like a retired card, since there is nothing to hand the spot to.
   const jobStartLen = useRef(versions.length);
@@ -75,7 +61,7 @@ export function VersionShelf({ versions, selectedId, running, runningBand, origi
   // A mouse over the shelf has only vertical notches; they drive the row's own travel.
   useWheelToHorizontal(scrollRef, { zoom: useChromeScale() });
 
-  // A card the row just GAINED (a finished take, or the one painting) belongs in view without a
+  // A card the row just gained (a finished take, or the one painting) belongs in view without a
   // hand on the scrollbar. Only growth scrolls: a retire must not yank the row to its end while
   // the eye is on the cards around the gap.
   const occupied = versions.length + (painting ? 1 : 0);
@@ -94,24 +80,22 @@ export function VersionShelf({ versions, selectedId, running, runningBand, origi
       ref={scrollRef}
       data-testid="stylize-shelf-scroll"
       style={{ ...shelfRow, ...fade }}
-    >
+   >
       <div style={{ ...slotBox, position: 'relative' }}>
-        <motion.button
-          type="button"
+        <ActionButton
           aria-label={t('stylize.original')}
           onClick={() => onPick(null)}
           onMouseEnter={() => onTry('original')}
           onMouseLeave={() => onTry(null)}
           onFocus={() => onTry('original')}
           onBlur={() => onTry(null)}
-          {...buttonMotion}
           style={cardStyle(selectedId === null, originalSrc)}
-        >
+       >
           <span style={tagStyle}>{t('stylize.original')}</span>
-        </motion.button>
+        </ActionButton>
       </div>
 
-      {/* ONE presence list holds the cards AND the painting slot. `custom` carries whether the
+      {/* One presence list holds the cards and the painting slot. `custom` carries whether the
           job minted, read by the loader's exit at the moment it leaves. */}
       <AnimatePresence initial={false} custom={minted}>
         {([...versions, ...(painting ? ['painting' as const] : [])]).map((entry) => {
@@ -126,7 +110,7 @@ export function VersionShelf({ versions, selectedId, running, runningBand, origi
               key={version.id}
               initial={{ opacity: 0, scale: 1 - amplitude('stylize.card.enter') }}
               animate={{ opacity: 1, scale: 1 }}
-              // The SLOT folds shut while the picture fades: flex reflow carries every survivor
+              // The slot folds shut while the picture fades: flex reflow carries every survivor
               // continuously (no transform compensation to disagree with the scroller), the row's
               // scrollWidth shrinks smoothly instead of clamping at a scrolled end, and the flex
               // gap collapses because it is the slot's own margin. Reduced motion takes the fade
@@ -148,9 +132,8 @@ export function VersionShelf({ versions, selectedId, running, runningBand, origi
               onMouseEnter={() => setHover(version.id)}
               onMouseLeave={() => setHover(null)}
               style={{ ...slotBox, position: 'relative' }}
-            >
-              <motion.button
-                type="button"
+           >
+              <ActionButton
                 aria-label={label}
                 {...(custom && version.prompt ? { title: version.prompt } : {})}
                 onClick={() => onPick(version.id)}
@@ -158,14 +141,13 @@ export function VersionShelf({ versions, selectedId, running, runningBand, origi
                 onMouseLeave={() => onTry(null)}
                 onFocus={() => onTry(version.id)}
                 onBlur={() => onTry(null)}
-                {...buttonMotion}
                 style={cardStyle(selectedId === version.id, versionSrc(version))}
-              >
+             >
                 <span style={tagStyle}>
                   {label}
                   {custom ? <i aria-label={t('stylize.edit_prompt')} style={{ fontStyle: 'normal' }}> ✎</i> : null}
                 </span>
-              </motion.button>
+              </ActionButton>
               <motion.button
                 type="button"
                 aria-label={t('stylize.retire')}
@@ -173,7 +155,7 @@ export function VersionShelf({ versions, selectedId, running, runningBand, origi
                 onClick={() => onRetire(version.id)}
                 onFocus={() => setHover(version.id)}
                 onBlur={() => setHover(null)}
-                // The square is REVEALED by the card's hover and answers the pointer with its own
+                // The square is revealed by the card's hover and answers the pointer with its own
                 // growth: both are hover feedback, so both run on the house affordance's own spring.
                 // While hidden it must not take the pointer either, or the card's corner would
                 // delete a take the hand was only reaching to pick.
@@ -182,7 +164,7 @@ export function VersionShelf({ versions, selectedId, running, runningBand, origi
                 whileTap={pressable.whileTap}
                 transition={pressable.transition}
                 style={{ ...retireStyle, pointerEvents: hover === version.id ? 'auto' : 'none' }}
-              >
+             >
                 {/* The cross is drawn, not typed: the Latin face has no U+2715, and a fallback
                     font's glyph lands off-center in an 18px circle. */}
                 <span aria-hidden style={crossArm(45)} />
@@ -208,14 +190,9 @@ export function VersionShelf({ versions, selectedId, running, runningBand, origi
 }
 
 /**
- * The slot standing in for a job in flight, carrying the ONE progress bar the running state shows.
- *
- * THE TRACK DOES NOT KNOW HOW FAR ALONG THE JOB IS, and it never pretends to: the whole generation
- * is one request that reports nothing between the asking and the answering, so the bar creeps to a
- * mark short of the end over the length a take usually takes and only the finished picture fills
- * it. Under reduced motion the creep is taken in ONE STEP rather than glided — what the track has
- * to carry is that something is out, not a rate nobody measured — and the landing, which is the one
- * moment the bar knows a fact, is written at once.
+ * The slot for a job in flight, with the running state's one progress bar. The request reports nothing
+ * until it answers, so the bar creeps to a mark short of the end over a take's usual length (one step
+ * under reduced motion) and only the finished picture fills it.
  */
 function PaintingCard({ band, reduced }: { band: string; reduced: boolean }) {
   const percent = reduced ? CREEP_PCT / 2 : CREEP_PCT;
@@ -264,7 +241,7 @@ const shelfRow: CSSProperties = {
   /* Clip room for the cards' hover growth and the chosen ring (both drawn outside the card box),
      handed back by the margin so the shelf keeps its footprint. */
   padding: 8,
-  margin: -5,
+  margin: -4,
 };
 
 /** One slot's footprint in the row: exactly six fit the visible width, gaps included. The gap is
@@ -279,7 +256,7 @@ const slotBox: CSSProperties = {
 const slotStyle: CSSProperties = {
   width: '100%',
   aspectRatio: String(MAP_ASPECT),
-  borderRadius: 10,
+  borderRadius: radii.md,
   boxShadow: `inset 0 0 0 1.5px ${skin.line}`,
 };
 
@@ -296,10 +273,10 @@ function cardStyle(picked: boolean, src: string | null): CSSProperties {
     transition: cssMotion('stylize.select.ring', ['box-shadow']),
     ...(src ? { backgroundImage: `url(${src})`, backgroundSize: 'cover', backgroundPosition: 'center' } : {}),
     // The unpicked ring is the picked one at zero width rather than the slot's own hairline alone:
-    // a shadow list that changes LENGTH cannot be interpolated, so the ring would land in one frame.
+    // a shadow list that changes length cannot be interpolated, so the ring would land in one frame.
     boxShadow: picked
       ? `inset 0 0 0 1.5px ${skin.line}, 0 0 0 2.5px ${skin.active}`
-      : `inset 0 0 0 1.5px ${skin.line}, 0 0 0 0 rgba(255,218,126,0)`,
+      : `inset 0 0 0 1.5px ${skin.line}, 0 0 0 0 ${rgbaOf(ACTIVE, 0)}`,
   };
 }
 
@@ -325,9 +302,9 @@ const tagStyle: CSSProperties = {
   bottom: 4,
   ...roleFont('small'),
   color: skin.plate,
-  background: 'rgba(67,65,62,0.66)',
+  background: inkTint(0.66),
   borderRadius: radii.sm,
-  padding: '1px 6px',
+  padding: '2px 6px',
   pointerEvents: 'none',
 };
 
@@ -339,7 +316,7 @@ const retireStyle: CSSProperties = {
   height: 18,
   border: 'none',
   borderRadius: '50%',
-  background: colors.dangerBg,
+  background: DANGER_SURFACE,
   display: 'grid',
   placeItems: 'center',
   cursor: cursors.clickable,
@@ -353,8 +330,8 @@ function crossArm(deg: number): CSSProperties {
     top: 8.2,
     width: 9,
     height: 1.6,
-    borderRadius: 1,
-    background: colors.dangerText,
+    borderRadius: radii.hair,
+    background: DANGER_INK,
     transform: `rotate(${deg}deg)`,
   };
 }

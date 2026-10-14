@@ -1,53 +1,42 @@
+// @vitest-environment jsdom
 /**
- * PRESENCE ALWAYS, TRANSCRIPT NEVER BY DEFAULT: the counter on the dock's meta
+ * Presence always, transcript never by default: the counter on the dock's meta
  * line, the stall face that stops reassuring, and the bounded box one deliberate press away.
  *
- * The three faces under test are all about what the panel SAYS while a model thinks, so every
+ * The three faces under test are all about what the panel says while a model thinks, so every
  * assertion here is on text and on the seat it stands in. Rendered through `I18nProvider` with a
  * stubbed `localStorage` (the store's persistence writes to it) and under
  * `MotionConfig reducedMotion="always"` — the dock's card flip is what a face swap would otherwise
  * have to be awaited through, and the presence line is deliberately the one carrier that survives
  * reduced motion, so testing it there is testing it where it matters.
  */
-import { ScrollIntent } from '../../../ui/primitives/scroll-intent';
+import { ScrollIntent } from '../../../ui/agent/parts/scroll-intent';
 import { describe, it, expect, beforeEach } from 'vitest';
 import { render, fireEvent, waitFor } from '@testing-library/react';
-import { MotionConfig } from 'framer-motion';
-import { I18nProvider } from '../../../i18n/context';
 import { useEditorStore } from '../../../state/store';
-import { translations } from '../../../i18n/translations';
+import { translations } from '../../_support/locale-tables';
 import { append, createLog } from '../../../agent/core/log';
 import { deriveView } from '../../../agent/core/project-view';
 import { REASONING_EXCERPT_CHARS } from '../../../agent/core/types';
-import { deserializeLog, serializeLog } from '../../../agent/session/persist';
-import { AnswerPaper } from '../../../ui/agent/AnswerPaper';
-import { DeskHeader } from '../../../ui/agent/DeskHeader';
-import { JobTicket } from '../../../ui/agent/JobTicket';
-import { FlipTicket } from '../../../ui/agent/FlipTicket';
+import { deserializeLog, serializeLog } from '../../../agent/session/log-codec';
+import { AnswerPaper } from '../../../ui/agent/record/AnswerPaper';
+import { DeskHeader } from '../../../ui/agent/desk/DeskHeader';
+import { JobTicket } from '../../../ui/agent/record/JobTicket';
+import { FlipTicket } from '../../../ui/agent/record/FlipTicket';
 import { PanelShell } from '../../../ui/agent/PanelShell';
-import { THOUGHTS_MAX_HEIGHT } from '../../../ui/agent/ThoughtsBox';
-import { STALL_MS } from '../../../ui/agent/dock-face';
 import type {
   JobView, OpRow as OpRowData, PanelView, ThoughtTurn,
 } from '../../../agent/core/project-view';
-import type { Locale } from '../../../core/model/types';
+import { LOCALES } from '../../../core/model/locale';
+import { makeView, panelProps, Wrapper } from '../../_support/agent-panel';
 
 const backing = new Map<string, string>();
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 (globalThis as any).localStorage = {
   getItem: (k: string) => backing.get(k) ?? null,
   setItem: (k: string, v: string) => void backing.set(k, String(v)),
   removeItem: (k: string) => void backing.delete(k),
   clear: () => backing.clear(),
 };
-
-function Wrapper({ children }: { children: React.ReactNode }) {
-  return (
-    <MotionConfig reducedMotion="always">
-      <I18nProvider>{children}</I18nProvider>
-    </MotionConfig>
-  );
-}
 
 const renderWithI18n = (node: React.ReactElement) => render(node, { wrapper: Wrapper });
 
@@ -86,18 +75,6 @@ function makeJob(over: Partial<JobView> = {}): JobView {
   };
 }
 
-function makeView(over: Partial<PanelView> = {}): PanelView {
-  return {
-    phase: 'idle',
-    jobs: [],
-    queuedSteers: [],
-    vitals: { cells: 0, objects: 0, reverts: 0, jobs: 0 },
-    suggestion: null,
-    lastEventAt: 0,
-    ...over,
-  };
-}
-
 /** A thinking job as the panel sees it: ordered at `orderAt`, the log last stamped at `lastEventAt`. */
 function thinking(over: { thought?: JobView['thought']; orderAt?: number; lastEventAt?: number } = {}): PanelView {
   const job = makeJob({ orderAt: over.orderAt ?? 0, ...(over.thought ? { thought: over.thought } : {}) });
@@ -108,14 +85,14 @@ function thinking(over: { thought?: JobView['thought']; orderAt?: number; lastEv
   });
 }
 
-describe('the presence counter: the dock says how much has been thought, and never routes it through the says line', () => {
-  /** The count is TURNS, not characters: `chars` grows mid-stream and is not a count of anything
+describe('the presence counter: the status card says how much has been thought, and never routes it through the says line', () => {
+  /** The count is turns, not characters: `chars` grows mid-stream and is not a count of anything
    *  discrete, so a job on its third thinking turn reads "3 thoughts" whatever its character total. */
   it('carries the turn count on the meta line beside the running clock, not the character total', () => {
     const view = thinking({ thought: { chars: 1204, turns: 3, marks: [], ms: 0, live: LONG_COT } });
     const { getByTestId } = renderWithI18n(<DeskHeader view={view} now={42_000} />);
 
-    expect(getByTestId('dock-sentence').textContent).toBe(translations.en['agent3.dock_thinking']);
+    expect(getByTestId('dock-sentence').textContent).toBe(translations.en['agent.dock_thinking']);
     expect(getByTestId('dock-meta').textContent).toBe('3 thoughts');
     expect(getByTestId('dock-elapsed').textContent).toBe('0:42');
   });
@@ -138,7 +115,7 @@ describe('the presence counter: the dock says how much has been thought, and nev
     expect(getByTestId('job-ticket').textContent).not.toContain('the plaza is locked');
   });
 
-  /** A HIDDEN-CoT MODEL GETS THE SAME FACE MINUS THE COUNT, and no affordance that would open on
+  /** A HIDDEN-CoT model gets the same face minus the count, and no affordance that would open on
    *  nothing: the elapsed clock is the whole liveness carrier there. Inside the stall threshold,
    *  because past it there is no hidden face that is not also a silence — which is the point. */
   it('says the clock and no count at all where no reasoning was exposed', () => {
@@ -156,13 +133,16 @@ describe('the presence counter: the dock says how much has been thought, and nev
   });
 });
 
-describe('the stall face: past the threshold the dock states the fact', () => {
+describe('the stall face: past the threshold the status card states the fact', () => {
+  /** The silence, in ms, the status card waits out before it says so. */
+  const STALL_MS = 90_000;
+
   it('keeps the thinking face while the silence is inside the threshold', () => {
     const view = thinking({ orderAt: 0, lastEventAt: 60_000 });
     const { getByTestId, queryByTestId } = renderWithI18n(
       <DeskHeader view={view} now={60_000 + STALL_MS - 1_000} />,
     );
-    expect(getByTestId('dock-sentence').textContent).toBe(translations.en['agent3.dock_thinking']);
+    expect(getByTestId('dock-sentence').textContent).toBe(translations.en['agent.dock_thinking']);
     expect(queryByTestId('dock-stall-clock')).toBeNull();
   });
 
@@ -170,14 +150,14 @@ describe('the stall face: past the threshold the dock states the fact', () => {
     const view = thinking({ orderAt: 0, lastEventAt: 145_000 });
     const { getByTestId } = renderWithI18n(<DeskHeader view={view} now={275_000} />);
 
-    expect(getByTestId('dock-sentence').textContent).toBe(translations.en['agent3.dock_still_thinking']);
+    expect(getByTestId('dock-sentence').textContent).toBe(translations.en['agent.dock_still_thinking']);
     expect(getByTestId('dock-meta').textContent).toBe('nothing received, 2:10');
     expect(getByTestId('dock-stall-clock').textContent).toBe('2:10');
     // The job's own clock is not the silence: the run is four and a half minutes old.
     expect(getByTestId('dock-elapsed').textContent).toBe('4:35');
   });
 
-  /** THE DIGIT-ONLY-TICKS RULE, which is why the silence reading is a leaf of its own: a second
+  /** The digit-only-ticks rule, which is why the silence reading is a leaf of its own: a second
    *  passing must touch that one text node and leave every sibling's DOM identity alone. */
   it('moves the silence reading alone as the clock ticks', () => {
     const view = thinking({ orderAt: 0, lastEventAt: 145_000 });
@@ -193,19 +173,19 @@ describe('the stall face: past the threshold the dock states the fact', () => {
     expect(getByTestId('dock-meta')).toBe(meta);
   });
 
-  /** ANY EVENT RETURNS THE THINKING FACE: the silence is measured from what was last observed, so a
+  /** Any event returns the thinking face: the silence is measured from what was last observed, so a
    *  delta landing is the end of the stall whatever the face was saying a moment ago. */
   it('returns to the thinking face the moment something arrives', () => {
     const stalled = thinking({ orderAt: 0, lastEventAt: 145_000 });
     const { getByTestId, rerender } = renderWithI18n(<DeskHeader view={stalled} now={275_000} />);
-    expect(getByTestId('dock-sentence').textContent).toBe(translations.en['agent3.dock_still_thinking']);
+    expect(getByTestId('dock-sentence').textContent).toBe(translations.en['agent.dock_still_thinking']);
 
     const arrived = thinking({ orderAt: 0, lastEventAt: 274_000 });
     rerender(<DeskHeader view={arrived} now={275_000} />);
-    expect(getByTestId('dock-sentence').textContent).toBe(translations.en['agent3.dock_thinking']);
+    expect(getByTestId('dock-sentence').textContent).toBe(translations.en['agent.dock_thinking']);
   });
 
-  /** THE LIVE HALF ALONE: `lastEventAt` never moves in this test, so only the reasoning stream's own
+  /** The live half alone: `lastEventAt` never moves in this test, so only the reasoning stream's own
    *  progress (never logged, `useLastActivity`'s live-signature half) is what can end the stall —
    *  the log-driven test above cannot exercise this branch, since there the log stamp is what moves. */
   it('returns to the thinking face on a live dribble alone, with the log stamp frozen', () => {
@@ -214,13 +194,13 @@ describe('the stall face: past the threshold the dock states the fact', () => {
     });
     const { getByTestId, rerender } = renderWithI18n(<DeskHeader view={at(500)} now={0} />);
     rerender(<DeskHeader view={at(500)} now={STALL_MS} />);
-    expect(getByTestId('dock-sentence').textContent).toBe(translations.en['agent3.dock_still_thinking']);
+    expect(getByTestId('dock-sentence').textContent).toBe(translations.en['agent.dock_still_thinking']);
 
     rerender(<DeskHeader view={at(756)} now={STALL_MS} />);
-    expect(getByTestId('dock-sentence').textContent).toBe(translations.en['agent3.dock_thinking']);
+    expect(getByTestId('dock-sentence').textContent).toBe(translations.en['agent.dock_thinking']);
   });
 
-  /** A SEAT IS NOT LOST TO A STALL. Pause and stop stay exactly where the running face keeps them:
+  /** A seat is not lost to a stall. Pause and stop stay exactly where the running face keeps them:
    *  the stall is a sentence, not a state of its own. */
   it('keeps the running seat', () => {
     const view = thinking({ orderAt: 0, lastEventAt: 145_000 });
@@ -250,13 +230,13 @@ describe('the thoughts affordance: one deliberate press into a bounded box', () 
     fireEvent.click(getByTestId('thoughts-toggle'));
 
     const box = getByTestId('thoughts-box');
-    expect(box.parentElement!.style.maxHeight).toBe(`${THOUGHTS_MAX_HEIGHT}px`);
+    expect(box.parentElement!.style.maxHeight).toBe('200px');
     expect(box.style.overflowY).toBe('auto');
     expect(box.style.overscrollBehavior).toBe('contain');
   });
 
   /**
-   * A CHAIN OF THOUGHT IS MARKDOWN, because a model writes it that way whether or not it was asked:
+   * A chain of thought is markdown, because a model writes it that way whether or not it was asked:
    * numbered steps, a candidate table, an id in backticks. Drawn flat, every blank line collapsed
    * into one wall of text and the markers stood in the prose — so the box renders it through the
    * panel's own emitter over the house parser.
@@ -271,7 +251,7 @@ describe('the thoughts affordance: one deliberate press into a bounded box', () 
     expect(box.querySelectorAll('ol li')).toHaveLength(2);
     expect(box.querySelector('strong')?.textContent).toBe('plaza');
     expect(box.querySelector('code')?.textContent).toBe('locked');
-    // The markers themselves are GONE from the text, which is the whole difference from a flat draw.
+    // The markers themselves are gone from the text, which is the whole difference from a flat draw.
     expect(box.textContent).not.toContain('**');
     expect(box.textContent).not.toContain('`');
   });
@@ -282,7 +262,7 @@ describe('the thoughts affordance: one deliberate press into a bounded box', () 
     fireEvent.click(getByTestId('thoughts-toggle'));
     expect(queryByTestId('thoughts-box')).not.toBeNull();
     fireEvent.click(getByTestId('thoughts-toggle'));
-    // The press reads as closed AT ONCE, and the box then folds away on its own declared length —
+    // The press reads as closed at once, and the box then folds away on its own declared length —
     // it is held in the tree for exactly that long, which is what a fold is.
     expect(getByTestId('thoughts-toggle').getAttribute('aria-expanded')).toBe('false');
     await waitFor(() => { expect(queryByTestId('thoughts-box')).toBeNull(); });
@@ -336,13 +316,13 @@ describe('the excerpt note: a reopened session says when the box holds less than
 
     const { getByTestId } = renderWithI18n(<JobTicket job={job} />);
     fireEvent.click(getByTestId('thought-mark'));
-    expect(getByTestId('thoughts-excerpt-note').textContent).toBe(translations.en['agent3.thoughts_excerpt']);
+    expect(getByTestId('thoughts-excerpt-note').textContent).toBe(translations.en['agent.thoughts_excerpt']);
   });
 
   /**
-   * EDGE WHITESPACE IS THE COMMON SHAPE, and the `'r'.repeat` fixture above is blind to it: a
+   * Edge whitespace is the common shape, and the `'r'.repeat` fixture above is blind to it: a
    * `reasoning_content` stream that opens or closes on a newline is what most providers send. The
-   * projection TRIMS the text it hands the box, so measuring `chars` off the untrimmed part gives
+   * projection trims the text it hands the box, so measuring `chars` off the untrimmed part gives
    * two numbers describing two different strings and the box tells the user a thought was cut short
    * by a reload in a session that has never been reloaded.
    */
@@ -368,14 +348,14 @@ describe('the excerpt note: a reopened session says when the box holds less than
     expect(queryByTestId('thoughts-excerpt-note')).toBeNull();
   });
 
-  /** A MULTI-PART TURN joins its parts with a blank line, so the displayed text ran PAST `chars` by
+  /** A multi-part turn joins its parts with a blank line, so the displayed text ran past `chars` by
    *  two per gap — the safe direction, and still two measurements of two different strings. */
   it('measures a multi-part turn as the box displays it', () => {
     const mark = deriveView(thoughtLog('First, the ridge.\n', 'Then the shore.')).jobs[0]!.thought!.marks[0]!;
     expect(mark.chars).toBe(mark.text!.length);
   });
 
-  /** AND FROM THE OTHER SIDE: a reloaded thought SHORTER than the excerpt bound was never
+  /** And from the other side: a reloaded thought shorter than the excerpt bound was never
    *  truncated, so nothing may claim it was. The stored head is the whole of it. */
   it('carries no note on a reloaded thought that was never truncated', () => {
     const log = thoughtLog('A short thought, ending on a newline.\n');
@@ -442,9 +422,9 @@ describe('interleaved turns: one quiet mark per turn, in the op list', () => {
 });
 
 /**
- * THE TRANSCRIPT OUTLIVES THE TURN THAT WROTE IT.
+ * The transcript outlives the turn that wrote it.
  *
- * The live face's thoughts pill is the CURRENT turn's and retires with it, and an answered job's card
+ * The live face's thoughts pill is the current turn's and retires with it, and an answered job's card
  * is the paper rather than the ticket — so a settled answer left the session holding 1,887 characters
  * of that turn's reasoning with nothing on screen able to reach them. The paper carries the same
  * per-turn marks the op list does, under the answer, since the answer is the product.
@@ -514,7 +494,7 @@ describe('the receipt: one honest total and nothing else about the thinking', ()
 });
 
 /**
- * THE WHOLE CHAIN, once: the projection's live reasoning reaches the ticket the panel mounts, the
+ * The whole chain, once: the projection's live reasoning reaches the ticket the panel mounts, the
  * affordance is there, and the box it opens is the panel's own. Without this the three components
  * above can each be right while nothing wires them.
  */
@@ -526,7 +506,7 @@ describe('the panel stands the affordance over a live job', () => {
   it('offers the current turn on the live ticket, and opens it in place', () => {
     const view = thinking({ thought: { chars: 1204, turns: 1, marks: [], ms: 0, live: LONG_COT } });
     const { getByTestId, queryByTestId } = renderWithI18n(
-      <PanelShell view={view} connected now={42_000} {...verbs} />,
+      <PanelShell {...panelProps({ view, connected: true, now: 42_000, ...verbs })} />,
     );
     expect(queryByTestId('thoughts-box')).toBeNull();
     fireEvent.click(getByTestId('thoughts-toggle'));
@@ -536,11 +516,10 @@ describe('the panel stands the affordance over a live job', () => {
 
 describe('every locale carries the reasoning family', () => {
   const KEYS = [
-    'agent3.dock_still_thinking', 'agent3.dock_stall', 'agent3.thoughts_so_far',
-    'agent3.thought_mark', 'agent3.thoughts_total', 'agent3.thoughts_total_one',
-    'agent3.thoughts_read', 'agent3.thoughts_hide', 'agent3.thoughts_excerpt',
+    'agent.dock_still_thinking', 'agent.dock_stall', 'agent.thoughts_so_far',
+    'agent.thought_mark', 'agent.thoughts_total', 'agent.thoughts_total_single',
+    'agent.thoughts_read', 'agent.thoughts_hide', 'agent.thoughts_excerpt',
   ] as const;
-  const LOCALES: Locale[] = ['en', 'zh', 'ja', 'ru', 'th', 'id', 'fr'];
 
   it('has every key in all seven, with the placeholders en declares', () => {
     for (const locale of LOCALES) {

@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { waterfallAdjacentUniformityRule } from '../../rules/waterfall-uniformity';
-import { TerrainType } from '../../core/model/types';
-import { makeState, setTerrain } from './_helpers';
+import { TerrainType, type MacroCoord } from '../../core/model/types';
+import { makeState, setTerrain } from '../_support/map-state';
 
 describe('V-WTR-03: Waterfall Adjacent Row Uniformity', () => {
   it('allows uniform front row (all same elevation)', () => {
@@ -127,7 +127,7 @@ describe('V-WTR-03: Waterfall Adjacent Row Uniformity', () => {
       put(5, 2, TerrainType.Mountain, 2);
       for (const along of [3, 4, 5]) put(along, 4, TerrainType.Mountain, 1);
       const [fx, fy] = at(vertical, 6, 4);
-      expect(waterfallAdjacentUniformityRule.validate(state).flatMap((e) => e.cells ?? [])).toEqual([{ x: fx, y: fy }]);
+      expect(waterfallAdjacentUniformityRule.validate(state).flatMap((e): MacroCoord[] => e.cells ?? [])).toEqual([{ x: fx, y: fy }]);
     });
   });
 });

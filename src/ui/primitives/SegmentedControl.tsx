@@ -1,11 +1,12 @@
-import { interactionProfiles, colors, font, springs, cursors, radii } from '../design/styles';
+import { interactionProfiles, font, cursors, radii } from '../design/styles';
 /** A persistent pill inherits its modal's exit opacity. Equal-width slots use fractional targets
  * so host resizing does not restart the selection spring; content-sized slots use measured offsets. */
 import { useLayoutEffect, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
-import { motion, useReducedMotionConfig } from 'framer-motion';
+import { motion } from 'framer-motion';
 import { skin } from '../design/window-skin';
 import { roleWeight, TEXT_ROLES } from '../design/text-weight';
-import { NO_MOTION } from '../design/motion';
+import { useTransition } from '../design/motion/use-motion';
+import { FRAME_INK } from '../design/tokens';
 
 const PAD_X = 6; // stretch-mode button horizontal padding (each side) — see `btn.padding` below
 const TRACK_PAD = 3; // wrap's own padding — see `wrap.padding` below, and the pill's top/bottom inset
@@ -13,8 +14,6 @@ const TRACK_GAP = 4; // the flex gap between buttons; the pill's fractions carry
 
 // Horizontal offsets are local pixels; vertical insets avoid CSS-zoom rounding gaps.
 type PillBox = { x: number; w: number };
-
-const PILL_SPRING = springs.stiff;
 
 export function SegmentedControl<T extends string>({
   value, options, onChange, render = (o) => String(o), label, idPrefix, stretch = true, fontSize = TEXT_ROLES.chip.px, height, wrapLabels = false,
@@ -39,7 +38,7 @@ export function SegmentedControl<T extends string>({
   /** Allow complete labels in narrow settings columns. */
   wrapLabels?: boolean;
 }) {
-  const reduced = useReducedMotionConfig();
+  const settle = useTransition('control.settle');
   const wrapRef = useRef<HTMLDivElement>(null);
   const btnRefs = useRef<(HTMLButtonElement | null)[]>([]);
   // The sliding pill's measured target box — non-stretch mode only (stretch computes its target
@@ -48,7 +47,7 @@ export function SegmentedControl<T extends string>({
   const [pillBox, setPillBox] = useState<PillBox | null>(null);
 
   // The pill box — the active button's measured horizontal extent, relative to the positioned
-  // wrap. Vertical is NOT measured — see the `PillBox` comment above. Called every render
+  // wrap. Vertical is not measured — see the `PillBox` comment above. Called every render
   // (useLayoutEffect below), on font load, and on resize; converges via setState equality.
   const measure = () => {
     if (stretch) return; // fractional target, nothing to measure — see the header note
@@ -59,17 +58,21 @@ export function SegmentedControl<T extends string>({
     }
   };
   useLayoutEffect(measure); // re-measure every render (value/language/width changes)
+  // The mount-time observers call the latest measure, so a resize after the value changed reads the
+  // button that is active now.
+  const measureRef = useRef(measure);
+  measureRef.current = measure;
   // Re-measure once the web font finishes loading (first measure may use a fallback metric), and
   // whenever the control resizes (a content-sized slot's own width can change with the container).
   useEffect(() => {
     if (stretch) return; // nothing to re-measure — the fraction is resize-invariant by construction
-    (document as { fonts?: { ready: Promise<unknown> } }).fonts?.ready.then(measure);
+    void (document as { fonts?: { ready: Promise<unknown> } }).fonts?.ready.then(() => measureRef.current());
     const el = wrapRef.current;
     if (!el || typeof ResizeObserver === 'undefined') return;
-    const ro = new ResizeObserver(measure);
+    const ro = new ResizeObserver(() => measureRef.current());
     ro.observe(el);
     return () => ro.disconnect();
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [stretch]);
 
   const activeIndex = options.indexOf(value);
   const optionCount = options.length;
@@ -77,7 +80,7 @@ export function SegmentedControl<T extends string>({
   return (
     <div ref={wrapRef} style={{ ...wrap, ...(stretch ? null : { alignSelf: 'flex-start' }), ...(height !== undefined ? { height, boxSizing: 'border-box' } : null) }}>
       {/* The single persistent sliding pill — animates its box to the active option. It is an
-          ordinary child of the wrap (no `layoutId`), so it slides cleanly AND fades in lockstep
+          ordinary child of the wrap (no `layoutId`), so it slides cleanly and fades in lockstep
           with an enclosing modal card's exit opacity. */}
       {stretch ? (
         // Inset to the buttons' own content box (the wrap's padding on every side is `TRACK_PAD`),
@@ -91,7 +94,7 @@ export function SegmentedControl<T extends string>({
               left: `calc((100% + ${TRACK_GAP}px) * ${activeIndex / optionCount})`,
               width: `calc((100% - ${TRACK_GAP * (optionCount - 1)}px) / ${optionCount})`,
             }}
-            transition={reduced ? NO_MOTION : PILL_SPRING}
+            transition={settle}
             style={pillStretch}
           />
         </div>
@@ -109,7 +112,7 @@ export function SegmentedControl<T extends string>({
             aria-hidden
             initial={false}
             animate={{ x: pillBox.x, width: pillBox.w }}
-            transition={reduced ? NO_MOTION : PILL_SPRING}
+            transition={settle}
             style={{ ...pill, y: 0 }}
           />
         )
@@ -141,22 +144,22 @@ export function SegmentedControl<T extends string>({
 }
 
 // `overflow: hidden` clips the sliding pill to the track: the pill animates on a
-// slightly-underdamped house spring (`springs.stiff`), so on arrival it OVERSHOOTS
-// its target box by ~1px and, at an END option, would briefly poke past the track's
+// slightly-underdamped house spring (`control.settle`), so on arrival it overshoots
+// its target box by ~1px and, at an end option, would briefly poke past the track's
 // rounded edge. Clipping to the track's own stadium (borderRadius 999) contains that
 // overshoot. At rest the pill is inset by the `TRACK_PAD` padding on every side, so its
 // rounded corners sit inside the stadium and are never cut.
 const wrap: CSSProperties = { position: 'relative', display: 'flex', gap: TRACK_GAP, background: skin.track, borderRadius: radii.pill, padding: TRACK_PAD, overflow: 'hidden' };
-const btn: CSSProperties = { border: 'none', cursor: cursors.clickable, borderRadius: radii.pill, fontFamily: font.family, fontWeight: roleWeight('chip'), color: colors.frameDark, position: 'relative', background: 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' };
+const btn: CSSProperties = { border: 'none', cursor: cursors.clickable, borderRadius: radii.pill, fontFamily: font.family, fontWeight: roleWeight('chip'), color: FRAME_INK, position: 'relative', background: 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' };
 // The pill's vertical placement is a static `top/bottom` inset, never measured or animated (the
-// `PillBox` comment has why). NON-STRETCH MODE ONLY: horizontal is still measured + animated
+// `PillBox` comment has why). Non-stretch mode only: horizontal is still measured + animated
 // (`x`/`width` in the `animate` prop above) from the active button's offset box, since a
 // content-sized slot has no fractional formula — `left: 0` is that transform's origin. Stretch mode
 // uses `pillTrack`/`pillStretch` below instead.
 // `height: 'auto'` is explicit (not merely omitted) so it doubles as the framer fallback for a
 // removed animated height — see the key comment on the motion.span.
 const pill: CSSProperties = { position: 'absolute', top: TRACK_PAD, bottom: TRACK_PAD, left: 0, height: 'auto', background: skin.active, borderRadius: radii.pill, zIndex: 0 };
-// STRETCH MODE ONLY. `pillTrack` insets to the wrap's content box (the wrap's own padding is
+// Stretch mode only. `pillTrack` insets to the wrap's content box (the wrap's own padding is
 // `TRACK_PAD` on every side), so it is exactly the box the flexed buttons lay out in; the
 // gap-aware fractions above then land on each button's own slot with no JS measurement at all
 // (button i of n sits at i*(W+gap)/n in a gapped flex row). `pillStretch` fills it vertically the

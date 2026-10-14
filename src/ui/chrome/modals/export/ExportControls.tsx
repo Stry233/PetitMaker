@@ -1,13 +1,13 @@
-import { helpTargetAttr } from '../help/targets';
+import { CAUTION_INK, ACCENT, rgbaOf } from '../../../design/tokens';
+import { ActionButton } from '../../../primitives/ActionButton';
+import { helpTargetAttr } from '../../../session/help-targets';
 import { useState, type CSSProperties } from 'react';
-import { font, radii, cursors } from '../../../design/styles';
+import { font, radii, cursors, UNAVAILABLE } from '../../../design/styles';
 import { skin } from '../../../design/window-skin';
 import { roleFont } from '../../../design/text-weight';
 import { useT } from '../../../../i18n/context';
-import { useEditorStore } from '../../../../state/store';
-import { hasShareCode, type ExportOptions, type ExportPreset, type ResolutionKey } from '../../../../io/export/types';
-import { RESOLUTION_WIDTHS } from '../../../../io/export/compose';
-import { moduleBaseFor } from '../../../../io/share/glyph/geometry';
+import { EXPORT_PRESETS, RESOLUTION_KEYS, RESOLUTION_WIDTHS, isImportable, type ExportOptions } from '../../../../io/export/facts';
+import { moduleBaseFor } from '../../../../io/share/facts';
 import type { MapProvenanceSummary } from '../../../../core/provenance/types';
 import type { MapNotes } from '../../../../core/model/types';
 import { NOTE_LIMITS } from '../../../../core/model/notes';
@@ -17,13 +17,13 @@ import { Switch } from '../../../primitives/Switch';
 import { Expand } from '../../../primitives/Expand';
 import { FooterEditor } from './FooterEditor';
 import { Shot3dStrip } from './Shot3dStrip';
-import { StylizeEntry, applyExportPreset, exportPresetDescriptions } from './edition-export';
-import { WRAPS_EXPORT_OPTION_LABELS } from '../../../../core/runtime/edition';
-import type { TextField } from '../../../../io/moderation/text/policy';
+import { StylizeEntry, exportPresetDescriptions } from './edition-export';
+import { applyExportPreset } from '../../../../editor/review/edition-review';
+import { WRAPS_EXPORT_OPTION_LABELS } from '../../../../platform/build/edition';
+import type { TextField } from '../../../../pipelines/moderation';
 import { ReviewIndicator } from './review/ReviewIndicator';
+import { showNotesForEditing } from '../../../../editor/editing/annotation-edit';
 
-const RES_KEYS: ResolutionKey[] = ['compact', 'standard', 'high', 'original'];
-const PRESETS: ExportPreset[] = ['share', 'plain'];
 const hasCurrentProv = (s: MapProvenanceSummary | null) => !!s && (s.containsAi || s.containsProcedural);
 
 /** Settings only — the modal renders the fixed footer (Cancel / Export) outside the scroll region. */
@@ -46,27 +46,27 @@ export function ExportControls({ options, setOptions, notes, setNotes, summary, 
   const set = <K extends keyof ExportOptions>(k: K, v: ExportOptions[K]) => setOptions({ ...options, [k]: v });
 
   // Compact output is narrower than the share-code minimum.
-  const codeDropped = hasShareCode(options) && moduleBaseFor(RESOLUTION_WIDTHS[options.resolution]) === null;
+  const codeDropped = isImportable(options) && moduleBaseFor(RESOLUTION_WIDTHS[options.resolution]) === null;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       {/* Preset */}
       <div {...helpTargetAttr('share', 'share-preset')} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         <div style={capStyle}>{t('export.preset')}</div>
-        <SegmentedControl wrapLabels={WRAPS_EXPORT_OPTION_LABELS} idPrefix="preset" value={options.preset} options={PRESETS} render={(p) => t(`export.preset_${p}`)} onChange={(p) => setOptions(applyExportPreset(options, p))} />
+        <SegmentedControl wrapLabels={WRAPS_EXPORT_OPTION_LABELS} idPrefix="preset" value={options.preset} options={EXPORT_PRESETS} render={(p) => t(`export.preset_${p}`)} onChange={(p) => setOptions(applyExportPreset(options, p))} />
         <div style={{ ...roleFont('caption'), color: skin.muted, lineHeight: 1.4 }}>{t(exportPresetDescriptions[options.preset])}</div>
       </div>
 
       {/* Title + description */}
       <Field label={t('export.field_title')} help={titleLocked ? t('export.attribution_locked') : undefined}>
         <div {...helpTargetAttr('share', 'share-header')} style={{ position: 'relative' }}>
-          <input disabled={titleLocked} value={notes.title ?? ''} maxLength={NOTE_LIMITS.title} onChange={(e) => setNotes({ ...notes, title: e.target.value })} style={{ ...inputStyle, opacity: titleLocked ? 0.65 : 1 }} placeholder={t('export.optional')} aria-label={t('export.field_title')} aria-busy={checkingFields.includes('title')} aria-invalid={refusedFields.includes('title')} />
+          <input disabled={titleLocked} value={notes.title ?? ''} maxLength={NOTE_LIMITS.title} onChange={(e) => setNotes({ ...notes, title: e.target.value })} style={{ ...inputStyle, opacity: titleLocked ? UNAVAILABLE : 1 }} placeholder={t('export.optional')} aria-label={t('export.field_title')} aria-busy={checkingFields.includes('title')} aria-invalid={refusedFields.includes('title')} />
           {checkingFields.includes('title') && <ReviewIndicator label={reviewLabel} />}
         </div>
       </Field>
       <Field label={t('export.field_desc')} help={descriptionLocked ? t('export.attribution_locked') : undefined}>
         <div {...helpTargetAttr('share', 'share-header')} style={{ position: 'relative' }}>
-          <textarea disabled={descriptionLocked} value={notes.description ?? ''} maxLength={NOTE_LIMITS.description} onChange={(e) => setNotes({ ...notes, description: e.target.value })} style={{ ...inputStyle, display: 'block', minHeight: 44, opacity: descriptionLocked ? 0.65 : 1 }} placeholder={t('export.optional')} aria-label={t('export.field_desc')} aria-busy={checkingFields.includes('description')} aria-invalid={refusedFields.includes('description')} />
+          <textarea disabled={descriptionLocked} value={notes.description ?? ''} maxLength={NOTE_LIMITS.description} onChange={(e) => setNotes({ ...notes, description: e.target.value })} style={{ ...inputStyle, display: 'block', minHeight: 44, opacity: descriptionLocked ? UNAVAILABLE : 1 }} placeholder={t('export.optional')} aria-label={t('export.field_desc')} aria-busy={checkingFields.includes('description')} aria-invalid={refusedFields.includes('description')} />
           {checkingFields.includes('description') && <ReviewIndicator label={reviewLabel} />}
         </div>
       </Field>
@@ -74,7 +74,7 @@ export function ExportControls({ options, setOptions, notes, setNotes, summary, 
       {/* Size */}
       <div {...helpTargetAttr('share', 'share-size')} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         <div style={capStyle}>{t('export.sec_size')}</div>
-        <SegmentedControl wrapLabels={WRAPS_EXPORT_OPTION_LABELS} idPrefix="size" value={options.resolution} options={RES_KEYS} render={(k) => t(`export.res_${k}`)} onChange={(k) => set('resolution', k)} />
+        <SegmentedControl wrapLabels={WRAPS_EXPORT_OPTION_LABELS} idPrefix="size" value={options.resolution} options={RESOLUTION_KEYS} render={(k) => t(`export.res_${k}`)} onChange={(k) => set('resolution', k)} />
       </div>
 
       <StylizeEntry />
@@ -86,7 +86,7 @@ export function ExportControls({ options, setOptions, notes, setNotes, summary, 
         <div>
           <Row>
             <Label text={t('export.importable')} help={t('export.importable_sub')} />
-            <Switch on={options.importable} onClick={() => set('importable', !options.importable)} label={t('export.importable')} />
+            <Switch on={isImportable(options)} onClick={() => set('preset', isImportable(options) ? 'plain' : 'share')} label={t('export.importable')} />
           </Row>
           <Expand open={codeDropped}>
             <div style={{ paddingTop: 8 }}><CodeWarn text={t('export.code_size_warn')} /></div>
@@ -104,7 +104,7 @@ export function ExportControls({ options, setOptions, notes, setNotes, summary, 
 
       {/* Appearance — always available (the share-code band is part of the composed image, so these still apply). */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-        <button onClick={() => setDetails((d) => !d)} style={detailsBtn}>{details ? '▾ ' : '▸ '}{t('export.appearance')}</button>
+        <ActionButton interaction="quietLink" aria-expanded={details} onClick={() => setDetails((d) => !d)} style={detailsBtn}>{details ? '▾ ' : '▸ '}{t('export.appearance')}</ActionButton>
         <Expand open={details}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10, paddingTop: 2 }}>
             {/* Keep the row and expandable editor in one flex item so collapsed content adds no gap. */}
@@ -126,7 +126,7 @@ export function ExportControls({ options, setOptions, notes, setNotes, summary, 
             <Row>
               <span style={rowLabel}>{t('annot.export_include')}</span>
               <span style={{ display: 'inline-flex', alignItems: 'center', gap: 10 }}>
-                <button {...helpTargetAttr('notes')} type="button" onClick={editAnnotations} style={editNotesBtn}>{t('annot.export_edit')}</button>
+                <ActionButton interaction="pill" {...helpTargetAttr('notes')} onClick={() => showNotesForEditing({ close: 'share' })} style={editNotesBtn}>{t('annot.export_edit')}</ActionButton>
                 <Switch on={options.annotations} onClick={() => set('annotations', !options.annotations)} label={t('annot.export_include')} />
               </span>
             </Row>
@@ -137,50 +137,38 @@ export function ExportControls({ options, setOptions, notes, setNotes, summary, 
   );
 }
 
-const inputStyle: CSSProperties = { fontFamily: font.family, ...roleFont('field'), color: skin.ink, background: skin.inset, border: `1.5px solid ${skin.line}`, borderRadius: radii.md, padding: '9px 34px 9px 11px', resize: 'none', outline: 'none', width: '100%', boxSizing: 'border-box' };
+const inputStyle: CSSProperties = { fontFamily: font.family, ...roleFont('field'), color: skin.ink, background: skin.inset, border: `1.5px solid ${skin.line}`, borderRadius: radii.md, padding: '8px 32px 8px 10px', resize: 'none', outline: 'none', width: '100%', boxSizing: 'border-box' };
 const capStyle: CSSProperties = { ...roleFont('subhead'), color: skin.muted };
 /** Shared warning treatment for unavailable share codes. */
 export function CodeWarn({ text }: { text: string }) {
   return (
     <div style={codeWarn}>
-      <svg width="15" height="15" viewBox="0 0 24 24" style={{ flex: 'none', marginTop: 1 }} aria-hidden="true">
-        <path d="M12 3.2 1.8 21h20.4z" fill="none" stroke={WARN_INK} strokeWidth="2" strokeLinejoin="round" />
-        <path d="M12 9.5v4.6" stroke={WARN_INK} strokeWidth="2.2" strokeLinecap="round" />
-        <circle cx="12" cy="17.7" r="1.15" fill={WARN_INK} />
+      <svg width="15" height="15" viewBox="0 0 24 24" style={{ flex: 'none', marginTop: 2 }} aria-hidden="true">
+        <path d="M12 3.2 1.8 21h20.4z" fill="none" stroke={CAUTION_INK} strokeWidth="2" strokeLinejoin="round" />
+        <path d="M12 9.5v4.6" stroke={CAUTION_INK} strokeWidth="2.2" strokeLinecap="round" />
+        <circle cx="12" cy="17.7" r="1.15" fill={CAUTION_INK} />
       </svg>
       <span>{text}</span>
     </div>
   );
 }
 
-const WARN_INK = '#B5701F';
 const codeWarn: CSSProperties = {
-  display: 'flex', gap: 7, alignItems: 'flex-start', ...roleFont('caption'), lineHeight: 1.4,
-  color: skin.ink, background: 'rgba(255,179,71,0.26)',
-  borderRadius: radii.sm, padding: '7px 9px',
+  display: 'flex', gap: 6, alignItems: 'flex-start', ...roleFont('caption'), lineHeight: 1.4,
+  color: skin.ink, background: rgbaOf(ACCENT, 0.26),
+  borderRadius: radii.sm, padding: '6px 8px',
 };
 const detailsBtn: CSSProperties = { alignSelf: 'flex-start', background: 'transparent', border: 'none', cursor: cursors.clickable, fontFamily: font.family, ...roleFont('chip'), color: skin.muted, padding: 0 };
 
-/** Closes export surfaces and opens the annotation tools. */
-function editAnnotations(): void {
-  const s = useEditorStore.getState();
-  s.setModal('share', false);
-  s.setModal('export', false);
-  s.setModal('exportJson', false);
-  const data = s.gridState?.annotations;
-  if (data && !data.visible) s.setAnnotationsVisible(true);
-  s.setEditMode({ mode: 'annotate' });
-}
-
 const editNotesBtn: CSSProperties = {
   background: 'transparent', border: `1.5px dashed ${skin.muted}`, borderRadius: radii.pill,
-  padding: '3px 11px', cursor: cursors.clickable, fontFamily: font.family,
+  padding: '2px 10px', cursor: cursors.clickable, fontFamily: font.family,
   ...roleFont('caption'), color: skin.ink,
 };
 const rowLabel: CSSProperties = { ...roleFont('label'), color: skin.ink };
 
 function Field({ label, help, children }: { label: string; help?: string; children: React.ReactNode }) {
-  return <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}><span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, ...roleFont('caption'), color: skin.ink }}>{label}{help && <HelpBubble text={help} />}</span>{children}</div>;
+  return <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}><span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, ...roleFont('caption'), color: skin.ink }}>{label}{help && <HelpBubble text={help} />}</span>{children}</div>;
 }
 function Row({ children }: { children: React.ReactNode }) {
   return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>{children}</div>;

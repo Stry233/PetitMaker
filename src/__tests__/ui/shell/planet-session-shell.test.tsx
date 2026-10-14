@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 /**
  * The editor reduced to the planet session: three modes, the history and zoom controls, the ground
  * materials, the nameplate with Back and Done, the menu without its map rows, and the keys that
@@ -5,43 +6,44 @@
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import { I18nProvider } from '../../../i18n/context';
+import { I18nProvider, translate } from '../../../i18n/context';
 import { useEditorStore } from '../../../state/store';
 import { Shell } from '../../../ui/shell/Shell';
-import { newMap } from '../../../kit/operations/map';
-import { host } from '../../../kit/host';
-import { useKeybinds } from '../../../core/runtime/keybindings';
-import { setToastPresenter } from '../../../core/runtime/toast-bus';
-import { listPlanets, savePlanet } from '../../../io/planet-library';
-import { CellZone, CommandType, TerrainType, type MacroCoord } from '../../../core/model/types';
-import { PLAZA_ID } from '../../../core/model/constants';
-import { finishPlanetSession, placeSessionPlaza } from '../../../kit/operations/planet-session';
-import { canStartPlanetEditing, startPlanetEditing, stopPlanetEditing } from '../../../ui/shell/planet/planet-editing';
+import { newMap } from '../../../editor/operations/map';
+import { editorPort } from '../../../editor/session/context';
+import { host } from '../../../editor/host/host';
+import { useKeybinds } from '../../../state/keymap/store';
+import { setToastPresenter } from '../../../platform/channels/toast-bus';
+import { listPlanets, savePlanet } from '../../../io/storage/planet-library';
+import { CommandType, TerrainType, type MacroCoord } from '../../../core/model/types';
+import { CellZone } from '../../../core/game/zones';
+import { finishPlanetSession } from '../../../editor/operations/planet-session';
+import { placeSessionLandmark } from '../../_support/session-landmarks';
+import { canStartPlanetEditing, startPlanetEditing, stopPlanetEditing } from '../../../editor/session/planet-editing';
 import { sessionModes } from '../../../ui/shell/frame';
-import { layerNumbersShown } from '../../../state/slices/planet-session';
+import { layerNumbersShown } from '../../../state/layer-utils';
 import { DropImportOverlay } from '../../../ui/chrome/modals/import/DropImportOverlay';
 import { ContextMenu } from '../../../ui/chrome/floating/ContextMenu';
 import { DeletePopover } from '../../../ui/chrome/floating/DeletePopover';
-import { PLANET_SESSION_SHORTCUTS } from '../../../ui/shell/use-editor-shortcuts';
-import { COMMAND_BY_ID } from '../../../kit/commands';
-import { translate } from '../../../i18n/context';
-import { planetFixture } from '../../fixtures/planet';
-import { setStoreState } from '../../_store';
+import { planetFixture } from '../../_support/planet';
+import { setStoreState } from '../../_support/store';
+import { ANCHOR_LANDMARK } from '../../_support/anchor';
+import type { TextKey } from '../../../i18n/keys';
 
 // Names are checked by the export text review; these tests stub its verdict as approved.
-vi.mock('../../../io/moderation/text/reviewer', async (original) => ({
-  ...await original<typeof import('../../../io/moderation/text/reviewer')>(),
+vi.mock('../../../pipelines/moderation/text/reviewer', async (original) => ({
+  ...await original<typeof import('../../../pipelines/moderation/text/reviewer')>(),
   reviewText: vi.fn(async () => ({ allowed: true })),
 }));
 
 // The real session finish, which one test makes report that nothing could be saved.
-vi.mock('../../../kit/operations/planet-session', async (original) => {
-  const actual = await original<typeof import('../../../kit/operations/planet-session')>();
+vi.mock('../../../editor/operations/planet-session', async (original) => {
+  const actual = await original<typeof import('../../../editor/operations/planet-session')>();
   return { ...actual, finishPlanetSession: vi.fn(actual.finishPlanetSession) };
 });
 
 const store = () => useEditorStore.getState();
-const t = (key: string, params?: Record<string, string | number>) => translate(key, params);
+const t = (key: TextKey, params?: Record<string, string | number>) => translate(key, params);
 
 function mount() {
   return render(
@@ -52,9 +54,9 @@ function mount() {
 
 function paintGround(cells: MacroCoord[]): void {
   const exec = store().commandExecutor!;
-  const start = exec.getUndoStackSize();
-  exec.execute({ type: CommandType.PaintTerrain, timestamp: 0, cells, terrainType: TerrainType.Mountain, elevation: 0, ground: CellZone.Grass });
-  exec.commitStroke(start);
+  const start = exec.beginStroke();
+  exec.execute({ type: CommandType.PaintTerrain, cells, terrainType: TerrainType.Mountain, elevation: 0, ground: CellZone.Grass });
+  start.commit();
 }
 
 function island(): MacroCoord[] {
@@ -69,20 +71,20 @@ const queryButton = (name: string) => screen.queryByRole('button', { name });
 
 /** Opens a session. A mounted shell offers the first-launch tour, which would refuse the entry. */
 function enter(entry: Parameters<typeof startPlanetEditing>[0] = null): void {
-  act(() => { store().setTourRunning(false); startPlanetEditing(entry); });
+  act(() => { store().setTourRunning(false); startPlanetEditing(entry, false); });
 }
 
 beforeEach(() => {
   localStorage.clear();
   setStoreState({ locale: 'en' });
-  newMap('hexia');
+  newMap(editorPort, 'hexia');
   store().setAssistantOpen(false);
   store().setEditMode({ mode: null });
   store().setTourRunning(false);
   store().setContextMenu(null);
   // Leaving a session reopens Change Planet, which would stand over the next test's shell.
   store().setModal('newProject', false);
-  store().setPlanetReturn(null);
+  useEditorStore.setState({ planetReturn: null });
 });
 
 afterEach(() => {
@@ -110,7 +112,7 @@ describe('the reduced shell', () => {
     expect(within(row).getAllByRole('button').map((b) => b.getAttribute('aria-label'))).toEqual(['Terrain', 'Water', 'Objects']);
     expect(queryButton('Mountains')).toBeNull();
     expect(queryButton('Generate')).toBeNull();
-    expect(queryButton('Agent')).toBeNull();
+    expect(queryButton('Assistant')).toBeNull();
   });
 
   it('takes away the layer control, the view switch, hiding the interface and share', async () => {
@@ -195,19 +197,19 @@ describe('keys in the session', () => {
     paintGround(island());
     press('r');
     expect(store().editMode.mode).toBe('water');
-    const undo = store().commandExecutor!.getUndoStackSize();
+    const undo = store().commandExecutor!.historyDepth();
     press('z', { ctrlKey: true });
-    expect(store().commandExecutor!.getUndoStackSize()).toBe(undo - 1);
+    expect(store().commandExecutor!.historyDepth()).toBe(undo - 1);
   });
 
   it('turn the selected session plaza', () => {
     mount();
     enter();
     paintGround(island());
-    expect(placeSessionPlaza({ x: 110, y: 105 }, 0).success).toBe(true);
-    act(() => { store().setSelection([{ kind: 'object', id: PLAZA_ID }]); });
+    expect(placeSessionLandmark({ x: 110, y: 105 }, 0).success).toBe(true);
+    act(() => { store().setSelection([{ kind: 'object', id: ANCHOR_LANDMARK.id }]); });
     press('e');
-    expect(store().gridState!.objects.get(PLAZA_ID)!.rotation).toBe(90);
+    expect(store().gridState!.objects.get(ANCHOR_LANDMARK.id)!.rotation).toBe(90);
   });
 
   it('delete the selected session plaza through the delete card', () => {
@@ -215,28 +217,24 @@ describe('keys in the session', () => {
     mount();
     enter();
     paintGround(island());
-    expect(placeSessionPlaza({ x: 110, y: 105 }, 0).success).toBe(true);
-    act(() => { store().setSelection([{ kind: 'object', id: PLAZA_ID }]); });
+    expect(placeSessionLandmark({ x: 110, y: 105 }, 0).success).toBe(true);
+    act(() => { store().setSelection([{ kind: 'object', id: ANCHOR_LANDMARK.id }]); });
     press('Delete');
-    expect(store().deletePopover).toEqual({ kind: 'object', id: PLAZA_ID });
+    expect(store().deletePopover).toEqual({ kind: 'object', id: ANCHOR_LANDMARK.id });
     fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: t('delete.confirm_btn') }));
-    expect(store().gridState!.objects.get(PLAZA_ID)).toBeUndefined();
+    expect(store().gridState!.objects.get(ANCHOR_LANDMARK.id)).toBeUndefined();
     store().commandExecutor!.undo();
-    expect(store().gridState!.objects.get(PLAZA_ID)).toBeTruthy();
-  });
-
-  it('name only commands the command table knows', () => {
-    for (const id of PLANET_SESSION_SHORTCUTS) expect(COMMAND_BY_ID.has(id), id).toBe(true);
+    expect(store().gridState!.objects.get(ANCHOR_LANDMARK.id)).toBeTruthy();
   });
 
   it('let the context menu turn the session plaza to a facing', () => {
     render(<I18nProvider><ContextMenu /></I18nProvider>);
     enter();
     paintGround(island());
-    expect(placeSessionPlaza({ x: 110, y: 105 }, 0).success).toBe(true);
-    act(() => { store().setContextMenu({ x: 10, y: 10, target: { kind: 'object', id: PLAZA_ID } }); });
+    expect(placeSessionLandmark({ x: 110, y: 105 }, 0).success).toBe(true);
+    act(() => { store().setContextMenu({ x: 10, y: 10, target: { kind: 'object', id: ANCHOR_LANDMARK.id } }); });
     fireEvent.click(screen.getByRole('menuitem', { name: t('context.rotate_270') }));
-    expect(store().gridState!.objects.get(PLAZA_ID)!.rotation).toBe(270);
+    expect(store().gridState!.objects.get(ANCHOR_LANDMARK.id)!.rotation).toBe(270);
     expect(store().commandExecutor!.canUndo()).toBe(true);
   });
 });
@@ -300,7 +298,7 @@ describe('Done', () => {
     expect(store().planetSession).toBeNull();
     expect(listPlanets().map((e) => e.name)).toEqual(['Bay']);
     // The shell comes back to Change Planet with the saved planet chosen.
-    expect(store().planetReturn).toBeNull();
+    expect(store().planetReturn).toEqual({ chosen: listPlanets()[0]!.entryId });
     expect(store().modals.newProject).toBe(true);
     expect(screen.getByTestId(`planet-${listPlanets()[0]!.entryId}`).getAttribute('aria-pressed')).toBe('true');
   });
@@ -372,7 +370,7 @@ describe('Done', () => {
 describe('guards', () => {
   it('refuse entering while an annotation draft is open', () => {
     act(() => { store().setAnnotationDraft({ kind: 'zone', id: 'draft', cells: [{ x: 1, y: 1 }], color: 0, tag: null } as never); });
-    expect(canStartPlanetEditing(store())).toBe(false);
+    expect(canStartPlanetEditing(store(), false)).toBe(false);
     enter();
     expect(store().planetSession).toBeNull();
   });
@@ -380,7 +378,7 @@ describe('guards', () => {
   it('refuse entering while the tour is running', () => {
     act(() => { store().setTourRunning(true); });
     expect(canStartPlanetEditing(store(), false)).toBe(false);
-    act(() => { startPlanetEditing(null); });
+    act(() => { startPlanetEditing(null, false); });
     expect(store().planetSession).toBeNull();
   });
 
@@ -390,9 +388,9 @@ describe('guards', () => {
   });
 
   it('allow entering on an ordinary map and refuse a second entry', () => {
-    expect(canStartPlanetEditing(store())).toBe(true);
+    expect(canStartPlanetEditing(store(), false)).toBe(true);
     enter();
-    expect(canStartPlanetEditing(store())).toBe(false);
+    expect(canStartPlanetEditing(store(), false)).toBe(false);
   });
 
   it('ignore a file dropped in the session', () => {

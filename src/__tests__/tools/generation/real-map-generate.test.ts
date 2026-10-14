@@ -1,41 +1,38 @@
 import { describe, it, expect } from 'vitest';
-// @ts-ignore - node:fs is untyped here (no @types/node); test reads the shipped map JSONs.
 import { readFileSync } from 'node:fs';
-import { CommandExecutor } from '../../../core/commands/command-executor';
-import { EventBus } from '../../../core/commands/event-bus';
-import { createDefaultRegistry } from '../../../rules/index';
-import { createGrid, createPlazaObject } from '../../../core/model/grid-model';
-import { generateTerrain, clearAllObjects, clearAllTerrain } from '../../../tools/generation/terrain-generator';
+import { templateLandmarkObjects } from '../../../core/model/landmarks';
+import { createGridState } from '../../../core/model/template';
+import { clearAllObjects, clearAllTerrain } from '../../../tools/generation';
 import { objectRect, getPlacedObjectSize } from '../../../state/object-geometry';
-import { PLAZA_ID } from '../../../core/model/constants';
-import { CellZone, TerrainType, type GridState, type MapTemplate, type EditorEvents, type GenerateConfig, type Command } from '../../../core/model/types';
+import { TerrainType, type GridState, type MapTemplate, type Command } from '../../../core/model/types';
+import { defaultConfig, type GenerateConfig, type PlanetKind } from '../../../tools/generation/recipe';
+import { CellZone } from '../../../core/game/zones';
 import { getMapStats } from '../../../state/map-stats';
-import { CHUNK_LOAD_LIMIT } from '../../../core/model/game-profile';
-import { roadLookup } from '../../../state/object-index';
+import { CHUNK_LOAD_LIMIT } from '../../../core/game/profile';
+import { ANCHOR_LANDMARK } from '../../_support/anchor';
+import { makeExecutor } from '../../_support/map-state';
+import { generateWith } from '../../_support/generation';
 
 // Shipped maps include fractional locked plazas and production zone boundaries absent from makeState.
 function realState(file: string): GridState {
   const template = JSON.parse(readFileSync(`src/config/maps/${file}`, 'utf8')) as MapTemplate;
-  const cells = createGrid(template);
+  const cells = createGridState(template).cells;
   const objects = new Map();
-  const plaza = createPlazaObject(template);
+  const plaza = (templateLandmarkObjects(template)[0] ?? null);
   if (plaza) objects.set(plaza.id, plaza);
-  return { template, cells, objects, lockedLayers: new Set() };
+  return { template, cells, objects, objectsVersion: 0, cellsVersion: 0, lockedLayers: new Set() };
 }
 
-function generate(file: string, mode: 'earth' | 'water' | 'mixed', seed = 42) {
+function generate(file: string, mode: PlanetKind, seed = 42) {
   const state = realState(file);
-  const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
+  const exec = makeExecutor(state);
   // A mid-richness config, mode varied, maxElev 3.
-  const config: GenerateConfig = {
-    algorithm: 'designed', mode, corridorWidth: 1, maxElevation: 3, seed, region: null,
-    richness: 0.5,
-  };
-  const start = exec.getUndoStackSize();
-  clearAllObjects(state, (c: Command) => exec.execute(c));
-  clearAllTerrain(state, (c: Command) => exec.execute(c));
-  generateTerrain(config, state, (c: Command) => exec.execute(c), exec.getRegistry());
-  const postViol = exec.commitStroke(start).length;
+  const config: GenerateConfig = defaultConfig('designed', { mode, maxElevation: 3, seed, richness: 0.5 });
+  const start = exec.beginStroke();
+  clearAllObjects({ state, execute: (c: Command) => exec.execute(c) });
+  clearAllTerrain({ state, execute: (c: Command) => exec.execute(c) });
+  generateWith(state, exec, config);
+  const postViol = start.commit().length;
   let mtn = 0, water = 0;
   for (let y = 0; y < state.template.height; y++) for (let x = 0; x < state.template.width; x++) {
     const t = state.cells[y]![x]!.terrain;
@@ -54,12 +51,12 @@ function generate(file: string, mode: 'earth' | 'water' | 'mixed', seed = 42) {
     expect(chunk.load, `${file} seed ${seed} region ${key}`).toBeLessThanOrEqual(CHUNK_LOAD_LIMIT);
   }
   const objects = [...state.objects.values()].filter((o) => !o.locked).length;
-  return { mtn, water, objects, postViol, onNonGrass, plazaSurvives: state.objects.has(PLAZA_ID) };
+  return { mtn, water, objects, postViol, onNonGrass, plazaSurvives: state.objects.has(ANCHOR_LANDMARK.id) };
 }
 
 describe('generate on the real shipped maps (default config)', () => {
   for (const file of ['hexia.json', 'tafa.json']) {
-    it(`${file}: every mode produces terrain + objects, rule-clean, plaza intact`, () => {
+    it(`${file}: every mode produces terrain + objects, rule-clean, plaza intact`, { timeout: 20_000 }, () => {
       const earth = generate(file, 'earth');
       expect(earth.postViol, 'earth rule-clean').toBe(0);
       expect(earth.mtn, 'earth has mountains').toBeGreaterThan(0);

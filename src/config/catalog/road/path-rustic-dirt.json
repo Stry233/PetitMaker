@@ -4,7 +4,7 @@
   "icon": "path-rustic-dirt",
   "name": {
     "en": "Rustic Dirt Path",
-    "zh": "乡村土路",
+    "zh": "原始沙土路",
     "ja": "素朴な土の道",
     "ru": "Деревенская грунтовая дорожка",
     "th": "ทางดินชนบท",
@@ -27,5 +27,17 @@
     {
       "type": "plantable"
     }
-  ]
+  ],
+  "roadMaterial": {
+    "feather": 0.065,
+    "edge": {
+      "color": "#ffffff",
+      "pattern": {
+        "kind": "image",
+        "image": "path-rustic-dirt",
+        "repeat": 2
+      }
+    },
+    "layers": []
+  }
 }

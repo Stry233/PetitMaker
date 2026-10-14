@@ -1,0 +1,8 @@
+{
+  "src/ui/chrome/modals/export/FooterEditor.tsx": {
+    "`⇥ ${t('export.footer_fill')}`": "The arrow is the menu row's icon glyph, drawn before the label in every locale."
+  },
+  "src/ui/chrome/tour/TourDoneModal.tsx": {
+    "`${t('tour.done_title_a')}${t('tour.done_title_b')}`": "One title split in two keys so the second half can be styled; each locale writes the halves to abut."
+  }
+}

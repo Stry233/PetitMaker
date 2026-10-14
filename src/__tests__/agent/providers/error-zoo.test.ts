@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 /**
  * Exercises representative SDK and gateway failure payloads through adapters, classification,
  * retries, redaction, and user-facing banners. Empty provider streams remain distinct from valid
@@ -6,17 +7,18 @@
 import { createElement } from 'react';
 import { render } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { stubFacts } from '../../_support/tool-facts';
 
 import { append, createLog, eventsOf, type SessionLog } from '../../../agent/core/log';
 import { classify, isRetryable } from '../../../agent/core/errors';
-import { MAX_TURN_RETRIES } from '../../../agent/core/retry';
+import { MAX_TURN_ATTEMPTS } from '../../../agent/core/retry';
 import { runJob, type ExecutedResult, type LoopDeps, type ToolExecutor } from '../../../agent/core/loop';
 import type { ErrorClass, StreamEvent } from '../../../agent/core/types';
 import { toRawFailure } from '../../../agent/providers/http-failure';
 import { QUIRKS } from '../../../agent/providers/defaults';
-import type { Adapter, AdapterRequest } from '../../../agent/providers/types';
+import type { Adapter, AdapterRequest } from '../../../agent/core/adapter';
 import { I18nProvider } from '../../../i18n/context';
-import { Banner, BANNER_CLASSES } from '../../../ui/agent/Banner';
+import { Banner, BANNER_CLASSES } from '../../../ui/agent/desk/Banner';
 
 const { createMock, streamMock, ctorMock, listMock } = vi.hoisted(() => ({
   createMock: vi.fn(),
@@ -68,7 +70,7 @@ function openAiBody(status: number, message: string): unknown {
 }
 
 /**
- * THE FOUR PLATFORM SILENCES, verbatim from the SDKs that produce them.
+ * The four platform silences, verbatim from the SDKs that produce them.
  *
  * `noBody` is thrown by both SDKs' SSE readers when `response.body` is null — a 200 whose body the
  * host never wrote, which is what a real gateway answers at its per-minute cap. `noStatus` is
@@ -137,10 +139,10 @@ const ZOO: Shape[] = [
   { what: 'an ollama pull hint', cls: 'model', retry: false, thrown: openAiBody(404, 'model "llama-nope" not found, try pulling it first') },
   { what: 'an openrouter routing refusal', cls: 'model', retry: false, thrown: openAiBody(400, 'No endpoints found for vendor/model-nope.') },
   { what: 'a gateway forwarding the bare code', cls: 'model', retry: false, thrown: openAiBody(400, 'model_not_found') },
-  // A 404 THAT NAMES NO MODEL IS A WRONG URL PATH, which is the address's repair and not the
+  // A 404 that names no model is a wrong URL path, which is the address's repair and not the
   // model's, so the status alone must never decide this class.
   { what: 'a 404 from a gateway with the wrong path', cls: 'unknown', retry: false, thrown: openAiBody(404, 'Not Found') },
-  // A MODEL NAMED IN A SENTENCE ABOUT SOMETHING ELSE stays what that something else is. Both of
+  // A model named in a sentence about something else stays what that something else is. Both of
   // these mention a model and neither is one the endpoint refuses to serve.
   { what: 'a rate limit that names the model it applies to', cls: 'rate-limit', retry: true, thrown: apiError(429, '429 Rate limit reached for gpt-4o in organization org-x on requests per min (RPM): Limit 500, Used 500.') },
   { what: 'an overflow that names the model whose window it is', cls: 'overflow', retry: false, thrown: openAiBody(400, "This model's maximum context length is 8192 tokens, however you requested 9000 tokens.") },
@@ -203,7 +205,7 @@ function sdkStream(events: unknown[], finalMessage: () => unknown, throwAfter?: 
 }
 
 function openAi(): ReturnType<typeof createOpenAIAdapter> {
-  return createOpenAIAdapter({ apiKey: 'sk-test', baseUrl: 'https://gateway.example/v1', quirks: QUIRKS.custom });
+  return createOpenAIAdapter({ apiKey: 'sk-test', baseUrl: 'https://gateway.example/v1', providerId: 'custom', quirks: QUIRKS.custom });
 }
 
 function anthropic(): ReturnType<typeof createAnthropicAdapter> {
@@ -215,19 +217,18 @@ function terminal(events: StreamEvent[]): StreamEvent | undefined {
   return events[events.length - 1];
 }
 
-/* ── the loop, over a REAL adapter on a mocked wire ───────────────────────── */
+/* ── the loop, over a real adapter on a mocked wire ───────────────────────── */
 
 function noopExecutor(): ToolExecutor {
   return {
     async execute(): Promise<ExecutedResult> { return { content: 'ok', isError: false }; },
-    isWrite: () => false,
-    isWide: () => false,
+    facts: stubFacts(),
     describe: () => 'a call',
   };
 }
 
 /**
- * Every request the loop built, in order, so the SYSTEM NOTES can be read back: a nudge rides the
+ * Every request the loop built, in order, so the system notes can be read back: a nudge rides the
  * next request rather than landing in the log, so the log alone cannot say whether the model was
  * told it produced nothing.
  */
@@ -252,7 +253,7 @@ function notesOf(sent: AdapterRequest[]): string {
     .join('\n');
 }
 
-/** `runJob`'s dependencies with the REAL openai adapter in the seat, so what the loop reads is
+/** `runJob`'s dependencies with the real openai adapter in the seat, so what the loop reads is
  *  whatever the adapter made of the mocked wire rather than a hand-written event list. */
 function loopDeps(adapter: Adapter, sleep: LoopDeps['sleep']): LoopDeps {
   return {
@@ -263,7 +264,6 @@ function loopDeps(adapter: Adapter, sleep: LoopDeps['sleep']): LoopDeps {
     tools: [],
     oversight: 'yolo',
     sameModel: true,
-    budgetTokens: 100_000,
     signal: new AbortController().signal,
     undoStackSize: () => 0,
     sleep,
@@ -288,7 +288,7 @@ function outcomeOf(log: SessionLog): { end?: { outcome: string; summary?: string
 }
 
 afterEach(() => {
-  // RESET, not clear: a queued `mockResolvedValueOnce` left standing would feed the next test.
+  // Reset, not clear: a queued `mockResolvedValueOnce` left standing would feed the next test.
   vi.resetAllMocks();
 });
 
@@ -303,7 +303,7 @@ describe('the zoo: every shape lands a class', () => {
     expect(isRetryable(classify(toRawFailure(thrown, false)).cls)).toBe(retry);
   });
 
-  /** `toRawFailure` takes ANY thrown value, including the ones that are not errors at all: a
+  /** `toRawFailure` takes any thrown value, including the ones that are not errors at all: a
    *  gateway's own code can reject with a string, a number or nothing. None of them may throw
    *  inside the classifier, which is the layer that exists so the adapters have one answer. */
   it('classifies a thrown value that is not an error shape at all', () => {
@@ -350,7 +350,7 @@ describe('the zoo: both adapters answer every shape with one terminal event', ()
     expect(terminal(events)).toEqual({ t: 'error', error: expect.objectContaining({ cls }) });
   });
 
-  /** THE ABORT IS THE ONE FAILURE THAT IS NOT AN ERROR EVENT. It ends the stream `done/aborted`,
+  /** The abort is the one failure that is not an error event. It ends the stream `done/aborted`,
    *  because the user asked for it and the panel has nothing to repair. */
   it('ends an aborted turn as done, on both dialects', async () => {
     const controller = new AbortController();
@@ -368,8 +368,8 @@ describe('the zoo: both adapters answer every shape with one terminal event', ()
 
 describe('the zoo: silence on a 200, which is the platform\'s and not the model\'s', () => {
   /**
-   * A GATEWAY AT ITS PER-MINUTE CAP: HTTP 200, and a body with no frames in it. The SSE
-   * reader completes without yielding, so nothing about the turn is populated — and the LOOP reads
+   * A gateway at its per-minute cap: HTTP 200, and a body with no frames in it. The SSE
+   * reader completes without yielding, so nothing about the turn is populated — and the loop reads
    * an unpopulated turn as the model having chosen to say nothing, nudges it twice and closes the
    * job "Ended. nothing was said". The adapter is the only layer that can tell the two apart: a
    * model that genuinely produced an empty turn still sends a finish reason.
@@ -393,8 +393,8 @@ describe('the zoo: silence on a 200, which is the platform\'s and not the model\
   });
 
   /**
-   * AND THE MODEL'S OWN SILENCE IS UNTOUCHED, which is the other half of the same fact: a finish
-   * reason is the model ending its turn, so an empty turn that carries one is an empty MODEL turn
+   * And the model's own silence is untouched, which is the other half of the same fact: a finish
+   * reason is the model ending its turn, so an empty turn that carries one is an empty model turn
    * and goes on down the loop's silent-turn path to be nudged. Confusing this for a fault would
    * banner a provider trouble every time a model answered a tool result with nothing.
    */
@@ -420,7 +420,7 @@ describe('the zoo: silence on a 200, which is the platform\'s and not the model\
     ]);
   });
 
-  /** A stream that carried CONTENT and then ended with no finish reason is not silence: the words
+  /** A stream that carried content and then ended with no finish reason is not silence: the words
    *  arrived, and a gateway that forgets the terminal frame must not cost the turn its text. */
   it('keeps a turn that said something but never sent a finish reason', async () => {
     createMock.mockResolvedValue(chunkStream([
@@ -434,7 +434,7 @@ describe('the zoo: silence on a 200, which is the platform\'s and not the model\
     ]);
   });
 
-  /** THE ANTHROPIC DIALECT REACHES THE SAME PLACE BY ITS OWN ROUTE: its message stream refuses to
+  /** The anthropic dialect reaches the same place by its own route: its message stream refuses to
    *  hand back a final message it never assembled, so the silence arrives as a throw. What matters
    *  is that it classifies as the platform's fault and not as `unknown`, which is not retried. */
   it('reads the anthropic stream\'s own no-message complaint as a provider fault', async () => {
@@ -467,7 +467,7 @@ describe('the zoo: a stream that dies after partial content', () => {
     expect(terminal(events)).toEqual({ t: 'error', error: expect.objectContaining({ cls: 'network' }) });
   });
 
-  /** A mid-stream error FRAME is how a gateway reports a fault it discovered after committing to a
+  /** A mid-stream error frame is how a gateway reports a fault it discovered after committing to a
    *  200: both SDKs raise it out of the iterator, so it arrives here as a throw with a real status. */
   it('surfaces a mid-stream error frame with the status the frame carried', async () => {
     createMock.mockResolvedValue(chunkStream(
@@ -498,7 +498,7 @@ describe('the zoo: a stream that dies after partial content', () => {
 /* ── 5. the detail is safe to show, and the class has a face ──────────────── */
 
 describe('the zoo: what reaches the user', () => {
-  /** A provider that quotes the request back can quote the KEY back with it. The detail is bound
+  /** A provider that quotes the request back can quote the key back with it. The detail is bound
    *  for the transcript, the banner and an exported log, so the redaction happens at the producer. */
   it('redacts a key quoted inside a provider\'s own error body', async () => {
     const leaky = openAiBody(401, 'Incorrect API key provided: sk-abcdef0123456789abcdef. Check your key.');
@@ -523,8 +523,8 @@ describe('the zoo: what reaches the user', () => {
     }
   });
 
-  /** And the platform-silence class wears the RIGHT face, which `trouble.test.tsx` asserts by
-   *  rendering: a WAIT paper offering `try-again`, never a danger paper asking for a key. A gateway
+  /** And the platform-silence class wears the right face, which `trouble.test.tsx` asserts by
+   *  rendering: a wait paper offering `try-again`, never a danger paper asking for a key. A gateway
    *  that answered nothing is not the user's credential being wrong. `retryOrFile` names both. */
   it('puts the platform silence in the retryable family, apart from the credential classes', () => {
     for (const cls of ['overloaded', 'rate-limit', 'network'] as const) {
@@ -535,7 +535,7 @@ describe('the zoo: what reaches the user', () => {
     }
   });
 
-  /** The face itself, rendered: a WAIT paper offering `try-again`, never the danger paper the
+  /** The face itself, rendered: a wait paper offering `try-again`, never the danger paper the
    *  credential classes wear. A gateway that answered nothing is not a key that is wrong, and the
    *  two must not read the same on the glass. */
   it('draws the platform silence on the wait paper, with a retry on it', () => {
@@ -552,13 +552,13 @@ describe('the zoo: what reaches the user', () => {
 
 describe('the zoo: a platform that sent nothing does not read as a model that said nothing', () => {
   /**
-   * THE WHOLE POINT OF THE GUARD, PROVEN THROUGH `runJob`.
+   * The whole point of the guard, proven through `runJob`.
    *
    * A gateway at its per-minute cap answers 200 with an empty body, every turn. Read as an empty
-   * MODEL turn, the loop nudges twice, gives up politely and settles with no summary — the panel's
+   * Model turn, the loop nudges twice, gives up politely and settles with no summary — the panel's
    * "Ended. nothing was said" face over a platform fault, with nothing to press and nothing naming
    * the cause. Read as the provider fault it is, the turn goes up the retry ladder and the job ends
-   * on an INCIDENT that says which trouble it was and offers Try again.
+   * on an incident that says which trouble it was and offers Try again.
    */
   it('ends on a named incident rather than a quiet settle', async () => {
     createMock.mockResolvedValue(chunkStream([]));
@@ -572,9 +572,9 @@ describe('the zoo: a platform that sent nothing does not read as a model that sa
       end: { outcome: 'incident' },
       incident: { cls: 'overloaded' },
     });
-    // AND IT ACTUALLY TRIED AGAIN: the ladder spends its attempts before the incident lands, which
+    // And it actually tried again: the ladder spends its attempts before the incident lands, which
     // is what makes a gateway hiccup survivable rather than fatal.
-    expect(slept).toHaveLength(MAX_TURN_RETRIES - 1);
+    expect(slept).toHaveLength(MAX_TURN_ATTEMPTS - 1);
   });
 
   /** No nudge is ever written, which is the other half: the model is never told it "produced no
@@ -588,7 +588,7 @@ describe('the zoo: a platform that sent nothing does not read as a model that sa
     expect(notesOf(sent)).not.toContain('produced no text and no tool calls');
   });
 
-  /** AND THE MODEL'S OWN SILENCE STILL TAKES THE SILENT-TURN PATH. A finish reason with nothing
+  /** And the model's own silence still takes the silent-turn path. A finish reason with nothing
    *  under it is the model choosing to say nothing, so the loop nudges it as before and settles
    *  `done` rather than bannering a fault the provider never had. */
   it('leaves the empty MODEL turn on the nudge path it has always taken', async () => {
@@ -603,7 +603,7 @@ describe('the zoo: a platform that sent nothing does not read as a model that sa
     expect(notesOf(sent)).toContain('produced no text and no tool calls');
   });
 
-  /** A rate limit the gateway DID name is the same ladder from the other side: the status is read,
+  /** A rate limit the gateway did name is the same ladder from the other side: the status is read,
    *  the provider's own wait is honoured, and the incident names the rate limit. */
   it('honours a named 429\'s own Retry-After on the way to the same incident', async () => {
     createMock.mockRejectedValue(apiError(429, GATEWAY_429, { 'retry-after': '4' }));
@@ -612,10 +612,10 @@ describe('the zoo: a platform that sent nothing does not read as a model that sa
 
     expect(await runJob(log, loopDeps(openAi(), async (ms) => { slept.push(ms); }))).toBe('incident');
     expect(outcomeOf(log).incident).toEqual({ cls: 'rate-limit' });
-    expect(slept).toEqual(Array<number>(MAX_TURN_RETRIES - 1).fill(4000));
+    expect(slept).toEqual(Array<number>(MAX_TURN_ATTEMPTS - 1).fill(4000));
   });
 
-  /** An UNRETRYABLE shape spends no attempt at all: a wrong key is not a thing another request
+  /** An unretryable shape spends no attempt at all: a wrong key is not a thing another request
    *  fixes, so the incident is immediate and the ladder stays out of it. */
   it('spends no attempt on a credential refusal', async () => {
     createMock.mockRejectedValue(openAiBody(401, 'Incorrect API key provided.'));

@@ -1,136 +1,59 @@
 /**
- * The UNITY operator (one theme per region: everything in a region shares one style) and the colour vocabulary it works in.
+ * The unity operator (one theme per region: everything in a region shares one style) and the colour vocabulary it works in.
  *
- * THE TABLE IS AUTHORED, not derived. The catalog carries no colour field for a plant, and the
- * derivation `color-family.ts` offers — the hue of an item's largest non-foliage, non-trunk part — is
- * right for a flower and wrong for a tree: with the greens excluded, the largest part left on an apple
- * tree is its apple and on a bamboo a stray culm highlight, which reads nine green trees as yellow,
- * pink and red. `PLANT_FAMILIES` is authored from each item's own icon under one rule:
+ * A plant's colour family is its catalog item's own `plant.colorFamily`: the colour it reads as at
+ * map scale, its bloom where the plant is grown for the bloom and its foliage where the foliage is
+ * the mass. Generation never reads model data.
  *
- *   a plant's family is the colour it READS as at map scale — its bloom where the plant is grown for
- *   the bloom (every flower, and a flowering shrub), its foliage where the foliage is the mass (every
- *   tree, whose canopy dwarfs its fruit).
- *
- * So the trees are three coloured ones (peach pink, ginkgo yellow, flame orange) against nine greens,
- * which is what the icons show. `familyOf` falls back to the derivation for an id the table does not
- * know, so a catalog addition joins a family rather than going missing.
- *
- * THE OPERATOR is `planPalettes`: each region draws ONE dominant family plus an accent, and a region
- * prefers a family none of its neighbours took. Dominant rather than equal, because the unity score
- * asks for one family over 60% of a region's decor — two families split evenly is a region with no
+ * The operator is `planPalettes`: each region draws one dominant family plus an accent, and a region
+ * prefers a family none of its neighbours took. Dominant rather than equal, because a region's unity
+ * is one family over 60% of its decor — two families split evenly is a region with no
  * palette at all.
  *
  * Pure and deterministic per (seed, plan, catalog). No state, no commands, no browser API.
  */
-import { ItemCategory } from '../../../../core/model/types';
-import { makeRng } from '../../../../core/model/rng';
-import { catalogEpoch, getPlaceableByCategory } from '../../../../state/catalog';
-import { colorFamily } from './color-family';
-import { BRANCH_W, TRUNK_W } from '../streets/streets';
+import { COLOR_FAMILIES, type ColorFamily } from '../../../../core/model/types';
+import type { CategoryRole } from '../../../../core/model/traits';
+import { makeRng } from '../../../../core/base/rng';
+import { getAllItems, getCatalogItem, getPlaceableByRole } from '../../../../state/catalog';
+import { BRANCH_W, TRUNK_W } from '../types';
 import type { DesignPlan, RegionPlan } from '../types';
 
-/** The families the authored table uses. `hueFamily`'s neutrals (grey, black, brown) name no plant and
- *  are absent. */
-type ColorFamily =
-  | 'red' | 'orange' | 'yellow' | 'green' | 'cyan' | 'blue' | 'purple' | 'pink' | 'white';
-
-/** One line per plant, the tree list first. The comment on a row is what the icon shows. */
-export const PLANT_FAMILIES: Readonly<Record<string, ColorFamily>> = {
-  // Trees: the canopy is the mass, so all but three read green.
-  'tree-apple': 'green',        // green canopy, one red apple
-  'tree-avocado': 'green',      // green canopy, one purple fruit
-  'tree-bamboo': 'green',
-  'tree-baobab': 'green',       // green crown over a pale trunk
-  'tree-cactus': 'green',
-  'tree-dragonblood': 'green',
-  'tree-fir': 'green',
-  'tree-flame': 'orange',
-  'tree-ginkgo': 'yellow',      // gold fan leaves
-  'tree-mango': 'green',        // green canopy, one yellow fruit
-  'tree-peach': 'pink',
-  'tree-plum': 'green',         // green canopy, one orange plum
-
-  // Flora: the bloom, which every one of these items is named for.
-  'flower-agapanthus': 'purple',
-  'flower-agapanthus-blue': 'blue',
-  'flower-agapanthus-white': 'white',
-  'flower-amaryllis': 'red',
-  'flower-amaryllis-orange': 'orange',
-  'flower-amaryllis-white': 'white',
-  'flower-bellflower': 'white',
-  'flower-bellflower-cyan': 'cyan',
-  'flower-bellflower-yellow': 'yellow',
-  'flower-canna-gold': 'orange',
-  'flower-canna-red': 'red',
-  'flower-canna-yellow': 'yellow',
-  'flower-dahlia': 'yellow',
-  'flower-dahlia-cyan': 'cyan',
-  'flower-dahlia-orange': 'orange',
-  'flower-daisy': 'white',
-  'flower-daisy-cyan': 'cyan',
-  'flower-daisy-yellow': 'yellow',
-  'flower-lily': 'white',
-  'flower-lily-cyan': 'cyan',
-  'flower-lily-yellow': 'yellow',
-  'flower-portulaca-purple': 'purple',
-  'flower-portulaca-white': 'white',
-  'flower-portulaca-yellow': 'yellow',
-  'flower-protea': 'white',
-  'flower-protea-purple': 'purple',
-  'flower-protea-red': 'pink',   // named red, drawn a dusty rose
-  'flower-rose': 'pink',
-  'flower-rose-blue': 'blue',
-  'flower-rose-cyan': 'cyan',
-  'flower-sunflower': 'yellow',
-  'flower-sunflower-green': 'green',
-  'flower-sunflower-red': 'red',
-  'flower-violet': 'purple',
-  'flower-violet-cyan': 'cyan',
-  'flower-violet-pink': 'pink',
-  'plant-agave': 'green',
-  'plant-azalea': 'pink',        // a flowering shrub: the blooms are why it is planted
-  'plant-gardenia': 'white',
-  shrub: 'green',
-};
-
-/** The colour family of a plant: the authored table, or the model-derived reading for an id it does
- *  not carry. One answer, so the kits and the evaluation's unity score cannot disagree. */
+/** The colour family of a plant from its catalog item, 'unknown' for an item that names none. One
+ *  answer, so the kits and any reading of a region's colour unity cannot disagree. */
 export function familyOf(catalogId: string): string {
-  return PLANT_FAMILIES[catalogId] ?? colorFamily(catalogId);
+  return getCatalogItem(catalogId)?.plant?.colorFamily ?? 'unknown';
 }
 
 // --- the species a family offers ----------------------------------------------------------------
 
-const speciesCache = new Map<string, string[]>();
-/** The catalog the cache was built from. A test fixture registered at runtime adds species the cache
- *  would otherwise never see, and the catalog's own epoch is what says so without an upward import. */
-let cacheEpoch = -1;
+/** Species by role and family, keyed by the offered catalog they were read from. */
+const speciesCache = new WeakMap<ReturnType<typeof getAllItems>, Map<string, string[]>>();
 
-/** Every placeable item of `category` whose family is `family`, in catalog order. */
-export function speciesOf(category: ItemCategory, family: string): string[] {
-  if (cacheEpoch !== catalogEpoch()) { speciesCache.clear(); cacheEpoch = catalogEpoch(); }
-  const key = `${category}:${family}`;
-  const hit = speciesCache.get(key);
+/** Every placeable item of the category playing `role` whose family is `family`, in catalog order. */
+export function speciesOf(role: CategoryRole, family: string): string[] {
+  const offered = getAllItems();
+  let cache = speciesCache.get(offered);
+  if (!cache) { cache = new Map(); speciesCache.set(offered, cache); }
+  const key = `${role}:${family}`;
+  const hit = cache.get(key);
   if (hit) return hit;
-  const out = getPlaceableByCategory(category)
+  const out = getPlaceableByRole(role)
     .map((i) => i.id)
     .filter((id) => familyOf(id) === family);
-  speciesCache.set(key, out);
+  cache.set(key, out);
   return out;
 }
 
 /** The families that carry at least one flower. The unity operator draws from these, since a region
  *  whose dominant family has no flower in it cannot lay a bed. */
-export function flowerFamilies(): ColorFamily[] {
-  return FAMILIES.filter((f) => speciesOf(ItemCategory.Flora, f).length > 0);
+function flowerFamilies(): ColorFamily[] {
+  return COLOR_FAMILIES.filter((f) => speciesOf('groundcover', f).length > 0);
 }
-
-const FAMILIES: readonly ColorFamily[] =
-  ['red', 'orange', 'yellow', 'green', 'cyan', 'blue', 'purple', 'pink', 'white'];
 
 // --- a region's palette ---------------------------------------------------------------------------
 
-/** What a plant is FOR in a composition. `mass` carries the region (the beds), `edge` runs the
+/** What a plant is for in a composition. `mass` carries the region (the beds), `edge` runs the
  *  borders, `accent` is the second family's punctuation, `grove` and `grove-accent` are its trees. */
 export type PlantRole = 'mass' | 'edge' | 'accent' | 'grove' | 'grove-accent';
 
@@ -195,27 +118,27 @@ function lotGap(a: RegionPlan, b: RegionPlan): number {
 /**
  * The species table behind one palette.
  *
- * A tree role falls back to GREEN where the region's own family carries no tree (nine of the twelve
+ * A tree role falls back to green where the region's own family carries no tree (nine of the twelve
  * trees are green foliage), and the flower roles never do: the family was drawn from the ones that
  * carry flowers in the first place, so the mass a region is read by is always in its own colour.
  */
 function makePalette(
   regionId: string, primary: ColorFamily, accent: ColorFamily, salt: number,
 ): RegionPalette {
-  const pick = (category: ItemCategory, family: ColorFamily, offset: number): string => {
-    const list = speciesOf(category, family);
+  const pick = (role: CategoryRole, family: ColorFamily, offset: number): string => {
+    const list = speciesOf(role, family);
     if (list.length) return list[(salt + offset) % list.length]!;
-    const green = speciesOf(category, 'green');
+    const green = speciesOf(role, 'green');
     if (green.length) return green[(salt + offset) % green.length]!;
-    const any = getPlaceableByCategory(category);
+    const any = getPlaceableByRole(role);
     return any.length ? any[(salt + offset) % any.length]!.id : '';
   };
   const table: Record<PlantRole, string> = {
-    mass: pick(ItemCategory.Flora, primary, 0),
-    edge: pick(ItemCategory.Flora, primary, 1),
-    accent: pick(ItemCategory.Flora, accent, 2),
-    grove: pick(ItemCategory.Tree, primary, 0),
-    'grove-accent': pick(ItemCategory.Tree, accent, 1),
+    mass: pick('groundcover', primary, 0),
+    edge: pick('groundcover', primary, 1),
+    accent: pick('groundcover', accent, 2),
+    grove: pick('canopy', primary, 0),
+    'grove-accent': pick('canopy', accent, 1),
   };
   return { regionId, primary, accent, species: (role) => table[role] };
 }

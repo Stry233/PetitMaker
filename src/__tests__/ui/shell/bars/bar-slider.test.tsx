@@ -1,10 +1,11 @@
+// @vitest-environment jsdom
 /** The slider's reading bubble stands on the knob or nowhere; a slider that measures nothing must not park it at the page origin. */
 import { describe, it, expect, afterEach, beforeEach } from 'vitest';
 import { render, screen, cleanup, fireEvent } from '@testing-library/react';
 import { I18nProvider } from '../../../../i18n/context';
 import { ScaleProvider } from '../../../../ui/design/scale';
 import { BrushSizeSlider } from '../../../../ui/shell/bars/BrushSizeSlider';
-import { setStoreState } from '../../../_store';
+import { setStoreState } from '../../../_support/store';
 
 function Providers({ children }: { children: React.ReactNode }) {
   return <I18nProvider><ScaleProvider value={0.5}>{children}</ScaleProvider></I18nProvider>;

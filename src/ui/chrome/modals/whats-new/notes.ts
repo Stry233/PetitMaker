@@ -11,7 +11,7 @@ export interface ReleaseNotes {
 const UNRELEASED = /^\[?(Unreleased|未发布)\]?/i;
 
 /** Every `## ` section of the changelog in file order, which is newest first; the preamble is dropped. */
-export function releaseSections(markdown: string): ReleaseNotes[] {
+function releaseSections(markdown: string): ReleaseNotes[] {
   return markdown.split(/^## /m).slice(1).map((part) => {
     const nl = part.indexOf('\n');
     const heading = (nl === -1 ? part : part.slice(0, nl)).trim();
@@ -23,7 +23,7 @@ export function releaseSections(markdown: string): ReleaseNotes[] {
 }
 
 /** Numeric order on `major.minor.patch`; a `-dev` suffix does not count. */
-export function compareVersions(a: string, b: string): number {
+function compareVersions(a: string, b: string): number {
   const nums = (v: string) => v.replace(/-.*$/, '').split('.').map((n) => Number(n) || 0);
   const [x, y] = [nums(a), nums(b)];
   for (let i = 0; i < Math.max(x.length, y.length); i++) {

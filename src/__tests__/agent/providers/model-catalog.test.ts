@@ -1,6 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { assistantModels, ensureModelCatalog, modelCapabilities, MODEL_CATALOG_SNAPSHOT, MODEL_CATALOG_URL, parseModelCatalog, rememberNativeModels, resetModelCatalog, suggestedModels } from '../../../agent/providers/model-catalog';
+import { DEPLOY_TARGETS } from '../../../platform/build/deploy-targets';
+import { assistantModels, ensureModelCatalog, modelCapabilities, MODEL_CATALOG_URL, parseModelCatalog, rememberNativeModels, __resetModelCatalog, suggestedModels } from '../../../agent/providers/model-catalog';
 import { reasoningBody, thinkingChoices } from '../../../agent/providers/reasoning';
+import { PROVIDER_IDS, QUIRKS } from '../../../agent/providers/defaults';
+import snapshot from '../../../agent/providers/model-catalog.snapshot.json';
 
 const data = {
   openai: { models: {
@@ -11,7 +14,7 @@ const data = {
   } },
   volcengine: { models: { 'doubao-current': { tool_call: true, modalities: { input: ['text'], output: ['text'] } } } },
 };
-afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers(); resetModelCatalog(); });
+afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers(); __resetModelCatalog(); });
 
 async function load(body: unknown = data) {
   const fetcher = vi.fn().mockResolvedValue({ ok: true, json: async () => body });
@@ -35,6 +38,13 @@ describe('live model discovery', () => {
     rememberNativeModels('custom', [{ id: 'private', supported_parameters: ['tools'], architecture: { input_modalities: ['text'], output_modalities: ['text'] } }], 'https://one.example/v1');
     expect(modelCapabilities('custom', 'private', 'https://one.example/v1')?.tools).toBe(true);
     expect(modelCapabilities('custom', 'private', 'https://two.example/v1')).toBeUndefined();
+  });
+
+  it('keys a built-in provider\'s native list on the provider alone, whatever URL a reader passes', () => {
+    rememberNativeModels('openai', [{ id: 'my-model', context_length: 999 }], undefined);
+    expect(modelCapabilities('openai', 'my-model')?.context).toBe(999);
+    expect(modelCapabilities('openai', 'my-model', 'https://my.gateway/v1')?.context).toBe(999);
+    expect(modelCapabilities('openai', 'my-model', 'https://api.openai.com/v1')?.context).toBe(999);
   });
 
   it('fetches without credentials, coalesces refreshes and lets one success serve the whole session', async () => {
@@ -87,14 +97,21 @@ describe('thinking controls', () => {
   it('bounds budget controls by the provider limits and keeps them separate from effort', () => {
     const caps = { reasoning: true, budget: { min: 1024, max: 8192 }, maxOutput: 5000 };
     expect(thinkingChoices(caps, 'claude')).toEqual([{ budget: 1024 }, { budget: 4096 }, { budget: 4999 }]);
-    expect(reasoningBody('qwen', { budget: 4096 })).toEqual({ enable_thinking: true, thinking_budget: 4096 });
-    expect(reasoningBody('claude', { effort: 'high' })).toEqual({ output_config: { effort: 'high' } });
+    expect(reasoningBody(QUIRKS.qwen.thinkingWire, { budget: 4096 })).toEqual({ enable_thinking: true, thinking_budget: 4096 });
+    expect(reasoningBody(QUIRKS.claude.thinkingWire, { effort: 'high' })).toEqual({ output_config: { effort: 'high' } });
+  });
+  it('speaks each platform\'s own thinking wire', () => {
+    expect(Object.fromEntries(PROVIDER_IDS.map((id) => [id, QUIRKS[id].thinkingWire]))).toEqual({
+      claude: 'anthropic', openai: 'effort', deepseek: 'toggle', gemini: 'gemini', openrouter: 'openrouter',
+      zhipu: 'toggle', qwen: 'qwen', moonshot: 'toggle', doubao: 'toggle', perplexity: 'effort', custom: 'effort',
+    });
+    expect(PROVIDER_IDS.filter((id) => QUIRKS[id].thinkingBudgets)).toEqual(['claude', 'gemini', 'openrouter', 'qwen']);
   });
   it('writes native Gemini, OpenRouter and DeepSeek request fields', () => {
-    expect(reasoningBody('gemini', { effort: 'low' }, { reasoning: true })).toEqual({ reasoning_effort: 'low', extra_body: { google: { thinking_config: { include_thoughts: true } } } });
-    expect(reasoningBody('openrouter', { effort: 'high' })).toEqual({ reasoning: { effort: 'high' } });
-    expect(reasoningBody('deepseek', { effort: 'max' })).toEqual({ reasoning_effort: 'max', thinking: { type: 'enabled' } });
-    expect(reasoningBody('doubao', { effort: 'none' })).toEqual({ thinking: { type: 'disabled' } });
+    expect(reasoningBody(QUIRKS.gemini.thinkingWire, { effort: 'low' }, { reasoning: true })).toEqual({ reasoning_effort: 'low', extra_body: { google: { thinking_config: { include_thoughts: true } } } });
+    expect(reasoningBody(QUIRKS.openrouter.thinkingWire, { effort: 'high' })).toEqual({ reasoning: { effort: 'high' } });
+    expect(reasoningBody(QUIRKS.deepseek.thinkingWire, { effort: 'max' })).toEqual({ reasoning_effort: 'max', thinking: { type: 'enabled' } });
+    expect(reasoningBody(QUIRKS.doubao.thinkingWire, { effort: 'none' })).toEqual({ thinking: { type: 'disabled' } });
   });
 });
 
@@ -111,12 +128,12 @@ describe('bundled capability extract', () => {
   }
 
   it('answers DeepSeek effort levels before any refresh and again after a reset', () => {
-    expect(MODEL_CATALOG_SNAPSHOT.takenAt).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(snapshot.takenAt).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     for (const model of ['deepseek-flash', 'deepseek-v4-pro']) {
       const levels = thinkingChoices(modelCapabilities('deepseek', model), 'deepseek').map((choice) => choice.effort);
       expect(levels, model).toContain('high');
     }
-    resetModelCatalog();
+    __resetModelCatalog();
     expect(thinkingChoices(modelCapabilities('deepseek', 'deepseek-flash'), 'deepseek').length).toBeGreaterThan(0);
   });
 
@@ -142,8 +159,9 @@ describe('bundled capability extract', () => {
     expect(fetcher).toHaveBeenCalledTimes(4);
   });
 
-  it('never downloads the live catalog on the Chinese deployment, where the extract is the source', async () => {
-    vi.stubGlobal('__PETIT_TARGET__', 'cn');
+  it('never downloads the live catalog on a deployment that cannot reach it, where the extract is the source', async () => {
+    vi.stubGlobal('__PETIT_TARGET__', DEPLOY_TARGETS.cn.id);
+    expect(DEPLOY_TARGETS.cn.liveModelCatalog).toBe(false);
     const fetcher = vi.fn();
     vi.stubGlobal('fetch', fetcher);
     await ensureModelCatalog(true);

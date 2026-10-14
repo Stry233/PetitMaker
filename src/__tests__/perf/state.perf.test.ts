@@ -3,7 +3,7 @@
  *
  * `state/` is where every "what is here?" question resolves without a scan:
  * the object index, the whole-map stats, the layer panel's derivation and the footprint geometry
- * underneath all three. Each is memoized and PATCHED from a mutation's delta rather than rebuilt —
+ * underneath all three. Each is memoized and patched from a mutation's delta rather than rebuilt —
  * this suite times both halves of that contract: the cold rebuild a missing/untrustworthy delta
  * falls back to, and the incremental patch a normal edit takes instead. See `_harness.ts` for the
  * gate and methodology.
@@ -14,7 +14,7 @@ import { cloneWorld, denseIsland } from './_fixtures';
 import { bumpObjectsVersion } from '../../core/model/grid-model';
 import { entriesNear, getObjectIndex, objectAt, roadLookup } from '../../state/object-index';
 import { getMapStats } from '../../state/map-stats';
-import { getActiveLayers } from '../../state/layer-utils';
+import { layerRows } from '../../state/layer-utils';
 import { buildObjectOccupancy } from '../../state/object-geometry';
 import type { PlacedObject } from '../../core/model/types';
 
@@ -115,9 +115,9 @@ describe.runIf(PERF)('perf: state', () => {
     });
   });
 
-  it('layer panel: getActiveLayers over the dense map', async () => {
+  it('layer panel: layerRows over the dense map', async () => {
     const { state } = denseIsland();
-    await s.bench('layers/get-active', () => { getActiveLayers(state, 1); });
+    await s.bench('layers/get-active', () => { layerRows(state, 1); });
   });
 
   it('geometry: footprints over every placed object', async () => {

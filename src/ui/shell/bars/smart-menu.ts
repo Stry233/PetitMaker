@@ -1,17 +1,18 @@
 /** Smart Build actions offered by each surface. */
-import type { MacroId } from '../../../tools/macros';
+import { SHELF_MACRO_IDS, type MacroId } from '../../../tools/macros';
 import type { Glyph } from '../frame';
-import type { TerrainSurface } from './terrain-cells';
+import type { ContentType } from '../../../state/editing/edit-mode';
 
 /** The shelves that offer smart build: the three terrain surfaces, and the object shelf. */
-type SmartSurface = TerrainSurface | 'object';
+type SmartSurface = ContentType | 'object';
 
 import smartGlyph from '../../../assets/shell/shelf-mountain/tools/smart-build/polygon.svg';
+import type { I18nKey } from '../../../i18n/keys';
 
 interface SmartAction {
   id: MacroId;
   /** Localized action name. */
-  labelKey: string;
+  labelKey: I18nKey;
 }
 
 export const SMART_MENU: Record<SmartSurface, readonly SmartAction[]> = {
@@ -24,11 +25,8 @@ export const SMART_MENU: Record<SmartSurface, readonly SmartAction[]> = {
   road: [
     { id: 'road-link', labelKey: 'smart.road_link' },
   ],
-  // Object categories share a caption; the shelf chooses the matching planting action.
-  object: [
-    { id: 'patch-tree', labelKey: 'smart.patch' },
-    { id: 'patch-flora', labelKey: 'smart.patch' },
-  ],
+  // The planting cards share a caption; each stands in its own shelf tab.
+  object: SHELF_MACRO_IDS.map((id) => ({ id, labelKey: 'smart.patch' })),
 };
 
 /** The smart-build mark and the command that reaches it. */

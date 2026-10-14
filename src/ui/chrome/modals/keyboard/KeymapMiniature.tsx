@@ -4,12 +4,13 @@
  * index the shortcuts board does, so a rebind or a preset switch repaints it. Drawn as one SVG so
  * the geometry never depends on flex rounding and the whole thing scales to its container's width.
  */
-import { useToolbarContext } from '../../../shell/use-toolbar-context';
+import { useToolbarContext } from '../../../session/use-toolbar-context';
 import { useMemo } from 'react';
 import type { CSSProperties, ReactNode } from 'react';
-import { aliasIndex, bindingIndex, useKeybinds } from '../../../../core/runtime/keybindings';
-import { COMMAND_BY_ID } from '../../../../kit/commands';
-import { inkTint } from '../../../design/styles';
+import { aliasIndex, bindingIndex } from '../../../../state/keymap/resolve';
+import { useKeybinds } from '../../../../state/keymap/store';
+import { COMMAND_BY_ID } from '../../../../editor/commands/commands';
+import { inkTint } from '../../../design/tokens';
 import { skin } from '../../../design/window-skin';
 import { CATEGORY_COLOR, KEY_ROWS, comboFor, type Layer } from './layout';
 

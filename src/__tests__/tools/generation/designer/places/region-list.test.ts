@@ -1,15 +1,16 @@
-// Stage 1 of the methodology generator: the region LIST. The hard rule the PDF states first is that
+import { GENERATION_STYLE } from '../../../../../config/generation-style';
+// Stage 1 of the methodology generator: the region list. The hard rule the PDF states first is that
 // every building is placed, so the load-bearing test is that the anchor regions cover every
 // placeable Building and Facility exactly once, on every seed. The rest pins what richness is
-// allowed to change (the theme COUNT, monotonically) and what it is not (the anchor set).
+// allowed to change (the theme count, monotonically) and what it is not (the anchor set).
 import { describe, it, expect } from 'vitest';
-import { ItemCategory } from '../../../../../core/model/types';
+import { ItemCategory } from '../../../../../config/catalog/categories';
 import { getPlaceableByCategory } from '../../../../../state/catalog';
-import { anchorCatalogIds } from '../../../../../tools/generation/designer/eval';
+import { anchorCatalogIds } from '../../../../_support/design-eval';
 import {
-  ANCHOR_ROLES, THEME_LIBRARY, THEME_COUNT, anchorCatalogItems, anchorRoleOf, planRegionList,
-  themeCount,
+  anchorCatalogItems, planRegionList,
 } from '../../../../../tools/generation/designer/places/region-list';
+import { THEME_LIBRARY } from '../../../../../tools/generation/designer/themes';
 
 const SEEDS = Array.from({ length: 20 }, (_, i) => 1 + i * 7919);
 
@@ -18,7 +19,7 @@ describe('the anchor set', () => {
     const required = [...anchorCatalogIds()].sort();
     for (const seed of SEEDS) {
       for (const richness of [0, 0.5, 1]) {
-        const list = planRegionList(seed, undefined, richness);
+        const list = planRegionList(seed, richness);
         const placed = list.flatMap((r) => r.anchors);
         expect(new Set(placed).size, `seed ${seed}: an item is assigned twice`).toBe(placed.length);
         expect([...placed].sort(), `seed ${seed} richness ${richness}`).toEqual(required);
@@ -43,7 +44,7 @@ describe('the anchor set', () => {
     expect(list.some((r) => r.kind === 'shop')).toBe(true);
   });
 
-  // ONE HOME, ONE REGION. Gathering homes into clusters of two to four is a fair reading of the
+  // One home, one region. Gathering homes into clusters of two to four is a fair reading of the
   // methodology's residential district and not what either reference map does: every one of the style target's twelve buildings
   // stands in a neighbourhood of its own. A region per home is what gives each its own palette and its
   // own composed surroundings, and what lets the layout spread them across the planet.
@@ -59,15 +60,17 @@ describe('the anchor set', () => {
   // A catalog item with no row falls back by category, which is correct but silent. This is the
   // drift guard: a new Building or Facility should get a row saying which anchor it belongs to.
   it('has a mapping row for every placeable building and facility', () => {
-    const rows = new Set(ANCHOR_ROLES.map((r) => r.id));
+    const rows = new Set(GENERATION_STYLE.anchorRoles.map((r) => r.id));
     for (const item of anchorCatalogItems()) expect(rows.has(item.id), item.id).toBe(true);
   });
 
   it('routes the Omni-Gallery and the shop to their own anchors', () => {
     const pavilion = getPlaceableByCategory(ItemCategory.Facility).find((i) => i.id === 'facility-pavilion');
     const shop = getPlaceableByCategory(ItemCategory.Facility).find((i) => i.id === 'facility-shop');
-    expect(pavilion && anchorRoleOf(pavilion)).toBe('museum');
-    expect(shop && anchorRoleOf(shop)).toBe('shop');
+    /** The kind of anchor region a plan of this one item files it under. */
+    const anchorOf = (item: NonNullable<typeof shop>) => planRegionList(1, 0.5, [item]).find((r) => r.anchors.includes(item.id))?.kind;
+    expect(pavilion && anchorOf(pavilion)).toBe('museum');
+    expect(shop && anchorOf(shop)).toBe('shop');
   });
 });
 
@@ -76,18 +79,19 @@ describe('the theme draw', () => {
     let previous = -1;
     for (let r = 0; r <= 1.0001; r += 0.05) {
       const richness = Math.min(1, r);
-      const n = planRegionList(4242, undefined, richness).filter((x) => x.kind === 'theme').length;
-      expect(n).toBe(themeCount(richness));
+      const n = planRegionList(4242, richness).filter((x) => x.kind === 'theme').length;
+      // Six theme regions at richness 0 to eighteen at 1, on a rounded straight line.
+      expect(n).toBe(Math.round(6 + 12 * richness));
       expect(n, `richness ${richness}`).toBeGreaterThanOrEqual(previous);
       previous = n;
     }
-    expect(themeCount(0)).toBe(THEME_COUNT.min);
-    expect(themeCount(1)).toBe(THEME_COUNT.max);
+    expect(planRegionList(4242, -1).filter((x) => x.kind === 'theme').length, 'richness clamps at 0').toBe(6);
+    expect(planRegionList(4242, 2).filter((x) => x.kind === 'theme').length, 'richness clamps at 1').toBe(18);
   });
 
   it('never repeats a theme on one map', () => {
     for (const seed of SEEDS) {
-      const themes = planRegionList(seed, undefined, 1).map((r) => r.themeId).filter(Boolean);
+      const themes = planRegionList(seed, 1).map((r) => r.themeId).filter(Boolean);
       expect(new Set(themes).size, `seed ${seed}`).toBe(themes.length);
     }
   });
@@ -96,7 +100,7 @@ describe('the theme draw', () => {
     const known = new Set(THEME_LIBRARY.map((t) => t.id));
     for (const seed of SEEDS) {
       for (const richness of [0, 0.4, 0.6, 1]) {
-        for (const r of planRegionList(seed, undefined, richness)) {
+        for (const r of planRegionList(seed, richness)) {
           if (!r.themeId) continue;
           expect(known.has(r.themeId)).toBe(true);
           if (r.themeId === 'landmark-text') expect(richness).toBeGreaterThanOrEqual(0.6);
@@ -107,7 +111,7 @@ describe('the theme draw', () => {
 
   it('draws a partner for the cases that need one', () => {
     for (const seed of SEEDS) {
-      const list = planRegionList(seed, undefined, 0.6);
+      const list = planRegionList(seed, 0.6);
       // Case 6 wants a library for the shop, and the shop is always on the map.
       expect(list.some((r) => r.tags.includes('library')), `seed ${seed}`).toBe(true);
       // Case 1 wants greenery for a drink region, where one was drawn.
@@ -121,13 +125,13 @@ describe('the theme draw', () => {
 describe('determinism', () => {
   it('answers the same list for the same seed and richness', () => {
     for (const seed of SEEDS.slice(0, 5)) {
-      expect(planRegionList(seed, undefined, 0.7)).toEqual(planRegionList(seed, undefined, 0.7));
+      expect(planRegionList(seed, 0.7)).toEqual(planRegionList(seed, 0.7));
     }
   });
 
   it('answers differently for different seeds', () => {
-    const a = JSON.stringify(planRegionList(1, undefined, 0.7));
-    const b = JSON.stringify(planRegionList(2, undefined, 0.7));
+    const a = JSON.stringify(planRegionList(1, 0.7));
+    const b = JSON.stringify(planRegionList(2, 0.7));
     expect(a).not.toBe(b);
   });
 });

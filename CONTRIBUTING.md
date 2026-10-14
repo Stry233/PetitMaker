@@ -95,16 +95,32 @@ Requires [Node.js](https://nodejs.org) 24 or newer.
 
 ```bash
 npm install
-npm run hooks:install   # once per clone: the pre-commit hook that stamps build-info.json
 npm run dev             # Vite dev server
 npm run test:run        # run the test suite (Vitest)
-npm run lint            # TypeScript type-check (app and scripts)
+npm run lint            # TypeScript type-check and ESLint (app, scripts and tests)
 npm run build           # production build
 ```
 
 Please run `npm run test:run` and `npm run lint` before opening a pull request, and keep changes focused. For architecture and conventions, see `docs/ARCHITECTURE.md`.
 
 The marked reference sections in [ARCHITECTURE.md](docs/ARCHITECTURE.md) are generated from runtime constants, rule registration, and TypeScript contracts. Run `npm run docs:generate` after changing those sources; `npm run docs:check` and the test suite reject stale generated sections. Keep explanations and rationale outside the generated markers, and link to code for facts that do not need a reference table. Provider disclosures, Help facts (including autosave timing and agent turn limits) and keyboard hints already derive from their respective registries; legal pages, headers and dependency notices have their own generators.
+
+## Repository guards
+
+Part of the test suite checks the structure of the code rather than its behaviour. When one of these tests fails, its header comment explains the rule; this section summarizes them.
+
+- **Layers import downward.** Every top-level folder of `src/` (apart from `lite/` and `__tests__/`) is a layer, ranked in `scripts/layers.mts`; the stack is drawn in [ARCHITECTURE.md](docs/ARCHITECTURE.md#architecture-at-a-glance). A module imports from its own layer or a lower one. A type-only import that points up is allowed only with a reason recorded in `src/__tests__/repo/import-direction-allowlist.json`. When lower code needs something from above, it declares an interface and receives the implementation as an argument. `src/__tests__/repo/import-direction.test.ts` enforces this, and `src/core` has its own folder order, in which type-only imports count too.
+- **Allowlists only shrink.** Files such as `src/__tests__/repo/import-direction-allowlist.json` or `src/__tests__/repo/test-hooks-allowlist.json` record the exceptions that remain, each with its reason and often an exact count. When your change fixes an exception, remove its entry in the same change: a stale entry fails too, and an allowlist that empties is deleted so its guard admits no exception. Adding an entry needs a written reason in the pull request, and reviewers will question it. Never weaken a guard or a map rule to make a test pass.
+- **The interface only presents.** Files under `src/ui/` render state, capture input and call verbs: a handler runs one store action or one editor verb, and workflows, policies and store orchestration live in the layers below. The interface reads `src/io/`, `src/tools/` and `src/pipelines/` only through their fact modules (`facts.ts`), and hears map changes through `src/ui/session/`. `src/__tests__/ui/presentation-guard.test.ts` enforces this, with the remaining exceptions in `src/__tests__/ui/presentation-allowlist.ts`.
+- **Design values have one home.** Colours, shadows, z-index rungs, radii, spacing and motion timing are declared in `src/ui/design/` and named everywhere else. A drawing zone (Help figures, the assistant's sketchbook, the tour diagrams) draws illustrations to their own scale, so it keeps its own shapes, spacing and motion, but its colours still come from `src/ui/design/drawing-palette.ts`. `src/__tests__/ui/foundation-guards.test.ts` enforces both.
+- **Libraries never import pointer tools.** In `src/tools/`, the pointer tools live under `pointer/`; every other folder is a library shared with generation and the assistant, and imports nothing under `pointer/` (`src/__tests__/tools/doors.test.ts`).
+- **Comments state facts.** A comment says what the code cannot: invariants, units, platform behaviour, non-obvious consequences. It does not restate the code, cite a ticket, task or measurement run, defend the implementation or narrate earlier behaviour. Write in plain sentences with no emphasis in capitals and no capital letter in mid-sentence (write "not a texture", not "not A texture"). `src/__tests__/repo/comment-style.test.ts` checks the visible cases.
+- **English in code.** Code, identifiers, comments, test names and data are written in English. Translated text lives only in `src/i18n/locales/`.
+- **Every string in all seven locales.** User-facing text goes through i18n: add the key to `src/i18n/locales/en.ts` and to each of the other six locale tables, written as native copy. UI text uses no em dashes and no dot separators (`src/__tests__/i18n/copy-punctuation.test.ts`); the parity tests reject a missing key.
+- **Tests mirror `src/`.** A test sits under `src/__tests__/` in the folder of the source it covers, so a test of `src/view/map3d/geometry/pick.ts` goes in `src/__tests__/view/map3d/geometry/`. Shared builders and stubs go in `_support/`, data in `fixtures/<domain>/`, and repository-wide guards in `repo/` (`src/__tests__/repo/test-layout.test.ts`).
+- **Tests run the code.** A test pins behaviour by calling the code, not by matching its source text, which breaks on a rename and passes when the behaviour breaks. A test that does read a source file (a guard, by design) is listed with its reason in `src/__tests__/repo/source-text-allowlist.json`.
+- **Test hooks carry a prefix.** An export that exists only for tests is named `__reset*` or `__set*`, and no production module calls it. Any other export that only tests use is listed in `src/__tests__/repo/test-hooks-allowlist.json`.
+- **Module state is listed.** Each module-level `let`, `const` collection its module writes, and signal in `src/` is a cache, a page-wide registration or the one instance of a page-wide mechanism, and is listed with its kind in `src/__tests__/repo/module-state-allowlist.json`.
 
 ## Questions
 

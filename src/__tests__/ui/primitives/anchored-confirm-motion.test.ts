@@ -1,7 +1,6 @@
 /** Every card anchored to a control arrives and leaves on one registered motion. */
 import { describe, it, expect } from 'vitest';
 import { amplitude, framerMotion, NO_MOTION } from '../../../ui/design/motion';
-import { exitTransition } from '../../../ui/design/styles';
 import { anchoredCardMotion, anchoredOrigin } from '../../../ui/primitives/AnchoredConfirm';
 
 describe('the anchored card motion', () => {
@@ -10,7 +9,8 @@ describe('the anchored card motion', () => {
     const from = 1 - amplitude('anchored.card.arrive');
     expect(m.initial).toEqual({ scale: from, opacity: 0 });
     expect(m.animate).toEqual({ scale: 1, opacity: 1 });
-    expect(m.exit).toEqual({ scale: from, opacity: 0, transition: exitTransition });
+    expect(m.exit).toEqual({ scale: from, opacity: 0, transition: framerMotion('surface.leave') });
+    expect(framerMotion('surface.leave')).toEqual({ duration: 0.16, ease: [0.4, 0, 0.2, 1] });
     expect(m.transition).toEqual(framerMotion('anchored.card.arrive'));
   });
 

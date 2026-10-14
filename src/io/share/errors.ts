@@ -1,17 +1,9 @@
-export type ShareErrorCode =
-  | 'not-an-image'          // bytes are not a recognized container (no PNG signature) / not decodable as one
-  | 'no-payload'            // valid image, but no share code found in it
-  | 'future-version'        // appVersion/payload version newer than this build can read
-  | 'corrupt'               // integrity check failed, or untrusted input exceeded a safety cap
-  | 'decode-failed'         // codec/raster decode threw
-  | 'incompatible-template' // template unknown or dimensions differ
-  | 'missing-catalog-item'  // a used catalog id does not exist here
-  | 'validation-failed';    // structural validation rejected the map
-
-export class ShareError extends Error {
-  constructor(public readonly code: ShareErrorCode, message: string) {
+/** Thrown when a map's payload or its notes do not fit the densest share-code profile. Reading a
+ *  share code throws `save/import-error.ts:ImportError`. */
+export class ShareTooLargeError extends Error {
+  constructor(message: string) {
     super(message);
-    this.name = 'ShareError';
+    this.name = 'ShareTooLargeError';
   }
 }
 

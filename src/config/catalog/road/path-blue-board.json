@@ -3,13 +3,13 @@
   "category": "road",
   "icon": "path-blue-board",
   "name": {
-    "en": "Blue Board Path",
-    "zh": "蓝色木板路",
-    "ja": "青い板の道",
-    "ru": "Синяя дощатая дорожка",
-    "th": "ทางไม้กระดานสีน้ำเงิน",
-    "id": "Jalan Papan Biru",
-    "fr": "Chemin de planches bleu"
+    "en": "Blue Gameboard Path",
+    "zh": "蓝色棋格路",
+    "ja": "青のボードゲームの道",
+    "ru": "Синяя дорожка для настольной игры",
+    "th": "ทางกระดานเกมสีน้ำเงิน",
+    "id": "Jalan Papan Permainan Biru",
+    "fr": "Chemin de plateau de jeu bleu"
   },
   "color": "#5f81a5",
   "width": 1,
@@ -24,5 +24,17 @@
     {
       "type": "surfaceCoating"
     }
-  ]
+  ],
+  "roadMaterial": {
+    "feather": 0.035,
+    "edge": {
+      "color": "#ffffff",
+      "pattern": {
+        "kind": "image",
+        "image": "path-blue-board",
+        "repeat": 1
+      }
+    },
+    "layers": []
+  }
 }

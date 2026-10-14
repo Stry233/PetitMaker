@@ -1,7 +1,7 @@
 {
   "compilerOptions": {
-    // Ambient @types are OPT-IN: a dependency dragging @types/node into node_modules must not
-    // change what this browser-only code sees ("fs exists" flips every no-node ts-expect-error).
+    // Ambient @types are opt-in: a dependency that installs @types/node must not give this
+    // browser-only code Node globals.
     "types": [],
     "target": "ES2020",
     "useDefineForClassFields": true,
@@ -16,6 +16,8 @@
     "moduleDetection": "force",
     "noEmit": true,
     "jsx": "react-jsx",
+    "incremental": true,
+    "tsBuildInfoFile": "./.tsbuild/app.tsbuildinfo",
 
     /* Linting */
     "strict": true,
@@ -25,12 +27,8 @@
 
     /* Extra strictness */
     "noUncheckedIndexedAccess": true,
-    "resolveJsonModule": true,
-
-    /* Path aliases */
-    "paths": {
-      "@/*": ["./src/*"]
-    }
+    "resolveJsonModule": true
   },
-  "include": ["src"]
+  "include": ["src"],
+  "exclude": ["src/__tests__"]
 }

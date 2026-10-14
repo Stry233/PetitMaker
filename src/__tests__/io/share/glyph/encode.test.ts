@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { encodeGlyph, encodeGlyphV2 } from '../../../../io/share/glyph/encode';
+import { encodeGlyph } from '../../../../io/share/glyph/encode';
+import { encodeGlyphV2 } from '../../../_support/glyph-v2';
 import { currentBandSize, CURRENT_TOP_ROWS, nBlocks, RS_N } from '../../../../io/share/glyph/geometry';
 import { PRODUCT_INK, PRODUCT_PAPER } from '../../../../io/share/glyph/palette';
 

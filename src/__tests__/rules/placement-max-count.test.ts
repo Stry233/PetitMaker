@@ -1,14 +1,15 @@
 import { describe, it, expect } from 'vitest';
 import { placementMaxCountRule } from '../../rules/placement-max-count';
-import { CommandType, ItemCategory, type PlacedObject, type PlaceObjectCommand } from '../../core/model/types';
-import { getCatalogItem, registerCatalogItem } from '../../state/catalog';
-import { makeState } from './_helpers';
+import { CommandType, type PlacedObject, type PlaceObjectCommand } from '../../core/model/types';
+import { getCatalogItem, __setCatalogItem } from '../../state/catalog';
+import { makeState } from '../_support/map-state';
+import { ItemCategory } from '../../config/catalog/categories';
 
 const obj = (id: string, catalogId: string, x = 5, y = 5): PlacedObject =>
   ({ id, catalogId, position: { x, y }, rotation: 0, elevation: 0 });
 
 const place = (o: PlacedObject): PlaceObjectCommand =>
-  ({ type: CommandType.PlaceObject, timestamp: 0, object: o });
+  ({ type: CommandType.PlaceObject, object: o });
 
 describe('V-PLACE-MAX: per-item placement cap', () => {
   it('allows the first placement of a capped item', () => {
@@ -27,7 +28,7 @@ describe('V-PLACE-MAX: per-item placement cap', () => {
   });
 
   it('handles caps > 1 generically (allows up to N, rejects N+1)', () => {
-    registerCatalogItem({
+    __setCatalogItem({
       id: 'test-triple', category: ItemCategory.Building, name: { en: 'Triple', zh: '三' },
       width: 1, height: 1, loadValue: 0, maxCount: 3,
       rotatable: false, placementMode: 'point', traits: [],

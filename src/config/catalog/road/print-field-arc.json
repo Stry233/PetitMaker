@@ -1,0 +1,36 @@
+{
+  "id": "print-field-arc",
+  "category": "road",
+  "icon": "print-field-arc",
+  "name": {
+    "en": "Field Arc Print",
+    "zh": "绿茵弧线印花",
+    "ja": "フィールドの曲線模様",
+    "ru": "Дуговая разметка поля",
+    "th": "ลายเส้นโค้งสนาม",
+    "id": "Motif Busur Lapangan",
+    "fr": "Marquage courbe de terrain"
+  },
+  "color": "#f0eedb",
+  "width": 1,
+  "height": 1,
+  "loadValue": 0,
+  "rotatable": true,
+  "placementMode": "brush",
+  "traits": [
+    {
+      "type": "flat"
+    },
+    {
+      "type": "surfaceCoating",
+      "layer": 1
+    }
+  ],
+  "surfacePrint": {
+    "kind": "image",
+    "image": "print-field-arc",
+    "repeat": 1
+  },
+  "strokeConnections": 6,
+  "strokeCurve": true
+}

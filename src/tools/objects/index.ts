@@ -1,25 +1,16 @@
 /**
- * THE OBJECTS MODULE'S DOOR: placing one object, and editing the ones already standing.
+ * The objects module's door: editing the objects already standing, with no pointer in it.
  *
- * Behind it:
- *
- *   object-placer.ts  the placer tool, and the command builders every other path places through
- *   actions.ts        the singular edits — rotate, remove, peel the terrain out from under
- *   group-actions.ts  their plural siblings, each one stroke group, all-or-nothing where a partial
- *                     result would not be coherent
- *
- * WHAT CROSSES IT. The pointer machine drags a selection, the chrome offers the edits, `kit` plays
- * their toast/animation side, and the agent and the API place through the same command builders the
- * tool does — which is the point of exporting them: there is ONE way an object reaches the map.
- * Modules inside `tools/` import these files directly (see the paint door for why), and
- * `ObjectPlacerTool` stays behind the door with them: `tools/runtime` constructs it.
+ * `actions.ts` holds the single-object edits (move, rotate, remove, peel the terrain out from
+ * under) and `group-actions.ts` their group forms, each one stroke group; `candidate.ts` is the
+ * object a placement would stand. The probes and the coating strip they land through are
+ * `placement/`'s; the placer tool and the drag session are `pointer/objects/`'s. The chrome offers
+ * the edits, `editor` plays their feedback and the Help figures run them on their own world.
  */
-export {
-  objectPlacementCommand, removeObjectCommand, movedObject, planObjectMove,
-  stripCoatingsFor, GHOST_VALID, GHOST_INVALID,
-} from './object-placer';
-export { rotateObject, peelTerrain, type RotateResult } from './actions';
+export { moveObject, rotateObject, peelTerrain, type RotateResult } from './actions';
 export {
   groupMembers, groupBounds, moveGroup, previewGroupMove, rotateGroup, deleteGroup,
   type DeleteGroupResult, type QuarterTurn,
 } from './group-actions';
+export type { GroupRotation } from './group-rotation';
+export { candidateObject } from './candidate';

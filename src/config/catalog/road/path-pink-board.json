@@ -3,13 +3,13 @@
   "category": "road",
   "icon": "path-pink-board",
   "name": {
-    "en": "Pink Board Path",
-    "zh": "粉色木板路",
-    "ja": "ピンクの板の道",
-    "ru": "Розовая дощатая дорожка",
-    "th": "ทางไม้กระดานสีชมพู",
-    "id": "Jalan Papan Merah Muda",
-    "fr": "Chemin de planches rose"
+    "en": "Pink Gameboard Path",
+    "zh": "粉色棋格路",
+    "ja": "ピンクのボードゲームの道",
+    "ru": "Розовая дорожка для настольной игры",
+    "th": "ทางกระดานเกมสีชมพู",
+    "id": "Jalan Papan Permainan Merah Muda",
+    "fr": "Chemin de plateau de jeu rose"
   },
   "color": "#db7f96",
   "width": 1,
@@ -24,5 +24,17 @@
     {
       "type": "surfaceCoating"
     }
-  ]
+  ],
+  "roadMaterial": {
+    "feather": 0.035,
+    "edge": {
+      "color": "#ffffff",
+      "pattern": {
+        "kind": "image",
+        "image": "path-pink-board",
+        "repeat": 1
+      }
+    },
+    "layers": []
+  }
 }

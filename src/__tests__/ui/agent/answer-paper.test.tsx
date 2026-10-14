@@ -1,39 +1,30 @@
+// @vitest-environment jsdom
 /**
- * The ANSWER FAMILY: a done job that issued no write, and the dance that
- * does not happen for one.
+ * The answer family: a done job that issued no write, and the dance that does not happen for one.
+ * `JobView.kind` ('build' once a write was issued, 'answer' when words were the product, 'quiet'
+ * otherwise) and `JobView.celebrate` (a write landed) are decided once in `project-view.ts:settle`;
+ * this holds that each surface reads them rather than re-deriving them.
  *
- * THE BOUNDARY IS THE PROJECTION'S, NEVER THIS LAYER'S. `JobView.kind` says what a job turned out to
- * be ('build' the moment a write was ISSUED, whatever became of it; 'answer' when words were the
- * whole product; 'quiet' when there were not even words), and `JobView.celebrate` says whether a
- * write LANDED. Both are decided once in `project-view.ts:settle`, which is what lets the paper, the
- * dock face, the history line and the character all read one answer — so what this file holds is
- * that each surface READS it rather than re-deriving it from ops it can see.
- *
- * FOUR NEGATIVE FIXTURES CARRY THE CELEBRATE RULE, and they are the four ways a job can finish
- * without having built anything: an answer, a refusal, a silent giveup, and a job still waiting on
- * the user's reply. Asserted in BOTH hosts, because both fold the same projection and a rule
- * enforced in one of them is half a rule.
+ * Four negative fixtures carry the celebrate rule, the four ways to finish without building: an
+ * answer, a refusal, a silent giveup, and a job waiting on the user's reply. Asserted in both hosts.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { act, cleanup, fireEvent, render } from '@testing-library/react';
-import { MotionConfig } from 'framer-motion';
+import { act, cleanup, fireEvent } from '@testing-library/react';
 
 import { append } from '../../../agent/core/log';
 import type { JobView, OpRow, PanelView } from '../../../agent/core/project-view';
 import { useAgentSession } from '../../../agent/session/store';
-import { I18nProvider } from '../../../i18n/context';
-import { translations } from '../../../i18n/translations';
-import type { Locale } from '../../../core/model/types';
+import { translations } from '../../_support/locale-tables';
+import type { Locale } from '../../../core/model/locale';
 import { useEditorStore } from '../../../state/store';
-import { AnswerPaper, answerStamp, isAnswerJob } from '../../../ui/agent/AnswerPaper';
+import { AnswerPaper, isAnswerJob } from '../../../ui/agent/record/AnswerPaper';
 import { CharacterHost } from '../../../ui/agent/character/CharacterHost';
 import { useCelebrateEdge } from '../../../ui/agent/character/use-celebrate-edge';
 import { PanelShell } from '../../../ui/agent/PanelShell';
-import { ACTIVE, PLATE_INK } from '../../../ui/design/tokens';
-import { colors } from '../../../ui/design/styles';
+import { ACTIVE, DANGER_INK, DANGER_SURFACE, MUTED, PLATE_INK } from '../../../ui/design/tokens';
+import { makeView, panelProps, renderWithI18n } from '../../_support/agent-panel';
 
 const backing = new Map<string, string>();
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 (globalThis as any).localStorage = {
   getItem: (k: string) => backing.get(k) ?? null,
   setItem: (k: string, v: string) => void backing.set(k, String(v)),
@@ -41,30 +32,10 @@ const backing = new Map<string, string>();
   clear: () => backing.clear(),
 };
 
-function Wrapper({ children }: { children: React.ReactNode }) {
-  return (
-    <MotionConfig reducedMotion="always">
-      <I18nProvider>{children}</I18nProvider>
-    </MotionConfig>
-  );
-}
-
-function renderWithI18n(node: React.ReactElement) {
-  return render(node, { wrapper: Wrapper });
-}
-
 /** jsdom re-serializes every colour as `rgb(...)`, so a token compared as a hex never matches. */
 function rgb(hex: string): string {
   const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
   return `rgb(${r}, ${g}, ${b})`;
-}
-
-function makeView(over: Partial<PanelView> = {}): PanelView {
-  return {
-    phase: 'idle', jobs: [], queuedSteers: [],
-    vitals: { cells: 0, objects: 0, reverts: 0, jobs: 0 },
-    suggestion: null, lastEventAt: 0, ...over,
-  };
 }
 
 function makeJob(over: Partial<JobView> = {}): JobView {
@@ -138,8 +109,8 @@ describe('the answer boundary is the projection\'s kind, not a count of ops', ()
     expect(isAnswerJob(BUILT)).toBe(false);
   });
 
-  /** A job whose writes were all REFUSED still reads as a build: the projection sets `kind` on the
-   *  write being ISSUED, and a construction that failed still owes the user its receipt. */
+  /** A job whose writes were all refused still reads as a build: the projection sets `kind` on the
+   *  write being issued, and a construction that failed still owes the user its receipt. */
   it('leaves a build whose every write was reverted to the receipt', () => {
     const reverted = makeJob({
       kind: 'build', outcome: 'done',
@@ -149,10 +120,16 @@ describe('the answer boundary is the projection\'s kind, not a count of ops', ()
   });
 
   it('stamps the paper by what the job WAS', () => {
-    expect(answerStamp(ANSWER)).toBe('answered');
-    expect(answerStamp(REFUSED)).toBe('answered');
-    expect(answerStamp(QUESTION)).toBe('asking');
-    expect(answerStamp(SILENT)).toBe('ended');
+    const stampOf = (job: typeof ANSWER) => {
+      const { getByTestId, unmount } = renderWithI18n(<AnswerPaper job={job} />);
+      const stamp = getByTestId('answer-paper').getAttribute('data-stamp');
+      unmount();
+      return stamp;
+    };
+    expect(stampOf(ANSWER)).toBe('answered');
+    expect(stampOf(REFUSED)).toBe('answered');
+    expect(stampOf(QUESTION)).toBe('asking');
+    expect(stampOf(SILENT)).toBe('ended');
   });
 });
 
@@ -164,12 +141,12 @@ describe('the answer paper: the words are the product', () => {
     expect(getByTestId('answer-order').textContent).toBe(ANSWER.orderText);
     const text = getByTestId('answer-text');
     expect(text.textContent).toBe(ANSWER.summary);
-    // The BODY rung, never the muted one: the closing words are what the job produced.
+    // The body rung, never the muted one: the closing words are what the job produced.
     expect(text.style.color).toBe(rgb(PLATE_INK));
   });
 
   /**
-   * A MODEL WRITES MARKDOWN WHETHER OR NOT IT IS ASKED TO, and the card that draws its answer has to
+   * A model writes markdown whether or not it is asked to, and the card that draws its answer has to
    * read as the answer it wrote. Printed flat, the live `deepseek-r1:32b` reply below lost every
    * paragraph break to a space and stood its `**` and its backticks in the prose: a five-step answer
    * as one wall of ink with the machinery showing.
@@ -192,7 +169,7 @@ describe('the answer paper: the words are the product', () => {
     expect(text.querySelectorAll('ol > li')).toHaveLength(2);
     expect(text.querySelectorAll('strong')).toHaveLength(2);
     expect(text.querySelector('code')?.textContent).toBe('Painting terrain');
-    // The WORDS are untouched: rendering the markers is not the same act as deleting them.
+    // The words are untouched: rendering the markers is not the same act as deleting them.
     expect(text.textContent).toContain('Create a Lake');
     expect(text.textContent).not.toContain('paint_terrain');
     expect(text.textContent).toContain('Painting terrain');
@@ -201,7 +178,7 @@ describe('the answer paper: the words are the product', () => {
     expect(text.style.color).toBe(rgb(PLATE_INK));
   });
 
-  /** A model's own heading is a LEAD LINE: the card already owns the hierarchy around this text. */
+  /** A model's own heading is a lead line: the card already owns the hierarchy around this text. */
   it('preserves model headings inside the answer hierarchy', () => {
     const { getByTestId } = renderWithI18n(
       <AnswerPaper job={makeJob({ kind: 'answer', outcome: 'done', summary: '## The shoreline\n\nIt is clear.' })} />,
@@ -212,7 +189,7 @@ describe('the answer paper: the words are the product', () => {
     expect(text.textContent).not.toContain('##');
   });
 
-  /** The model's links are the MODEL'S. Its words stand; a press that navigates wherever it chose
+  /** The model's links are the model's. Its words stand; a press that navigates wherever it chose
    *  does not, on a surface that reads as the app talking. */
   it('keeps a link\'s words and gives it nothing to press', () => {
     const { getByTestId } = renderWithI18n(
@@ -226,7 +203,7 @@ describe('the answer paper: the words are the product', () => {
   it('collapses read-only ops into one quiet line and draws no op rows', () => {
     const { getByTestId, queryByTestId, queryAllByTestId } = renderWithI18n(<AnswerPaper job={ANSWER} />);
     expect(getByTestId('answer-reads').textContent)
-      .toBe(translations.en['agent3.answer_reads']!.replace('{n}', '3'));
+      .toBe(translations.en['agent.answer_reads']!.replace('{n}', '3'));
     expect(queryAllByTestId('op-row').length).toBe(0);
     expect(queryByTestId('tape-bar')).toBeNull();
   });
@@ -234,14 +211,14 @@ describe('the answer paper: the words are the product', () => {
   it('says one read in the singular, and says nothing at all when there were none', () => {
     const one = renderWithI18n(<AnswerPaper job={makeJob({ kind: 'answer', outcome: 'done', ops: reads(1), summary: 'Yes.' })} />);
     expect(one.getByTestId('answer-reads').textContent)
-      .toBe(translations.en['agent3.answer_reads_one']!.replace('{n}', '1'));
+      .toBe(translations.en['agent.answer_reads_one']!.replace('{n}', '1'));
     one.unmount();
 
     const none = renderWithI18n(<AnswerPaper job={REFUSED} />);
     expect(none.queryByTestId('answer-reads')).toBeNull();
   });
 
-  /** A REFUSAL IS AN ANSWER. Not a failure and not a success: no danger paper, no danger ink, no
+  /** A refusal is an answer. Not a failure and not a success: no danger paper, no danger ink, no
    *  Built stamp, and (below) no dance. */
   it('gives a refusal no danger token and no Built stamp', () => {
     const { getByTestId, queryByTestId } = renderWithI18n(<AnswerPaper job={REFUSED} />);
@@ -249,25 +226,25 @@ describe('the answer paper: the words are the product', () => {
     expect(paper.getAttribute('data-stamp')).toBe('answered');
     expect(queryByTestId('ticket-stamp')).toBeNull();
     for (const el of [paper, ...paper.querySelectorAll('*')] as HTMLElement[]) {
-      expect(el.style.background).not.toBe(rgb(colors.dangerBg));
-      expect(el.style.backgroundColor).not.toBe(rgb(colors.dangerBg));
-      expect(el.style.color).not.toBe(rgb(colors.dangerText));
+      expect(el.style.background).not.toBe(rgb(DANGER_SURFACE));
+      expect(el.style.backgroundColor).not.toBe(rgb(DANGER_SURFACE));
+      expect(el.style.color).not.toBe(rgb(DANGER_INK));
     }
-    expect(paper.textContent).not.toContain(translations.en['agent3.ticket_stamp_done']);
+    expect(paper.textContent).not.toContain(translations.en['agent.ticket_stamp_done']);
   });
 
-  /** The panel's OWN voice, at the muted rung: fabricating first-person words the model never said
+  /** The panel's own voice, at the muted rung: fabricating first-person words the model never said
    *  would be worse than none. */
   it('speaks for itself when the job said nothing, and never in the model\'s person', () => {
     const { getByTestId, queryByTestId } = renderWithI18n(<AnswerPaper job={SILENT} />);
     expect(getByTestId('answer-paper').getAttribute('data-stamp')).toBe('ended');
     const voice = getByTestId('answer-uivoice');
-    expect(voice.textContent).toBe(translations.en['agent3.answer_silent']);
-    expect(voice.style.color).toBe(rgb(colors.brownText));
+    expect(voice.textContent).toBe(translations.en['agent.answer_silent']);
+    expect(voice.style.color).toBe(rgb(MUTED));
     expect(queryByTestId('answer-text')).toBeNull();
   });
 
-  /** ONE GRAMMAR FOR "A QUESTION IS STANDING": the gate family's yellow spine and its quick row,
+  /** One grammar for "A QUESTION IS STANDING": the gate family's yellow spine and its quick row,
    *  whether the job built or only read. */
   it('wears the ask grammar while its closing question stands', () => {
     const { getByTestId } = renderWithI18n(<AnswerPaper job={QUESTION} />);
@@ -313,28 +290,29 @@ describe('File it away', () => {
 describe('the panel picks the receipt or the paper by what the job was', () => {
   it('stands the paper for a zero-write job and the receipt for a built one', () => {
     const answered = renderWithI18n(
-      <PanelShell view={makeView({ jobs: [ANSWER] })} connected now={0} {...VERBS} />,
+      <PanelShell {...panelProps({ view: makeView({ jobs: [ANSWER] }), connected: true, now: 0, ...VERBS })} />,
     );
     expect(answered.getByTestId('answer-paper')).toBeTruthy();
     expect(answered.queryByTestId('flip-ticket')).toBeNull();
     answered.unmount();
 
     const built = renderWithI18n(
-      <PanelShell view={makeView({ jobs: [BUILT] })} connected now={0} {...VERBS} />,
+      <PanelShell {...panelProps({ view: makeView({ jobs: [BUILT] }), connected: true, now: 0, ...VERBS })} />,
     );
     expect(built.getByTestId('flip-ticket')).toBeTruthy();
     expect(built.queryByTestId('answer-paper')).toBeNull();
   });
 
-  /** The card takes the TICKET's place, so it stands only while nothing is in flight: an order given
+  /** The card takes the ticket's place, so it stands only while nothing is in flight: an order given
    *  over a standing answer starts the next job, and the record above it is the history strip's. */
   it('drops the terminal card the moment a new job is in flight', () => {
     const { queryByTestId } = renderWithI18n(
-      <PanelShell
-        view={makeView({ phase: 'executing', jobs: [ANSWER], current: makeJob({ orderSeq: 9 }) })}
-        connected
-        now={0}
-        {...VERBS}
+      <PanelShell {...panelProps({
+        view: makeView({ phase: 'executing', jobs: [ANSWER], current: makeJob({ orderSeq: 9 }) }),
+        connected: true,
+        now: 0,
+        ...VERBS,
+      })}
       />,
     );
     expect(queryByTestId('answer-paper')).toBeNull();
@@ -345,11 +323,11 @@ describe('the panel picks the receipt or the paper by what the job was', () => {
   it('takes the card off the zone once the record is filed, and keeps the history row', () => {
     const view = makeView({ jobs: [ANSWER] });
     const { getByTestId, queryByTestId, rerender } = renderWithI18n(
-      <PanelShell view={view} connected now={0} filed={new Set()} {...VERBS} />,
+      <PanelShell {...panelProps({ view, connected: true, now: 0, filed: new Set(), ...VERBS })} />,
     );
     expect(getByTestId('answer-paper')).toBeTruthy();
 
-    rerender(<PanelShell view={view} connected now={0} filed={new Set([ANSWER.orderSeq])} {...VERBS} />);
+    rerender(<PanelShell {...panelProps({ view, connected: true, now: 0, filed: new Set([ANSWER.orderSeq]), ...VERBS })} />);
     expect(queryByTestId('answer-paper')).toBeNull();
     expect(getByTestId('history-strip')).toBeTruthy();
   });
@@ -357,12 +335,13 @@ describe('the panel picks the receipt or the paper by what the job was', () => {
   it('hands the file-away press up with the record it is about', () => {
     const filed: number[] = [];
     const { getByTestId } = renderWithI18n(
-      <PanelShell
-        view={makeView({ jobs: [ANSWER] })}
-        connected
-        now={0}
-        onFileAway={(seq) => filed.push(seq)}
-        {...VERBS}
+      <PanelShell {...panelProps({
+        view: makeView({ jobs: [ANSWER] }),
+        connected: true,
+        now: 0,
+        onFileAway: (seq) => filed.push(seq),
+        ...VERBS,
+      })}
       />,
     );
     fireEvent.click(getByTestId('answer-file-away'));
@@ -372,15 +351,15 @@ describe('the panel picks the receipt or the paper by what the job was', () => {
 
 /* ── the dock's two faces ──────────────────────────────────────────────────── */
 
-describe('the dock says what the desk was left with', () => {
+describe('the status card says what the desk was left with', () => {
   function dock(job: JobView) {
-    return renderWithI18n(<PanelShell view={makeView({ jobs: [job] })} connected now={0} {...VERBS} />);
+    return renderWithI18n(<PanelShell {...panelProps({ view: makeView({ jobs: [job] }), connected: true, now: 0, ...VERBS })} />);
   }
 
   it('reads Answered with the reads count', () => {
     const { getByTestId } = dock(ANSWER);
-    expect(getByTestId('dock-sentence').textContent).toBe(translations.en['agent3.dock_answered']);
-    expect(getByTestId('dock-meta').textContent).toBe(translations.en['agent3.dock_reads']!.replace('{n}', '3'));
+    expect(getByTestId('dock-sentence').textContent).toBe(translations.en['agent.dock_answered']);
+    expect(getByTestId('dock-meta').textContent).toBe(translations.en['agent.dock_reads']!.replace('{n}', '3'));
     expect(getByTestId('dock-glyph').getAttribute('data-icon')).toBe('pw-reply-bubble');
   });
 
@@ -388,20 +367,20 @@ describe('the dock says what the desk was left with', () => {
    *  know is that the map is untouched. */
   it('says no edits were made where an answer read nothing', () => {
     const { getByTestId } = dock(REFUSED);
-    expect(getByTestId('dock-sentence').textContent).toBe(translations.en['agent3.dock_answered']);
-    expect(getByTestId('dock-meta').textContent).toBe(translations.en['agent3.dock_no_edits']);
+    expect(getByTestId('dock-sentence').textContent).toBe(translations.en['agent.dock_answered']);
+    expect(getByTestId('dock-meta').textContent).toBe(translations.en['agent.dock_no_edits']);
   });
 
   it('reads Ended, nothing was said, for the silent giveup', () => {
     const { getByTestId } = dock(SILENT);
-    expect(getByTestId('dock-sentence').textContent).toBe(translations.en['agent3.dock_ended']);
-    expect(getByTestId('dock-meta').textContent).toBe(translations.en['agent3.dock_nothing_said']);
+    expect(getByTestId('dock-sentence').textContent).toBe(translations.en['agent.dock_ended']);
+    expect(getByTestId('dock-meta').textContent).toBe(translations.en['agent.dock_nothing_said']);
     expect(getByTestId('dock-glyph').getAttribute('data-icon')).toBe('pw-history');
   });
 
   it('keeps the waiting face while the closing question stands', () => {
     const { getByTestId } = dock(QUESTION);
-    expect(getByTestId('dock-sentence').textContent).toBe(translations.en['agent3.dock_gated']);
+    expect(getByTestId('dock-sentence').textContent).toBe(translations.en['agent.dock_gated']);
     expect(getByTestId('dock').getAttribute('data-paper')).toBe('ask');
   });
 });
@@ -411,7 +390,7 @@ describe('the dock says what the desk was left with', () => {
 describe('an answered job\'s history line says what it WAS, never "0 edits"', () => {
   function rows(job: JobView) {
     const view = renderWithI18n(
-      <PanelShell view={makeView({ jobs: [job, makeJob({ orderSeq: 99, outcome: 'done', kind: 'build' })] })} connected now={0} {...VERBS} />,
+      <PanelShell {...panelProps({ view: makeView({ jobs: [job, makeJob({ orderSeq: 99, outcome: 'done', kind: 'build' })] }), connected: true, now: 0, ...VERBS })} />,
     );
     fireEvent.click(view.getByTestId('history-toggle'));
     const item = [...document.body.querySelectorAll('[data-testid="history-item"]')]
@@ -422,7 +401,7 @@ describe('an answered job\'s history line says what it WAS, never "0 edits"', ()
   it('reads "answered" under the reply-bubble glyph', () => {
     const { view, item } = rows(ANSWER);
     expect(item.querySelector('[data-testid="history-item-stat"]')!.textContent)
-      .toBe(translations.en['agent3.history_answered']);
+      .toBe(translations.en['agent.history_answered']);
     expect(item.querySelector('svg use')!.getAttribute('href')).toBe('#pw-reply-bubble');
     view.unmount();
   });
@@ -430,7 +409,7 @@ describe('an answered job\'s history line says what it WAS, never "0 edits"', ()
   it('reads "ended" under the record glyph for the silent giveup', () => {
     const { view, item } = rows(SILENT);
     expect(item.querySelector('[data-testid="history-item-stat"]')!.textContent)
-      .toBe(translations.en['agent3.history_ended']);
+      .toBe(translations.en['agent.history_ended']);
     expect(item.querySelector('svg use')!.getAttribute('href')).toBe('#pw-history');
     view.unmount();
   });
@@ -438,7 +417,7 @@ describe('an answered job\'s history line says what it WAS, never "0 edits"', ()
   it('leaves a built job reading its edit count', () => {
     const { view, item } = rows(BUILT);
     expect(item.querySelector('[data-testid="history-item-stat"]')!.textContent)
-      .toBe(translations.en['agent3.history_edits']!.replace('{n}', '86'));
+      .toBe(translations.en['agent.history_edits']!.replace('{n}', '86'));
     view.unmount();
   });
 });
@@ -454,7 +433,7 @@ function CelebrateProbe({ view }: { view: PanelView }) {
 describe('a dance only for built things', () => {
   afterEach(() => { vi.useRealTimers(); });
 
-  /** The hook is THIN by rule: it fires on the projection's own `celebrate` and derives nothing. A
+  /** The hook is thin by rule: it fires on the projection's own `celebrate` and derives nothing. A
    *  job carrying the flag dances whatever its ops look like from here. */
   it('fires on the projection\'s own celebrate flag, at the edge of a new settlement', () => {
     const { getByTestId, rerender } = renderWithI18n(<CelebrateProbe view={makeView()} />);
@@ -489,7 +468,7 @@ describe('a dance only for built things', () => {
   /* ── both hosts ── */
 
   it('reaches the desk character in the panel, and only for the built job', () => {
-    const shell = (view: PanelView) => <PanelShell view={view} connected now={0} {...VERBS} />;
+    const shell = (view: PanelView) => <PanelShell {...panelProps({ view, connected: true, now: 0, ...VERBS })} />;
     const { getByTestId, rerender } = renderWithI18n(shell(makeView()));
     rerender(shell(makeView({ jobs: [ANSWER] })));
     expect(getByTestId('pw-character').getAttribute('data-pose')).not.toBe('celebrating');
@@ -534,10 +513,10 @@ describe('a dance only for built things', () => {
 
 describe('the answer family speaks every locale', () => {
   const KEYS = [
-    'agent3.answer_stamp_answered', 'agent3.answer_stamp_asking', 'agent3.answer_stamp_ended',
-    'agent3.answer_reads', 'agent3.answer_reads_one', 'agent3.answer_silent',
-    'agent3.action_file_away', 'agent3.dock_no_edits', 'agent3.dock_reads_one',
-    'agent3.history_answered', 'agent3.history_ended',
+    'agent.answer_stamp_answered', 'agent.answer_stamp_asking', 'agent.answer_stamp_ended',
+    'agent.answer_reads', 'agent.answer_silent',
+    'agent.action_file_away', 'agent.dock_no_edits', 'agent.dock_reads',
+    'agent.history_answered', 'agent.history_ended',
   ];
 
   it('defines every one of them, in all seven, with the count token intact', () => {
@@ -546,18 +525,18 @@ describe('the answer family speaks every locale', () => {
         const value = translations[loc][key];
         expect(value, `${loc}/${key}`).toBeTruthy();
       }
-      for (const key of ['agent3.answer_reads', 'agent3.answer_reads_one', 'agent3.dock_reads_one']) {
+      for (const key of ['agent.answer_reads', 'agent.dock_reads']) {
         expect(translations[loc][key], `${loc}/${key}`).toContain('{n}');
       }
     }
   });
 
-  /** The paper's own text is the MODEL's, never re-run through the dictionary: a summary logged in
+  /** The paper's own text is the model's, never re-run through the dictionary: a summary logged in
    *  one language must not be half-translated by a later locale switch. */
   it('renders the model\'s words verbatim under a different locale', () => {
     useEditorStore.setState({ locale: 'ru' });
     const { getByTestId } = renderWithI18n(<AnswerPaper job={ANSWER} />);
     expect(getByTestId('answer-text').textContent).toBe(ANSWER.summary);
-    expect(getByTestId('answer-stamp').textContent).toBe(translations.ru['agent3.answer_stamp_answered']);
+    expect(getByTestId('answer-stamp').textContent).toBe(translations.ru['agent.answer_stamp_answered']);
   });
 });

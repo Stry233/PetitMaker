@@ -5,27 +5,19 @@
  * Only applies to PaintTerrain commands with terrainType === Mountain.
  * Water commands are not checked (water has no elevation ceiling in this rule).
  */
-import {
-  CommandType,
-  TerrainType,
-  type Command,
-  type GridState,
-  type PreCommandRule,
-  type ValidationError,
-} from '../core/model/types';
-import { ELEVATION_MAX } from '../core/model/game-profile';
+import { CommandType, TerrainType } from '../core/model/types';
+import { ELEVATION_MAX, TERRAIN_GRID } from '../core/game/profile';
+import { evidenceOn } from '../core/grid/grids';
+import { definePreRule } from './define';
 
-export const elevationRangeRule: PreCommandRule = {
+export const elevationRangeRule = definePreRule({
   id: 'V-MTN-01',
-  agentHint: `Mountain elevation must be 0-${ELEVATION_MAX} (0 clears the cell).`,
-  phase: 'pre-command',
   appliesTo: [CommandType.PaintTerrain],
-  validate(cmd: Command, _state: GridState): ValidationError[] {
-    if (cmd.type !== CommandType.PaintTerrain) return [];
+  validate(cmd, _state, fail) {
     if (cmd.terrainType !== TerrainType.Mountain) return [];
     if (cmd.elevation < 0 || cmd.elevation > ELEVATION_MAX) {
-      return [{ ruleId: 'V-MTN-01', message: 'error.elevation_limit', messageParams: { max: ELEVATION_MAX }, cells: cmd.cells, severity: 'error' }];
+      return [fail('error.elevation_limit', evidenceOn(TERRAIN_GRID, cmd.cells), { messageParams: { max: ELEVATION_MAX } })];
     }
     return [];
   },
-};
+});

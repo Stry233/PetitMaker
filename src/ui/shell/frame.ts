@@ -1,28 +1,18 @@
 /**
- * Layout data for chrome around the map. Asset rectangles describe design-space size only;
- * `units.ts` converts them to fixed CSS-pixel edge placement. Mode blocks share an ink baseline,
- * while the assistant occupies a second aligned row and is sized by its visible character art.
+ * Frame art in design px and the placement derived from it; `units.ts` converts to fixed css px.
+ * Kept as one file over 500 lines: the drawn art and every placement rule read the same constants.
  */
-import type { BuildMode } from '../../core/model/edit-mode';
+import { modesInSession, type BuildMode } from '../../state/editing/edit-mode';
 import type { PlanetSession } from '../../state/slices/planet-session';
 import type { ModalId } from '../../state/slices/shell';
 import type { TourTargetId } from '../chrome/tour/steps';
-import type { HelpPageId } from '../chrome/modals/help/page-schema';
+import type { HelpPageId } from '../help/page-schema';
 import {
   BLOCK_W, BLOCK_W_ON, EDGE, EDGE_LEFT, EDGE_RIGHT, EDGE_TOP, LABEL_BOX_DEPTH, LABEL_INK_DEPTH, MODE, MODE_PLATE_W, TOP_RIGHT_GAP,
   MODE_SCALE, RAIL, RAIL_FLOOR,
 } from './units';
 
-import modeObject from '../../assets/shell/mode-object/icon.png';
-import modeRoad from '../../assets/shell/mode-road/icon.png';
-import modeMountain from '../../assets/shell/mode-mountain/icon.png';
-import modeWater from '../../assets/shell/mode-water/icon.png';
-import modeGenerate from '../../assets/shell/mode-generate/icon.png';
-import modeObjectOn from '../../assets/shell/mode-object/icon-pressed.png';
-import modeRoadOn from '../../assets/shell/mode-road/icon-pressed.png';
-import modeMountainOn from '../../assets/shell/mode-mountain/icon-pressed.png';
-import modeWaterOn from '../../assets/shell/mode-water/icon-pressed.png';
-import modeGenerateOn from '../../assets/shell/mode-generate/icon-pressed.png';
+import { MODE_ICONS } from '../design/mode-icons';
 import modePlate from '../../assets/shell/mode-selected-plate.svg';
 import assistantCharacter from '../../assets/shell/assistant/character.png';
 import shareButton from '../../assets/shell/share/button.svg';
@@ -37,46 +27,22 @@ import railZoomOutMark from '../../assets/shell/rail/zoom-out/roundrect.svg';
 import railHideEye from '../../assets/shell/rail/hide-ui/ellipse-2.svg';
 import layersStack from '../../assets/shell/rail/layers/polygon.svg';
 import { pressable } from '../design/styles';
+import type { I18nKey } from '../../i18n/keys';
 
 /** A drawing: how big it is in design px, and what it is called. */
 export interface FrameArt {
   id: string;
-  /** The drawing's file. ABSENT for a control the frame draws itself, which today is the load disc:
-   *  the design source's own ring is a thin one and the game's control is a fat translucent disc, so
-   *  `LoadMeter` draws the shape rather than placing a picture of the wrong one. */
+  /** The drawing's file; absent for the load disc, which `LoadMeter` draws as the game's translucent disc. */
   src?: string;
   /** i18n key for the accessible name. */
-  labelKey: string;
+  labelKey: I18nKey;
   w: number;
   h: number;
-  /**
-   * Design px between where the drawing's ink stops and the bottom of its own box, measured off a
-   * raster of the file the same way `GlyphInk` is.
-   *
-   * Only the top-right cluster declares it, because only that cluster is placed by where its ink
-   * ENDS. The two block rows are placed by theirs too, but every mode PNG is cropped to its ink on
-   * all four sides, so for them the box bottom IS the drawing's and there is nothing to subtract.
-   */
+  /** Design px between the drawing's ink and the foot of its box (mode PNGs are cropped to their ink and declare none). */
   botSlack?: number;
-  /**
-   * How big the drawing READS in its OWN design px: `apparentSize` over its alpha, measured off a
-   * raster of the file.
-   *
-   * Only the top-right cluster declares it, and it is what that cluster is SIZED by. Three drawings
-   * at one box height are three sizes to the eye — a solid disc, a shape that is mostly a notch and a
-   * square filled corner to corner do not read alike — so each is given the height that puts this on
-   * the frame's utility size (`units.ts:RAIL.topRight`).
-   */
+  /** How big the drawing reads in its own design px (`apparentSize` over its alpha); the corner cluster is sized by it. */
   apparent?: number;
-  /**
-   * What the EYE said about the size the formula arrived at, as a factor on it.
-   *
-   * `apparentSize` is a heuristic and this is where it is overruled, the way `FIT_TRIM` overrules it
-   * for the fit icon. It works between drawings of comparable density and these three are not: it
-   * discounts area, so an open shape is read as small and grown, which is exactly how the share
-   * anchor came out plainly the biggest thing in the corner while the numbers said all three were
-   * 49.3. Kept separate from `apparent` so the measurement stays a measurement.
-   */
+  /** The eye's correction on `apparent`, kept apart so the measurement stays a measurement. */
   trim?: number;
   /** What pressing the control opens: the menu sheet or a modal. Absent for a readout. */
   opens?: 'menu' | ModalId;
@@ -91,9 +57,7 @@ export interface FrameArt {
   inSession?: boolean;
 }
 
-/** A block of the top-left row: its resting drawing, plus the heavier one the design draws for the
- *  selected state. The two are different pictures rather than one scaled, so each carries its own
- *  size. */
+/** A block of the top-left row: its resting drawing and the separate, heavier one drawn for selection. */
 export interface BlockArt extends FrameArt {
   /** A block is always a picture, never something the frame draws. */
   src: string;
@@ -105,7 +69,7 @@ export interface ModeArt extends BlockArt {
   id: Exclude<BuildMode, null>;
   /** i18n key for the name inside a planet session, where the mode shapes the ground rather than
    *  mountains. Absent when the name is the same there. */
-  sessionLabelKey?: string;
+  sessionLabelKey?: I18nKey;
   /** The Help page the block teaches; the three terrain surfaces share one page. */
   helpTarget: HelpPageId;
 }
@@ -114,34 +78,28 @@ export interface ModeArt extends BlockArt {
 const atWidth = (drawn: { w: number; h: number }, w: number) => ({ w, h: (drawn.h * w) / drawn.w });
 
 /**
- * The five build modes, left to right as the design lays them out, at the sizes it DRAWS them.
- *
- * They are not laid out at these. Each is one grass cube with a different thing standing on it, so
- * the cube is the unit the row is read by, and a cube's size is its drawing's width — which makes
- * the row even when matching the boxes would not, since the boxes differ in height by up to 25
- * design px and none of that difference is the cube. Four of the five are drawn at the block width
- * and the generator's at 176 / 208, a cube 2.3% bigger than its neighbours' at rest, so `MODES`
- * brings every drawing to the one width rather than passing the export size through.
+ * The five build modes left to right at the sizes the design draws them; `MODES` brings each to one
+ * block width, since the grass cube is the unit the row is read by.
  */
 const MODES_DRAWN: readonly {
   id: ModeArt['id'];
   src: string;
   on: string;
-  labelKey: string;
-  sessionLabelKey?: string;
+  labelKey: I18nKey;
+  sessionLabelKey?: I18nKey;
   helpTarget: HelpPageId;
   rest: { w: number; h: number };
   sel: { w: number; h: number };
 }[] = [
-  { id: 'object', src: modeObject, on: modeObjectOn, labelKey: 'mode.object', helpTarget: 'objects',
+  { id: 'object', src: MODE_ICONS.object.rest, on: MODE_ICONS.object.pressed, labelKey: 'mode.object', helpTarget: 'objects',
     rest: { w: 172, h: 184 }, sel: { w: 207, h: 212 } },
-  { id: 'road', src: modeRoad, on: modeRoadOn, labelKey: 'mode.road', helpTarget: 'terrain',
+  { id: 'road', src: MODE_ICONS.road.rest, on: MODE_ICONS.road.pressed, labelKey: 'mode.road', helpTarget: 'terrain',
     rest: { w: 172, h: 190 }, sel: { w: 207, h: 200 } },
-  { id: 'mountain', src: modeMountain, on: modeMountainOn, labelKey: 'mode.mountain', sessionLabelKey: 'mode.terrain', helpTarget: 'terrain',
+  { id: 'mountain', src: MODE_ICONS.mountain.rest, on: MODE_ICONS.mountain.pressed, labelKey: 'mode.mountain', sessionLabelKey: 'mode.terrain', helpTarget: 'terrain',
     rest: { w: 172, h: 165 }, sel: { w: 207, h: 187 } },
-  { id: 'water', src: modeWater, on: modeWaterOn, labelKey: 'mode.water', helpTarget: 'terrain',
+  { id: 'water', src: MODE_ICONS.water.rest, on: MODE_ICONS.water.pressed, labelKey: 'mode.water', helpTarget: 'terrain',
     rest: { w: 172, h: 168 }, sel: { w: 207, h: 200 } },
-  { id: 'generate', src: modeGenerate, on: modeGenerateOn, labelKey: 'mode.generate', helpTarget: 'generate',
+  { id: 'generate', src: MODE_ICONS.generate.rest, on: MODE_ICONS.generate.pressed, labelKey: 'mode.generate', helpTarget: 'generate',
     rest: { w: 176, h: 174 }, sel: { w: 208, h: 180 } },
 ];
 
@@ -156,15 +114,13 @@ export const MODES: readonly ModeArt[] = MODES_DRAWN.map((art) => ({
   selected: { src: art.on, ...atWidth(art.sel, BLOCK_W_ON) },
 }));
 
-/** The modes a planet session draws with, ground first; every mode outside one. */
-const PLANET_SESSION_MODES: readonly BuildMode[] = ['mountain', 'water', 'object'];
-
+/** The mode row's modes: the planet session's (`modesInSession`), every block outside one. */
 export function sessionModes(planetSession: PlanetSession | null): BuildMode[] {
-  return planetSession ? [...PLANET_SESSION_MODES] : MODES.map((art) => art.id);
+  return [...(modesInSession(planetSession) ?? MODES.map((art) => art.id))];
 }
 
 /** The i18n key naming mode `id`, inside a planet session or outside one. */
-export function modeLabelKey(id: ModeArt['id'], inSession: boolean): string {
+export function modeLabelKey(id: ModeArt['id'], inSession: boolean): I18nKey {
   const art = MODES.find((a) => a.id === id)!;
   return (inSession && art.sessionLabelKey) || art.labelKey;
 }
@@ -177,22 +133,10 @@ export function sessionModeArt(planetSession: PlanetSession | null): ModeArt[] {
   });
 }
 
-/**
- * The splat that marks the selected mode, drawn behind its block.
- *
- * It is a top-level shape in the design source, wider and deeper than any one block, and `drop` is
- * how far below the shared baseline the design hangs it: the splat is ground the block stands on,
- * not a plate around it.
- */
+/** The splat under the selected mode, wider than a block and hanging `drop` below the baseline it stands on. */
 export const MODE_PLATE = { src: modePlate, w: MODE_PLATE_W, h: 196, drop: 32 } as const;
 
-/**
- * The name the five mode blocks give their splat, so Framer treats it as ONE element moving between
- * them rather than one appearing per block.
- *
- * Shared by exactly the five. The assistant's block wears the same splat but is not a mode, and two
- * elements carrying one `layoutId` at the same time have no single place to be.
- */
+/** The splat's one identity across the five mode blocks, so a switch moves it rather than drawing another. */
 export const MODE_PLATE_ID = 'shell-mode-plate';
 
 /** The character, at the size the design draws it: smaller than a mode block, and the same picture
@@ -200,74 +144,30 @@ export const MODE_PLATE_ID = 'shell-mode-plate';
 const CHARACTER = { w: 153, h: 150 };
 
 /**
- * What the character's width is a fraction OF the block width, in each state.
- *
- * It is the one drawing of the six with no cube in it, so there is nothing to hold to the row's
- * shared width, and given that width it reads BIG: a solid animal covers 79% of its own box where a
- * diorama covers 58 to 66, so at one width the character carries a third more ink than the blocks it
- * stands under. `apparentSize` is the measure that sees that, and off a raster of the six drawings
- * it reads, each in its own design px:
- *
- *   resting    object 187.9  road 188.0  mountain 180.5  water 181.6  generate 183.1 | cat 191.0
- *   selected   object 223.3  road 205.9  mountain 208.4  water 210.0  generate 201.4 | cat 229.8
- *
- * So the character is drawn at the width that puts its own reading on the mean of the five — under
- * the block width in both states, and still well over the 153 the design exports it at. The two
- * states take different fractions because the design's pressed blocks are airier than its resting
- * ones while the character is one picture in both.
+ * The character's width as a fraction of the block width per state: a solid animal reads bigger than a
+ * diorama at one width, so her `apparentSize` is held to the five blocks' mean.
  */
 const CHARACTER_FIT = { rest: 184.22 / 190.96, selected: 209.81 / 229.82 };
 
-/**
- * The assistant's block.
- *
- * It is a block of the same family: the same slot, the same splat behind it when it is the active
- * thing and the same caption under it, growing with its plate as the five do rather than reading as
- * a guest among them.
- */
+/** The assistant's block: a block of the mode row's family, with its slot, splat and caption. */
 export const ASSISTANT_BLOCK: BlockArt = {
   id: 'assistant',
   src: assistantCharacter,
-  labelKey: 'generate.algo_agent',
+  labelKey: 'mode.assistant',
   ...atWidth(CHARACTER, BLOCK_W * CHARACTER_FIT.rest),
   selected: { src: assistantCharacter, ...atWidth(CHARACTER, BLOCK_W_ON * CHARACTER_FIT.selected) },
 };
 
-/**
- * The left margin both rows keep, in css px.
- *
- * It is the frame's left margin, measured to the DRAWING and not to the box: every block's art
- * fills its box edge to edge, so the two are the same here. That margin is wider than the right one
- * BECAUSE of this row: the splat behind a selected block is drawn wider than the block and centred
- * on it, so the first block's splat reaches into the margin, and a margin narrower than that
- * overhang cuts the splat off at the window (`frame-margins.test.ts`).
- */
+/** The left margin both rows keep, wide enough that the first block's splat is not cut at the window. */
 export const MODE_ROW_LEFT = EDGE_LEFT;
 
-/**
- * Where the mode row's BOX starts, in css px.
- *
- * The box is exactly as deep as the tallest drawing it holds — the object block's SELECTED art over
- * the shared baseline — so the box top IS that drawing's ink top and this is the margin directly.
- *
- * Measured on the ink that comes CLOSEST to the edge, which is the selected one. Placed on the
- * RESTING drawings instead, as it was, selecting a mode grew its art up out of the row and left 9 px
- * over it where every other cluster kept the frame's margin: the tightest gap in the whole frame,
- * and it only appeared once someone used the thing.
- */
+/** The mode row's box top, the selected object block's ink top, so a selection keeps the frame's margin. */
 export const MODE_ROW_TOP = EDGE_TOP;
 
 /** The baseline the mode row's blocks stand on. */
 export const MODE_ROW_BASE = MODE_ROW_TOP + MODE.height;
 
-/**
- * How far the mode row's own ink reaches BELOW its baseline, in css px, when a mode is selected:
- * the splat that block stands on, and under that the block's name.
- *
- * The name's slot belongs to the row whether or not a mode is naming itself. Reserving it is what
- * keeps the character below from moving when one does, and it is most of the air under the row at
- * rest.
- */
+/** How far the row's ink reaches below its baseline with a mode selected: the splat, then the name's reserved slot. */
 const MODE_ROW_DEPTH = MODE.label.gap + LABEL_INK_DEPTH * MODE.label.size;
 
 /** How far down the mode row's own ink reaches, in css px: the baseline plus the name under it.
@@ -275,16 +175,8 @@ const MODE_ROW_DEPTH = MODE.label.gap + LABEL_INK_DEPTH * MODE.label.size;
 export const MODE_ROW_INK_BOTTOM = MODE_ROW_BASE + MODE_ROW_DEPTH;
 
 /**
- * Where the assistant's own row starts, in css px.
- *
- * DERIVED, and from the state where the two rows are tightest: a mode selected, so its name hangs
- * into the space between them, and the assistant open, so its drawing is the larger of the two it
- * has. In that state the character's ink stands `MODE.rowClearance` under the name's, and everything
- * else about the number falls out of the drawings' own sizes.
- *
- * It is the BOX this places, and the box is deeper than the character standing in it, so the last
- * term takes that slack back off. Setting the gap to the box, as a constant, is what made one number
- * mean two very different distances depending on which state the frame was in.
+ * The assistant row's top, derived from the tightest state (a mode named, the assistant open): her ink
+ * stands `MODE.rowClearance` under the name's.
  */
 export const ASSISTANT_ROW_TOP = MODE_ROW_INK_BOTTOM + MODE.rowClearance
   - (MODE.height - ASSISTANT_BLOCK.selected.h * MODE_SCALE);
@@ -304,25 +196,8 @@ export const ASSISTANT_INK = {
 } as const;
 
 /**
- * The regional-load disc, save-and-share, and the menu that holds the windows. Sizes only: the
- * cluster is laid out against the top-right corner, in the order given. The disc has no file: it is
- * drawn edge to edge inside its square box, which is what makes it the cluster's deepest ink.
- *
- * THE THREE `trim`S ARE UNEQUAL ON PURPOSE, and bringing them back to one number would undo what
- * they are for. Each was judged by putting the three side by side at rendered size against a plain
- * rail disc and looking, not by evaluating anything:
- *
- *   load  — none. A translucent disc drawn edge to edge in its box, so `apparentSize` already reads
- *           it as a solid disc of that diameter and the formula lands it on a rail button exactly.
- *   menu  — 0.95. A cream disc with three holes punched in it is still a disc, and a person reads it
- *           by its diameter; the formula charges it for the missing area and grows it 5% past the
- *           plain plates it stands with, which shows against the rail directly below.
- *   share — 0.84. The open one, and the reason this field exists. Untrimmed it stands 53 css tall
- *           against 44 for the two discs. Walked down through 0.94 / 0.88 / 0.85 / 0.82: at 0.88
- *           the cradle is still wider than the menu disc and the arrow well over it, at 0.82 it has
- *           gone light. 0.84 puts its cradle at the disc's width and lets the arrow's spike sit a
- *           fraction proud, which is what a spike may do — an extremity carries less weight to the
- *           eye than an edge does.
+ * The load disc, save-and-share and the menu, laid out from the top-right corner in this order. The
+ * unequal `trim`s are judged by eye at rendered size against a rail disc (the disc needs none).
  */
 export const TOP_RIGHT: readonly FrameArt[] = [
   { id: 'load', labelKey: 'hud.region_load', w: 157, h: 157, botSlack: 0, apparent: 175.7 },
@@ -333,9 +208,7 @@ export const TOP_RIGHT: readonly FrameArt[] = [
     opens: 'menu', tourTarget: 'menu', helpTarget: 'frame', focusRadius: 999, inSession: true },
 ];
 
-/** How tall a top-right drawing is rendered, in css px: the height at which its own ink reads the
- *  size a rail button does, times whatever the eye then said about it (`trim`). `apparentSize`
- *  scales with the drawing, so this is one division. */
+/** A top-right drawing's height in css px: where its ink reads at a rail button's size, times `trim`. */
 export function topRightHeight(art: FrameArt): number {
   return ((RAIL.topRight * art.h) / (art.apparent ?? art.h)) * (art.trim ?? 1);
 }
@@ -363,10 +236,7 @@ export function modeRowRight(count: number): number {
   return blockCentre(count - 1) + MODE_PLATE_W * MODE_SCALE / 2;
 }
 
-/**
- * The corner cluster's own depth, in css px: from the highest ink in it down to the line the three
- * stand on. Each drawing is a different height now, so the box is the deepest of them.
- */
+/** The corner cluster's depth in css px: from its highest ink to the line the three stand on. */
 export const TOP_RIGHT_H = Math.max(...TOP_RIGHT.map((art) => topRightHeight(art) - topRightSlack(art)));
 
 /** The line through the middle of the resting mode blocks' ink, in css px from the window's top:
@@ -377,80 +247,24 @@ export const MODE_ROW_INK_CENTRE = MODES.reduce(
 ) / MODES.length;
 
 /**
- * Where the top-right cluster's box starts, in css px: its ink CENTRED ON THE INK it faces.
- *
- * ALIGN THE INK, NOT THE BOX, and this constant is the reason the rule is written down. The band
- * the mode row occupies is `MODE.height`, which is sized for the SELECTED drawing (212 design px,
- * the tallest thing the row must fit) — and no resting block is that tall. The five rest at 55.6 to
- * 64.1 css of ink, standing on `MODE_ROW_BASE`, so their ink centres land at 67.0 to 71.2. Centring
- * the cluster inside `MODE.height` put its own centre at 63.5: nearly 6 px above every block across
- * from it, which is what "the top right buttons look visually higher" was.
- *
- * Hanging it off the row's BASELINE instead is the other end of the same mistake and was tried
- * first: the cluster is 44 of ink against a block's 55 to 64, so sharing a bottom line drops its top
- * far below theirs and it reads low. Neither box edge is the answer, because the two groups do not
- * share a box — they share a LINE THROUGH THE MIDDLE of what is drawn.
- *
- * So the target is the mean of the resting blocks' own ink centres, and it is DERIVED rather than
- * written: the art's heights are in `MODES` and the row's scale is `MODE_SCALE`, so redrawing a
- * block or rescaling the row moves this with it instead of leaving a stale number behind.
- *
- * The three still share a bottom line with EACH OTHER, which is what makes them read as one group:
- * measured to the INK, per drawing, since each carries its own slack under its own art
- * (`Shell.tsx:Piece`).
+ * The corner cluster's box top: its ink centred on the resting mode blocks' mean ink centre, derived from
+ * the art so a redrawn block moves it. The three share a bottom line with each other by their ink.
  */
 export const TOP_RIGHT_TOP = MODE_ROW_INK_CENTRE - TOP_RIGHT_H / 2;
 
-/**
- * Where the right-hand column starts: level with the ASSISTANT on the other side of the window.
- *
- * The two are the second row of the frame, one at each edge, and placed against whatever stands
- * above each of them they end up a group's gap apart vertically for no reason at all. Measured off a
- * screenshot diffed against the bare map, the layer plate's ink begins at 128.8 and the character's
- * at 137.6.
- *
- * Ink to ink, not box to box: the plate is a filled pill so its ink IS its box, and the character is
- * a drawing standing at the bottom of a taller slot, so its own top is what `ASSISTANT_INK` reports.
- * It is the RESTING drawing that is matched — the open one is bigger and reaches 7 px higher — since
- * that is the state the frame spends its life in and an open assistant has its whole panel out
- * beside it anyway.
- *
- * It costs the column: the three groups' separation at 1600x900 comes down to 18.7, which is a
- * whisker over the squeezed minimum they are allowed (`RAIL.groupMin`).
- */
+/** The rail's top, level with the resting character's ink across the window (`ASSISTANT_INK`). */
 export const RAIL_TOP = ASSISTANT_INK.top;
 
-/** The layer stack, which stands where the collapsed control stands: it REPLACES that control
+/** The layer stack, which stands where the collapsed control stands: it replaces that control
  *  rather than opening under it, so it takes its top edge. */
 export const LAYER_PANEL_TOP = RAIL_TOP;
 
-/**
- * Where the collapsed layer control stands, in css px from the window's right edge.
- *
- * CENTRED ON THE BUTTONS, not squared with their right edge. Both shapes are filled drawings whose
- * ink is their box — a 44 px disc fills its square, the stepper is a 28 px stadium — so what a
- * person compares down the column is the two shapes' middles, and squaring the right edges put the
- * narrower one 8 px off that line. The buttons still keep the frame's margin, since the pill now
- * stands entirely inside their span.
- */
+/** The collapsed layer control's right offset: centred on the rail buttons, since both shapes' ink is their box. */
 export const LAYER_STEP_RIGHT = EDGE_RIGHT + (RAIL.button - RAIL.layer.w) / 2;
 
 /**
- * How much of the collapsed layer count still takes a press, in frame px measured from its RIGHT end,
- * or `null` for the whole of it.
- *
- * The count hangs off the window's right edge and grows LEFTWARD with its word; the assistant's
- * column hangs off the left edge and grows RIGHTWARD with the frame's zoom. So on a window too narrow
- * for both the word is drawn over the panel, and standing at `z.column` over the panel's `z.panel` it
- * takes the presses that land there as well: at 1280x800 and uiZoom 1.8 it covered the panel's gear
- * whole, and the one door to the manage screen, the model and forget-key answered with the layer
- * stack instead.
- *
- * A word cannot move (it is anchored to the edge it reads from) and neither can the column (it is
- * anchored to the block that opens it), so what gives is the HIT TEST: the part of the count standing
- * over the panel is the panel's to answer, and the part clear of it is still the count's. `panelRight`
- * is `null` where no panel is open, and a box nothing has laid out yet (no width) has no collision to
- * settle.
+ * How much of the collapsed layer count still takes a press, in frame px from its right end, or `null` for
+ * all of it: where the word stands over a free assistant panel, that part is the panel's to answer.
  */
 export function readoutPressLane(
   box: { left: number; width: number },
@@ -481,25 +295,8 @@ export interface RailCell {
 }
 
 /**
- * Which cell the `i`th button of a group of `count` in `files` files stands in.
- *
- * A FOLDED GROUP FILLS FROM THE RIGHT, so the hole a partial row has is on its LEFT. Everything in
- * this column hangs off the window's right edge and shares it — the buttons, the pair, the layer
- * plate — and the eye tracks that edge straight down the frame. A button left alone in the LEFT cell
- * of its row puts a notch in that edge at the one place a straight line is being read, and the group
- * stops reading as one button short and starts reading as broken. Inside the group there is nothing
- * being lined up against, so that is where the gap belongs.
- *
- * It is a property of the ARRANGEMENT rather than of any one button: WHICH button ends up alone
- * falls out of the count, and the count changes whenever the group gains or loses one.
- *
- * EVERY BUTTON IS PLACED, rather than the odd one being pushed right and the rest left to flow. A
- * button on its way out is still mounted for the length of its exit and auto-placement counts it,
- * so the kit losing its two turns re-flows the row they stood in WHILE they leave: a turn mid-fade
- * jumps a row and a column on its way off. Placed, a button keeps its cell whatever else
- * is in the grid, the only one that moves is the one whose cell the new arrangement changed, and the
- * two may share a cell for the length of the fade — which is what one button leaving as another
- * arrives in its place should look like.
+ * The cell of the `i`th of `count` buttons in `files` files. A folded group fills from the right so the
+ * shared right edge stays straight, and every button is placed so one leaving never reflows the rest.
  */
 export function railCell(i: number, count: number, files: number): RailCell {
   const orphans = count % files;
@@ -528,14 +325,8 @@ export const RAIL_FOLDS: readonly { kit: number; history: number }[] = [
 ];
 const MOST_FOLDED = RAIL_FOLDS[RAIL_FOLDS.length - 1]!;
 
-/**
- * The three sizes the layer control comes in, smallest first, and the ladder the arrows walk.
- *
- * `pill` is the design source's own dark stepper, `column` is the whole stack in one file with a
- * scrollbar, and `grid` is the square plate. They are one control at three sizes rather than three
- * controls, which is what makes a left and a right arrow the whole of the switching.
- */
-export const LAYER_MODES = ['pill', 'column', 'grid'] as const;
+/** The layer control's three sizes, smallest first: the dark stepper, the one-file stack and the square plate. */
+const LAYER_MODES = ['pill', 'column', 'grid'] as const;
 export type LayerMode = (typeof LAYER_MODES)[number];
 
 /** The next size along, clamped at both ends: the ladder has a smallest and a biggest rung and
@@ -611,9 +402,10 @@ export interface FrameLayout {
   rail: RailPlan;
 }
 
-/** All dimensions are local to the zoomed, dock-inset frame. `modes` and `corner` are the mode
- *  blocks and corner controls that show (a planet session draws fewer); both default to the full
- *  editor's. */
+/**
+ * Dimensions are local to the zoomed, dock-inset frame; `modes` and `corner` are what shows (a planet
+ * session draws fewer) and default to the full editor's.
+ */
 export function planFrame(
   width: number, height: number,
   opts: { open: boolean; plateDepth: number; plateMinDepth?: number; plateMinWidth?: number; modes?: number; corner?: readonly FrameArt[] },
@@ -665,23 +457,11 @@ export function railClearanceFor(layout: FrameLayout, bottom: number, height: nu
   return clearance;
 }
 
-/**
- * One glyph of the right-hand groups: the drawing WITHOUT the round plate the design source drew it
- * on, since here it sits on a round plate the group draws. Several are more than one shape,
- * so a glyph is a list of parts with a shared box: `x`/`y` are inside that box, in design px.
- */
+/** One rail glyph without the design's round plate (the group draws its own), as parts in a shared design-px box. */
 interface GlyphPart { src: string; x: number; y: number; w: number; h: number }
 export interface Glyph { w: number; h: number; ink: GlyphInk; parts: readonly GlyphPart[] }
 
-/**
- * Where a drawing's INK actually is, measured off a raster of the composed glyph rather than read
- * off its layer rects. A shape is rarely centred in the box it was drawn in and its box says
- * nothing about how much of it is filled, so a row sized and centred on boxes comes out with each
- * glyph a different apparent size, sitting a different distance from the middle of its button.
- *
- * All of it in the glyph's own design px. `area` is the alpha-weighted coverage, so a hollow ring
- * and a solid disc of the same span are not the same number.
- */
+/** Where a glyph's ink is, measured off a raster, in its own design px; `area` is alpha-weighted coverage. */
 export interface GlyphInk {
   /** The ink's bounding box inside the glyph box. */
   x: number; y: number; w: number; h: number;
@@ -689,31 +469,16 @@ export interface GlyphInk {
   gx: number; gy: number;
   /** Covered area, design px squared. */
   area: number;
-  /** What the EYE said about the size the formula arrived at, as a factor on it: `apparentSize`
-   *  discounts area, so a sparse drawing beside dense neighbours comes out enlarged (lettering next
-   *  to filled figures). Kept apart from the measurements so they stay measurements. */
+  /** The eye's correction on `apparentSize`, which discounts area and enlarges sparse drawings beside dense ones. */
   trim?: number;
 }
 
-/**
- * Where a drawing balances: halfway between the middle of its ink and the ink's centre of mass.
- *
- * The bounding box alone ignores which side the weight is on. The centre of mass alone over-corrects
- * for a long thin tail, which would shove the magnifier's lens off-centre to make room for a handle
- * that carries almost none of the drawing.
- */
+/** Where a drawing balances: halfway between its ink box's middle and its ink's centre of mass. */
 export function opticalCentre(ink: GlyphInk): { x: number; y: number } {
   return { x: (ink.x + ink.w / 2 + ink.gx) / 2, y: (ink.y + ink.h / 2 + ink.gy) / 2 };
 }
 
-/**
- * How big a drawing READS, in the units its parts are given in: the geometric mean of the ink's
- * diagonal and the square root of its area.
- *
- * Extent alone lets a dense ring out-shout a sparse arrow of the same span; area alone shrinks an
- * open drawing to nothing. Normalising this across a family is what makes a row of glyphs look like
- * one set, where matching their box heights does not.
- */
+/** How big a drawing reads: the geometric mean of the ink's diagonal and the square root of its area. */
 export function apparentSize(ink: GlyphInk): number {
   return Math.sqrt(Math.hypot(ink.w, ink.h) * Math.sqrt(ink.area));
 }
@@ -725,14 +490,7 @@ const glyph = (ink: GlyphInk, parts: readonly GlyphPart[]): Glyph => ({
   parts,
 });
 
-/**
- * The rail's glyphs.
- *
- * There is no `redo`: the design source drew that arrow greyed out, at 73% over a light grey, which
- * is its spent state and not a glyph — used as one it puts a washed-out arrow beside a solid one.
- * The drawing is `undo` mirrored to within half a design px, so the pair is one drawing and cannot
- * come out at two weights.
- */
+/** The rail's glyphs. Redo is undo mirrored: the design's own redo is its spent state, not a glyph. */
 export const GLYPHS = {
   undo: glyph(
     { x: 1.25, y: 2, w: 62.62, h: 59.5, gx: 37.3, gy: 32.78, area: 1613.9 },
@@ -759,16 +517,14 @@ export const GLYPHS = {
       { src: railZoomOutMark, x: 15, y: 21, w: 34, h: 21 },
     ],
   ),
-  /** The eye the design source draws for putting the interface away (the sidebar hide icon). It is ONE
-   *  shape — outline and pupil in a single even-odd path — so unlike its neighbours it has no parts
-   *  to place. */
+  /** The eye the design draws for putting the interface away: one even-odd path, so it has no parts to place. */
   hideUi: glyph(
     { x: 1, y: 2, w: 73, h: 46, gx: 37.82, gy: 25.09, area: 1691.1 },
     [{ src: railHideEye, x: 0, y: 0, w: 76, h: 50 }],
   ),
 } as const;
 
-/** The layer stack's drawing (the readout pill's own glyph). Exported here beside the GLYPHS so
+/** The layer stack's drawing (the readout pill's own glyph). Exported here beside the `GLYPHS` so
  *  every picture of the control (the rail, the Help Center's inline art) draws the one file. */
 export const LAYERS_STACK_SRC = layersStack;
 
@@ -777,13 +533,5 @@ export const LAYERS_STACK_SRC = layersStack;
 export const FIT_BOX = 24;
 export const FIT_INK: GlyphInk = { x: 2.75, y: 2.75, w: 18.5, h: 18.5, gx: 11.94, gy: 11.94, area: 109.9 };
 
-/**
- * The fit icon's own correction, on top of the family rule.
- *
- * It is four corner brackets: a hollow square carrying a fifth of the ink the solid drawings beside
- * it do, over the same span. `apparentSize` weighs that area, reads the drawing as small, and scales
- * it UP — which is how the one glyph meant to match the rail came out the widest thing on it. An
- * open frame is read by its span alone, so this brings its span back to the family's, where the
- * area term would leave it a fifth over.
- */
+/** The fit icon's correction on the family rule: an open frame of brackets is read by its span alone. */
 export const FIT_TRIM = 0.82;

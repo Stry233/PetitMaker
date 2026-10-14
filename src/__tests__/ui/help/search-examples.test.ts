@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { getCatalogItem, getPlaceableByCategory } from '../../../state/catalog';
-import { ItemCategory, type Locale } from '../../../core/model/types';
+import { ItemCategory } from '../../../config/catalog/categories';
+import { LOCALES } from '../../../core/model/locale';
 import { localizedName } from '../../../i18n/context';
-import { SEARCH_EXAMPLE_IDS, searchExamples } from '../../../ui/chrome/modals/help/search-examples';
-import { helpFacts } from '../../../ui/chrome/modals/help/facts';
-import { shelfItems } from '../../../ui/shell/bars/object-shelf';
+import { SEARCH_EXAMPLE_IDS, searchExamples } from '../../../ui/help/search-examples';
+import { helpFacts } from '../../../ui/help/facts';
+import { shelfItems } from '../../../ui/shell/bars/objects/object-shelf';
 
-const LOCALES: readonly Locale[] = ['en', 'zh', 'ja', 'ru', 'th', 'id', 'fr'];
 
 describe('Help search examples', () => {
   it('draws every example from an item the catalog offers', () => {

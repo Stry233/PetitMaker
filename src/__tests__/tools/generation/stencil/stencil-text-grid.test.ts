@@ -1,14 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { CommandExecutor } from '../../../../core/commands/command-executor';
-import { EventBus } from '../../../../core/commands/event-bus';
-import { ItemCategory, TerrainType, type EditorEvents, type Stencil, type StencilPlan } from '../../../../core/model/types';
-import { createDefaultRegistry } from '../../../../rules';
-import { roadLookup } from '../../../../state/object-index';
+import { TerrainType } from '../../../../core/model/types';
+import { defaultConfig, type Stencil, type StencilPlan } from '../../../../tools/generation/recipe';
 import { getCatalogByCategory } from '../../../../state/catalog';
-import { generateTerrain } from '../../../../tools/generation/terrain-generator';
 import { fitTextGrid, textTopology, textStrokeEnds } from '../../../../tools/generation/stencil/stencil-text-grid';
 import { fontModel } from './_text-fonts';
-import { makeState } from '../../../rules/_helpers';
+import { makeState, makeExecutor } from '../../../_support/map-state';
+import { generateWith } from '../../../_support/generation';
+import { ItemCategory } from '../../../../config/catalog/categories';
 
 const ALPHANUMERIC = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
 const box = (width: number, height = width) => ({ width, height });
@@ -18,12 +16,10 @@ const rowsOf = (s: Stencil): string[] => Array.from({ length: s.height }, (_, y)
 
 function build(stencil: Stencil, fill: StencilPlan['fill'], read: StencilPlan['read'] = 'shape', allow?: Set<number>) {
   const state = makeState(stencil.width + 6, stencil.height + 6);
-  const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
-  const result = generateTerrain({
-    algorithm: 'stencil', mode: 'mixed', corridorWidth: 1, maxElevation: 8, seed: 1, region: null,
-    stencilPlan: { read, fill, stencil, origin: { x: 3, y: 3 }, allow },
-  }, state, (c) => exec.execute(c), exec.getRegistry());
-  expect(exec.commitStroke(0)).toEqual([]);
+  const exec = makeExecutor(state);
+  const whole = exec.beginStroke();
+  const result = generateWith(state, exec, defaultConfig('stencil', { maxElevation: 8, seed: 1, stencilPlan: { read, fill, stencil, origin: { x: 3, y: 3 }, allow } }));
+  expect(whole.commit()).toEqual([]);
   return { state, result };
 }
 

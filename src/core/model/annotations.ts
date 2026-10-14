@@ -1,49 +1,64 @@
 /** Planning annotations are independent of buildable map content and rule validation. Coordinates
  * use macro-grid cell units; zones and measurements use whole cells, while chips and routes may be fractional. */
 import type { MacroCoord } from './types';
-import { splineSamples, type CurveAnchor } from './spline';
-import { rectContains } from './grid-model';
+import { type CurveAnchor } from '../base/spline';
 import { generateId } from './object-id';
-import type { BuildShape } from './edit-mode';
+import { cellCentre } from '../grid/grid-convert';
+import { cellKey } from '../grid/rect';
+import { gridCellAt } from '../grid/grids';
+import { GRIDS, PLACEMENT_GRID } from '../game/profile';
 
-/** The closed planning vocabulary. Notes carry one of these ids; free text is never stored. */
-export type TagId =
-  | 'homes' | 'shops' | 'workshop' | 'farm' | 'orchard' | 'ranch' | 'garden'
-  | 'forest' | 'plaza' | 'landmark' | 'dock' | 'water' | 'entrance' | 'reserved';
-
-export interface AnnotationTag {
-  id: TagId;
-  labelKey: string;
-  /** Retained for saved notes, omitted from the creation picker. */
-  legacy?: boolean;
+/** A tag the map's author typed. Its text is drawn only once the text check has approved it. */
+export interface CustomTag {
+  id: CustomTagId;
+  text: string;
 }
 
-/** The tag a new zone or chip carries until another is armed. */
-export const DEFAULT_TAG: TagId = 'homes';
+/** The id a custom tag goes by; the prefix keeps it apart from every preset id. */
+export type CustomTagId = `custom:${string}`;
 
-export const ANNOTATION_TAGS: readonly AnnotationTag[] = [
-  { id: 'homes', labelKey: 'annot.tag_homes' },
-  { id: 'shops', labelKey: 'annot.tag_shops' },
-  { id: 'workshop', labelKey: 'annot.tag_workshop', legacy: true },
-  { id: 'farm', labelKey: 'annot.tag_farm' },
-  { id: 'orchard', labelKey: 'annot.tag_orchard' },
-  { id: 'ranch', labelKey: 'annot.tag_ranch', legacy: true },
-  { id: 'garden', labelKey: 'annot.tag_garden' },
-  { id: 'forest', labelKey: 'annot.tag_forest' },
-  { id: 'plaza', labelKey: 'annot.tag_plaza' },
-  { id: 'landmark', labelKey: 'annot.tag_landmark' },
-  { id: 'dock', labelKey: 'annot.tag_dock' },
-  { id: 'water', labelKey: 'annot.tag_water' },
-  { id: 'entrance', labelKey: 'annot.tag_entrance' },
-  { id: 'reserved', labelKey: 'annot.tag_reserved' },
-];
+/** A preset tag id. The kernel keeps any string the codec accepted; the preset vocabulary is app
+ *  data the layers above own. */
+export type PresetTagId = string & { readonly __presetTag?: never };
 
-export const SELECTABLE_ANNOTATION_TAGS = ANNOTATION_TAGS.filter((tag) => !tag.legacy);
+/** What a zone or chip carries as its label: a preset or one of the map's custom tags. */
+export type NoteTag = PresetTagId | CustomTagId;
 
-export const TAG_IDS: readonly TagId[] = ANNOTATION_TAGS.map((t) => t.id);
+/** The most custom tags one map holds. */
+export const CUSTOM_TAG_MAX = 32;
 
-export function isTagId(v: unknown): v is TagId {
-  return typeof v === 'string' && (TAG_IDS as readonly string[]).includes(v);
+export function isCustomTagId(v: unknown): v is CustomTagId {
+  return typeof v === 'string' && v.startsWith('custom:') && v.length > 'custom:'.length;
+}
+
+export function generateCustomTagId(): CustomTagId {
+  return `custom:${generateId('t')}`;
+}
+
+/** The custom tag `tag` names in `tags`, if it is one. */
+export function customTagOf(tags: readonly CustomTag[] | undefined, tag: NoteTag | null): CustomTag | undefined {
+  return tag && isCustomTagId(tag) ? tags?.find((t) => t.id === tag) : undefined;
+}
+
+/** `items` without the custom tags in `gone`: a zone wearing one keeps its body untagged, and a
+ *  chip, which is its tag, goes with it. */
+export function withoutTagsOn(items: readonly MapAnnotation[], gone: ReadonlySet<string>): MapAnnotation[] {
+  const out: MapAnnotation[] = [];
+  for (const n of items) {
+    if (n.kind === 'zone' && n.tag && gone.has(n.tag)) out.push({ ...n, tag: null });
+    else if (n.kind !== 'chip' || !gone.has(n.tag)) out.push(n);
+  }
+  return out;
+}
+
+/** `state` without its custom tags `keep` refuses, and without their uses. */
+export function keepCustomTags(state: AnnotationsState, keep: (tag: CustomTag) => boolean): AnnotationsState {
+  const tags = state.customTags ?? [];
+  const gone = new Set(tags.filter((t) => !keep(t)).map((t) => t.id));
+  if (gone.size === 0) return state;
+  const { customTags: _, ...rest } = state;
+  const customTags = tags.filter((t) => !gone.has(t.id));
+  return { ...rest, items: withoutTagsOn(state.items, gone), ...(customTags.length ? { customTags } : {}) };
 }
 
 /** A painted region with a stable number and an optional text tag. */
@@ -53,11 +68,25 @@ export interface ZoneNote {
   cells: MacroCoord[];
   /** A hex from `ANNOTATION_COLORS` today; any CSS hex renders. */
   color: string;
-  tag: TagId | null;
+  tag: NoteTag | null;
   /** Stable display number; deleted numbers are not reused. */
   num: number;
-  /** Caption size; an omitted value decodes as 'm'. */
-  size?: 's' | 'm' | 'l';
+  /** Caption size; an omitted value decodes as 'm', and 'none' draws no caption at all. */
+  size?: ZoneTextSize;
+}
+
+/** The lettering sizes a chip can take. */
+export type NoteTextSize = 's' | 'm' | 'l';
+/** The font size control's values: a zone may also carry no text. */
+export type ZoneTextSize = NoteTextSize | 'none';
+/** The size a chip takes from the control: with 'none' armed it keeps the default lettering. */
+export function chipTextSize(size: ZoneTextSize): NoteTextSize {
+  return size === 'none' ? 'm' : size;
+}
+
+/** Whether a zone draws a caption: a number or a tag label, at a size that carries text. */
+export function zoneHasCaption(zone: ZoneNote, label: string): boolean {
+  return zone.size !== 'none' && (zone.num > 0 || label !== '');
 }
 
 /** A tag standing on its own plate, for marking a spot without painting a zone. */
@@ -66,8 +95,8 @@ export interface ChipNote {
   id: string;
   x: number;
   y: number;
-  tag: TagId;
-  size: 's' | 'm' | 'l';
+  tag: NoteTag;
+  size: NoteTextSize;
   color: string;
 }
 
@@ -78,6 +107,13 @@ export interface RouteNote {
   points: CurveAnchor[];
   color: string;
   dashed: boolean;
+  /** Line width in multiples of the annotation line, on the brush size slider's range; absent is 1. */
+  width?: number;
+}
+
+/** A route's line width, in multiples of the annotation line. */
+export function routeWidth(route: Pick<RouteNote, 'width'>): number {
+  return route.width ?? 1;
 }
 
 /** Two cell centres on the same row or column define an inclusive measurement span. */
@@ -92,42 +128,59 @@ export interface MeasureNote {
 
 export type MapAnnotation = ZoneNote | ChipNote | RouteNote | MeasureNote;
 
-/** Annotation items and their shared visibility and edit lock. */
+/** Annotation items, the map's own custom tags, and their shared visibility and edit lock. */
 export interface AnnotationsState {
   items: MapAnnotation[];
+  /** In the order they were added; absent when the map has none. */
+  customTags?: CustomTag[];
   visible: boolean;
   locked: boolean;
 }
 
-export function createAnnotationsState(): AnnotationsState {
+function createAnnotationsState(): AnnotationsState {
   return { items: [], visible: true, locked: false };
 }
 
-/** Annotation tools; `none` enables selection and movement. */
-export type AnnotationTool = 'zone' | 'chip' | 'route' | 'measure' | 'erase' | 'none';
-
-/** Zone shapes shared with the terrain toolbar. */
-export type AnnotationZoneShape = BuildShape;
-
-/** Palette chosen for contrast over grass, sand, and water. The final cream uses neutral number
- * badges and matches the map-lettering color. */
-export const ANNOTATION_COLORS: readonly string[] = [
-  '#FF8A7A', '#E5484D', '#FFB347', '#FFD84D',
-  '#9BC53D', '#2FBF9B', '#38BDF8', '#3B82F6',
-  '#818CF8', '#A78BFA', '#C969E6', '#FF7BAE',
-  '#A9704C', '#8A9BAE', '#5D5A55', '#FFFEE3',
-];
-
-/** Cream annotation color rendered with white outlines and neutral number badges. */
-export const ANNOTATION_INK = '#FFFEE3';
-
-/** Whether a note wears the cream ink rather than a palette colour. */
-export function isAnnotationInk(color: string): boolean {
-  return color.toLowerCase() === ANNOTATION_INK.toLowerCase();
+/** `state`'s annotations, created empty on first use. */
+export function annotationsOf(state: { annotations?: AnnotationsState }): AnnotationsState {
+  return (state.annotations ??= createAnnotationsState());
 }
 
-/** The neutral number badge an ink zone wears in place of its own colour. */
-export const INK_ZONE_DISC = '#8A9BAE';
+/** Whether a finished note holds nothing to keep: a zone without cells or a route under two points. */
+export function isEmptyNote(n: MapAnnotation): boolean {
+  return n.kind === 'zone' ? n.cells.length === 0 : n.kind === 'route' ? n.points.length < 2 : false;
+}
+
+/** `n` wearing `tag`: a zone takes any tag or none, and a chip, which is its tag, keeps one. */
+export function withTag(n: MapAnnotation, tag: NoteTag | null): MapAnnotation {
+  return n.kind === 'zone' ? { ...n, tag } : n.kind === 'chip' && tag ? { ...n, tag } : n;
+}
+
+/** `items` with the zones among `ids` merged into the first of them: its tag, number, colour and
+ *  size absorb the others' cells (deduplicated, in stable order) and the absorbed zones go. Ids that
+ *  are not zones are ignored; null under two zones. */
+export function mergeZones(items: readonly MapAnnotation[], ids: readonly string[]): { items: MapAnnotation[]; head: string } | null {
+  const zones = ids
+    .map((id) => items.find((n) => n.id === id))
+    .filter((n): n is ZoneNote => n?.kind === 'zone');
+  if (zones.length < 2) return null;
+  const [head, ...rest] = zones as [ZoneNote, ...ZoneNote[]];
+  const restIds = new Set(rest.map((z) => z.id));
+  const cells = addZoneCells(head.cells, rest.flatMap((z) => z.cells));
+  const merged = items.map((n) => (n.id === head.id ? { ...head, cells } : n)).filter((n) => !restIds.has(n.id));
+  return { items: merged, head: head.id };
+}
+
+/** Whether two points span a measurement: whole cells on one row or column. */
+export function isMeasureSpan(points: readonly [MacroCoord, MacroCoord]): boolean {
+  if (points.some((p) => !Number.isInteger(p.x) || !Number.isInteger(p.y))) return false;
+  return points[0].x === points[1].x || points[0].y === points[1].y;
+}
+
+/** `items` with the measurements among `ids` drawn on their other side. */
+export function flipMeasures(items: readonly MapAnnotation[], ids: ReadonlySet<string>): MapAnnotation[] {
+  return items.map((n) => (n.kind === 'measure' && ids.has(n.id) ? { ...n, flipped: !n.flipped } : n));
+}
 
 /** Generate an id unique within the session and unlikely to collide with loaded ids. */
 export function generateAnnotationId(): string {
@@ -141,20 +194,20 @@ export function nextZoneNumber(annotations: readonly MapAnnotation[]): number {
   return max + 1;
 }
 
-const key = (x: number, y: number): string => `${x},${y}`;
-
-/** Offset from macro-grid coordinates to terrain-cell drawing coordinates. A cell centered at
- * `(x, y)` occupies `[x - 0.5, x + 0.5)` in both views. */
-export const ZONE_GRID_SHIFT = -0.5;
-
-/** Return the zone cell whose drawn footprint contains `p`. */
+/** Note cells are placement-grid cells, the grid roads and objects lie on, so a zone's edges meet
+ *  road and object edges exactly in both views. Return the cell under the point `p`. */
 export function zoneCellAt(p: { x: number; y: number }): MacroCoord {
-  return { x: Math.floor(p.x + 0.5), y: Math.floor(p.y + 0.5) };
+  return gridCellAt(GRIDS[PLACEMENT_GRID], p.x, p.y);
+}
+
+/** The drawn centre of a note cell. */
+export function zoneCellCentre(c: MacroCoord): { x: number; y: number } {
+  return cellCentre(c);
 }
 
 /** Build the shared zone-cell lookup used by rendering and hit testing. */
 export function zoneCellSet(cells: readonly MacroCoord[]): Set<string> {
-  return new Set(cells.map((c) => key(c.x, c.y)));
+  return new Set(cells.map((c) => cellKey(c.x, c.y)));
 }
 
 /** `cells` plus `more`, without duplicates and in stable order. */
@@ -162,7 +215,7 @@ export function addZoneCells(cells: readonly MacroCoord[], more: readonly MacroC
   const seen = zoneCellSet(cells);
   const out = [...cells];
   for (const c of more) {
-    const k = key(c.x, c.y);
+    const k = cellKey(c.x, c.y);
     if (seen.has(k)) continue;
     seen.add(k);
     out.push(c);
@@ -173,291 +226,6 @@ export function addZoneCells(cells: readonly MacroCoord[], more: readonly MacroC
 /** `cells` without any member of `gone`. */
 export function removeZoneCells(cells: readonly MacroCoord[], gone: readonly MacroCoord[]): MacroCoord[] {
   const drop = zoneCellSet(gone);
-  return cells.filter((c) => !drop.has(key(c.x, c.y)));
+  return cells.filter((c) => !drop.has(cellKey(c.x, c.y)));
 }
 
-/** Trace zone boundaries into closed grid-corner loops and remove collinear points. Disconnected
- * regions and holes produce separate loops. */
-export function zoneLoops(cells: readonly MacroCoord[]): Array<Array<[number, number]>> {
-  const set = zoneCellSet(cells);
-  const has = (x: number, y: number): boolean => set.has(key(x, y));
-  type Edge = { a: [number, number]; b: [number, number] };
-  const byStart = new Map<string, Edge[]>();
-  const edges = new Map<string, Edge>();
-  const add = (a: [number, number], b: [number, number]): void => {
-    const id = `${key(...a)}>${key(...b)}`;
-    if (edges.has(id)) return;
-    const edge = { a, b };
-    edges.set(id, edge);
-    const from = key(...a);
-    byStart.set(from, [...(byStart.get(from) ?? []), edge]);
-  };
-  for (const { x, y } of cells) {
-    if (!has(x, y - 1)) add([x, y], [x + 1, y]);
-    if (!has(x + 1, y)) add([x + 1, y], [x + 1, y + 1]);
-    if (!has(x, y + 1)) add([x + 1, y + 1], [x, y + 1]);
-    if (!has(x - 1, y)) add([x, y + 1], [x, y]);
-  }
-  const loops: Array<Array<[number, number]>> = [];
-  const used = new Set<Edge>();
-  for (const first of edges.values()) {
-    if (used.has(first)) continue;
-    const loop: Array<[number, number]> = [];
-    let cur: Edge | undefined = first;
-    while (cur && !used.has(cur)) {
-      used.add(cur);
-      loop.push(cur.a);
-      if (cur.b[0] === first.a[0] && cur.b[1] === first.a[1]) break;
-      const dx = cur.b[0] - cur.a[0], dy = cur.b[1] - cur.a[1];
-      // Diagonal cells share a vertex, not an edge. Turn right to keep their contours separate.
-      const rank = (edge: Edge): number => {
-        const ex = edge.b[0] - edge.a[0], ey = edge.b[1] - edge.a[1];
-        const cross = dx * ey - dy * ex;
-        return cross > 0 ? 3 : dx * ex + dy * ey > 0 ? 2 : cross < 0 ? 1 : 0;
-      };
-      cur = (byStart.get(key(...cur.b)) ?? []).filter((edge) => !used.has(edge))
-        .sort((a, b) => rank(b) - rank(a))[0];
-    }
-    if (loop.length < 3) continue;
-    const merged: Array<[number, number]> = [];
-    for (let i = 0; i < loop.length; i++) {
-      const a = loop[(i - 1 + loop.length) % loop.length]!;
-      const b = loop[i]!;
-      const c = loop[(i + 1) % loop.length]!;
-      if ((b[0] - a[0]) * (c[1] - b[1]) - (b[1] - a[1]) * (c[0] - b[0]) !== 0) merged.push(b);
-    }
-    if (merged.length >= 3) loops.push(merged);
-  }
-  return loops;
-}
-
-/** Zone-corner radius per annotation scale unit. */
-export const ZONE_CORNER_CELLS = 0.28;
-
-/** Scale the corner radius without allowing an arc to cross more than one cell. */
-export function zoneCornerRadius(inkScale: number): number {
-  return Math.min(ZONE_CORNER_CELLS * inkScale, 1);
-}
-
-/** Round zone-loop corners with sampled quadratic curves. The first point is repeated at the end. */
-export function roundedZoneLoops(cells: readonly MacroCoord[], radius = ZONE_CORNER_CELLS): Array<Array<[number, number]>> {
-  return zoneLoops(cells).map((loop) => {
-    const n = loop.length;
-    const out: Array<[number, number]> = [];
-    // Remove coincident samples so renderers receive no zero-length segments.
-    const push = (pt: [number, number]): void => {
-      const last = out[out.length - 1];
-      if (last && Math.hypot(pt[0] - last[0], pt[1] - last[1]) < 1e-3) return;
-      out.push(pt);
-    };
-    const P = (i: number): [number, number] => loop[(i + n) % n]!;
-    for (let i = 0; i < n; i++) {
-      const [ax, ay] = P(i - 1);
-      const [bx, by] = P(i);
-      const [cx, cy] = P(i + 1);
-      const l1 = Math.hypot(bx - ax, by - ay);
-      const l2 = Math.hypot(cx - bx, cy - by);
-      const r1 = Math.min(radius, l1 / 2);
-      const r2 = Math.min(radius, l2 / 2);
-      const p1: [number, number] = [bx - ((bx - ax) / l1) * r1, by - ((by - ay) / l1) * r1];
-      const p2: [number, number] = [bx + ((cx - bx) / l2) * r2, by + ((cy - by) / l2) * r2];
-      push(p1);
-      // Increase samples with radius to keep large corners smooth.
-      const steps = Math.min(9, Math.max(2, Math.round(Math.max(r1, r2) * 5)));
-      for (let k = 1; k <= steps; k++) {
-        const t = k / (steps + 1);
-        const mt = 1 - t;
-        push([
-          mt * mt * p1[0] + 2 * mt * t * bx + t * t * p2[0],
-          mt * mt * p1[1] + 2 * mt * t * by + t * t * p2[1],
-        ]);
-      }
-      push(p2);
-    }
-    if (out.length > 1 && Math.hypot(out[0]![0] - out[out.length - 1]![0], out[0]![1] - out[out.length - 1]![1]) < 1e-3) out.pop();
-    out.push(out[0]!);
-    return out;
-  });
-}
-
-/** Calculate inward normals. `zoneLoops` orients boundaries with their interior on the right. */
-export function loopInwardNormals(loop: ReadonlyArray<[number, number]>): Array<[number, number]> {
-  const n = loop.length;
-  return loop.map((_, i) => {
-    const prev = loop[(i - 1 + n) % n]!;
-    const next = loop[(i + 1) % n]!;
-    const dx = next[0] - prev[0];
-    const dy = next[1] - prev[1];
-    const len = Math.hypot(dx, dy) || 1;
-    return [-dy / len, dx / len] as [number, number];
-  });
-}
-
-/** Return the mean of a zone's cell centers for caption placement. */
-export function zoneCentroid(cells: readonly MacroCoord[]): { x: number; y: number } {
-  let sx = 0;
-  let sy = 0;
-  for (const c of cells) { sx += c.x; sy += c.y; }
-  const n = Math.max(1, cells.length);
-  return { x: sx / n, y: sy / n };
-}
-
-/**
- * Where a zone's caption stands: the middle of the region's thickest part, which is always one of
- * its own cells. The mean of the cells falls outside an L, a U or a ring, so instead every cell is
- * ranked by how many rings of cells stand between it and the outside (8-neighbour distance), and
- * the deepest cells win. Their mean is used when it lands inside the zone, so a rectangle's caption
- * sits at its exact centre; otherwise the deepest cell nearest the centroid is used.
- */
-export function zoneLabelAnchor(cells: readonly MacroCoord[]): { x: number; y: number } {
-  if (cells.length === 0) return { x: 0, y: 0 };
-  const set = zoneCellSet(cells);
-  const depth = new Map<string, number>();
-  let ring: MacroCoord[] = [];
-  for (const c of cells) {
-    let exposed = false;
-    for (let dy = -1; dy <= 1 && !exposed; dy++) {
-      for (let dx = -1; dx <= 1; dx++) {
-        if ((dx || dy) && !set.has(key(c.x + dx, c.y + dy))) { exposed = true; break; }
-      }
-    }
-    if (exposed) { depth.set(key(c.x, c.y), 1); ring.push(c); }
-  }
-  let level = 1;
-  while (depth.size < cells.length) {
-    level += 1;
-    const next: MacroCoord[] = [];
-    for (const c of ring) {
-      for (let dy = -1; dy <= 1; dy++) {
-        for (let dx = -1; dx <= 1; dx++) {
-          const k = key(c.x + dx, c.y + dy);
-          if (set.has(k) && !depth.has(k)) { depth.set(k, level); next.push({ x: c.x + dx, y: c.y + dy }); }
-        }
-      }
-    }
-    ring = next;
-  }
-  const deepest = cells.filter((c) => depth.get(key(c.x, c.y)) === level);
-  const mean = zoneCentroid(deepest);
-  const meanCell = zoneCellAt(mean);
-  if (set.has(key(meanCell.x, meanCell.y))) return mean;
-  const centroid = zoneCentroid(cells);
-  let best = deepest[0]!;
-  let bestDist = Infinity;
-  for (const c of deepest) {
-    const d = Math.hypot(c.x - centroid.x, c.y - centroid.y);
-    if (d < bestDist) { bestDist = d; best = c; }
-  }
-  return { x: best.x, y: best.y };
-}
-
-/** Sample a route with the same spline implementation used by terrain curves. */
-export function routeSamples(points: readonly CurveAnchor[], perSegment?: number): Array<[number, number]> {
-  if (points.length < 2) return points.map((p) => [p.x, p.y]);
-  return splineSamples(points, perSegment);
-}
-
-/** Reduce a dragged path to the anchors that shape it (Ramer-Douglas-Peucker). `tolerance` is the
- * largest deviation, in cells, a dropped point may have from the simplified path. */
-export function simplifyPath(points: readonly MacroCoord[], tolerance: number): MacroCoord[] {
-  if (points.length <= 2) return points.map((p) => ({ x: p.x, y: p.y }));
-  const keep = new Array<boolean>(points.length).fill(false);
-  keep[0] = keep[points.length - 1] = true;
-  const stack: Array<[number, number]> = [[0, points.length - 1]];
-  while (stack.length) {
-    const [a, b] = stack.pop()!;
-    const pa = points[a]!;
-    const pb = points[b]!;
-    const dx = pb.x - pa.x;
-    const dy = pb.y - pa.y;
-    const len = Math.hypot(dx, dy);
-    let far = -1;
-    let farDist = tolerance;
-    for (let i = a + 1; i < b; i++) {
-      const p = points[i]!;
-      const d = len === 0
-        ? Math.hypot(p.x - pa.x, p.y - pa.y)
-        : Math.abs(dx * (pa.y - p.y) - (pa.x - p.x) * dy) / len;
-      if (d > farDist) { farDist = d; far = i; }
-    }
-    if (far < 0) continue;
-    keep[far] = true;
-    stack.push([a, far], [far, b]);
-  }
-  return points.filter((_, i) => keep[i]).map((p) => ({ x: p.x, y: p.y }));
-}
-
-/** Return annotations intersecting a selection rectangle. Routes are tested by sampled curve
- * points so segments crossing the rectangle are included even when their anchors are outside. */
-export function annotationsInRect(
-  rect: { x: number; y: number; w: number; h: number },
-  items: readonly MapAnnotation[],
-): string[] {
-  const caught = (n: MapAnnotation): boolean => {
-    if (n.kind === 'zone') return n.cells.some((c) => rectContains(rect, c.x, c.y));
-    if (n.kind === 'chip') return rectContains(rect, n.x, n.y);
-    if (n.kind === 'measure') {
-      const [a, b] = n.points;
-      return Math.max(a.x, b.x) >= rect.x && Math.min(a.x, b.x) < rect.x + rect.w
-        && Math.max(a.y, b.y) >= rect.y && Math.min(a.y, b.y) < rect.y + rect.h;
-    }
-    return routeSamples(n.points, 8).some(([sx, sy]) => rectContains(rect, sx, sy));
-  };
-  return items.filter(caught).map((n) => n.id);
-}
-
-/** Scale annotations from the template's longest dimension; 36 cells maps to scale 1. */
-export function annotationInkScale(template: { width: number; height: number }): number {
-  return Math.max(1, Math.max(template.width, template.height) / 36);
-}
-
-/** Base annotation dimensions in cell units. Both views apply the shared ink scale and cell size. */
-export const INK_CELLS = {
-  text: { s: 0.66, m: 0.9, l: 1.2 } as Record<'s' | 'm' | 'l', number>,
-  zoneLabel: { s: 0.56, m: 0.75, l: 1.0 } as Record<'s' | 'm' | 'l', number>,
-  outline: 0.16,
-  dash: 0.52,
-  gap: 0.4,
-  route: 0.22,
-} as const;
-
-/** Scale dash and gap lengths at half the annotation-scale growth rate. */
-export function zoneDashCells(inkScale: number): { dash: number; gap: number } {
-  const k = 1 + (inkScale - 1) * 0.5;
-  return { dash: INK_CELLS.dash * k, gap: INK_CELLS.gap * k };
-}
-
-/** Route hit distance in cells, with a minimum target for pointer input. */
-export function routeHitDistCells(inkScale: number): number {
-  return Math.max(0.45, INK_CELLS.route * inkScale * 2);
-}
-
-/** Label units for width estimates: CJK characters count as one, Latin characters as 0.55. */
-function labelUnits(label: string): number {
-  let units = 0;
-  for (const ch of label) units += ch.charCodeAt(0) > 0xff ? 1 : 0.55;
-  return units;
-}
-
-/** Estimate a chip's plate width for shared hit testing. */
-export function chipApproxWidthCells(note: ChipNote, label: string, inkScale = 1): number {
-  const em = INK_CELLS.text[note.size]! * inkScale;
-  return Math.max(1, (labelUnits(label) + 1.3) * em);
-}
-
-/** A chip's plate height in cells, from the same size table the width uses. */
-export function chipApproxHeightCells(note: ChipNote, inkScale = 1): number {
-  return INK_CELLS.text[note.size]! * inkScale * 1.6;
-}
-
-/** Estimate the selectable width of a zone's centered number-and-label caption. */
-export function zoneLabelApproxWidthCells(zone: ZoneNote, label: string, inkScale = 1): number {
-  const fs = INK_CELLS.zoneLabel[zone.size ?? 'm'] * inkScale;
-  const numR = zone.num > 0 ? fs * 0.62 : 0;
-  return Math.max(fs, numR * 2 + (zone.num > 0 && label ? fs * 0.3 : 0) + labelUnits(label) * fs);
-}
-
-/** The caption's height in cells, matching the drawn number disc. */
-export function zoneLabelApproxHeightCells(zone: ZoneNote, inkScale = 1): number {
-  return INK_CELLS.zoneLabel[zone.size ?? 'm'] * inkScale * 1.4;
-}

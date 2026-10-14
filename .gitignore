@@ -21,7 +21,7 @@ artifacts/
 *.njsproj
 *.sln
 *.sw?
-tsconfig.tsbuildinfo
+.tsbuild/
 
 # Logs and coverage
 *.log
@@ -35,3 +35,4 @@ Thumbs.db
 # Python cache
 __pycache__/
 *.pyc
+.ruff_cache/

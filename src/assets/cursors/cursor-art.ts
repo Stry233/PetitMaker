@@ -2,10 +2,10 @@
  * Maps a CursorId to the SVG beside this file, plus a pre-badged variant for each cursor that can
  * refuse.
  *
- * The SVGs are GENERATED from the project's design source, so a change to a cursor is a change
+ * The SVGs are generated from the project's design source, so a change to a cursor is a change
  * to the artwork it comes from, not to this module.
  *
- * ONE file per drawing, at every display: an SVG cursor is the only kind every engine rasterises
+ * One file per drawing, at every display: an SVG cursor is the only kind every engine rasterises
  * at the screen's own scale (Gecko draws a raster cursor at 1x and upscales it; Chromium's broken
  * Wayland path draws a raster at raw pixel size — both rasterise an SVG at the device scale
  * first), so the resolution ladder the PNG set needed does not exist here. Each file declares its
@@ -15,7 +15,7 @@
  * Each cursor that can refuse carries the badge in its art: one refusal sign shrunk into a corner
  * of that cursor's own drawing, since where a badge fits depends on the silhouette under it.
  */
-import { CURSORS, type CursorId } from '../../core/runtime/cursor-spec';
+import { CURSORS, type CursorId } from './cursor-spec';
 
 const modules = import.meta.glob('../../assets/cursors/*.svg', {
   eager: true,
@@ -30,7 +30,7 @@ for (const path in modules) {
 }
 
 /**
- * Cursors whose art ALREADY carries the refusal badge, so asking for `forbidden` must not
+ * Cursors whose art already carries the refusal badge, so asking for `forbidden` must not
  * reach for a second, doubly-badged file.
  */
 const SELF_BADGED: ReadonlySet<CursorId> = new Set<CursorId>(['blocked']);
@@ -51,14 +51,14 @@ export function cursorArt(id: CursorId, opts: { forbidden?: boolean } = {}): str
   return ART[id] ?? null;
 }
 
-/** The ids that have a badged variant. Exported so a test can hold it to FORBIDDABLE. */
+/** The ids that have a badged variant. Exported so a test can hold it to forbiddable. */
 export const BADGED_IDS: ReadonlySet<string> = new Set(
   Object.keys(ART).filter((k) => k.endsWith('-forbidden')).map((k) => k.replace('-forbidden', ''))
 );
 
 /**
  * The busy spinner's frames (`busy-0.svg` …), counted off the shipped files. `busy` is the one
- * ANIMATED cursor — a long operation is running and a static custom cursor reads as stuck — so
+ * Animated cursor — a long operation is running and a static custom cursor reads as stuck — so
  * instead of one file it ships a ring the cursor controller cycles while the state holds; the OS
  * `progress` keyword survives as its fallback and its system-preference answer.
  */

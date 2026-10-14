@@ -47,7 +47,7 @@ Code already executing in this origin can use a locally stored key, even when th
 
 ### Headers and CSP
 
-`security/headers-policy.ts` is the typed source for CSP and static response headers. The generator writes `public/_headers`, `vercel.json`, the CSP meta fallback in `index.html` and the rule set used for the ESA deployment. `npm run legal:headers:check` rejects drift.
+`security/headers-policy.ts` is the typed source for CSP and static response headers. The generator writes `public/_headers`, the CSP meta fallback in `index.html` and the rule set used for the ESA deployment. `npm run legal:headers:check` rejects drift.
 
 The policy includes clickjacking protection, MIME sniffing protection, a strict referrer policy, a restricted permissions policy and HSTS. React's inline style objects require `style-src 'unsafe-inline'`; this does not relax `script-src`. Fonts and executable code remain same-origin.
 
@@ -55,17 +55,17 @@ The CSP meta fallback cannot enforce `frame-ancestors`, `X-Frame-Options` or HST
 
 ### Provider connections
 
-Named origins in `connect-src` are derived from the Agent and illustration provider registries. Custom endpoints require the broader `https:` source plus HTTP loopback sources for local gateways. `data:` is present because the on-device OCR core fetches its own embedded WebAssembly from a data URL, which reaches no network. `sanitizeEndpointUrl` forces HTTPS for non-loopback hosts, removes embedded URL credentials and rewrites IPv6 loopback to `localhost` so it matches CSP.
+`connect-src` admits `https:`, which custom endpoints require and which covers every built-in provider host and the Models.dev capability catalog, plus HTTP loopback sources for local gateways; naming the built-in hosts beside it would restrict nothing. `data:` is present because the on-device OCR core fetches its own embedded WebAssembly from a data URL, which reaches no network. `sanitizeEndpointUrl` forces HTTPS for non-loopback hosts, removes embedded URL credentials and rewrites IPv6 loopback to `localhost` so it matches CSP.
 
 The scheme-wide HTTPS allowance means CSP does not restrict a compromised same-origin script to the named providers. `script-src 'self'`, dependency review, input handling and key redaction therefore remain the controls against code injection and exfiltration. Custom base URLs are not secrets and are stored in local storage. A key entered on the connection screen is sent only to the built-in provider hosts whose key format it matches, or to a custom endpoint the user has chosen explicitly.
 
 ## API-key handling
 
-`src/core/runtime/vault.ts` seals secrets with AES-GCM under a non-extractable WebCrypto key stored by IndexedDB. Non-extractable prevents scripts from exporting the key bytes; scripts running in this origin can still ask the browser to decrypt with that key.
+`src/platform/storage/vault.ts` seals secrets with AES-GCM under a non-extractable WebCrypto key stored by IndexedDB. Non-extractable prevents scripts from exporting the key bytes; scripts running in this origin can still ask the browser to decrypt with that key.
 
 Agent settings support older or restricted browsers by storing a base64-obfuscated key until the asynchronous vault upgrade succeeds. Obfuscation only prevents casual reading and is not encryption. Illustration-provider keys have no obfuscation fallback: if the vault cannot seal a key, it remains in memory for that browser session and is not persisted.
 
-Provider keys go directly from the browser to the selected built-in or custom endpoint. Key-format identification is local. Ambiguous keys require explicit provider selection, and regional services require a region choice. Validation contacts only that selected endpoint. Public model-capability requests to Models.dev carry ordinary network metadata, without keys, map content or prompts. They do not pass through a PetitMaker-operated server, are not intentionally logged and are removed from displayed or persisted provider error text by `src/agent/security/redact.ts`.
+Provider keys go directly from the browser to the selected built-in or custom endpoint. Key-format identification is local. Ambiguous keys require explicit provider selection, and regional services require a region choice. Validation contacts only that selected endpoint. Public model-capability requests to Models.dev carry ordinary network metadata, without keys, map content or prompts. They do not pass through a PetitMaker-operated server, are not intentionally logged and are removed from displayed or persisted provider error text by `src/platform/remote/redact.ts`.
 
 An unreadable sealed Agent blob is retained so temporary IndexedDB failure does not erase a user's stored key. A key removed while that blob is unreadable can reappear if the vault becomes readable later. Settings > Local data deletes local storage, session storage and the IndexedDB vault before reloading, which clears both readable and unreadable records.
 
@@ -110,6 +110,6 @@ The main remaining Agent impacts are undoable map edits, provider spend and disc
 
 ## Maintenance
 
-Add an Agent provider in `src/agent/providers/defaults.ts` or an illustration provider in `src/io/stylize/providers.ts`. `security/headers-policy.ts` derives the named origins from those registries; run `npx vite-node scripts/generate-headers.mts` after changing either registry.
+Add an Agent provider in `src/agent/providers/defaults.ts` or an illustration provider in `src/pipelines/stylize/providers.ts`. `security/headers-policy.ts` derives the named origins from those registries; run `npx vite-node scripts/generate-headers.mts` after changing either registry.
 
 A new network transfer, stored secret, Agent host capability or executable asset requires a matching privacy review and an update to this threat model before release. Describe the shipped behavior and control here.

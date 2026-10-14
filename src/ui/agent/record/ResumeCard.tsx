@@ -1,0 +1,102 @@
+/*
+ * Offers a held job for continuation without duplicating its operation history. The card shows the
+ * order, pause point and any work summary. A blocked job replaces Resume with its repair action.
+ * Already-held jobs do not offer Pause because pausing only takes effect at a call boundary.
+ */
+import type { CSSProperties } from 'react';
+import { PANEL_PRIMARY } from '../parts/HoldActions';
+import { PAPER } from '../parts/paper';
+import { ActionButton } from '../../primitives/ActionButton';
+import { Pill } from '../../primitives/Pill';
+import { Icon } from '../parts/sprite';
+import { statePaper } from '../panel-skin';
+import { INK, MUTED, PLATE } from '../../design/tokens';
+import { font, mixHex, radii } from '../../design/styles';
+import { roleFont, LINE_HEIGHT } from '../../design/text-weight';
+import { useT } from '../../../i18n/context';
+
+/** A subdued wait-state tint that keeps the card distinct from warnings. */
+const RESUME_PAPER = mixHex(statePaper.wait, PLATE, 0.42);
+
+const CARD_STYLE: CSSProperties = { ...PAPER, background: RESUME_PAPER };
+
+const ORDER_STYLE: CSSProperties = {
+  ...roleFont('menu'), fontFamily: font.family, color: INK, lineHeight: LINE_HEIGHT.snug,
+};
+
+const NOTE_STYLE: CSSProperties = {
+  ...roleFont('note'), fontFamily: font.family, color: MUTED, lineHeight: 1.4,
+};
+
+/** The pausemark, on this card's own paper: a step back up to the plate, like the ghost pill. */
+const PAUSEMARK_STYLE: CSSProperties = {
+  alignSelf: 'flex-start',
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: 6,
+  background: PLATE,
+  borderRadius: radii.pill,
+  padding: '4px 10px',
+  ...roleFont('small'),
+  fontFamily: font.family,
+  color: MUTED,
+};
+
+const PAIR_STYLE: CSSProperties = { display: 'flex', gap: 8, marginTop: 2 };
+
+interface ResumeCardProps {
+  /** The order the held job was given, as it was filed. */
+  order: string;
+  /** Where the work stopped, in the same words the paused ticket's own mark uses. */
+  pausemark?: string;
+  /** What is already on the map, where the job's plan can say it. Absent is the ordinary case. */
+  note?: string;
+  /** Reason continuation is unavailable. When present, the card offers repair instead of Resume. */
+  blocked?: string;
+  /** Continue the held job. Hidden while `blocked` is present. */
+  onResume?: () => void;
+  /** The blocked face's repair, which is the banner's own `fix-key` said on the card. */
+  onFixKey?: () => void;
+  /** Move the held job into past jobs without discarding its record. */
+  onSetAside?: () => void;
+}
+
+export function ResumeCard({ order, pausemark, note, blocked, onResume, onFixKey, onSetAside }: ResumeCardProps) {
+  const t = useT();
+  const offering = blocked === undefined && onResume !== undefined;
+
+  return (
+    <div data-testid="resume-card" data-blocked={blocked === undefined ? 'false' : 'true'} style={CARD_STYLE}>
+      <div data-testid="resume-order" style={ORDER_STYLE}>{order}</div>
+      {pausemark !== undefined && (
+        <span data-testid="resume-pausemark" style={PAUSEMARK_STYLE}>
+          <Icon id="pw-pause" size={12} />
+          {pausemark}
+        </span>
+      )}
+      {note !== undefined && <div data-testid="resume-note" style={NOTE_STYLE}>{note}</div>}
+      {blocked !== undefined && <div data-testid="resume-blocked" style={NOTE_STYLE}>{blocked}</div>}
+      {/* A row with nothing in it is a reserved seat for a control that does not exist, so an
+          unwired card draws no band at all. */}
+      {(offering || onFixKey !== undefined || onSetAside !== undefined) && (
+        <div style={PAIR_STYLE}>
+          {offering && (
+            <ActionButton appearance="primary" data-testid="resume-resume" onClick={onResume} style={PANEL_PRIMARY}>
+              {t('agent.action_resume')}
+            </ActionButton>
+          )}
+          {blocked !== undefined && onFixKey !== undefined && (
+            <ActionButton appearance="primary" data-testid="resume-fix-key" onClick={onFixKey} style={PANEL_PRIMARY}>
+              {t('agent.banner_action_fix_key')}
+            </ActionButton>
+          )}
+          {onSetAside !== undefined && (
+            <Pill variant="quiet" on="inset" data-testid="resume-set-aside" onClick={onSetAside}>
+              {t(blocked === undefined ? 'agent.action_for_later' : 'agent.action_set_aside')}
+            </Pill>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}

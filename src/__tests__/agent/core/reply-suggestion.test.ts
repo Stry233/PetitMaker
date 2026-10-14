@@ -1,7 +1,7 @@
 import { afterEach, expect, it, vi } from 'vitest';
 import { requestReplySuggestion } from '../../../agent/core/reply-suggestion';
-import { createScriptedAdapter } from '../../../agent/eval/scripted-adapter';
-import type { Adapter } from '../../../agent/providers/types';
+import { createScriptedAdapter } from '../../_support/agent/scripted-adapter';
+import type { Adapter } from '../../../agent/core/adapter';
 import { append, createLog } from '../../../agent/core/log';
 import { deriveMessages } from '../../../agent/core/project-messages';
 

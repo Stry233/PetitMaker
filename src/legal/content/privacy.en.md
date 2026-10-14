@@ -47,7 +47,7 @@ Human-made maps imported from share images may retain an attribution record cont
 
 ### 4.1 Text and Map Checks
 
-The application checks added titles, descriptions and footer text on your device before they appear in an image preview or export. When JSON notes are enabled, their title, description and author are checked too. Website-link detection is also local and does not visit the links you enter.
+The application checks added titles, descriptions and footer text on your device before they appear in an image preview or export. When JSON notes are enabled, their title and description are checked too. Website-link detection is also local and does not visit the links you enter.
 
 Before the first image preview, and when you click Export for JSON, the application also checks renderings of the current map and its planning annotations. Turning off Planning annotations for JSON also excludes annotations from those checks. A selected illustration take is included in image-export checks. The checks can miss content or flag it incorrectly, and an unfinished check is reported in the interface. They do not certify every part of a file or its legality.
 
@@ -57,9 +57,9 @@ The checking feature does not separately persist submitted text, map images, rec
 
 ### 4.2 JSON Saves
 
-JSON files contain map data. The Planning annotations option is enabled by default; turning it off excludes annotation data from the file. Depending on your selections, these files may also contain a title, description, author, generation information, provenance, undo history, and camera and layer state. Undo history can retain content that has been removed or changed in the current view.
+JSON files contain map data. The Planning annotations option is enabled by default; turning it off excludes annotation data from the file. Depending on your selections, these files may also contain a title, description, generation information, provenance, undo history, and camera and layer state. Undo history can retain content that has been removed or changed in the current view.
 
-Turning off Notes omits only the title, description and author in that section. The Planning annotations option controls annotations separately. Choose the additional sections for your intended use before sharing.
+Turning off Title and description omits only the map's title and description. The Planning annotations option controls annotations separately. Choose the additional sections for your intended use before sharing.
 
 ### 4.3 Importable Images
 
@@ -67,7 +67,7 @@ When Importability is enabled and code generation succeeds, the image includes a
 
 Newly exported codes no longer store the image title; older images may still contain that field. Anyone with a usable code can restore the map data it contains.
 
-**Turning off Show notes does not remove annotations from the code.** To share just the picture, choose Plain image or turn off Importability. Plain images still display their visible text and designs. Map codes are stored in pixels, so removing ordinary file metadata does not remove them.
+**Turning off Show annotations does not remove annotations from the code.** To share just the picture, choose Plain image or turn off Importability. Plain images still display their visible text and designs. Map codes are stored in pixels, so removing ordinary file metadata does not remove them.
 
 Export without added text omits the current image title and description and restores the default footer. It does not remove annotations or importable map data.
 

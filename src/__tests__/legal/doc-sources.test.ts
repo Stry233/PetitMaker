@@ -3,14 +3,14 @@
  *
  * The registry renders ten documents from two kinds of place, and that is
  * deliberate: four are authored for the app under `src/legal/content/`, while the
- * rest ARE a repo file that exists for its own sake (`LICENSE` is byte-exact
+ * rest are a repo file that exists for its own sake (`LICENSE` is byte-exact
  * upstream text, `SECURITY.md` is where GitHub looks for a vulnerability policy,
  * `ASSET_LICENSES`/`CHANGELOG` are public docs the READMEs link) or are generated
  * by a script. The app renders those files directly so the GitHub view, the static
  * page, and the in-app view cannot drift; copying them under `content/` would mean
  * two files per document plus a guard to hold them equal.
  *
- * What must not happen is the split being left to guesswork. Every entry DECLARES
+ * What must not happen is the split being left to guesswork. Every entry declares
  * its `sourceKind` and `sourcePath`, and these tests hold the declaration to the
  * filesystem: the declared path must exist and its bytes must be the bytes the
  * registry imported, the path must match the kind, and `src/legal/content/` must
@@ -18,10 +18,9 @@
  * arrangement without a test failing.
  */
 import { describe, it, expect } from 'vitest';
-// @ts-ignore - node:fs is untyped here (no @types/node)
 import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { DOCS, type DocMeta } from '../../legal/registry';
-import { LEGAL } from '../../legal/config';
+import { LEGAL, memberUrl } from '../../legal/config';
 
 const entries = Object.values(DOCS) as DocMeta[];
 const CONTENT_DIR = 'src/legal/content';
@@ -51,7 +50,7 @@ describe('doc sources — the declaration matches the filesystem', () => {
       } else if (doc.sourceKind === 'generated') {
         expect(GENERATED.has(path), `${path} is declared generated but nothing generates it`).toBe(true);
       } else {
-        // canonical-root: the file exists for its own sake, so it must NOT be a
+        // canonical-root: the file exists for its own sake, so it must not be a
         // body written for the app, nor one a script owns.
         expect(path.startsWith(`${CONTENT_DIR}/`), `${path} is canonical-root but sits in ${CONTENT_DIR}`).toBe(false);
         expect(GENERATED.has(path)).toBe(false);
@@ -87,7 +86,7 @@ describe('the team roster lives only in config', () => {
       const body = readFileSync(`${CONTENT_DIR}/${file}`, 'utf8');
       for (const m of LEGAL.team) {
         expect(body, `${file} hardcodes ${m.name} — use the {team} token`).not.toContain(m.name);
-        expect(body, `${file} hardcodes ${m.url} — use the {team} token`).not.toContain(m.url);
+        expect(body, `${file} hardcodes ${memberUrl(m)} — use the {team} token`).not.toContain(memberUrl(m));
       }
     }
   });

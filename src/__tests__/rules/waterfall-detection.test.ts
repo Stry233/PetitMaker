@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { detectWaterfalls } from '../../core/model/waterfall-geometry';
+import { detectWaterfalls } from '../../core/domain/terrain/waterfall-geometry';
 import { TerrainType } from '../../core/model/types';
-import { makeState, setTerrain } from './_helpers';
+import { makeState, setTerrain } from '../_support/map-state';
 
 describe('Waterfall Detection', () => {
   it('returns empty for a map with no water', () => {

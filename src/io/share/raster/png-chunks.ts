@@ -1,7 +1,7 @@
 // Generic PNG chunk primitives for the raster codec: signature check, CRC-validated chunk
 // reader, chunk builder.
-import { crc32 } from '../crypto/crc32';
-import { ShareError } from '../errors';
+import { crc32 } from '../../../core/base/crc32';
+import { ImportError } from '../../save/import-error';
 
 /** The 8-byte PNG file signature — the single source for both the reader (isPng) and the
  *  writer (png-raster prepends it to the chunk stream). */
@@ -9,7 +9,7 @@ export const PNG_SIGNATURE = [137, 80, 78, 71, 13, 10, 26, 10] as const;
 
 export interface PngChunk { type: string; data: Uint8Array }
 
-export function isPng(bytes: Uint8Array): boolean {
+function isPng(bytes: Uint8Array): boolean {
   if (bytes.length < PNG_SIGNATURE.length) return false;
   for (let i = 0; i < PNG_SIGNATURE.length; i++) if (bytes[i] !== PNG_SIGNATURE[i]) return false;
   return true;
@@ -30,7 +30,7 @@ export function buildChunk(type: string, data: Uint8Array): Uint8Array {
 }
 
 export function readChunks(bytes: Uint8Array): PngChunk[] {
-  if (!isPng(bytes)) throw new ShareError('not-an-image', 'Not a PNG.');
+  if (!isPng(bytes)) throw new ImportError('not-an-image', 'Not a PNG.');
   const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   const chunks: PngChunk[] = [];
   let p = 8;
@@ -39,10 +39,10 @@ export function readChunks(bytes: Uint8Array): PngChunk[] {
     const type = String.fromCharCode(bytes[p + 4]!, bytes[p + 5]!, bytes[p + 6]!, bytes[p + 7]!);
     const dataStart = p + 8;
     const crcAt = dataStart + len;
-    if (crcAt + 4 > bytes.length) throw new ShareError('corrupt', 'Truncated PNG chunk.');
+    if (crcAt + 4 > bytes.length) throw new ImportError('corrupt', 'Truncated PNG chunk.');
     const want = dv.getUint32(crcAt, false) >>> 0;
     const got = crc32(bytes.subarray(p + 4, crcAt));
-    if (want !== got) throw new ShareError('corrupt', `Bad CRC in ${type} chunk.`);
+    if (want !== got) throw new ImportError('corrupt', `Bad CRC in ${type} chunk.`);
     chunks.push({ type, data: new Uint8Array(bytes.subarray(dataStart, crcAt)) });
     p = crcAt + 4;
     if (type === 'IEND') break;

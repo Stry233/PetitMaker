@@ -9,27 +9,22 @@
  */
 import { useEffect, useLayoutEffect, useRef } from 'react';
 import { useReducedMotionConfig } from 'framer-motion';
-import { getActiveView, onProjectionChange } from '../../../canvas/active-view';
-import { hoverTarget, onHoverTargetChange } from '../../../canvas/hover-target';
-import type { ViewProjection } from '../../../canvas/view-projection';
+import { getActiveView, onProjectionChange } from '../../../view/active-view';
+import { hoverTarget, onHoverTargetChange } from '../../../view/hover-target';
+import type { ViewProjection } from '../../../tools/pointer/runtime';
 import { useEditorStore } from '../../../state/store';
-import { type BlockRef } from '../../../core/model/types';
+import { type BlockRef } from '../../../state/selection';
 import { getCatalogItem } from '../../../state/catalog';
 import { getPlacedObjectSize } from '../../../state/object-geometry';
-import { INK, MAP_EDGE_ALPHA, MAP_TEXT } from '../../design/tokens';
+import { INK, MAP_EDGE_ALPHA, MAP_TEXT, ON_DARK, rgbaOf } from '../../design/tokens';
 import { easingCss, seconds } from '../../design/motion';
 import { z } from '../../design/styles';
 import { isCoatingItem } from '../../../core/model/traits';
+import { PLACEMENT_GRID } from '../../../core/game/profile';
+import { HOVER_BOX, SELECTION_MARKS, bracketArm, ringRadius } from '../../../view/shared/overlay/selection-marks';
+import { cellKey } from '../../../core/grid/rect';
 
-/** Stroke widths and bracket geometry in screen px, matching the 2D renderer's marks. */
-const STROKE = 2.6;
-const EDGE = 5;
-const PAD = 4;
-const GROUP_PAD = 10;
-const ARM_MIN = 6;
-const ARM_MAX = 14;
-/** Past this many members only the group brackets are drawn. */
-const RING_LIMIT = 400;
+const { stroke: STROKE, edge: EDGE, pad: PAD, groupPad: GROUP_PAD, ringStroke: RING_STROKE, ringEdge: RING_EDGE, ringLimit: RING_LIMIT } = SELECTION_MARKS;
 
 interface Box { x: number; y: number; w: number; h: number }
 
@@ -45,27 +40,24 @@ function isRoad(id: string): boolean {
 
 function bracketPath(r: Box, pad: number): string {
   const x = r.x - pad, y = r.y - pad, w = r.w + 2 * pad, h = r.h + 2 * pad;
-  const arm = Math.max(ARM_MIN, Math.min(ARM_MAX, Math.min(w, h) / 3));
+  const arm = bracketArm(w, h);
   return `M${x} ${y + arm}V${y}H${x + arm}M${x + w - arm} ${y}H${x + w}V${y + arm}`
     + `M${x + w} ${y + h - arm}V${y + h}H${x + w - arm}M${x + arm} ${y + h}H${x}V${y + h - arm}`;
 }
 
 function ringPath(r: Box): string {
-  const cx = r.x + r.w / 2, cy = r.y + r.h / 2, rad = Math.max(4, Math.min(r.w, r.h) / 2 + 1);
+  const cx = r.x + r.w / 2, cy = r.y + r.h / 2, rad = ringRadius(r.w, r.h);
   return `M${cx - rad} ${cy}a${rad} ${rad} 0 1 0 ${rad * 2} 0a${rad} ${rad} 0 1 0 ${-rad * 2} 0`;
 }
 
-/** The map-label edge: the glyph ink at the map-edge alpha. */
-/** The hover box: a thin edge in the marks' ink at half strength over a faint light wash. */
-const HOVER_STROKE = 1.5;
-const HOVER_RADIUS = 3;
-const HOVER_FILL = 'rgba(255, 255, 255, 0.08)';
-const hoverInk = `${INK}80`;
+const HOVER_FILL = rgbaOf(ON_DARK, HOVER_BOX.fillAlpha);
+const alphaHex = (alpha: number) => Math.round(alpha * 255).toString(16).padStart(2, '0');
+const hoverInk = `${INK}${alphaHex(HOVER_BOX.edgeAlpha)}`;
 
 /** The screen box of what is hovered: an object's projected body, or a terrain cell. */
 function hoverBox(proj: ViewProjection): Box | null {
   const target = hoverTarget();
-  if (!target || target.terrainMode) return null;
+  if (!target || target.grid !== PLACEMENT_GRID) return null;
   const gs = useEditorStore.getState().gridState;
   for (const obj of gs?.objects.values() ?? []) {
     if (obj.position.x !== target.x || obj.position.y !== target.y) continue;
@@ -75,7 +67,7 @@ function hoverBox(proj: ViewProjection): Box | null {
   return null;
 }
 
-const edgeInk = `${INK}${Math.round(MAP_EDGE_ALPHA * 255).toString(16).padStart(2, '0')}`;
+const edgeInk = `${INK}${alphaHex(MAP_EDGE_ALPHA)}`;
 
 export function SelectionMarks() {
   const svgRef = useRef<SVGSVGElement>(null);
@@ -91,7 +83,7 @@ export function SelectionMarks() {
     const sel = useEditorStore.getState().selection;
     if (!proj?.objectScreenBox) { svg.innerHTML = ''; lastKey.current = ''; return; }
     const hover = hoverBox(proj);
-    const hoverSvg = hover ? `<rect x="${hover.x}" y="${hover.y}" width="${hover.w}" height="${hover.h}" rx="${HOVER_RADIUS}" fill="${HOVER_FILL}" stroke="${hoverInk}" stroke-width="${HOVER_STROKE}"/>` : '';
+    const hoverSvg = hover ? `<rect x="${hover.x}" y="${hover.y}" width="${hover.w}" height="${hover.h}" rx="${HOVER_BOX.radius}" fill="${HOVER_FILL}" stroke="${hoverInk}" stroke-width="${HOVER_BOX.stroke}"/>` : '';
     const lone = sel.length === 1 && sel[0]!.kind === 'object' && isRoad(sel[0]!.id);
     const boxes = (lone ? [] : sel).map((ref) => memberBox(ref, proj)).filter((b): b is Box => !!b && b.w >= 0 && b.h >= 0);
     if (boxes.length === 0) { svg.innerHTML = hoverSvg; lastKey.current = ''; return; }
@@ -105,9 +97,9 @@ export function SelectionMarks() {
     }
     const layer = (path: string, width: number, stroke: string) =>
       path ? `<path d="${path}" fill="none" stroke="${stroke}" stroke-width="${width}" stroke-linecap="round" stroke-linejoin="round"/>` : '';
-    svg.innerHTML = `${hoverSvg}<g>${layer(rings, 4, edgeInk)}${layer(rings, 2, MAP_TEXT)}${layer(d, EDGE, edgeInk)}${layer(d, STROKE, MAP_TEXT)}</g>`;
+    svg.innerHTML = `${hoverSvg}<g>${layer(rings, RING_EDGE, edgeInk)}${layer(rings, RING_STROKE, MAP_TEXT)}${layer(d, EDGE, edgeInk)}${layer(d, STROKE, MAP_TEXT)}</g>`;
     // A new selection lands with the same beat the 2D marks pop with; a re-track does not.
-    const key = sel.map((b) => (b.kind === 'object' ? b.id : `${b.x},${b.y}`)).join(',');
+    const key = sel.map((b) => (b.kind === 'object' ? b.id : cellKey(b.x, b.y))).join(',');
     if (key !== lastKey.current && !reduced) {
       const g = svg.querySelector('g') as SVGGElement;
       g.style.transformBox = 'fill-box';

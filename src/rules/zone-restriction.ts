@@ -2,8 +2,9 @@
  * V-ZONE-01: Zone Restriction (pre-command)
  *
  * Rejects painting, erasing or placing on a non-Grass zone: only Grass is
- * buildable. A template's Plaza zone loads as Grass under the locked plaza object,
- * and the collision rules (V-PLACE-BLOCK / V-PLACE-OVERLAP) keep terrain and
+ * buildable. A landmark stands on the ground its profile names instead
+ * (`core/game/profile.ts:LandmarkGround`), read from each cell's own ground. A template records grass
+ * under a locked landmark, and the collision rules (V-PLACE-BLOCK / V-PLACE-OVERLAP) keep terrain and
  * objects off that footprint. A planet-session ground edit rewrites the zone
  * itself and is checked only for bleed.
  *
@@ -14,15 +15,20 @@
  */
 import {
   CommandType,
-  TerrainType,
   type Command,
   type GridState,
   type MacroCoord,
-  type PreCommandRule,
   type ValidationError,
 } from '../core/model/types';
-import { cellKey, getCell, isBuildableZone } from '../core/model/grid-model';
-import { coveredCells, getPlacedObjectSize } from '../state/object-geometry';
+import { getCell, clearsTerrain, commandGrid } from '../core/model/grid-model';
+import { cellKey } from '../core/grid/rect';
+import { groundZone, isBuildableZone } from '../core/game/zones';
+import { landmarkSpec } from '../core/game/profile';
+import { landmarkGroundHolds } from '../core/model/landmarks';
+import { getPlacedObjectSize } from '../state/object-geometry';
+import { footprintCells } from '../core/grid/footprint';
+import { evidenceOn } from '../core/grid/grids';
+import { definePreRule } from './define';
 
 function extractCells(cmd: Command): MacroCoord[] {
   switch (cmd.type) {
@@ -48,42 +54,53 @@ function bleedsOnto(state: GridState, coord: MacroCoord, own: GroundCells): bool
   return false;
 }
 
-/** Whether a terrain block painted at `coord` would bleed onto a non-buildable cell. A block renders
- *  shifted half a cell up-left of the zone grid, so it reaches its UP, LEFT and UP-LEFT neighbours;
- *  at a convex coast corner only the diagonal may be off grass. */
-export function paintBleedsOffBuildable(state: Pick<GridState, 'cells'>, coord: MacroCoord): boolean {
+/** Whether a terrain block painted at `coord` would bleed onto ground `buildableAt` refuses (`null`
+ *  off the map, which takes any bleed). A block renders shifted half a cell up-left of the zone
+ *  grid, so it reaches its up, left and up-left neighbours; at a convex coast corner only the
+ *  diagonal may be off grass. A plan over a template asks this with its own reading of the ground. */
+export function bleedsOffBuildable(buildableAt: (x: number, y: number) => boolean | null, coord: MacroCoord): boolean {
   for (const [dx, dy] of [[0, -1], [-1, 0], [-1, -1]] as const) {
-    const n = getCell(state.cells, coord.x + dx, coord.y + dy);
-    if (n && !isBuildableZone(n.zone)) return true;
+    if (buildableAt(coord.x + dx, coord.y + dy) === false) return true;
   }
   return false;
 }
 
-export const zoneRestrictionRule: PreCommandRule = {
+/** `bleedsOffBuildable` over the map's zones: V-ZONE-01's paint test. */
+export function paintBleedsOffBuildable(state: Pick<GridState, 'cells'>, coord: MacroCoord): boolean {
+  return bleedsOffBuildable((x, y) => {
+    const n = getCell(state.cells, x, y);
+    return n ? isBuildableZone(n.zone) : null;
+  }, coord);
+}
+
+export const zoneRestrictionRule = definePreRule({
   id: 'V-ZONE-01',
-  agentHint: 'Build only on grass zone (token "."). Sea/beach/plaza/boundary reject all edits.',
-  phase: 'pre-command',
-  // NOT RemoveObject: removal must always succeed, whatever the zone under the object. Gated by zone,
+  // Not RemoveObject: removal must always succeed, whatever the zone under the object. Gated by zone,
   // an object standing on non-grass could never be cleared — stuck in state and rendered forever.
   appliesTo: [CommandType.PaintTerrain, CommandType.EraseTerrain, CommandType.PlaceObject],
-  validate(cmd: Command, state: GridState): ValidationError[] {
+  validate(cmd, state, fail) {
     const errors: ValidationError[] = [];
 
-    // PlaceObject: EVERY cell the (rotated) footprint covers must be buildable,
+    // PlaceObject: Every cell the (rotated) footprint covers must be buildable,
     // not just the top-left anchor. Cells off the map (getCell null) are open
     // sea — treated as illegal, so an object can't hang over the void. The
-    // footprint is swept as COVERED cells: this rule runs after V-PLACE-TRAIT,
+    // footprint is swept as covered cells: this rule runs after V-PLACE-TRAIT,
     // which may have snapped a halfStep item onto a half cell, and `pos + integer
     // offset` from a half origin names cells that do not exist — every lookup
     // would come back null and reject the placement outright.
     if (cmd.type === CommandType.PlaceObject) {
       const { w, h } = getPlacedObjectSize(cmd.object);
-      for (const cy of coveredCells(cmd.object.position.y, h)) {
-        for (const cx of coveredCells(cmd.object.position.x, w)) {
-          const cell = getCell(state.cells, cx, cy);
-          if (!cell || !isBuildableZone(cell.zone)) {
-            errors.push({ ruleId: 'V-ZONE-01', message: 'error.zone_restricted', cells: [{ x: cx, y: cy }], severity: 'error' });
-          }
+      const landmark = landmarkSpec(cmd.object.catalogId);
+      if (landmark?.ground === 'coast') {
+        const rect = { x: cmd.object.position.x, y: cmd.object.position.y, width: w, height: h };
+        const zoneAt = (x: number, y: number) => { const c = getCell(state.cells, x, y); return c ? groundZone(c) : undefined; };
+        if (landmarkGroundHolds(landmark, rect, cmd.object.rotation, zoneAt)) return [];
+        return [fail('error.landmark_coast', evidenceOn(commandGrid(cmd), footprintCells(rect.x, rect.y, w, h)))];
+      }
+      for (const c of footprintCells(cmd.object.position.x, cmd.object.position.y, w, h)) {
+        const cell = getCell(state.cells, c.x, c.y);
+        if (!cell || !isBuildableZone(cell.zone)) {
+          errors.push(fail('error.zone_restricted', evidenceOn(commandGrid(cmd), [c])));
         }
       }
       return errors;
@@ -98,29 +115,28 @@ export const zoneRestrictionRule: PreCommandRule = {
     const groundEdit = ground !== undefined;
     const own: GroundCells | null = groundEdit && !isBuildableZone(ground) ? {
       cells: new Set(cells.map((c) => cellKey(c.x, c.y))),
-      clears: cmd.type === CommandType.EraseTerrain
-        || (cmd.type === CommandType.PaintTerrain && cmd.terrainType === TerrainType.Mountain && cmd.elevation === 0),
+      clears: clearsTerrain(cmd),
     } : null;
     for (const coord of cells) {
       const cell = getCell(state.cells, coord.x, coord.y);
       if (!cell) continue;
       if (!groundEdit && !isBuildableZone(cell.zone)) {
-        errors.push({ ruleId: 'V-ZONE-01', message: 'error.zone_restricted', cells: [coord], severity: 'error' });
+        errors.push(fail('error.zone_restricted', evidenceOn(commandGrid(cmd), [coord])));
         continue;
       }
       // The mirror of the bleed guard below: a block bleeds onto its up, left and up-left cells, so a
       // ground edit may not turn a cell to sea or sand while its right, down or down-right neighbour
       // still holds a block after the command.
       if (own && bleedsOnto(state, coord, own)) {
-        errors.push({ ruleId: 'V-ZONE-01', message: 'error.ground_under_block', cells: [coord], severity: 'error' });
+        errors.push(fail('error.ground_under_block', evidenceOn(commandGrid(cmd), [coord])));
         continue;
       }
       // A painted block's top-left micro-block lands in the (x-1, y-1) cell, so all three up-left
       // neighbours must be buildable (`paintBleedsOffBuildable`). Erase doesn't bleed.
       if (cmd.type === CommandType.PaintTerrain && !groundEdit && paintBleedsOffBuildable(state, coord)) {
-        errors.push({ ruleId: 'V-ZONE-01', message: 'error.zone_restricted', cells: [coord], severity: 'error' });
+        errors.push(fail('error.zone_restricted', evidenceOn(commandGrid(cmd), [coord])));
       }
     }
     return errors;
   },
-};
+});

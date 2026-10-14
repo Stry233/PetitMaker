@@ -1,14 +1,16 @@
-import { NEIGHBORS4_NESW } from '../../../core/model/grid-model';
-import type { GridState, PlacedObject, StencilPlan } from '../../../core/model/types';
+import { NEIGHBORS4_NESW } from '../../../core/grid/directions';
+import type { GridState, PlacedObject } from '../../../core/model/types';
+import type { StencilPlan } from '../recipe';
 import { catalogLoadValue, getCatalogItem } from '../../../state/catalog';
 import { LoadBudget } from '../../../state/load-budget';
 import type { ColorEntry } from './stencil-palette';
 import { detectFeatures, FEATURE_MAX } from './stencil-feature';
-import { coherentAreas, colourGap } from './stencil-small';
+import { coherentAreas } from './stencil-areas';
+import { colorDistance } from './color';
 import { stencilStrokePaths } from './stencil-text-grid';
 
-export type StencilMatches = (ColorEntry | null)[];
-export interface BudgetedStencil { plan: StencilPlan; matches: StencilMatches; adapted: boolean }
+type StencilMatches = (ColorEntry | null)[];
+interface BudgetedStencil { plan: StencilPlan; matches: StencilMatches; adapted: boolean }
 type StrokePath = ReturnType<typeof stencilStrokePaths>[number];
 
 // Bound the unfilled intervals along every retained stroke, including at the minimum budget.
@@ -51,7 +53,7 @@ function outlines(plan: StencilPlan, matches: StencilMatches): { outer: StrokePa
     for (const [dx, dy] of NEIGHBORS4_NESW) {
       const next = matchAt(x + dx, y + dy);
       if (!next) outer[i] = 255;
-      else if (plan.read === 'color' && colourGap(entry.rgb, next.rgb) >= COLOR_EDGE) inner[i] = 255;
+      else if (plan.read === 'color' && colorDistance(entry.rgb, next.rgb) >= COLOR_EDGE) inner[i] = 255;
     }
   }
   if (plan.read === 'shape') return { outer: stencilStrokePaths(outer, width, height), inner: stencilStrokePaths(ink, width, height), features: [] };

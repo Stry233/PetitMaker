@@ -1,26 +1,16 @@
-// Pure core of the license-audit pipeline: lockfile prod-dependency closure computation,
-// per-package metadata/license-file discovery, and Markdown/tree rendering.
+// The license-audit pipeline's shared functions: the lockfile's production-dependency closure,
+// per-package metadata and license-file discovery, and the notices and tree rendering. Tests import
+// it without the CLI (`license-audit.mts`, whose header says why a main-module guard cannot do that
+// under `vite-node`), so nothing here runs on import or exits the process. `auditPackages`,
+// `writeLicenseTree`, `filesEqual`, `writeTextFile` and `fileExists` touch the filesystem; the rest
+// are pure.
 //
-// Split from scripts/license-audit.mts (the CLI entry point) SPECIFICALLY so tests can import
-// this module's exports (computeClosure, auditPackages, …) with zero CLI side effects — a
-// main-module guard cannot do that job under `vite-node`, for the reason that file's doc
-// comment gives. So there is NO CLI/`main()` logic and NO top-level side effect here: every
-// function is pure or explicitly scoped I/O (auditPackages/writeLicenseTree read/copy real
-// files, but never write THIRD_PARTY_NOTICES.md or exit the process).
-//
-// auditPackages/writeLicenseTree never print license file CONTENTS — only paths — and
-// writeLicenseTree copies bytes via fs.copyFile rather than reading+re-writing text.
+// auditPackages and writeLicenseTree name license files by path and never print their contents;
+// writeLicenseTree copies bytes with fs.copyFile rather than reading and re-writing text.
 
-// @ts-ignore - node:fs is untyped here (no @types/node)
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
-// @ts-ignore - node:fs/promises is untyped here (no @types/node)
 import { copyFile } from 'node:fs/promises';
-// @ts-ignore - node:path is untyped here (no @types/node)
 import { join, resolve } from 'node:path';
-
-// Minimal ambient shape for the pieces of `process` this module uses — this repo declares the node
-// globals it uses locally, per file, rather than adding an @types/node dependency.
-declare const process: { cwd(): string };
 
 // ---------------------------------------------------------------------------
 // Types
@@ -88,7 +78,6 @@ export interface FontEntry {
 function candidatePaths(fromPath: string, name: string): string[] {
   const candidates: string[] = [];
   let path = fromPath;
-  // eslint-disable-next-line no-constant-condition
   while (true) {
     const base = path === '' ? '' : `${path}/`;
     candidates.push(`${base}node_modules/${name}`);
@@ -110,7 +99,7 @@ function resolvePackagePath(lock: LockJson, fromPath: string, name: string): str
  * Runtime dependency closure: root `dependencies` (from package-lock.json's `packages[""]`),
  * followed recursively through each package's own `dependencies` — devDependencies (root or
  * nested) are never walked, so dev-only tooling (vitest, typescript, …) never enters the set
- * unless a PROD package itself depends on it (which would be unusual and is not special-cased).
+ * unless a production package itself depends on it (which would be unusual and is not special-cased).
  */
 export function computeClosure(lock: LockJson): ClosureEntry[] {
   const root = lock.packages?.[''] ?? {};
@@ -282,7 +271,7 @@ export interface VendoredEntry {
   source: string;
   /** What of ours it is vendored into, so a reader can find it. */
   usedIn: string;
-  /** Rights the license does NOT convey. Trademarks are the usual one. */
+  /** Rights the license does not convey. Trademarks are the usual one. */
   rightsNotGranted: string;
 }
 
@@ -370,8 +359,8 @@ export const VENDORED_ENTRIES: VendoredEntry[] = [
     source: '[https://github.com/lobehub/lobe-icons](https://github.com/lobehub/lobe-icons)',
     usedIn:
       'Single-colour provider silhouettes inlined as SVG path data in ' +
-      '`src/ui/agent/logos.tsx`, shown beside the API-key field so a user can see which ' +
-      'platform a key belongs to.',
+      '`src/assets/agent/provider-logos.tsx`, drawn into the README\'s supported-provider figure ' +
+      '(`docs/media/providers.png`) so a reader can see which platforms the assistant connects to.',
     rightsNotGranted:
       'The MIT grant covers the icon collection, NOT the brand marks it depicts. Every provider ' +
       'name and logo is a trademark of its respective owner, reproduced here nominatively for ' +

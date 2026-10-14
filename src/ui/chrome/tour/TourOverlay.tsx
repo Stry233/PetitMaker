@@ -1,6 +1,6 @@
 import { windowTitle } from '../../design/window-skin';
 import { BrandName } from '../BrandName';
-import { viewportSize } from '../../../core/runtime/viewport-space';
+import { viewportSize } from '../../../platform/device/viewport-space';
 /**
  * First-launch tour overlay: one masked dim provides the scrim and spotlight, while a separate card
  * presents host-supplied steps. A target is prepared before measurement and tracked across animation,
@@ -14,18 +14,22 @@ import {
 import { AnimatePresence, motion, useReducedMotionConfig } from 'framer-motion';
 import { useT } from '../../../i18n/context';
 import { useEditorStore } from '../../../state/store';
-import { colors, font, radii, scaleRest, shadows, snapTween, springs, exitTransition, pressable, cursors, z } from '../../design/styles';
+import { font, radii, shadows, pressable, cursors, z } from '../../design/styles';
 import { roleFont } from '../../design/text-weight';
 import { useChromeScale, useTouchPrimary, useViewportSize } from '../../design/scale';
-import { useFullscreen } from '../../hooks/useFullscreen';
-import { useOverlayLock } from '../../hooks/useOverlayLock';
+import { useFullscreen } from '../../primitives/use-fullscreen';
+import { useOverlayLock } from '../../primitives/use-overlay-lock';
 import { BrandLockup } from '../BrandLockup';
-import { placeBubble, VIEWPORT_MARGIN, type Box } from './place-bubble';
+import { placeBeside, VIEWPORT_MARGIN, type Box } from './place-beside';
 import { measureTarget } from './measure';
 import { useTour } from './use-tour';
 import { type TourStep } from './steps';
 import type { VisualRect } from '../../design/visual-rect';
-import { NO_MOTION } from '../../design/motion';
+import { quantisedKey } from '../../../core/grid/rect';
+import { NO_MOTION, framerMotion } from '../../design/motion';
+import { useObservedSize } from '../../primitives/use-observed-size';
+import { useSurfaceScope } from '../../primitives/surface-scope';
+import { ON_DARK, OVERLAY_DIM, ACCENT, MUTED, SURFACE_SECONDARY, FRAME_INK, ACTIVE } from '../../design/tokens';
 
 // CSS pixels inside the chrome-zoomed subtree; reused by the Help Center preview.
 export const BUBBLE_W = 340;
@@ -37,7 +41,7 @@ export const tourCard: CSSProperties = {
   width: BUBBLE_W,
   // Keep padding inside the width used by placement calculations.
   boxSizing: 'border-box',
-  background: colors.white,
+  background: ON_DARK,
   borderRadius: radii.lg,
   padding: '18px 20px 14px',
   boxShadow: shadows.s2,
@@ -56,10 +60,10 @@ function litBox(rect: VisualRect): Box {
   };
 }
 /** Minimum reads before stability may end tracking; the third frame includes animation progress. */
-export const TRACK_MIN_FRAMES = 3;
+const TRACK_MIN_FRAMES = 3;
 
 /** Maximum tracking and target-discovery window in animation frames. */
-export const TRACK_MAX_FRAMES = 30;
+const TRACK_MAX_FRAMES = 30;
 
 /** Rects are compared by value: getBoundingClientRect allocates a new object per call, so identity
  *  says nothing. Both null (an absent target) counts as agreement. */
@@ -71,7 +75,7 @@ function sameRect(a: VisualRect | null, b: VisualRect | null): boolean {
 /** Ties the mask to its one consumer; there is never more than one tour overlay mounted. */
 const HOLE_MASK_ID = 'petit-tour-hole';
 
-/** How far the lit box may move and still be worth MOVING, as a fraction of the viewport's
+/** How far the lit box may move and still be worth moving, as a fraction of the viewport's
  *  diagonal, which is the only length that means the same thing on every screen. Past about a third
  *  of the screen the eye saccades to the new position instead of tracking the box across it, so the
  *  glide is played to someone already looking at the destination: all it adds is the wait, and a
@@ -86,50 +90,29 @@ function movedFar(from: Box, to: Box): boolean {
   return Math.hypot(dx, dy) > Math.hypot(viewportSize().width, viewportSize().height) * GLIDE_MAX_TRAVEL;
 }
 
-/**
- * The dim, and the lit hole punched out of it.
- *
- * SVG rather than a `0 0 0 9999px` box-shadow on the hole: that spread gives the element a paint
- * box roughly 20000px on a side, which past a device pixel ratio of 2 is beyond the maximum texture
- * a compositor will allocate, and this element sits over a composited WebGL canvas so it is
- * composited too. An SVG mask is exactly the size of the viewport whatever the hole is.
- *
- * ONE element, always mounted while the tour runs: the app never flashes undimmed between steps,
- * and two translucent dims over the same pixels (a scrim plus a shadowed spotlight) would read
- * darker than either. Without a lit box it is a plain full-viewport dim.
- *
- * The hole and its ring GLIDE to a nearby box rather than cutting to it, because the box moves
- * under the visitor for reasons that are not a step change: a target animating in, and a UI-scale
- * change rescaling every target at once. The glide is a PURE EASE (`snapTween`), never a spring: a
- * highlight that overshoots stops covering the control it is highlighting, and what the eye catches
- * is the miss, not the movement.
- *
- * A FAR box is cut to instead (`GLIDE_MAX_TRAVEL`), and so is every box under reduced motion. Both
- * take the same path: plain SVG rects React writes the geometry straight into, with no animator
- * involved at all.
- *
- * The geometry rides on `attrX`/`attrY`, not `x`/`y`: on an SVG element framer reads those two as
- * transforms, and the hole has to move the mask's own rectangle.
- */
-/**
- * The spotlight's corner radius, in the SCREEN px the mask is drawn in.
- *
- * `radii.lg` is a CSS radius, and every control it traces wears it scaled by the chrome zoom — so
- * the hole matches the control's own corner only if it scales too. It is then clamped to half the
- * box: on a phone, where the whole UI is scaled well down, a fixed radius is wider than the target
- * and the highlight reads as a pill or a circle rather than as the control it is pointing at.
- */
+/** The spotlight's corner radius in the screen px the mask is drawn in: `radii.lg` scaled by the
+ *  chrome zoom like the control it traces, clamped to half the box so a small target on a phone
+ *  does not read as a pill. */
 export function spotlightRx(w: number, h: number, chrome: number): number {
   return Math.max(2, Math.min(radii.lg * chrome, w / 2, h / 2));
 }
 
+/**
+ * The dim and the lit hole punched out of it, as an SVG mask: a `0 0 0 9999px` box-shadow would
+ * give this composited element a paint box past the compositor's texture limit above DPR 2. One
+ * element stays mounted for the whole tour, so steps never flash undimmed and two dims never stack.
+ *
+ * The hole and its ring glide to a nearby box (`tour.spotlight.move`, an ease, since an overshoot
+ * uncovers the control), and cut to a far one (`GLIDE_MAX_TRAVEL`) or under reduced motion. The
+ * geometry rides on `attrX`/`attrY`: on SVG, framer reads `x`/`y` as transforms.
+ */
 function TourDim({ lit, reduced, chrome }: { lit: Box | null; reduced: boolean; chrome: number }) {
-  // The dim TAKES the pointer: while the tour runs, the app under it is not operable (a
+  // The dim takes the pointer: while the tour runs, the app under it is not operable (a
   // first-launch visitor could otherwise edit the map and press controls through it, and the tour
   // drives every step itself through onStepEnter, so nothing legitimate needs to click through). An SVG
   // mask never affects hit testing, so the lit hole blocks like the rest.
   const style: CSSProperties = { position: 'fixed', inset: 0, pointerEvents: 'auto', zIndex: z.tour };
-  // The ring sits just OUTSIDE the hole, over the dim, so it does not eat into the lit area.
+  // The ring sits just outside the hole, over the dim, so it does not eat into the lit area.
   const ring = lit && { left: lit.left - 1.5, top: lit.top - 1.5, width: lit.width + 3, height: lit.height + 3 };
   // The box this one is arriving from, which is what says whether the move is worth animating. The
   // next render after a cut compares the box against itself, so the rects come back under the
@@ -144,28 +127,28 @@ function TourDim({ lit, reduced, chrome }: { lit: Box | null; reduced: boolean; 
       <defs>
         <mask id={HOLE_MASK_ID}>
           {/* White paints the dim, black cuts the hole out of it. */}
-          <rect x="0" y="0" width="100%" height="100%" fill="#fff" />
+          <rect x="0" y="0" width="100%" height="100%" fill="white" />
           {lit && (cut
-            ? <rect x={lit.left} y={lit.top} width={lit.width} height={lit.height} rx={holeRx} fill="#000" />
+            ? <rect x={lit.left} y={lit.top} width={lit.width} height={lit.height} rx={holeRx} fill="black" />
             : <motion.rect
                 initial={false}
                 animate={{ attrX: lit.left, attrY: lit.top, width: lit.width, height: lit.height }}
-                transition={snapTween}
-                rx={holeRx} fill="#000"
+                transition={framerMotion('tour.spotlight.move')}
+                rx={holeRx} fill="black"
               />)}
         </mask>
       </defs>
-      <rect x="0" y="0" width="100%" height="100%" fill={colors.surfaceOverlay} mask={`url(#${HOLE_MASK_ID})`} />
+      <rect x="0" y="0" width="100%" height="100%" fill={OVERLAY_DIM} mask={`url(#${HOLE_MASK_ID})`} />
       {ring && (cut
         ? <rect
             x={ring.left} y={ring.top} width={ring.width} height={ring.height}
-            rx={ringRx} fill="none" stroke={colors.accentPrimary} strokeWidth={3}
+            rx={ringRx} fill="none" stroke={ACCENT} strokeWidth={3}
           />
         : <motion.rect
             initial={false}
             animate={{ attrX: ring.left, attrY: ring.top, width: ring.width, height: ring.height }}
-            transition={snapTween}
-            rx={ringRx} fill="none" stroke={colors.accentPrimary} strokeWidth={3}
+            transition={framerMotion('tour.spotlight.move')}
+            rx={ringRx} fill="none" stroke={ACCENT} strokeWidth={3}
           />)}
     </svg>
   );
@@ -174,7 +157,7 @@ function TourDim({ lit, reduced, chrome }: { lit: Box | null; reduced: boolean; 
 /**
  * A step title, with the app's own name carrying the wavy underline.
  *
- * The name is SPLIT out of the already-translated title rather than composed around it: each
+ * The name is split out of the already-translated title rather than composed around it: each
  * locale puts `{app}` where its grammar wants it (last in English, first in Japanese), and a split
  * is the one form that does not care which. A title that does not carry the name renders plain.
  *
@@ -208,7 +191,7 @@ interface TourBubbleProps {
    *  target (`TourOverlay`'s own `centred = placed == null`). */
   centred?: boolean;
   reduced?: boolean;
-  /** The height a KEPT card crossfades its content to, from the caller's own per-card measurement;
+  /** The height a kept card crossfades its content to, from the caller's own per-card measurement;
    *  absent, the content stands at its natural height with no crossfade. */
   contentH?: { card: number; h: number } | null;
   /** Which card this bubble is inside, so a stale `contentH` from a card already replaced is not
@@ -223,7 +206,7 @@ interface TourBubbleProps {
 /**
  * The callout's own content: the gesture (where the step has one), the brand mark or the title,
  * the body, and the skip/progress/next footer. `TourOverlay` supplies the card around it (position,
- * entrance/exit, the height crossfade a KEPT card plays between steps); this is what the card says.
+ * entrance/exit, the height crossfade a kept card plays between steps); this is what the card says.
  */
 export function TourBubble({
   step, index, total, isLast, onSkip, onNext, drawn, centred = false, reduced = false,
@@ -233,22 +216,22 @@ export function TourBubble({
   const align = centred ? 'center' : 'left';
   return (
     <>
-      {/* A step change that KEEPS the card crosses its copy over in place, and the card GROWS or
-          SHRINKS to the incoming copy while it does. The height is animated to a measured value
-          rather than left to the flow. Both copies stand in the SAME grid cell, which is what
+      {/* A step change that keeps the card crosses its copy over in place, and the card grows or
+          shrinks to the incoming copy while it does. The height is animated to a measured value
+          rather than left to the flow. Both copies stand in the same grid cell, which is what
           takes the outgoing one out of the height story (a stack overlaps; a flow sums) — the
           job `mode="popLayout"` would do, but framer 12's PopChild reads the child's
           `props.ref` for React 19 and React 18 answers that read with a dev warning
           on every render.
           The clip holds a taller outgoing copy inside the shrinking card. It is also why the
-          copy only FADES: anything that offsets it would be cut off by that same clip.
-          `initial={false}` on both: a card that has just MOUNTED is already its own entrance,
+          copy only fades: anything that offsets it would be cut off by that same clip.
+          `initial={false}` on both: a card that has just mounted is already its own entrance,
           so neither its copy nor its height may play a second one. */}
       <motion.div
         style={{ position: 'relative', overflow: 'hidden', display: 'grid' }}
         initial={false}
         animate={contentH?.card === cardId ? { height: contentH.h } : {}}
-        transition={reduced ? NO_MOTION : springs.stiff}
+        transition={framerMotion('tour.card.resize', reduced)}
       >
         <AnimatePresence initial={false}>
           <motion.div
@@ -256,8 +239,8 @@ export function TourBubble({
             style={{ gridArea: '1 / 1' }}
             initial={reduced ? false : { opacity: 0 }}
             animate={{ opacity: 1 }}
-            exit={reduced ? { opacity: 0, transition: NO_MOTION } : { opacity: 0, transition: exitTransition }}
-            transition={reduced ? NO_MOTION : springs.gentle}
+            exit={{ opacity: 0, transition: framerMotion('surface.leave', reduced) }}
+            transition={framerMotion('tour.copy.swap', reduced)}
           >
             {/* The measured element is this plain box rather than the motion element around it:
                 AnimatePresence reads its children's `ref` prop, which React 18 does not carry. */}
@@ -278,14 +261,14 @@ export function TourBubble({
               </div>
               {/* brownText, not textSecondary: this text is normal-size, and textSecondary sits
                   below the 4.5:1 AA floor on white (see legal/a11y.test.tsx). */}
-              <div style={{ ...font.body, color: colors.brownText }}>{t(step.bodyKey)}</div>
+              <div style={{ ...font.body, color: MUTED }}>{t(step.bodyKey)}</div>
               {immersive && (
                 <div style={{ display: 'flex', justifyContent: centred ? 'center' : 'flex-start', marginTop: 12 }}>
                   <motion.button
                     type="button"
                     onClick={immersive}
                     {...pressable}
-                    style={{ border: 'none', background: colors.surfaceSecondary, color: colors.frameDark, cursor: cursors.clickable, fontFamily: font.family, ...roleFont('chip'), padding: '6px 16px', borderRadius: radii.pill }}
+                    style={{ border: 'none', background: SURFACE_SECONDARY, color: FRAME_INK, cursor: cursors.clickable, fontFamily: font.family, ...roleFont('chip'), padding: '6px 16px', borderRadius: radii.pill }}
                   >{t('tour.immersive')}</motion.button>
                 </div>
               )}
@@ -297,16 +280,16 @@ export function TourBubble({
         <button
           type="button"
           onClick={onSkip}
-          style={{ border: 'none', background: 'transparent', cursor: cursors.clickable, fontFamily: font.family, ...roleFont('chip'), color: colors.brownText, padding: 0 }}
+          style={{ border: 'none', background: 'transparent', cursor: cursors.clickable, fontFamily: font.family, ...roleFont('chip'), color: MUTED, padding: 0 }}
         >{t('tour.skip')}</button>
-        <span style={{ fontFamily: font.family, ...roleFont('chip'), color: colors.brownText }}>
+        <span style={{ fontFamily: font.family, ...roleFont('chip'), color: MUTED }}>
           {t('tour.progress', { n: index + 1, total })}
         </span>
         <motion.button
           type="button"
           onClick={onNext}
           {...pressable}
-          style={{ border: 'none', background: colors.tileYellow, color: colors.frameDark, cursor: cursors.clickable, fontFamily: font.family, ...roleFont('chip'), padding: '6px 16px', borderRadius: radii.pill }}
+          style={{ border: 'none', background: ACTIVE, color: FRAME_INK, cursor: cursors.clickable, fontFamily: font.family, ...roleFont('chip'), padding: '6px 16px', borderRadius: radii.pill }}
         >{isLast ? t('tour.start') : t('tour.next')}</motion.button>
       </div>
     </>
@@ -326,7 +309,7 @@ interface TourOverlayProps {
    * supplies it for the same reason it supplies the steps — a diagram of a gesture is a fact about
    * that interface, not about tours.
    *
-   * It answers with its own HEIGHT because the placement runs before anything has been measured: the
+   * It answers with its own height because the placement runs before anything has been measured: the
    * bubble is fitted against the spotlight by an estimate, and a card that grew by a drawing the
    * estimate did not know about would creep back over the control the step is describing.
    */
@@ -350,32 +333,32 @@ export function TourOverlay({ onStepEnter, steps, diagram }: TourOverlayProps) {
   const eventBus = useEditorStore((s) => s.eventBus);
   /** The most recent measurement, stamped with the step it belongs to. A measurement whose `step`
    *  no longer matches the current step is stale and read as "not yet measured" rather than as the
-   *  new step's result — this is what keeps a step from ever being skipped by a PREVIOUS step's
+   *  new step's result — this is what keeps a step from ever being skipped by a previous step's
    *  leftover result. */
   const [seen, setSeen] = useState<Measurement | null>(null);
-  /** The step the bubble is SHOWING, and the box it is placed against. It lags `step` by the one
+  /** The step the bubble is showing, and the box it is placed against. It lags `step` by the one
    *  frame a newly-current step's target takes to be measured, and that lag is what keeps the card
-   *  mounted across a step change: gating the render on the CURRENT step's measurement would
+   *  mounted across a step change: gating the render on the current step's measurement would
    *  unmount the bubble for that frame, replaying its entrance and dropping focus to <body>. A step that is
    *  passed over never becomes shown at all. */
   const [shown, setShown] = useState<Measurement | null>(null);
   const announced = useRef<TourStep | null>(null);
   const frame = useRef<number | null>(null);
-  /** Where the last card RENDERED sat, so the next step can tell whether its card lands on the same
+  /** Where the last card rendered sat, so the next step can tell whether its card lands on the same
    *  pixels. */
   const lastPos = useRef<string | null>(null);
-  /** The card ELEMENT's identity. It changes only when a step change MOVES the card, so a step
+  /** The card element's identity. It changes only when a step change moves the card, so a step
    *  change that lands in the same place keeps the card it already has. */
   const [cardTag, setCardTag] = useState<{ id: number; step: TourStep | null }>({ id: 0, step: null });
-  /** The copy's own height, which is what a KEPT card animates between as its copy changes.
+  /** The copy's own height, which is what a kept card animates between as its copy changes.
    *  Stamped with the card it was measured on: a card that has just been replaced is already at its
    *  own size, and must not animate out of the height the card before it happened to have. */
   const [contentH, setContentH] = useState<{ card: number; h: number } | null>(null);
   const contentRef = useRef<HTMLDivElement | null>(null);
-  // The outgoing copy holds this same ref until its exit finishes, which is AFTER the incoming one
+  // The outgoing copy holds this same ref until its exit finishes, which is after the incoming one
   // has claimed it; taking only the attach keeps the ref on the copy that is staying.
   const setContentNode = useCallback((el: HTMLDivElement | null) => { if (el) contentRef.current = el; }, []);
-  // Focus is taken as a card MOUNTS. A step change replaces the card, so a ref shared by both would
+  // Focus is taken as a card mounts. A step change replaces the card, so a ref shared by both would
   // be nulled by the outgoing one's detach; a callback ref belongs to one card and fires exactly
   // once for it. Once per step and never on a remeasure, which is what keeps a pan or a resize from
   // stealing focus back from a control the visitor had tabbed to.
@@ -385,42 +368,32 @@ export function TourOverlay({ onStepEnter, steps, diagram }: TourOverlayProps) {
 
   useOverlayLock(running);
 
-  // MUST BE A LAYOUT EFFECT, and the measurement below MUST STAY DEFERRED to a rAF: together those
-  // two facts, not the order these effects are declared in, are what gets a step's target measured
-  // only after the app has prepared it (`mode: 'mountain'` selects a build mode, which is what puts
-  // that step's target — the mode's own bottom bar — in the DOM at all). React runs the layout pass at DiscreteEventPriority,
-  // so a setState from ANY layout effect lands on SyncLane and is flushed synchronously inside the
-  // same task as the commit, while a rAF registered during that commit cannot run until the task
-  // yields — so the host's expansion is in the DOM first. Announce from a passive effect and it
-  // runs after paint, a frame too late; read the DOM inline here instead of from a rAF and the read
-  // happens before that sync flush (the whole layout pass precedes it) and finds the collapsed card.
+  // A layout effect, with the measurement deferred to a rAF: together these get a step's target
+  // measured only after the app has prepared it (`mode: 'mountain'` is what puts that step's bottom
+  // bar in the DOM). A setState from a layout effect lands on SyncLane and flushes in the commit's
+  // task, while a rAF waits for the task to yield. A passive effect would announce a frame late; an
+  // inline read would precede the sync flush and find the collapsed card.
   //
-  // It fires the moment a step becomes CURRENT, not once the step can be shown: gating it on the
-  // rect that the announcement itself is supposed to produce would deadlock. So a step that is
-  // announced and then passed over still runs its side effect — the choreography is defined by
-  // the step order, not by which steps turned out to be showable.
+  // It fires when a step becomes current, not when it can be shown, since gating it on the rect the
+  // announcement produces would deadlock; a step passed over still runs its side effect.
   //
-  // The same effect ENDS a run: this overlay is mounted for the app's whole life and the step list's
-  // entries are module singletons, so a value left on a ref would be read by the NEXT run as its
-  // own. `announced` is that value, and is cleared here. The
-  // card's travel origin (`lastPos`) and its measured height (`contentH`) are left as they are: the
-  // ordinary step-to-step comparison already reads the former as wherever the outgoing card sat, run
-  // boundary or not, and the layout effect that measures the latter re-runs before every paint
-  // regardless.
+  // It also ends a run: the overlay lives for the app's whole life and steps are module singletons,
+  // so `announced` is cleared here or the next run would read it. `lastPos` and `contentH` need no
+  // reset.
   useLayoutEffect(() => {
     if (step && announced.current !== step) { announced.current = step; onStepEnter?.(step); }
     if (!step) { announced.current = null; }
   }, [step, onStepEnter]);
 
   // One read per frame. A rect is published the moment there is one, and republished on every
-  // later frame it MOVES on, so the step is on screen while its target is still animating in and
+  // later frame it moves on, so the step is on screen while its target is still animating in and
   // the spotlight glides after it. Reading stops once two consecutive frames agree, or at the cap.
   // `step` is captured by this closure, so a frame that lands after the step has moved on stamps a
-  // measurement for the OLD step, not the new one.
+  // measurement for the old step, not the new one.
   const track = useCallback(() => {
     if (frame.current != null) cancelAnimationFrame(frame.current);
     // Cleared unconditionally, here rather than only on the targetless path: TOUR_STEPS entries
-    // are module singletons, so a later run reaching the SAME step object a past run passed over
+    // are module singletons, so a later run reaching the same step object a past run passed over
     // would otherwise find that old `{ step, rect: null }` still stamped as a match for it, with
     // no frame ever read this time.
     setSeen(null);
@@ -455,7 +428,7 @@ export function TourOverlay({ onStepEnter, steps, diagram }: TourOverlayProps) {
     };
   }, [track]);
 
-  // A run already in flight is LEFT ALONE: it calls measureTarget afresh every frame, so it
+  // A run already in flight is left alone: it calls measureTarget afresh every frame, so it
   // converges on the new geometry by itself. Restarting it here would starve it — a drag-resize
   // fires an event per frame, and each restart resets the floor before the loop can take two
   // consecutive reads, so nothing new would be published for the whole drag.
@@ -476,7 +449,7 @@ export function TourOverlay({ onStepEnter, steps, diagram }: TourOverlayProps) {
   useEffect(() => { onGeometryChange(); }, [uiZoom, onGeometryChange]);
 
   // What the bubble shows: a targetless step the moment it becomes current (there is nothing to
-  // wait for), a targeted one on the first frame its OWN measurement carries a rect. Every later
+  // wait for), a targeted one on the first frame its own measurement carries a rect. Every later
   // read of the same step lands here too, which is how the spotlight and the bubble follow a
   // target that is still moving.
   useEffect(() => {
@@ -486,14 +459,11 @@ export function TourOverlay({ onStepEnter, steps, diagram }: TourOverlayProps) {
     if (seen?.step === step && seen.rect) setShown(seen);
   }, [running, step, seen]);
 
-  useEffect(() => {
-    if (!running) return;
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') skip(); };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [running, skip]);
+  // Escape ends the tour, through the foreground surface's own keyboard handling.
+  const tourRoot = useRef<HTMLElement | null>(null);
+  useSurfaceScope({ open: running, root: tourRoot, onClose: skip });
 
-  // A step whose OWN measurement has landed and come back absent has nothing to point at, so it is
+  // A step whose own measurement has landed and come back absent has nothing to point at, so it is
   // passed over rather than drawn against the origin. The last step finishes, so a map with no
   // targets at all ends the tour instead of cycling.
   useEffect(() => {
@@ -501,14 +471,14 @@ export function TourOverlay({ onStepEnter, steps, diagram }: TourOverlayProps) {
   }, [running, step, seen, next]);
 
   // The bubble renders under the chrome `zoom`, so its coordinates are CSS px inside that zoomed
-  // subtree while a measured rect is VISUAL px: place it in visual px (what actually occupies
+  // subtree while a measured rect is visual px: place it in visual px (what actually occupies
   // screen), then divide the zoom back out. A targetless step has nothing to anchor to and centres
   // instead.
   const lit = shown?.rect ? litBox(shown.rect) : null;
   // The drawing above the title, and what it adds to the height the placement fits against.
   const drawn = shown ? diagram?.(shown.step) ?? null : null;
   const placed = lit && shown
-    ? placeBubble(
+    ? placeBeside(
         lit,
         { width: BUBBLE_W * chrome, height: (BUBBLE_H + (drawn?.height ?? 0)) * chrome },
         shown.step.side,
@@ -517,16 +487,16 @@ export function TourOverlay({ onStepEnter, steps, diagram }: TourOverlayProps) {
       )
     : null;
 
-  // A step change either MOVES the card or does not, and that decides which of the two transitions
+  // A step change either moves the card or does not, and that decides which of the two transitions
   // it gets. Landing somewhere else is a new card: the old one leaves the control it was describing
   // as the new one pops at another, which is the whole of what the visitor sees. Landing on the
-  // same pixels (the two centred steps at the start) keeps the card and crosses its CONTENTS over,
+  // same pixels (the two centred steps at the start) keeps the card and crosses its contents over,
   // because an exit and an entrance in one place accomplish nothing visible.
   //
   // Derived during render (React's pattern for state that follows another value) rather than from
   // an effect: the card's key is needed in the same commit the step change renders in. `lastPos`
   // still holds the outgoing card's place at that point, since the effect below runs after.
-  const posKey = shown ? (placed ? `${Math.round(placed.left)},${Math.round(placed.top)}` : 'centre') : null;
+  const posKey = shown ? (placed ? quantisedKey(placed.left, placed.top, 1) : 'centre') : null;
   useLayoutEffect(() => { lastPos.current = posKey; }, [posKey]);
   if (shown && cardTag.step !== shown.step) {
     const moved = cardTag.step != null && lastPos.current !== posKey;
@@ -534,19 +504,13 @@ export function TourOverlay({ onStepEnter, steps, diagram }: TourOverlayProps) {
   }
 
   // The incoming copy's natural height, which is the card's target height. It is measured off the
-  // copy rather than off the card because the card's own box is the ANIMATED value; and it is the
+  // copy rather than off the card because the card's own box is the animated value; and it is the
   // incoming copy alone, because the outgoing one is out of the flow (`popLayout`) from the first
   // frame: the flow height never changes again, so nothing snaps when the outgoing copy finally
   // unmounts.
-  useLayoutEffect(() => {
-    const el = contentRef.current;
-    if (!el) return;
-    const measure = () => { const h = el.offsetHeight; if (h > 0) setContentH({ card: cardTag.id, h }); };
-    measure();
-    if (typeof ResizeObserver === 'undefined') return;
-    const ro = new ResizeObserver(measure);
-    ro.observe(el);
-    return () => ro.disconnect();
+  useObservedSize(() => contentRef.current, ([el]) => {
+    const h = el!.offsetHeight;
+    if (h > 0) setContentH({ card: cardTag.id, h });
   }, [shown?.step, cardTag.id, t]);
 
   if (!running || !step) return null;
@@ -578,8 +542,8 @@ export function TourOverlay({ onStepEnter, steps, diagram }: TourOverlayProps) {
   return (
     <>
       {dim}
-      {/* A card that MOVES is a new card, entering and exiting the way every other floating surface
-          here does (ContextMenu, DeletePopover): springs.bouncy in, exitTransition out, so it
+      {/* A card that moves is a new card, entering and exiting the way every other floating surface
+          here does (ContextMenu, DeletePopover): a bouncy pop in, `surface.leave` out, so it
           arrives with life and is put away cleanly. Both are on screen for the length of the exit,
           which is the point — one leaves the control it was describing as the next pops at another.
           A card born at its own anchor sized to its own copy needs nothing animated into place. */}
@@ -589,7 +553,7 @@ export function TourOverlay({ onStepEnter, steps, diagram }: TourOverlayProps) {
           ref={focusCard}
           role="dialog"
           // No aria-modal: there is no focus trap, so Tab can still walk out of the card, and
-          // claiming modality a keyboard can escape misleads a screen reader. The POINTER is
+          // claiming modality a keyboard can escape misleads a screen reader. The pointer is
           // blocked by the dim; `viewport-changed` re-tracking survives for the moves that need
           // no pointer (a resize, Ctrl +/-).
           aria-label={t(shown.step.titleKey)}
@@ -598,9 +562,9 @@ export function TourOverlay({ onStepEnter, steps, diagram }: TourOverlayProps) {
           style={{ ...bubble, ...position, zoom: chrome, outline: 'none', maxHeight: (viewportH - 2 * VIEWPORT_MARGIN) / chrome, overflowY: 'auto' }}
           // The centring translate rides in the template rather than in `x`/`y`: framer owns the
           // transform for the entrance scale, and a percentage translate composes with it.
-          // ALWAYS a template, even when there is nothing to prepend. Without one, framer collapses
+          // Always a template, even when there is nothing to prepend. Without one, framer collapses
           // the style to `transform: none` the moment it believes the spring is done — and
-          // `springs.bouncy` is underdamped, so it does that while the scale is still ringing a
+          // `tour.card.pop` is underdamped, so it does that while the scale is still ringing a
           // fraction under 1, snapping the card (and the logo in it) to full size and back. The
           // template keeps a real matrix on the element the whole way down; translateZ(0) also keeps
           // it on its own layer, so the raster never re-snaps either.
@@ -609,8 +573,8 @@ export function TourOverlay({ onStepEnter, steps, diagram }: TourOverlayProps) {
             : `${generated} translateZ(0)`)}
           initial={reduced ? false : { scale: 0.4, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
-          exit={reduced ? { opacity: 0, transition: NO_MOTION } : { scale: 0.4, opacity: 0, transition: exitTransition }}
-          transition={reduced ? NO_MOTION : { ...springs.bouncy, ...scaleRest }}
+          exit={reduced ? { opacity: 0, transition: NO_MOTION } : { scale: 0.4, opacity: 0, transition: framerMotion('surface.leave') }}
+          transition={framerMotion('tour.card.pop', reduced)}
         >
           <TourBubble
             step={shown.step}

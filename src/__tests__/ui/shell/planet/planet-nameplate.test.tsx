@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 /**
  * The planet session's nameplate: centred on the mode row's ink line, naming the planet in its save
  * panel, and unrolling one surface at a time from the plate.
@@ -6,31 +7,38 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { I18nProvider, translate } from '../../../../i18n/context';
 import { useEditorStore } from '../../../../state/store';
-import { newMap } from '../../../../kit/operations/map';
-import { host } from '../../../../kit/host';
-import { listPlanets } from '../../../../io/planet-library';
-import { CellZone, CommandType, TerrainType, type MacroCoord } from '../../../../core/model/types';
+import { newMap } from '../../../../editor/operations/map';
+import { editorPort } from '../../../../editor/session/context';
+import { host } from '../../../../editor/host/host';
+import { listPlanets } from '../../../../io/storage/planet-library';
+import { CommandType, TerrainType, type MacroCoord } from '../../../../core/model/types';
+import { CellZone } from '../../../../core/game/zones';
 import { Shell } from '../../../../ui/shell/Shell';
 import { MODE_ROW_INK_CENTRE, MODE_ROW_TOP, TOP_RIGHT_H, TOP_RIGHT_TOP, blockCentre, cornerArt, planFrame, sessionModes, topRightHeight } from '../../../../ui/shell/frame';
-import { FIT_FLOOR, FIT_FLOOR_TOUCH, fittedUiScale } from '../../../../ui/design/scale';
-import { PLATE_MIN_WIDTH, plateDepth, plateMinDepth } from '../../../../ui/shell/windows/LayerPanel';
+import { FIT_FLOOR, fittedUiScale } from '../../../../ui/design/scale';
+import { PLATE_MIN_WIDTH, plateDepth, plateMinDepth } from '../../../../ui/shell/controls/layer-plate';
 import { MODE, MODE_PLATE_W, MODE_SCALE, ZOOM } from '../../../../ui/shell/units';
-import { NAME_LEAST, PLATE_ROW, nameplateBottom, nameplateSpan, nameplateTop, toastBandShift, type NameplateSpan } from '../../../../ui/shell/planet/PlanetNameplate';
+import { NAME_LEAST, PLATE_ROW, nameplateSpan, nameplateTop, toastBandShift, type NameplateSpan } from '../../../../ui/shell/planet/nameplate-layout';
 import { TOAST_BAND_SHIFT_VAR, TOAST_BAND_TOP, bandTop } from '../../../../ui/chrome/floating/toast-band';
-import { menuRows } from '../../../../ui/shell/windows/MenuSheet';
-import { startPlanetEditing, stopPlanetEditing } from '../../../../ui/shell/planet/planet-editing';
-import { setStoreState } from '../../../_store';
+import { MenuSheet } from '../../../../ui/shell/controls/MenuSheet';
+import { startPlanetEditing, stopPlanetEditing } from '../../../../editor/session/planet-editing';
+import { setStoreState } from '../../../_support/store';
 import type { PlanetSession } from '../../../../state/slices/planet-session';
 import { anchoredOrigin } from '../../../../ui/primitives/AnchoredConfirm';
+import type { TextKey } from '../../../../i18n/keys';
 
 // Names are checked by the export text review; these tests stub its verdict as approved.
-vi.mock('../../../../io/moderation/text/reviewer', async (original) => ({
-  ...await original<typeof import('../../../../io/moderation/text/reviewer')>(),
+vi.mock('../../../../pipelines/moderation/text/reviewer', async (original) => ({
+  ...await original<typeof import('../../../../pipelines/moderation/text/reviewer')>(),
   reviewText: vi.fn(async () => ({ allowed: true })),
 }));
 
+/** The fit floor a touch-primary device gets. */
+const TOUCH_FLOOR = 0.5;
+/** Where the plate's box ends, in chrome css px. */
+const nameplateBottom = (frameZoom: number, chromeZoom: number) => nameplateTop(frameZoom, chromeZoom) + PLATE_ROW;
 const store = () => useEditorStore.getState();
-const t = (key: string, params?: Record<string, string | number>) => translate(key, params);
+const t = (key: TextKey, params?: Record<string, string | number>) => translate(key, params);
 
 function mount() {
   return render(
@@ -40,7 +48,7 @@ function mount() {
 }
 
 function enter(): void {
-  act(() => { store().setTourRunning(false); startPlanetEditing(null); });
+  act(() => { store().setTourRunning(false); startPlanetEditing(null, false); });
 }
 
 function paintGround(): void {
@@ -48,9 +56,9 @@ function paintGround(): void {
   for (let y = 100; y < 120; y++) for (let x = 100; x < 120; x++) cells.push({ x, y });
   act(() => {
     const exec = store().commandExecutor!;
-    const start = exec.getUndoStackSize();
-    exec.execute({ type: CommandType.PaintTerrain, timestamp: 0, cells, terrainType: TerrainType.Mountain, elevation: 0, ground: CellZone.Grass });
-    exec.commitStroke(start);
+    const start = exec.beginStroke();
+    exec.execute({ type: CommandType.PaintTerrain, cells, terrainType: TerrainType.Mountain, elevation: 0, ground: CellZone.Grass });
+    start.commit();
   });
 }
 
@@ -60,11 +68,11 @@ const plateButton = (name: string | RegExp) => within(plate()).getByRole('button
 beforeEach(() => {
   localStorage.clear();
   setStoreState({ locale: 'en' });
-  newMap('hexia');
+  newMap(editorPort, 'hexia');
   store().setAssistantOpen(false);
   store().setTourRunning(false);
   store().setModal('newProject', false);
-  store().setPlanetReturn(null);
+  useEditorStore.setState({ planetReturn: null });
 });
 
 afterEach(() => {
@@ -109,7 +117,7 @@ describe('across the window', () => {
 
   it('never meets the mode row or the corner at any window and UI scale', () => {
     const windows = [[1440, 900], [1280, 800], [1024, 768], [390, 844], [844, 390], [780, 360], [2560, 1440]] as const;
-    for (const [vw, vh] of windows) for (const floor of [FIT_FLOOR, FIT_FLOOR_TOUCH]) {
+    for (const [vw, vh] of windows) for (const floor of [FIT_FLOOR, TOUCH_FLOOR]) {
       for (let ui = 0.6; ui <= 1.8001; ui += 0.1) {
         const chrome = fittedUiScale(vw, vh, ui, 0, floor);
         const frameZoom = chrome * ZOOM;
@@ -287,8 +295,18 @@ describe('one surface at a time', () => {
 
 describe('the menu rows', () => {
   it('leaves out Change planet and Import in a session', () => {
-    const modalsOf = (inSession: boolean) => menuRows(inSession).map((row) => ('modal' in row ? row.modal : row.labelKey));
-    expect(modalsOf(false)).toEqual(['newProject', 'import', 'settings', 'help', 'about']);
-    expect(modalsOf(true)).toEqual(['settings', 'help', 'about']);
+    const rowsShown = (): string[] => {
+      const trigger = { current: document.body };
+      const view = render(<I18nProvider><MenuSheet open onDismiss={() => {}} trigger={trigger} /></I18nProvider>);
+      const names = screen.getAllByRole('menuitem').map((item) => item.textContent ?? '');
+      view.unmount();
+      return names;
+    };
+    const titles = (keys: TextKey[]) => keys.map((key) => t(key));
+    setStoreState({ planetSession: null });
+    expect(rowsShown()).toEqual(titles(['modal.new_title', 'import.title', 'modal.settings_title', 'modal.help_title', 'modal.about_title']));
+    setStoreState({ planetSession: {} as PlanetSession });
+    expect(rowsShown()).toEqual(titles(['modal.settings_title', 'modal.help_title', 'modal.about_title']));
+    setStoreState({ planetSession: null });
   });
 });

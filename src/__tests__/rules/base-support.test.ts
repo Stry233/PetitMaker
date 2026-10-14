@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { baseSupportRule } from '../../rules/base-support';
 import { TerrainType } from '../../core/model/types';
-import { makeState, setTerrain, makeExecutor, paintCmd } from './_helpers';
+import { makeState, setTerrain, makeExecutor, paintCmd } from '../_support/map-state';
 
 describe('V-MTN-03: 3x3 Base Support', () => {
   it('allows layers 1-3 (ground provides 3x3 base)', () => {
@@ -48,9 +48,9 @@ describe('V-MTN-03: 3x3 Base Support', () => {
   });
 
   it('a water cell in the 3x3 window supports like the block it replaced', () => {
-    // The game forms waterfalls by CONVERTING a mountain block to water among its standing
+    // The game forms waterfalls by converting a mountain block to water among its standing
     // neighbours, so the conversion must be support-neutral: water at N
-    // fills its cell to N in a neighbour's window, even though nothing may be built ON it.
+    // fills its cell to N in a neighbour's window, even though nothing may be built on it.
     const state = makeState();
     for (let dy = -1; dy <= 1; dy++)
       for (let dx = -1; dx <= 1; dx++)
@@ -119,7 +119,7 @@ describe('V-MTN-03: 3x3 Base Support', () => {
     expect(baseSupportRule.validate(state)).toHaveLength(0);
   });
 
-  // A river is ONE layer deep and does not float (RULES.md §7), so a water cell at N is a water
+  // A river is one layer deep and does not float (RULES.md §7), so a water cell at N is a water
   // block at N on riverbed mass at N-1: it supports a base up to N-1, never at N. Treating it as
   // supporting nothing at any depth made water at elevation >= 4 impossible anywhere on the map —
   // its containing rim (mountains at the water's own level) always has the water in its 3x3.
@@ -193,7 +193,7 @@ describe('V-MTN-03: 3x3 Base Support', () => {
 });
 
 /**
- * A river painted above layer 3: the water itself is never the cell the rule flags — the basin RIM
+ * A river painted above layer 3: the water itself is never the cell the rule flags — the basin rim
  * is. A pond's rim stands at the water's own level, so the water sits inside every rim cell's 3x3,
  * and a rim at >= 4 would lose its base to a cell that in fact holds riverbed mass one layer down.
  * Driven through the real command path, since the refusal only shows up as a post-stroke revert.
@@ -203,13 +203,14 @@ describe('V-MTN-03: an elevated pond survives its own rim (real commands)', () =
    *  window finds full support 3 layers down. Returns the executor with the stroke still open. */
   function terraceTo(state: ReturnType<typeof makeState>, level: number) {
     const ex = makeExecutor(state);
+    const whole = ex.beginStroke();
     for (let e = 1; e <= level; e++) {
       const lo = 2 + (e - 1), hi = 27 - (e - 1);
       const cells = [];
       for (let y = lo; y <= hi; y++) for (let x = lo; x <= hi; x++) cells.push({ x, y });
       ex.execute(paintCmd(cells, TerrainType.Mountain, e));
     }
-    expect(ex.commitStroke(0)).toHaveLength(0);
+    expect(whole.commit()).toHaveLength(0);
     return ex;
   }
 
@@ -217,10 +218,10 @@ describe('V-MTN-03: an elevated pond survives its own rim (real commands)', () =
     it(`paints a contained pond at elevation ${level}`, () => {
       const state = makeState(30, 30);
       const ex = terraceTo(state, level);
-      const mark = ex.getUndoStackSize();
+      const mark = ex.beginStroke();
       const pond = [{ x: 14, y: 14 }, { x: 15, y: 14 }, { x: 14, y: 15 }, { x: 15, y: 15 }];
       expect(ex.execute(paintCmd(pond, TerrainType.Water, level)).success).toBe(true);
-      expect(ex.commitStroke(mark)).toHaveLength(0);
+      expect(mark.commit()).toHaveLength(0);
       for (const c of pond) {
         expect(state.cells[c.y]![c.x]!.terrain).toMatchObject({ type: TerrainType.Water, elevation: level });
       }
@@ -230,8 +231,9 @@ describe('V-MTN-03: an elevated pond survives its own rim (real commands)', () =
   it('still reverts a mountain at 5 with no 3x3 base under it', () => {
     const state = makeState(30, 30);
     const ex = makeExecutor(state);
+    const whole = ex.beginStroke();
     for (let e = 1; e <= 5; e++) ex.execute(paintCmd([{ x: 14, y: 14 }], TerrainType.Mountain, e));
-    expect(ex.commitStroke(0).some(e => e.ruleId === 'V-MTN-03')).toBe(true);
+    expect(whole.commit().some(e => e.ruleId === 'V-MTN-03')).toBe(true);
     expect(state.cells[14]![14]!.terrain?.elevation ?? 0).toBeLessThan(4);
   });
 });

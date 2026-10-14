@@ -1,25 +1,25 @@
-// THE CASCADE STAIR, read on ground the test itself shapes.
+// The cascade stair, read on ground the test itself shapes.
 //
-// The claims are all about the BAND GEOMETRY, and the only proof that matters for it is a commit: a
+// The claims are all about the band geometry, and the only proof that matters for it is a commit: a
 // band's caps (V-WTR-02) and its uniform landing (V-WTR-03) are claims about a finished map, so the
 // terraced fixture is committed through the live rules and the violation list has to be empty.
 //
 // The rest is what makes a stair a stair rather than a pool on a lip: it descends several steps, the
-// bands stand on one strip AND join into one connected body so the whole of it reads as one figure, it
+// bands stand on one strip and join into one connected body so the whole of it reads as one figure, it
 // crosses more tiers than any single body the accent pass could cut, and its foot is a cell the
 // map's water story can carry on from.
 //
-// THE GROUND IS THE INPUT, not a seed. The pass is a pure function of the plan — nothing in it is
+// The ground is the input, not a seed. The pass is a pure function of the plan — nothing in it is
 // seeded — so the fixture varies what actually varies between maps: how deep a terrace runs before
 // it steps. A test that ran six seeds over one staircase would be running one case six times.
 import { describe, it, expect } from 'vitest';
 import { MAP_TEMPLATES } from '../../../../../config/maps';
-import { flatIndex } from '../../../../../core/model/grid-model';
+import { flatIndex } from '../../../../../core/grid/rect';
 import type { MapTemplate } from '../../../../../core/model/types';
 import { createDefaultRegistry } from '../../../../../rules';
-import { applyPlanToScratch } from '../../../../../tools/generation/core/repair';
-import type { TerrainPlan } from '../../../../../tools/generation/core/types';
-import { paintableMask } from '../../../../../tools/generation/designer/composition/composition';
+import { applyPlanToScratch } from '../../../../../tools/generation/terrain-plan/repair';
+import type { TerrainPlan } from '../../../../../tools/generation/terrain-plan/types';
+import { paintableMask } from '../../../../../tools/generation/designer/planet';
 import { carveCascadeStairs, type CascadeStair } from '../../../../../tools/generation/designer/water/cascade-stair';
 
 const HEXIA = MAP_TEMPLATES['hexia']!;
@@ -39,7 +39,7 @@ const WIDTH_MIN = 5;
  * plateau at layer 4 running to the coast has no 3x3 support at its rim and would fail the rule on
  * ground the test drew rather than on anything the stair cut. Three tiers is also exactly `STEPS_MIN`
  * steps, so the fixture is the smallest map a stair may be cut on at all. The rows per tier are
- * the terrace DEPTH: eight is what a designed plate runs to, and a stair that only worked on a flank
+ * the terrace depth: eight is what a designed plate runs to, and a stair that only worked on a flank
  * with no floor on it would never be cut on a real map.
  */
 function staircase(
@@ -101,7 +101,7 @@ describe('the cascade stair, on a staircase map', () => {
       const { stairs } = carve(step);
       expect(stairs.length, `step ${step}`).toBeGreaterThanOrEqual(1);
       for (const stair of stairs) {
-        // TWO STEPS IS THE SMALLEST STAIR, and the shallowest fixture is where the pass falls back to
+        // Two steps is the smallest stair, and the shallowest fixture is where the pass falls back to
         // it: on 4 rows per tier this map's top terrace is two rows of land above its own shore, so
         // the top band would pour backwards off the coast and is not cut. Every deeper terrace carries
         // the three the pass asks for first.
@@ -130,7 +130,7 @@ describe('the cascade stair, on a staircase map', () => {
   it('stacks its bands on ONE strip, each inside the one above it', () => {
     for (const step of STEPS) {
       for (const stair of carve(step).stairs) {
-        // The strip keeps one axis and only ever NARROWS, so each band's span across the fall line
+        // The strip keeps one axis and only ever narrows, so each band's span across the fall line
         // stands inside its predecessor's. That is what makes the whole of it read as one figure while
         // still letting a band give up the cells a street or a doorstep reaches into.
         const acrossX = stair.bands.every((b) => b.rect.w <= stair.width);
@@ -148,7 +148,7 @@ describe('the cascade stair, on a staircase map', () => {
   });
 
   it('lands as ONE connected body, bands and landings and crossings together', () => {
-    // A STAIR CUT AS TWO POOLS IS NOT A STAIR. On the finished map the reading that says a cascade
+    // A stair cut as two pools is not a stair. On the finished map the reading that says a cascade
     // stands there is a body spanning three surface levels with a capped face, so bands that stand
     // apart with a dry terrace between them are two ordinary ponds however neatly they line up on the
     // strip. Measured without the crossing requirement: 0 of 16 stairs on `hexia` arrive as one body.

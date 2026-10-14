@@ -1,18 +1,18 @@
 import { describe, it, expect } from 'vitest';
-import { CommandExecutor } from '../../../core/commands/command-executor';
+import { writesMap } from '../../../agent/core/tool-facts';
 import { EventBus } from '../../../core/commands/event-bus';
 import { createDefaultRegistry } from '../../../rules';
-import type { EditorEvents } from '../../../core/model/types';
-import { makeState } from '../../rules/_helpers';
-import { roadLookup } from '../../../state/object-index';
-import { TOOL_SCHEMAS, WRITE_TOOLS, type AgentToolDeps } from '../../../agent/tools';
-import { createExecutor, wireSchemas, WIDE_TOOLS } from '../../../agent/exec/executor';
+import type { EditorEvents } from '../../../state/editing/events';
+import { makeState } from '../../_support/map-state';
+import { TOOL_FACTS, wireSchemas, type AgentToolDeps } from '../../../agent/tools';
+import { createExecutor } from '../../../agent/exec/executor';
 import { shouldGate } from '../../../agent/core/gates';
+import { createExecutor as createCommandExecutor } from '../../../state/executor';
 
 function setup(w = 20, h = 20) {
   const state = makeState(w, h);
   const bus = new EventBus<EditorEvents>();
-  const exec = new CommandExecutor(state, bus, createDefaultRegistry(), roadLookup(state));
+  const exec = createCommandExecutor(state, createDefaultRegistry(), bus);
   const deps: AgentToolDeps = { getState: () => state, getExecutor: () => exec, getRegion: () => [] };
   return { state, exec, deps };
 }
@@ -21,46 +21,45 @@ describe('exec/executor', () => {
   it('a read tool runs clean and never touches the undo stack', async () => {
     const { exec, deps } = setup();
     const executor = createExecutor(deps);
-    const before = exec.getUndoStackSize();
+    const before = exec.historyDepth();
     const r = await executor.execute({ callId: 't1', name: 'inspect_region', args: { x1: 0, y1: 0, x2: 2, y2: 2 } });
     expect(r.isError).toBe(false);
-    expect(exec.getUndoStackSize()).toBe(before);
+    expect(exec.historyDepth()).toBe(before);
   });
 
   it('paint_terrain lands one undo step and the result carries detail.cells', async () => {
     const { exec, deps } = setup();
     const executor = createExecutor(deps);
-    const before = exec.getUndoStackSize();
+    const before = exec.historyDepth();
     const r = await executor.execute({
       callId: 't2', name: 'paint_terrain',
       args: { rect: { x1: 2, y1: 2, x2: 4, y2: 4 }, terrain: 'mountain', elevation: 1 },
     });
     expect(r.isError).toBe(false);
-    expect(exec.getUndoStackSize()).toBe(before + 1);
+    expect(exec.historyDepth()).toBe(before + 1);
     expect(r.detail?.cells).toBeGreaterThan(0);
   });
 
-  it("isWrite mirrors the tool layer's own WRITE_TOOLS set for every schema name", () => {
+  it("the executor's write facts mirror the tool layer's own facts for every schema name", () => {
     const { deps } = setup();
     const executor = createExecutor(deps);
-    for (const s of TOOL_SCHEMAS) {
-      expect(executor.isWrite(s.name)).toBe(WRITE_TOOLS.has(s.name));
+    for (const s of wireSchemas()) {
+      expect(writesMap(executor.facts, s.name)).toBe(writesMap(TOOL_FACTS, s.name));
     }
   });
 
-  it('isWide is exactly the five wide names, delegation and history among them', () => {
+  it('wide access is exactly the five wide names, delegation and history among them', () => {
     const { deps } = setup();
     const executor = createExecutor(deps);
-    const wide = TOOL_SCHEMAS.filter((s) => executor.isWide(s.name)).map((s) => s.name).sort();
+    const wide = wireSchemas().filter((s) => executor.facts.access(s.name) === 'wide').map((s) => s.name).sort();
     expect(wide).toEqual(['build_road_network', 'clear_area', 'delegate_task', 'redo', 'undo']);
-    expect(WIDE_TOOLS).toEqual(new Set(['clear_area', 'build_road_network', 'delegate_task', 'undo', 'redo']));
   });
 
   it('checkpoint oversight gates delegate_task: the helper burst gets the one approval there is', () => {
     const { deps } = setup();
     const executor = createExecutor(deps);
     const ask = (tool: string): boolean => shouldGate({
-      tool, isWrite: executor.isWrite(tool), isWide: executor.isWide(tool),
+      isWrite: writesMap(executor.facts, tool), isWide: executor.facts.access(tool) === 'wide',
       oversight: 'checkpoint', allowAll: false,
     });
     expect(ask('delegate_task')).toBe(true);
@@ -95,14 +94,14 @@ describe('exec/executor', () => {
 
   it('wireSchemas() (no opts) carries every legacy schema unfiltered', () => {
     const names = wireSchemas().map((s) => s.name).sort();
-    expect(names).toEqual(TOOL_SCHEMAS.map((s) => s.name).sort());
+    expect(names).toEqual(wireSchemas().map((s) => s.name).sort());
   });
 
-  it("delegate_task execution reports 'not wired yet' when no delegate is wired", async () => {
+  it('delegate_task is an unknown tool to an executor given no delegate context', async () => {
     const { deps } = setup();
     const executor = createExecutor(deps);
     const r = await executor.execute({ callId: 't4', name: 'delegate_task', args: { task: 'x' } });
     expect(r.isError).toBe(true);
-    expect(r.content).toBe('Delegation is not wired yet.');
+    expect(r.content).toBe('Unknown tool "delegate_task".');
   });
 });

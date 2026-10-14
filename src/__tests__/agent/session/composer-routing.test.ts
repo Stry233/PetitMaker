@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { stubFacts } from '../../_support/tool-facts';
 
 import { askGate, answerGate, pendingGate } from '../../../agent/core/gates';
 import { append, createLog } from '../../../agent/core/log';
@@ -6,7 +7,7 @@ import type { LoopDeps, ToolExecutor } from '../../../agent/core/loop';
 import { runJob } from '../../../agent/core/loop';
 import type { SessionPhase } from '../../../agent/core/project-view';
 import { undeliveredSteers } from '../../../agent/core/steering';
-import { createScriptedAdapter } from '../../../agent/eval/scripted-adapter';
+import { createScriptedAdapter } from '../../_support/agent/scripted-adapter';
 import { composerRoute, submitComposer } from '../../../agent/session/composer-routing';
 
 const now = () => 1000;
@@ -152,13 +153,12 @@ describe('submitComposer: paused route', () => {
     ]);
     const executor: ToolExecutor = {
       execute: async () => ({ content: 'ok', isError: false }),
-      isWrite: () => false,
-      isWide: () => false,
+      facts: stubFacts(),
       describe: () => 'run',
     };
     const deps: LoopDeps = {
       adapter, model: 'scripted-model', system: 'system prompt', tools: [], executor,
-      oversight: 'yolo', sameModel: true, budgetTokens: 100_000,
+      oversight: 'yolo', sameModel: true,
       signal: new AbortController().signal, undoStackSize: () => 0,
     };
 

@@ -1,39 +1,37 @@
 /**
- * WHAT A SMALL BOX SPENDS ITS DECORATION ON, pinned on pictures whose features are known by
+ * What a small box spends its decoration on, pinned on pictures whose features are known by
  * construction.
  *
  * The decoration is the one instrument in a terrain picture that carries a real hue, so a small box
  * spends it on the few small interior areas the ramp cannot say — an eye, a marking, a throat — and on
  * nothing else (`tools/generation/stencil/stencil-feature.ts`). Three kinds of case here:
  *
- *  - the READING: which candidates are features and in what order, on a face with two eyes and on an
+ *  - the reading: which candidates are features and in what order, on a face with two eyes and on an
  *    emblem with one accent, plus each of the four gates refusing on its own picture;
- *  - the BUDGET: how many marks a figure may carry, and that the budget is spread over the features
+ *  - the budget: how many marks a figure may carry, and that the budget is spread over the features
  *    rather than spent on the first;
- *  - the PLACEMENT, through the real executor and the real rules: marks land on the features, the count
- *    stays inside the budget, nothing is left illegal, and ABOVE the gate the background texture is
+ *  - the placement, through the real executor and the real rules: marks land on the features, the count
+ *    stays inside the budget, nothing is left illegal, and above the gate the background texture is
  *    exactly what it was.
  */
 import { describe, it, expect } from 'vitest';
 import { CommandExecutor } from '../../../../core/commands/command-executor';
-import { EventBus } from '../../../../core/commands/event-bus';
-import { createDefaultRegistry } from '../../../../rules';
-import { roadLookup } from '../../../../state/object-index';
-import { CommandType, type EditorEvents, type GridState, type Stencil, type StencilPlan } from '../../../../core/model/types';
-import { makeState } from '../../../rules/_helpers';
+import { CommandType, type GridState } from '../../../../core/model/types';
+import { type Stencil, type StencilPlan } from '../../../../tools/generation/recipe';
+import { makeState, makeExecutor } from '../../../_support/map-state';
 import { getCatalogItem } from '../../../../state/catalog';
-import { ELEVATION_COLORS } from '../../../../core/model/constants';
-import { hexStringToNumber } from '../../../../core/model/colors';
+import { ELEVATION_COLORS } from '../../../../core/model/palette';
+import { hexStringToNumber } from '../../../../core/base/color';
 import {
   detectFeatures, featureBudget, planFeatureMarks,
-  FEATURE_BUDGET_SHARE, FEATURE_MAX, FEATURE_MAX_SHARE,
+  FEATURE_MAX, FEATURE_MAX_SHARE,
 } from '../../../../tools/generation/stencil/stencil-feature';
 import { layStencilDecor, runStencilPlan } from '../../../../tools/generation/stencil/stencil-generator';
 import { terrainPalette } from '../../../../tools/generation/stencil/stencil';
 import { smallBoxWeight } from '../../../../tools/generation/stencil/stencil-small';
 
 const exec = (state: GridState): CommandExecutor =>
-  new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
+  makeExecutor(state);
 
 /** The ramp a terrain picture is told in — what a feature's colour has to be out of reach of. */
 const RAMP = terrainPalette(8, false);
@@ -68,7 +66,8 @@ function subject(side: number, rgb: number, box: { x: number; y: number; w: numb
 }
 
 /** Paint a block of one colour into a picture. */
-function block(s: Stencil, x0: number, y0: number, w: number, h: number, rgb: number): void {
+function block(s: Stencil, rect: { x0: number; y0: number; w: number; h: number }, rgb: number): void {
+  const { x0, y0, w, h } = rect;
   for (let y = y0; y < y0 + h; y++) {
     for (let x = x0; x < x0 + w; x++) { s.coverage[y * s.width + x] = 255; s.color[y * s.width + x] = rgb; }
   }
@@ -79,9 +78,9 @@ const covered = (s: Stencil) => (i: number): boolean => (s.coverage[i] ?? 0) >= 
 /** A cream face with two dark-red eyes and a red throat, which is the picture this reading is for. */
 function face(side = 20): Stencil {
   const s = subject(side, 0xf0e0d0, { x: 2, y: 2, w: side - 4, h: side - 4 });
-  block(s, 6, 6, 2, 2, 0x902020);          // left eye
-  block(s, 12, 6, 2, 2, 0x902020);         // right eye
-  block(s, 8, 12, 4, 2, 0xd04030);         // throat
+  block(s, { x0: 6, y0: 6, w: 2, h: 2 }, 0x902020);          // left eye
+  block(s, { x0: 12, y0: 6, w: 2, h: 2 }, 0x902020);         // right eye
+  block(s, { x0: 8, y0: 12, w: 4, h: 2 }, 0xd04030);         // throat
   return s;
 }
 
@@ -98,7 +97,7 @@ describe('the features a small box spends its decoration on', () => {
       const onThroat = (y === 12 || y === 13) && x >= 8 && x < 12;
       expect(onEye || onThroat).toBe(true);
     }
-    // And BOTH eyes are found, which is what says the reading is about features and not about one peak.
+    // And both eyes are found, which is what says the reading is about features and not about one peak.
     const left = features.some((f) => f.cells.every((i) => i % s.width < 10));
     const right = features.some((f) => f.cells.every((i) => i % s.width >= 10));
     expect(left && right).toBe(true);
@@ -106,7 +105,7 @@ describe('the features a small box spends its decoration on', () => {
 
   it('finds the one accent on an emblem, and reads its own colour', () => {
     const s = subject(20, 0xe8e8e8, { x: 3, y: 3, w: 14, h: 14 });
-    block(s, 8, 8, 3, 3, 0xc03040);
+    block(s, { x0: 8, y0: 8, w: 3, h: 3 }, 0xc03040);
     const features = detectFeatures(s, covered(s), RAMP, ACCENT);
     expect(features).toHaveLength(1);
     expect(features[0]!.cells).toHaveLength(9);
@@ -114,22 +113,22 @@ describe('the features a small box spends its decoration on', () => {
   });
 
   it('declines a colour the primary palette says as well as the accent can', () => {
-    // The same picture with its accent drawn in one of the ramp's OWN greens: a mark there would add an
+    // The same picture with its accent drawn in one of the ramp's own greens: a mark there would add an
     // object and no information, which is the whole difference between an accent and a decoration.
     const s = subject(20, 0xe8e8e8, { x: 3, y: 3, w: 14, h: 14 });
-    block(s, 8, 8, 3, 3, hexStringToNumber(ELEVATION_COLORS[7]!));
+    block(s, { x0: 8, y0: 8, w: 3, h: 3 }, hexStringToNumber(ELEVATION_COLORS[7]!));
     expect(detectFeatures(s, covered(s), RAMP, ACCENT)).toEqual([]);
   });
 
   it('declines a mark on the silhouette, whose job the outline already does', () => {
     const s = subject(20, 0xe8e8e8, { x: 3, y: 3, w: 14, h: 14 });
-    block(s, 3, 8, 1, 3, 0xc03040);          // against the subject's own left edge
+    block(s, { x0: 3, y0: 8, w: 1, h: 3 }, 0xc03040);          // against the subject's own left edge
     expect(detectFeatures(s, covered(s), RAMP, ACCENT)).toEqual([]);
   });
 
   it('declines an area that is the subject rather than a feature of it', () => {
     const s = subject(20, 0xe8e8e8, { x: 3, y: 3, w: 14, h: 14 });
-    block(s, 5, 5, 10, 10, 0xc03040);        // half the figure, well past FEATURE_MAX_SHARE
+    block(s, { x0: 5, y0: 5, w: 10, h: 10 }, 0xc03040);        // half the figure, well past FEATURE_MAX_SHARE
     const features = detectFeatures(s, covered(s), RAMP, ACCENT);
     expect(FEATURE_MAX_SHARE).toBeLessThan(0.5);
     expect(features).toEqual([]);
@@ -137,7 +136,7 @@ describe('the features a small box spends its decoration on', () => {
 
   it('declines an area that is barely a different colour from what surrounds it', () => {
     const s = subject(20, 0xe8e8e8, { x: 3, y: 3, w: 14, h: 14 });
-    block(s, 8, 8, 3, 3, 0xe2e2e2);
+    block(s, { x0: 8, y0: 8, w: 3, h: 3 }, 0xe2e2e2);
     expect(detectFeatures(s, covered(s), RAMP, ACCENT)).toEqual([]);
   });
 
@@ -155,7 +154,9 @@ describe('the features a small box spends its decoration on', () => {
 
 describe('the budget a figure may carry', () => {
   it('is a share of the figure, and at least one mark', () => {
-    expect(featureBudget(160)).toBe(Math.round(160 * FEATURE_BUDGET_SHARE));
+    expect(featureBudget(320)).toBe(2 * featureBudget(160));
+    expect(featureBudget(160)).toBeGreaterThan(1);
+    expect(featureBudget(160)).toBeLessThan(160);
     expect(featureBudget(2)).toBe(1);
     expect(featureBudget(0)).toBe(1);
   });
@@ -181,7 +182,7 @@ describe('the budget a figure may carry', () => {
 
   it('offers every cell of a feature but asks for only what the budget affords', () => {
     const s = subject(20, 0xe8e8e8, { x: 3, y: 3, w: 14, h: 14 });
-    block(s, 8, 8, 3, 3, 0xc03040);
+    block(s, { x0: 8, y0: 8, w: 3, h: 3 }, 0xc03040);
     const marks = planFeatureMarks(detectFeatures(s, covered(s), RAMP, ACCENT), ACCENT, 2);
     expect(marks).toHaveLength(1);
     expect(marks[0]!.want).toBe(2);
@@ -190,8 +191,8 @@ describe('the budget a figure may carry', () => {
 
   it('tells each feature in the ONE accent whose colour is nearest to it', () => {
     const s = subject(20, 0xe8e8e8, { x: 3, y: 3, w: 14, h: 14 });
-    block(s, 6, 6, 2, 2, 0xdc7064);          // the red flower's own colour
-    block(s, 12, 12, 2, 2, 0x696389);        // the blue one's
+    block(s, { x0: 6, y0: 6, w: 2, h: 2 }, 0xdc7064);          // the red flower's own colour
+    block(s, { x0: 12, y0: 12, w: 2, h: 2 }, 0x696389);        // the blue one's
     const marks = planFeatureMarks(detectFeatures(s, covered(s), RAMP, ACCENT), ACCENT, 8);
     expect(new Set(marks.map((m) => m.catalogId)))
       .toEqual(new Set(['flower-canna-red', 'flower-agapanthus-blue']));
@@ -202,10 +203,11 @@ describe('what the decoration lays on the map', () => {
   it('stands its marks on the features and nowhere else, inside the budget', () => {
     const state = makeState(30, 30);
     const e = exec(state);
+    const whole = e.beginStroke();
     const s = face();
     const res = layStencilDecor(
       state, { origin: { x: 5, y: 5 }, stencil: s }, { palette: ACCENT },
-      (c) => e.execute(c), undefined, RAMP,
+      (c) => e.execute(c), { primary: RAMP },
     );
     expect(res.placed).toBeGreaterThan(0);
     const figure = [...s.coverage].filter((c) => c >= 128).length;
@@ -226,7 +228,7 @@ describe('what the decoration lays on the map', () => {
       const i = (object.position.y - 5) * s.width + (object.position.x - 5);
       expect(near.has(i)).toBe(true);
     }
-    expect(e.commitStroke(0)).toEqual([]);
+    expect(whole.commit()).toEqual([]);
   });
 
   it.each([['on', false], ['off', true]] as const)('keeps the base object under a refused mark with the load limit %s', (_, ignoreChunkLoad) => {
@@ -239,7 +241,7 @@ describe('what the decoration lays on the map', () => {
       for (let x = 0; x < s.width; x++) {
         if (!covered(s)(y * s.width + x)) continue;
         const id = `base-${x}-${y}`;
-        expect(e.execute({ type: CommandType.PlaceObject, timestamp: 0, object: { id, catalogId: 'path-cobblestone', position: { x: 5 + x, y: 5 + y }, rotation: 0, elevation: 0 } }).success).toBe(true);
+        expect(e.execute({ type: CommandType.PlaceObject, object: { id, catalogId: 'path-cobblestone', position: { x: 5 + x, y: 5 + y }, rotation: 0, elevation: 0 } }).success).toBe(true);
         base.add(id);
       }
     }
@@ -249,7 +251,7 @@ describe('what the decoration lays on the map', () => {
       (c) => (c.type === CommandType.PlaceObject && accents.has(c.object.catalogId)
         ? { success: false, errors: [] }
         : e.execute(c)),
-      base, RAMP,
+      { replaceable: base, primary: RAMP },
     );
     expect(res.placed).toBe(0);
     for (const id of base) expect(state.objects.has(id), id).toBe(true);
@@ -269,7 +271,7 @@ describe('what the decoration lays on the map', () => {
     const e = exec(state);
     const res = layStencilDecor(
       state, { origin: { x: 5, y: 5 }, stencil: s }, { palette: ACCENT },
-      (c) => e.execute(c), undefined, RAMP,
+      (c) => e.execute(c), { primary: RAMP },
     );
     expect(res.placed).toBe(0);
     expect(state.objects.size).toBe(0);
@@ -282,9 +284,10 @@ describe('what the decoration lays on the map', () => {
     // patch is both the borrow's best region and the accent's one feature.
     const side = 16;
     const s = field(side, hexStringToNumber(ELEVATION_COLORS[4]!));
-    block(s, 6, 6, 4, 4, 0xe0407a);
+    block(s, { x0: 6, y0: 6, w: 4, h: 4 }, 0xe0407a);
     const state = makeState(30, 30);
     const e = exec(state);
+    const whole = e.beginStroke();
     const plan: StencilPlan = {
       read: 'color', stencil: s, origin: { x: 6, y: 6 }, water: 'palette',
       decor: { palette: ACCENT },
@@ -301,11 +304,11 @@ describe('what the decoration lays on the map', () => {
       expect(mark.position.y - 6).toBeGreaterThanOrEqual(5);
       expect(mark.position.y - 6).toBeLessThanOrEqual(10);
     }
-    expect(e.commitStroke(0)).toEqual([]);
+    expect(whole.commit()).toEqual([]);
   });
 
   it('is the background texture again above the gate, and nothing below it', () => {
-    // ONE PICTURE, BOTH SIDES OF THE GATE. A hard seam between two flat halves holds no FEATURE at all —
+    // One picture, both sides of the gate. A hard seam between two flat halves holds no feature at all —
     // each half is half the figure — so a small box says nothing about it, while above the gate the same
     // seam is the ranked anchor points it always was, spaced, in the same cells.
     const seam = (side: number): Stencil => {
@@ -318,14 +321,15 @@ describe('what the decoration lays on the map', () => {
     const run = (side: number): { placed: number; at: number[] } => {
       const state = makeState(56, 56);
       const e = exec(state);
+      const whole = e.beginStroke();
       const s = seam(side);
       expect(detectFeatures(s, covered(s), RAMP, ACCENT)).toEqual([]);
       const res = layStencilDecor(
         state, { origin: { x: 6, y: 6 }, stencil: s }, { palette: ACCENT, density: 0.1 },
-        (c) => e.execute(c), undefined, RAMP,
+        (c) => e.execute(c), { primary: RAMP },
       );
       for (const object of state.objects.values()) expect(getCatalogItem(object.catalogId)).toBeDefined();
-      expect(e.commitStroke(0)).toEqual([]);
+      expect(whole.commit()).toEqual([]);
       return { placed: res.placed, at: [...state.objects.values()].map((o) => o.position.x - 6) };
     };
 

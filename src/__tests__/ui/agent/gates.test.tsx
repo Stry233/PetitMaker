@@ -1,46 +1,35 @@
+// @vitest-environment jsdom
 /**
- * The gate FAMILY under the dock-wears-the-ask-paper rule (the ask card, the plan gate, the
- * question's quick row, the option pick), and one banner for every trouble class.
+ * The gate family (the ask card, the plan gate, the question's quick row, the option pick) and one
+ * banner for every trouble class. Only the dock wears the ask paper, so each card stands on the
+ * plate with a 5px `ACTIVE` spine that retires to the hairline once answered; the answered card
+ * keeps its verdict; the verdict chip is inset-filled with plate ink (7.20 contrast against
+ * muted-on-inset's 4.57); and the quick row's box is reserved whether or not it holds answers.
  *
- * WHAT THIS FILE HOLDS TO: only the DOCK wears the ask paper, so every
- * card here stands on the panel's plate with a 5px `ACTIVE` spine that RETIRES to the hairline once
- * the ask is answered; the answered card goes on standing in the record with its verdict; the verdict
- * chip is inset-filled with plate ink (the contrast ruling: muted-on-inset is 4.57, plate ink 7.20);
- * and the quick row's box is reserved whether or not it holds answers.
- *
- * `Banner`'s class table is exhaustive over `ErrorClass` (plus the non-provider storage and
- * map-notice kinds):
- * this file enumerates every member of `BANNER_CLASSES` rather than hand-listing them, so a new
- * `ErrorClass` value that `Banner.tsx` forgets to add fails `tsc` at the `satisfies` guard in the
- * component itself, and a class this test has not been told about still gets exercised here.
- *
- * Copy assertions run over every locale's raw string (not just the rendered English), since a
- * rendering-only check would miss an em dash or an uppercase run buried in a locale nobody
- * previewed.
+ * `BANNER_CLASSES` is enumerated rather than hand-listed; `Banner.tsx`'s `satisfies` guard makes a
+ * forgotten `ErrorClass` fail `tsc`. Copy assertions run over every locale's raw string.
  */
 import { describe, it, expect, beforeEach } from 'vitest';
-import { render, fireEvent } from '@testing-library/react';
-import { MotionConfig } from 'framer-motion';
-import { I18nProvider } from '../../../i18n/context';
-import { translations } from '../../../i18n/translations';
-import { GateBlock, VerdictChip, QuickRow, markFor } from '../../../ui/agent/GateBlock';
-import { PlanGate } from '../../../ui/agent/PlanGate';
-import { OptionPick, optionAskFrom, type OptionAsk } from '../../../ui/agent/OptionPick';
+import { fireEvent } from '@testing-library/react';
+import { translations } from '../../_support/locale-tables';
+import { GateBlock, VerdictChip, QuickRow, markFor } from '../../../ui/agent/record/GateBlock';
+import { PlanGate } from '../../../ui/agent/record/PlanGate';
+import { OptionPick, optionAskFrom, type OptionAsk } from '../../../ui/agent/record/OptionPick';
 import { PanelShell } from '../../../ui/agent/PanelShell';
-import { callFootprint } from '../../../ui/agent/map-shot';
-import { Banner, BANNER_CLASSES, type BannerActionId, type BannerClass } from '../../../ui/agent/Banner';
+import { Banner, BANNER_CLASSES, type BannerActionId, type BannerClass } from '../../../ui/agent/desk/Banner';
 import { ACTIVE, INK, INSET, LINE, PLATE, PLATE_INK } from '../../../ui/design/tokens';
 import { useEditorStore } from '../../../state/store';
-import { useAgentPanelSettings } from '../../../ui/agent/settings';
+import { useAgentConnection } from '../../../agent/connection/store';
 import { PROVIDER_IDS, type ProviderId } from '../../../agent/providers/defaults';
 import { append, createLog } from '../../../agent/core/log';
 import { deriveView } from '../../../agent/core/project-view';
 import { submitComposer } from '../../../agent/session/composer-routing';
-import type { AskRecord, JobView, PanelView } from '../../../agent/core/project-view';
-import type { Locale } from '../../../core/model/types';
+import type { AskRecord, JobView } from '../../../agent/core/project-view';
+import type { Locale } from '../../../core/model/locale';
+import { recede } from '../../../ui/agent/panel-skin';
+import { makeView, panelProps, renderWithI18n } from '../../_support/agent-panel';
 
 const backing = new Map<string, string>();
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 (globalThis as any).localStorage = {
   getItem: (k: string) => backing.get(k) ?? null,
   setItem: (k: string, v: string) => void backing.set(k, String(v)),
@@ -48,22 +37,10 @@ const backing = new Map<string, string>();
   clear: () => backing.clear(),
 };
 
-function Wrapper({ children }: { children: React.ReactNode }) {
-  return (
-    <MotionConfig reducedMotion="always">
-      <I18nProvider>{children}</I18nProvider>
-    </MotionConfig>
-  );
-}
-
-function renderWithI18n(node: React.ReactElement) {
-  return render(node, { wrapper: Wrapper });
-}
-
 beforeEach(() => {
   backing.clear();
   useEditorStore.setState({ locale: 'en' });
-  useAgentPanelSettings.setState({
+  useAgentConnection.setState({
     provider: 'claude',
     model: Object.fromEntries(PROVIDER_IDS.map((id) => [id, ''])) as Record<ProviderId, string>,
     oversight: 'checkpoint', customBaseUrl: '', keyed: ['claude'], hydrated: true,
@@ -71,7 +48,7 @@ beforeEach(() => {
 });
 
 /** jsdom re-serializes every colour as `rgb(...)`, so a token compared as a hex never matches. One
- *  conversion here keeps the assertions naming the TOKEN rather than a literal triple. */
+ *  conversion here keeps the assertions naming the token rather than a literal triple. */
 function rgb(hex: string): string {
   const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
   return `rgb(${r}, ${g}, ${b})`;
@@ -108,7 +85,7 @@ describe('the ask card stands on the plate under a retiring spine', () => {
     expect(card.style.borderLeft).not.toContain(rgb(ACTIVE));
   });
 
-  it('never paints the ask paper on a card: only the dock wears it', () => {
+  it('never paints the ask paper on a card: only the status card wears it', () => {
     for (const verdict of [undefined, 'approved', 'declined'] as const) {
       const { getByTestId, unmount } = renderWithI18n(
         <GateBlock ask={makeAsk(verdict ? { verdict } : {})} onAnswer={() => {}} />,
@@ -340,10 +317,10 @@ describe('the option pick', () => {
     const pick = cards[1]!;
     expect(pick.getAttribute('data-picked')).toBe('true');
     expect(pick.style.boxShadow).toContain(INK);
-    // The MARK is its own, never the hover paint a pointer can also produce.
+    // The mark is its own, never the hover paint a pointer can also produce.
     expect(pick.style.background).toBe(rgb(PLATE));
     expect(getByTestId('option-mark').textContent).toBe('picked');
-    expect(cards[0]!.style.opacity).toBe('0.5');
+    expect(cards[0]!.style.opacity).toBe(String(recede.apart));
   });
 
   it('declines with None of these, and says so on the settled card', () => {
@@ -366,14 +343,6 @@ describe('the option pick', () => {
 
 /* ── the answered card stays in the log ───────────────────────────────────── */
 
-function makeView(over: Partial<PanelView> = {}): PanelView {
-  return {
-    phase: 'idle', jobs: [], queuedSteers: [],
-    vitals: { cells: 0, objects: 0, reverts: 0, jobs: 0 },
-    suggestion: null, lastEventAt: 0, ...over,
-  };
-}
-
 function makeJob(over: Partial<JobView> = {}): JobView {
   return {
     orderSeq: 1, orderText: 'Connect the plaza to the old mill', orderAt: 0,
@@ -385,8 +354,8 @@ function makeJob(over: Partial<JobView> = {}): JobView {
 const VERBS = { onSend: () => {}, onStop: () => {}, onPause: () => {}, onGateAnswer: () => {} };
 
 describe('an answered gate goes on standing in the record', () => {
-  /** THE PROJECTION IS THE CARRIER. `PanelView.gate` is the question that can still be answered; the
-   *  ask RECORD outlives it, which is what keeps the card mounted after the answer. */
+  /** The projection is the carrier. `PanelView.gate` is the question that can still be answered; the
+   *  ask record outlives it, which is what keeps the card mounted after the answer. */
   it('folds each ask with the verdict its answer implies, and marks an unanswered one at settle', () => {
     const log = createLog();
     append(log, { kind: 'order', text: 'Connect the plaza to the old mill', mapContext: '' });
@@ -438,22 +407,22 @@ describe('an answered gate goes on standing in the record', () => {
       }),
     });
     const { getByTestId } = renderWithI18n(
-      <PanelShell view={view} connected now={0} {...VERBS} />,
+      <PanelShell {...panelProps({ view, connected: true, now: 0, ...VERBS })} />,
     );
     const card = getByTestId('gate-block');
     const ticket = getByTestId('job-ticket');
     expect(getByTestId('gate-verdict').textContent).toBe('approved');
-    // The job continues AFTER the answered ask: the record reads ticket, then the settled card.
+    // The job continues after the answered ask: the record reads ticket, then the settled card.
     expect(ticket.compareDocumentPosition(card) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
   /**
-   * The gate is suppressed while paused, so an ask that is NEITHER answered nor the published
+   * The gate is suppressed while paused, so an ask that is neither answered nor the published
    * question offers no controls — a button there would reach no waiting loop.
    *
-   * BUT THE CARD STANDS. Rendering nothing at all leaves a reload mid-approval on a paused job with
+   * But the card stands. Rendering nothing at all leaves a reload mid-approval on a paused job with
    * no trace that a question was waiting, what it asked, or that Resume is what brings it back. The
-   * ask is HELD, not lost (`loop.ts:existingGateId` re-enters the same one rather than asking
+   * ask is held, not lost (`loop.ts:existingGateId` re-enters the same one rather than asking
    * twice), and the card says exactly that.
    */
   it('holds an unanswered ask visibly, with no controls, when the projection publishes no gate', () => {
@@ -462,7 +431,7 @@ describe('an answered gate goes on standing in the record', () => {
       current: makeJob({ asks: [makeAsk({ gateId: 'g1', summary: 'May I pave the north lane?' })] }),
     });
     const { getByTestId, queryByTestId } = renderWithI18n(
-      <PanelShell view={view} connected now={0} {...VERBS} />,
+      <PanelShell {...panelProps({ view, connected: true, now: 0, ...VERBS })} />,
     );
     expect(getByTestId('gate-block')).toBeTruthy();
     expect(getByTestId('gate-summary').textContent).toBe('May I pave the north lane?');
@@ -472,9 +441,9 @@ describe('an answered gate goes on standing in the record', () => {
     expect(queryByTestId('gate-verdict')).toBeNull();
   });
 
-  /** And the DOCK, which is the first thing a reload lands on, says a question is waiting rather
+  /** And the dock, which is the first thing a reload lands on, says a question is waiting rather
    *  than reporting a step count as if the job were merely mid-stride. */
-  it('says on the dock that a question is waiting, over a paused job holding one', () => {
+  it('says on the status card that a question is waiting, over a paused job holding one', () => {
     const view = makeView({
       phase: 'paused',
       current: makeJob({
@@ -482,13 +451,13 @@ describe('an answered gate goes on standing in the record', () => {
         plan: { stages: [{ label: 'a' }, { label: 'b' }], currentIndex: 1, doneCount: 1, revision: 1 },
       }),
     });
-    const { getByTestId } = renderWithI18n(<PanelShell view={view} connected now={0} {...VERBS} />);
-    expect(getByTestId('dock-meta').textContent).toBe('a question is waiting');
+    const { getByTestId } = renderWithI18n(<PanelShell {...panelProps({ view, connected: true, now: 0, ...VERBS })} />);
+    expect(getByTestId('dock-meta').textContent).toBe(translations.en['agent.dock_question_held']);
   });
 
   /**
-   * ONCE ANSWERED, THE PLAN LINE RETURNS — but a hold has no step in progress, so it reads the
-   * banked count rather than the mid-stride "step 2 of 2". It reads the BARE figure (`dock_try_of`),
+   * Once answered, the plan line returns — but a hold has no step in progress, so it reads the
+   * banked count rather than the mid-stride "step 2 of 2". It reads the bare figure (`dock_try_of`),
    * not the ticket's own long sentence (`pausedWhere`): the pausemark chip two rows below already
    * says "paused after step 1 of 2" in full, and the dock repeating it verbatim is the same fact
    * said twice in one card (see `DeskHeader.tsx:buildFace`).
@@ -501,15 +470,15 @@ describe('an answered gate goes on standing in the record', () => {
         plan: { stages: [{ label: 'a' }, { label: 'b' }], currentIndex: 1, doneCount: 1, revision: 1 },
       }),
     });
-    const { getByTestId } = renderWithI18n(<PanelShell view={view} connected now={0} {...VERBS} />);
+    const { getByTestId } = renderWithI18n(<PanelShell {...panelProps({ view, connected: true, now: 0, ...VERBS })} />);
     expect(getByTestId('dock-meta').textContent).toBe('1 of 2');
   });
 });
 
-/* ── the two things an ask can OFFER, live from the log ───────────────────── */
+/* ── the two things an ask can offer, live from the log ───────────────────── */
 
 describe('an ask carrying quick answers is a question, not an approval', () => {
-  /** THE OFFER IS THE CARRIER. Nothing else on the log distinguishes "Two lanes or one?" from
+  /** The offer is the carrier. Nothing else on the log distinguishes "Two lanes or one?" from
    *  "may I pave this road?": both are one `gateAsked`. */
   function questionLog() {
     const log = createLog();
@@ -524,7 +493,7 @@ describe('an ask carrying quick answers is a question, not an approval', () => {
   it('drops the approve pair for the quick row, live from the fold', () => {
     const view = deriveView(questionLog());
     const { getByTestId, queryByTestId, getAllByTestId } = renderWithI18n(
-      <PanelShell view={view} connected now={0} {...VERBS} />,
+      <PanelShell {...panelProps({ view, connected: true, now: 0, ...VERBS })} />,
     );
     expect(getByTestId('gate-summary').textContent).toBe('Two lanes or one?');
     expect(queryByTestId('gate-approve')).toBeNull();
@@ -532,24 +501,25 @@ describe('an ask carrying quick answers is a question, not an approval', () => {
       .toEqual(['Two lanes', 'One lane', 'You decide']);
   });
 
-  /** A tapped pill IS the user's sentence, sent for them, so it takes the gate's words route. */
+  /** A tapped pill is the user's sentence, sent for them, so it takes the gate's words route. */
   it('answers in words with the pill\'s own text', () => {
     const view = deriveView(questionLog());
     const calls: [string, string, string | undefined][] = [];
     const { getAllByTestId } = renderWithI18n(
-      <PanelShell
-        view={view}
-        connected
-        now={0}
-        {...VERBS}
-        onGateAnswer={(gateId, answer, words) => calls.push([gateId, answer, words])}
+      <PanelShell {...panelProps({
+        view,
+        connected: true,
+        now: 0,
+        ...VERBS,
+        onGateAnswer: (gateId, answer, words) => calls.push([gateId, answer, words]),
+      })}
       />,
     );
     fireEvent.click(getAllByTestId('gate-quick')[1]!);
     expect(calls).toEqual([['g1', 'words', 'One lane']]);
   });
 
-  /** The answered card reads back the PILL, not "answered in words": `markFor` matches the sentence
+  /** The answered card reads back the pill, not "answered in words": `markFor` matches the sentence
    *  against what the ask offered, and the offer is now on the record. */
   it('reads a matching answer back as the quick answer it was', () => {
     const log = questionLog();
@@ -581,7 +551,7 @@ describe('an ask carrying options is a pick', () => {
   it('stands the pick card in place of the gate block, live from the fold', () => {
     const view = deriveView(pickLog());
     const { getByTestId, queryByTestId, getAllByTestId } = renderWithI18n(
-      <PanelShell view={view} connected now={0} {...VERBS} />,
+      <PanelShell {...panelProps({ view, connected: true, now: 0, ...VERBS })} />,
     );
     expect(queryByTestId('gate-block')).toBeNull();
     expect(getByTestId('option-question').textContent).toBe('Which shore?');
@@ -593,12 +563,13 @@ describe('an ask carrying options is a pick', () => {
     const view = deriveView(pickLog());
     const calls: [string, string, string | undefined][] = [];
     const { getAllByTestId, getByTestId } = renderWithI18n(
-      <PanelShell
-        view={view}
-        connected
-        now={0}
-        {...VERBS}
-        onGateAnswer={(gateId, answer, words) => calls.push([gateId, answer, words])}
+      <PanelShell {...panelProps({
+        view,
+        connected: true,
+        now: 0,
+        ...VERBS,
+        onGateAnswer: (gateId, answer, words) => calls.push([gateId, answer, words]),
+      })}
       />,
     );
     fireEvent.click(getAllByTestId('option-card')[0]!);
@@ -606,7 +577,7 @@ describe('an ask carrying options is a pick', () => {
     expect(calls).toEqual([['g1', 'words', 'The north shore'], ['g1', 'skip', undefined]]);
   });
 
-  /** The index is RECOVERED from the sentence, since the sentence is all the log holds. */
+  /** The index is recovered from the sentence, since the sentence is all the log holds. */
   it('reads the settled card back as the pick it was, and a typed answer as none of these', () => {
     const picked = pickLog();
     append(picked, { kind: 'gateAnswered', gateId: 'g1', answer: 'words', words: 'The bay' });
@@ -631,7 +602,7 @@ describe('an ask carrying options is a pick', () => {
     expect(optionAskFrom(makeAsk())).toBeUndefined();
   });
 
-  /** The hover paint is the one mark the PICK may not be confused with, so a card hovered and then
+  /** The hover paint is the one mark the pick may not be confused with, so a card hovered and then
    *  picked carries the ink ring and the plate fill. */
   it('clears the hover fill from the card the user just picked', () => {
     const { getAllByTestId, rerender } = renderWithI18n(
@@ -641,7 +612,7 @@ describe('an ask carrying options is a pick', () => {
     fireEvent.pointerEnter(card);
     expect(card.style.background).toBe(rgb(ACTIVE));
 
-    // RE-RENDERED, NOT REMOUNTED: the residue only exists on a node React keeps, which is exactly
+    // Re-rendered, not remounted: the residue only exists on a node React keeps, which is exactly
     // the node a real pick leaves standing. (`rerender` re-applies the wrapper itself; wrapping the
     // element again here would change the tree's shape and quietly remount the card.)
     rerender(<OptionPick ask={makeOptions({ picked: 1 })} onPick={() => {}} onDecline={() => {}} />);
@@ -661,7 +632,7 @@ describe('typed words at a gate', () => {
       current: makeJob({ asks: [makeAsk({ gateId: 'g1' })] }),
       gate: { gateId: 'g1', scope: 'tool', summary: 'Pave a stone road from the plaza to the mill' },
     });
-    const { getByTestId } = renderWithI18n(<PanelShell view={view} connected now={0} {...VERBS} />);
+    const { getByTestId } = renderWithI18n(<PanelShell {...panelProps({ view, connected: true, now: 0, ...VERBS })} />);
     const approve = getByTestId('gate-approve');
     expect(approve.getAttribute('data-demoted')).toBe('false');
     expect(approve.style.background).toBe(rgb(INK));
@@ -675,11 +646,11 @@ describe('typed words at a gate', () => {
   });
 
   /**
-   * THE DEMOTION CONTRACT COVERS THE QUESTION CARD TOO. A question card draws no Approve pair, so
+   * The demotion contract covers the question card too. A question card draws no Approve pair, so
    * the mechanism that exists to stop two controls claiming one press covered every card except the
    * one where the collision actually happens: tapping a quick pill answers the gate, the phase
-   * leaves `gated`, and the sentence the user had already typed is silently re-aimed from an ANSWER
-   * into a STEER. The pills step down instead, and the words are never destroyed for it.
+   * leaves `gated`, and the sentence the user had already typed is silently re-aimed from an answer
+   * into a steer. The pills step down instead, and the words are never destroyed for it.
    */
   it('demotes the quick pills once the field holds words, and keeps the typed sentence', () => {
     const view = makeView({
@@ -688,7 +659,7 @@ describe('typed words at a gate', () => {
       gate: { gateId: 'g1', scope: 'tool', summary: 'Which shore?' },
     });
     const { getAllByTestId, getByTestId } = renderWithI18n(
-      <PanelShell view={view} connected now={0} {...VERBS} />,
+      <PanelShell {...panelProps({ view, connected: true, now: 0, ...VERBS })} />,
     );
     const pills = getAllByTestId('gate-quick');
     expect(pills.map((el) => el.getAttribute('data-demoted'))).toEqual(['false', 'false']);
@@ -703,7 +674,7 @@ describe('typed words at a gate', () => {
       .toEqual(['false', 'false']);
   });
 
-  /** The route is `composer-routing`'s, not the card's: a sentence typed at a gate CANCELS the call
+  /** The route is `composer-routing`'s, not the card's: a sentence typed at a gate cancels the call
    *  and becomes guidance, which is one `gateAnswered` with the words on it. */
   it('routes the submission as the gate words answer', () => {
     const log = createLog();
@@ -726,36 +697,6 @@ describe('typed words at a gate', () => {
   });
 });
 
-/* ── the gate thumbnail's footprint ───────────────────────────────────────── */
-
-describe('the cells a gated call is about', () => {
-  /** The four shapes the tool schemas actually speak. A shot framed on the wrong rectangle is a
-   *  picture of somewhere else, which is worse than no picture at all. */
-  it('reads a rect, a cell list, a path, a circle and a point', () => {
-    expect(callFootprint({ x1: 4, y1: 6, x2: 9, y2: 8 }))
-      .toEqual({ origin: { x: 4, y: 6 }, width: 6, height: 3 });
-    expect(callFootprint({ rect: { x1: 9, y1: 8, x2: 4, y2: 6 } }))
-      .toEqual({ origin: { x: 4, y: 6 }, width: 6, height: 3 });
-    expect(callFootprint({ cells: [{ x: 3, y: 3 }, { x: 5, y: 7 }] }))
-      .toEqual({ origin: { x: 3, y: 3 }, width: 3, height: 5 });
-    expect(callFootprint({ path: [{ x: 10, y: 2 }, { x: 10, y: 6 }] }))
-      .toEqual({ origin: { x: 10, y: 2 }, width: 1, height: 5 });
-    expect(callFootprint({ cx: 10, cy: 10, r: 2 }))
-      .toEqual({ origin: { x: 8, y: 8 }, width: 5, height: 5 });
-    expect(callFootprint({ x: 7, y: 7 }))
-      .toEqual({ origin: { x: 7, y: 7 }, width: 1, height: 1 });
-  });
-
-  it('names no rectangle where the arguments name no place, so the card shows no box', () => {
-    expect(callFootprint(undefined)).toBeUndefined();
-    expect(callFootprint({})).toBeUndefined();
-    expect(callFootprint({ objectId: 'obj-3', rotation: 90 })).toBeUndefined();
-    expect(callFootprint({ category: 'tree' })).toBeUndefined();
-    expect(callFootprint({ cells: [] })).toBeUndefined();
-    expect(callFootprint({ x: 'four', y: 6 })).toBeUndefined();
-  });
-});
-
 /* ── the banner family ────────────────────────────────────────────────────── */
 
 describe('Banner: one banner for every trouble class', () => {
@@ -769,7 +710,7 @@ describe('Banner: one banner for every trouble class', () => {
       const root = getByTestId('banner');
       expect(root.getAttribute('data-paper')).toMatch(/^(danger|wait)$/);
       expect(getByTestId('banner-icon')).toBeDefined();
-      // EVERY TROUBLE OFFERS AT LEAST ONE ANSWER, and a NOTICE offers none: the two rollback
+      // Every trouble offers at least one answer, and a notice offers none: the two rollback
       // notices are standing facts about the record rather than something to fix, and dismissing
       // one would put the same sentence back the next time the list is read. The two key-gone
       // sentences join them for the opposite reason — their answers are on the held job's own card
@@ -834,7 +775,7 @@ describe('Banner: one banner for every trouble class', () => {
     expect(getByTestId('banner-icon').querySelector('use')?.getAttribute('href')).toBe('#pw-cloud-off');
   });
 
-  /** THREE READINGS, THREE SENTENCES. One key carrying the middle one for all three would have a
+  /** Three readings, three sentences. One key carrying the middle one for all three would have a
    *  pruned save claim the session was lost and a corrupt one blame a full disk. */
   it('gives each storage reading the warning icon and a sentence of its own', () => {
     const said = new Set<string>();
@@ -875,44 +816,42 @@ describe('Gate + banner copy: forbidden characters, in every locale', () => {
   /** Every key the gate family renders. `_quick` carries the one `{word}` slot in the set, which is
    *  why the brace check names it rather than sweeping the list. */
   const NEW_KEYS = [
-    'agent3.gate_approve',
-    'agent3.gate_skip',
-    'agent3.gate_verdict_approved',
-    'agent3.gate_verdict_always',
-    'agent3.gate_verdict_declined',
-    'agent3.gate_verdict_words',
-    'agent3.gate_verdict_quick',
-    'agent3.gate_verdict_picked',
-    'agent3.gate_verdict_unanswered',
-    'agent3.gate_verdict_none_held',
-    'agent3.gate_verdict_none_words',
-    'agent3.plan_gate_title',
-    'agent3.plan_gate_stages',
-    'agent3.plan_gate_stages_one',
-    'agent3.plan_gate_flags',
-    'agent3.plan_gate_flags_one',
-    'agent3.plan_gate_note',
-    'agent3.plan_gate_flagnote',
-    'agent3.plan_gate_skip',
-    'agent3.option_none',
-    'agent3.banner_auth',
-    'agent3.banner_quota',
-    'agent3.banner_cors',
-    'agent3.banner_network',
-    'agent3.banner_storage_pruned',
-    'agent3.banner_storage_full',
-    'agent3.banner_storage_corrupt',
-    'agent3.banner_incident',
-    'agent3.banner_action_fix_key',
-    'agent3.banner_action_change_provider',
-    'agent3.banner_action_edit_endpoint',
-    'agent3.banner_action_dismiss',
+    'agent.gate_approve',
+    'agent.gate_skip',
+    'agent.gate_verdict_approved',
+    'agent.gate_verdict_always',
+    'agent.gate_verdict_declined',
+    'agent.gate_verdict_words',
+    'agent.gate_verdict_quick',
+    'agent.gate_verdict_picked',
+    'agent.gate_verdict_unanswered',
+    'agent.gate_verdict_none_held',
+    'agent.gate_verdict_none_words',
+    'agent.plan_gate_title',
+    'agent.plan_gate_stages',
+    'agent.plan_gate_flags',
+    'agent.plan_gate_note',
+    'agent.plan_gate_flagnote',
+    'agent.plan_gate_skip',
+    'agent.option_none',
+    'agent.banner_auth',
+    'agent.banner_quota',
+    'agent.banner_cors',
+    'agent.banner_network',
+    'agent.banner_storage_pruned',
+    'agent.banner_storage_full',
+    'agent.banner_storage_corrupt',
+    'agent.banner_incident',
+    'agent.banner_action_fix_key',
+    'agent.banner_action_change_provider',
+    'agent.banner_action_edit_endpoint',
+    'agent.banner_action_dismiss',
   ];
   /** The keys that legitimately carry an interpolation slot. */
   const WITH_PARAMS = new Set([
-    'agent3.gate_verdict_quick',
-    'agent3.plan_gate_stages', 'agent3.plan_gate_stages_one',
-    'agent3.plan_gate_flags', 'agent3.plan_gate_flags_one',
+    'agent.gate_verdict_quick',
+    'agent.plan_gate_stages',
+    'agent.plan_gate_flags',
   ]);
   const locales = Object.keys(translations) as Locale[];
 

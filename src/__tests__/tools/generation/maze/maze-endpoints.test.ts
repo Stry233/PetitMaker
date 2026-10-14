@@ -3,48 +3,43 @@
  *
  * The carve is a spanning tree, so exactly one route runs between any two corridors. That says nothing
  * about the ground the maze is standing on. The probe below asks the only question that settles it: can
- * a walker leave by one gate, stay out of the maze, and arrive at the other?
+ * a walker leave by one end, stay out of the maze, and arrive at the other?
  *
- * The answer measured on the real shipped map is YES, and it is not a sealing failure. The maze's own
- * border ring already walls it: a maze in a painted region has exactly two ways in, the two gates, and
- * nothing else on its rim is standable. The walker simply steps out of one gate onto the lawn the maze is
- * sitting on, walks round the outside of the rectangle, and steps into the other. Two holes in the outer
- * boundary of one simply-connected shape are two doors onto the same outside, so no wall the generator is
- * allowed to build can separate them: the exterior route exists for topological reasons, not for want of
- * a band. The one arrangement that removes it is the one the design already prefers, an endpoint INSIDE
- * the maze, where entering is the only way to arrive.
- *
- * Marked `it.fails` because it genuinely does. Removing the marker needs a decision about what the
- * guarantee is, not more wall.
+ * The guarantee is made for the default ends, which put the exit inside the maze: the panel's default
+ * pair (`defaultMazeGates`, in from the west edge and out at the middle) and the generator's own (in
+ * from the edge, out at the plaza). Arriving at an end inside means entering, so no route skips the
+ * maze. Two ends a user places on the rim carry no such guarantee: the border ring walls the maze so the
+ * gates are its only ways in, but two holes in the boundary of one simply-connected shape are two doors
+ * onto the same outside, and a walker steps out of one, round the rectangle, and into the other.
  */
 import { describe, it, expect } from 'vitest';
-import { defaultEnds, gateSites, routeBetween, walkLength, type MazeEnd, type MazeField } from '../../../../tools/generation/maze/maze-endpoints';
-// @ts-ignore - node:fs is untyped here (no @types/node); test reads the shipped map JSONs.
+import { defaultEnds, resolveEnd, routeBetween, type MazeEnd, type MazeField } from '../../../../tools/generation/maze/maze-endpoints';
 import { readFileSync } from 'node:fs';
-import { generateMaze, mazeFootprint } from '../../../../tools/generation/maze/maze-generator';
-import { makeState } from '../../../rules/_helpers';
+import { defaultMazeGates, generateMaze, mazeFootprint } from '../../../../tools/generation/maze/maze-generator';
+import { makeState, makeExecutor } from '../../../_support/map-state';
 import { objectRect } from '../../../../state/object-geometry';
-import { CommandExecutor } from '../../../../core/commands/command-executor';
-import { EventBus } from '../../../../core/commands/event-bus';
-import { createDefaultRegistry } from '../../../../rules';
-import { createGrid, createPlazaObject, getCell, isBuildableZone } from '../../../../core/model/grid-model';
-import { realSurface, surfaceElevation } from '../../../../core/edge-cut/terrain-silhouette';
-import { roadLookup } from '../../../../state/object-index';
-import { TerrainType, type Command, type EditorEvents, type GridState, type MacroCoord, type MapTemplate } from '../../../../core/model/types';
+import { createGrid, getCell } from '../../../../core/model/grid-model';
+import { templateLandmarkObjects } from '../../../../core/model/landmarks';
+import { isBuildableZone } from '../../../../core/game/zones';
+import { realSurface, surfaceElevation } from '../../../../core/domain/terrain/terrain-surface';
+import { TerrainType, type Command, type GridState, type MacroCoord, type MapTemplate } from '../../../../core/model/types';
+
+/** How many cells the walk between two ends visits, both ends included, or null with no route. */
+const walkLength = (field: MazeField, a: MazeEnd, b: MazeEnd): number | null => routeBetween(field, a, b)?.length ?? null;
 
 /** The real shipped map: a grass disc inside beach inside sea, with the locked plaza in the middle. */
 function islandState(file = 'hexia.json'): GridState {
   const template = JSON.parse(readFileSync(`src/config/maps/${file}`, 'utf8')) as MapTemplate;
   const cells = createGrid(template);
   const objects = new Map();
-  const plaza = createPlazaObject(template);
+  const plaza = (templateLandmarkObjects(template)[0] ?? null);
   if (plaza) objects.set(plaza.id, plaza);
-  return { template, cells, objects, lockedLayers: new Set() };
+  return { template, cells, objects, objectsVersion: 0, cellsVersion: 0, lockedLayers: new Set() };
 }
 
 /**
  * The surface a person could stand on here, or null for somewhere they could not be. Taken from the
- * engine rather than invented: `agent/quality.ts` and `placement/analysis.ts` both walk the same
+ * engine rather than invented: `agent/tools/quality.ts` and `placement/analysis.ts` both walk the same
  * ground, which is `isBuildableZone` (grass, so not the sand rim and not the sea) with no water on it.
  * `realSurface` is the only correct read of the height — a Γ patch is cosmetic above its base, so a raw
  * `terrain.elevation` would see a fillet as a full block and call walkable ground a wall.
@@ -60,12 +55,14 @@ const STEPS: readonly (readonly [number, number])[] = [[1, 0], [-1, 0], [0, 1], 
 
 /**
  * A route from `from` to `to` that never sets foot inside the maze's rectangle, or null if none exists.
- * A step needs both cells standing at the SAME elevation, which is what makes a raised wall a wall: there
- * is no ramp in a maze, so a walk that starts on the ground stays on it. Both gates sit ON the rectangle,
+ * A step needs both cells standing at the same elevation, which is what makes a raised wall a wall: there
+ * is no ramp in a maze, so a walk that starts on the ground stays on it. Both gates sit on the rectangle,
  * so they are the two cells of it the walk may use: it has to step straight out of `from` and back into
  * `to`, and everything else within the rectangle is the maze.
  */
-function routeAroundOutside(state: GridState, fp: { origin: MacroCoord; dims: { mazeW: number; mazeH: number } }, from: MacroCoord, to: MacroCoord): MacroCoord[] | null {
+function routeAroundOutside(
+  state: GridState, fp: { origin: MacroCoord; dims: { mazeW: number; mazeH: number } }, from: MacroCoord, to: MacroCoord,
+): MacroCoord[] | null {
   const { origin, dims } = fp;
   const inMaze = (x: number, y: number): boolean =>
     x >= origin.x && x < origin.x + dims.mazeW && y >= origin.y && y < origin.y + dims.mazeH;
@@ -101,22 +98,42 @@ function regionCells(x0 = 30, y0 = 20, x1 = 70, y1 = 60): MacroCoord[] {
   return cells;
 }
 
-/** Lay a maze on the map through the live rule registry, one stroke group, gates north and south. */
+/** Lay a maze on the map through the live rule registry, one stroke group, at the panel's default ends. */
 function mazeOnIsland(seed: number, region: MacroCoord[] | null) {
   const state = islandState();
-  const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
-  const start = exec.getUndoStackSize();
+  const exec = makeExecutor(state);
+  const start = exec.beginStroke();
   const fp = mazeFootprint(state, region, 1)!;
-  const result = generateMaze(state, seed, 3, 1, region, (c: Command) => exec.execute(c), {
-    entrance: { x: fp.origin.x + (fp.dims.mazeW >> 1), y: fp.origin.y },
-    exit: { x: fp.origin.x + (fp.dims.mazeW >> 1), y: fp.origin.y + fp.dims.mazeH - 1 },
+  const result = generateMaze({ state, execute: (c: Command) => exec.execute(c) }, {
+    seed: seed, maxElevation: 3, corridorWidth: 1, region: region, mazeGates: defaultMazeGates(fp),
   });
-  const violations = exec.commitStroke(start);
+  const violations = start.commit();
   return { state, fp, violations, ...result };
 }
 
+/** The cells of the locked plaza on the island. */
+function plazaCells(state: GridState): MacroCoord[] {
+  const plaza: MacroCoord[] = [];
+  for (const obj of state.objects.values()) {
+    if (!obj.locked) continue;
+    const rect = objectRect(obj);
+    for (let y = Math.floor(rect.y); y < Math.ceil(rect.y + rect.h); y++) {
+      for (let x = Math.floor(rect.x); x < Math.ceil(rect.x + rect.w); x++) plaza.push({ x, y });
+    }
+  }
+  return plaza;
+}
+
+/** A region round the plaza, so the maze's rectangle holds it. */
+function aroundPlaza(state: GridState): MacroCoord[] {
+  const plaza = plazaCells(state);
+  const cx = Math.round(plaza.reduce((s, c) => s + c.x, 0) / plaza.length);
+  const cy = Math.round(plaza.reduce((s, c) => s + c.y, 0) / plaza.length);
+  return regionCells(cx - 20, cy - 20, cx + 20, cy + 20);
+}
+
 describe('Maze endpoints: no walk-around', () => {
-  it.fails('gives no walkable route between the two gates that skips the maze', () => {
+  it('gives no walkable route that skips the maze between the panel\'s default ends', () => {
     for (const seed of [1, 7, 42, 99, 2026]) {
       const { state, fp, gates, violations } = mazeOnIsland(seed, regionCells());
       expect(violations, `seed ${seed} post-stroke violations`).toEqual([]);
@@ -129,9 +146,24 @@ describe('Maze endpoints: no walk-around', () => {
     }
   });
 
-  // The half of the promise that DOES hold, and the reason a band would add nothing here: the border ring
-  // already seals the maze, so the only cells of it a walker outside can step into are the two gates.
-  it('is entered only at its two gates', () => {
+  it('and none between the generator\'s own ends, in from the edge and out at the plaza', () => {
+    for (const seed of [1, 7, 42, 99, 2026]) {
+      const state = islandState();
+      const region = aroundPlaza(state);
+      const exec = makeExecutor(state);
+      const start = exec.beginStroke();
+      const fp = mazeFootprint(state, region, 1)!;
+      const { gates } = generateMaze({ state, execute: (c: Command) => exec.execute(c) }, { seed, maxElevation: 3, corridorWidth: 1, region });
+      expect(start.commit(), `seed ${seed} post-stroke violations`).toEqual([]);
+      expect(gates.entrance).not.toBeNull();
+      expect(gates.exit).not.toBeNull();
+      expect(routeAroundOutside(state, fp, gates.entrance!, gates.exit!), `seed ${seed}`).toBeNull();
+    }
+  });
+
+  // Why the guarantee holds: the border ring seals the maze, so the only cell of it a walker outside can
+  // step into is the way in.
+  it('is entered only at its way in', () => {
     const { state, fp, gates } = mazeOnIsland(1, regionCells());
     const { origin: o, dims: d } = fp;
     const inMaze = (x: number, y: number): boolean => x >= o.x && x < o.x + d.mazeW && y >= o.y && y < o.y + d.mazeH;
@@ -141,11 +173,11 @@ describe('Maze endpoints: no walk-around', () => {
       if (here === null) continue;
       if (STEPS.some(([dx, dy]) => !inMaze(x + dx, y + dy) && standing(state, x + dx, y + dy) === here)) waysIn.push(`${x},${y}`);
     }
-    expect(waysIn.sort()).toEqual([`${gates.entrance!.x},${gates.entrance!.y}`, `${gates.exit!.x},${gates.exit!.y}`].sort());
+    expect(waysIn).toEqual([`${gates.entrance!.x},${gates.entrance!.y}`]);
   });
 });
 
-/** The field as the FINISHED MAP shows it, which is the view the interface takes: a walker's ground
+/** The field as the finished map shows it, which is the view the interface takes: a walker's ground
  *  rather than the generator's own lattice. Both go through `maze-endpoints`, which is the point. */
 function fieldOf(state: GridState, fp: { origin: MacroCoord; dims: { mazeW: number; mazeH: number } }): MazeField {
   return {
@@ -185,22 +217,23 @@ function graph(state: GridState, fp: { origin: MacroCoord; dims: { mazeW: number
 
 describe('Maze endpoints', () => {
   /**
-   * THE GUARANTEE, and it is the one the default relies on: with an end INSIDE the maze, entering is
+   * The guarantee, and it is the one the default relies on: with an end inside the maze, entering is
    * the only way to arrive, and the carve's spanning tree makes that route unique. A tree is exactly
    * "one route between any two of its cells", so what is asserted is that the maze plus its one hole
-   * IS one — connected, with a vertex more than it has edges.
+   * is one — connected, with a vertex more than it has edges.
    */
   it('leaves exactly one route from the way in to a destination inside', () => {
     const state = islandState();
     const region = regionCells();
-    const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
-    const start = exec.getUndoStackSize();
+    const exec = makeExecutor(state);
+    const start = exec.beginStroke();
     const fp = mazeFootprint(state, region, 1)!;
-    const { gates } = generateMaze(state, 3, 3, 1, region, (c: Command) => exec.execute(c), {
+    const { gates } = generateMaze({ state, execute: (c: Command) => exec.execute(c) }, {
+      seed: 3, maxElevation: 3, corridorWidth: 1, region: region, mazeGates: {
       entrance: { x: fp.origin.x, y: fp.origin.y + (fp.dims.mazeH >> 1) },
       exit: { x: fp.origin.x + (fp.dims.mazeW >> 1), y: fp.origin.y + (fp.dims.mazeH >> 1) },
-    });
-    expect(exec.commitStroke(start)).toEqual([]);
+    } });
+    expect(start.commit()).toEqual([]);
 
     const field = fieldOf(state, fp);
     const walk = walkLength(field, { cell: gates.entrance!, kind: 'hole' }, { cell: gates.exit!, kind: 'target' });
@@ -214,11 +247,11 @@ describe('Maze endpoints', () => {
   });
 
   /**
-   * THE ANSWER IS ALWAYS THERE TO SHOW. The carve is a spanning tree, so the route between the two
-   * ends is unique and does not have to be searched for — and it exists at EVERY corridor width,
+   * The answer is always there to show. The carve is a spanning tree, so the route between the two
+   * ends is unique and does not have to be searched for — and it exists at every corridor width,
    * one-wide included, which is why the answer is a drape rather than a road: a road's flat trait
    * refuses a corridor cell with wall below or right of it, which in a maze is most of them, and
-   * on the default one-wide maze it paved nothing at all. A route that is drawn has to BE the
+   * on the default one-wide maze it paved nothing at all. A route that is drawn has to be the
    * route, so this holds it against the walk the readout reports rather than against itself.
    */
   it('finds the one route, at a wide corridor and at the one-wide default alike', () => {
@@ -226,11 +259,11 @@ describe('Maze endpoints', () => {
       const state = makeState(28, 28);
       const region: MacroCoord[] = [];
       for (let y = 2; y <= 24; y++) for (let x = 2; x <= 24; x++) region.push({ x, y });
-      const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
-      const start = exec.getUndoStackSize();
+      const exec = makeExecutor(state);
+      const start = exec.beginStroke();
       const fp = mazeFootprint(state, region, cw)!;
-      const { gates } = generateMaze(state, 11, 3, cw, region, (c: Command) => exec.execute(c));
-      exec.commitStroke(start);
+      const { gates } = generateMaze({ state, execute: (c: Command) => exec.execute(c) }, { seed: 11, maxElevation: 3, corridorWidth: cw, region: region });
+      start.commit();
 
       const field = fieldOf(state, fp);
       const entrance: MazeEnd = { cell: gates.entrance!, kind: 'hole' };
@@ -238,8 +271,12 @@ describe('Maze endpoints', () => {
 
       const route = routeBetween(field, entrance, exit);
       expect(route, `route exists (cw ${cw})`).not.toBeNull();
-      // The route IS the walk: same cells counted, both ends included.
-      expect(route!.length).toBe(walkLength(field, entrance, exit));
+      // The route runs hole to hole through edge neighbours, both ends included.
+      expect(route![0]).toEqual(exit.cell);
+      expect(route![route!.length - 1]).toEqual(entrance.cell);
+      for (let i = 1; i < route!.length; i++) {
+        expect(Math.abs(route![i]!.x - route![i - 1]!.x) + Math.abs(route![i]!.y - route![i - 1]!.y)).toBe(1);
+      }
       // Every cell of it is ground a walker can stand on, or one of the two holes.
       const holes = new Set([`${entrance.cell.x},${entrance.cell.y}`, `${exit.cell.x},${exit.cell.y}`]);
       for (const c of route!) {
@@ -249,7 +286,7 @@ describe('Maze endpoints', () => {
   });
 
   /**
-   * THE ENDS ARE RECIPE INPUTS: the carve grows out from the entrance, so asking for a different
+   * The ends are recipe inputs: the carve grows out from the entrance, so asking for a different
    * way in at the same seed answers with a different maze, not the same corridors with a new hole.
    */
   it('reshapes the maze when the entrance moves, at the same seed', () => {
@@ -257,11 +294,11 @@ describe('Maze endpoints', () => {
       const state = makeState(28, 28);
       const region: MacroCoord[] = [];
       for (let y = 2; y <= 24; y++) for (let x = 2; x <= 24; x++) region.push({ x, y });
-      const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
+      const exec = makeExecutor(state);
       const fp = mazeFootprint(state, region, 1)!;
-      generateMaze(state, 11, 3, 1, region, (c: Command) => exec.execute(c), {
+      generateMaze({ state, execute: (c: Command) => exec.execute(c) }, { seed: 11, maxElevation: 3, corridorWidth: 1, region: region, mazeGates: {
         entrance, exit: { x: fp.origin.x + fp.dims.mazeW - 1, y: fp.origin.y + (fp.dims.mazeH >> 1) },
-      });
+      } });
       let walls = '';
       for (let y = 2; y <= 24; y++) for (let x = 2; x <= 24; x++) walls += state.cells[y]![x]!.terrain ? '#' : '.';
       return walls;
@@ -272,63 +309,64 @@ describe('Maze endpoints', () => {
   });
 
   /**
-   * THE DEFAULT IS THE LONGEST WALK, where there is no plaza to head for. Checked against every
+   * The default is the longest walk, where there is no plaza to head for. Checked against every
    * other pair of ways in the maze offers, which is what "longest" has to mean.
    */
   it('defaults to the longest walk the maze holds when nothing is there to reach', () => {
     const state = makeState(28, 28);
     const region: MacroCoord[] = [];
     for (let y = 2; y <= 24; y++) for (let x = 2; x <= 24; x++) region.push({ x, y });
-    const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
-    const start = exec.getUndoStackSize();
+    const exec = makeExecutor(state);
+    const start = exec.beginStroke();
     const fp = mazeFootprint(state, region, 1)!;
-    const { gates } = generateMaze(state, 11, 3, 1, region, (c: Command) => exec.execute(c));
-    exec.commitStroke(start);
+    const { gates } = generateMaze({ state, execute: (c: Command) => exec.execute(c) }, { seed: 11, maxElevation: 3, corridorWidth: 1, region: region });
+    start.commit();
 
     const field = fieldOf(state, fp);
     const chosen = walkLength(field, { cell: gates.entrance!, kind: 'hole' }, { cell: gates.exit!, kind: 'hole' })!;
     expect(chosen).toBeGreaterThan(0);
 
-    // Every OTHER pair of places a hole could have been cut, measured the same way. The two that
+    // Every other pair of places a hole could have been cut, measured the same way. The two that
     // were chosen are already cut, so the field sees them as walkable and the rest as wall — which
     // is exactly how a candidate pair is measured from a hole that is not cut yet.
-    for (const a of gateSites(field)) {
-      for (const b of gateSites(field)) {
+    // A ring cell a hole can be cut in is one a drop there resolves to itself.
+    const { origin: o, dims: d } = field;
+    const ring: MacroCoord[] = [];
+    for (let x = o.x; x < o.x + d.mazeW; x++) ring.push({ x, y: o.y }, { x, y: o.y + d.mazeH - 1 });
+    for (let y = o.y + 1; y < o.y + d.mazeH - 1; y++) ring.push({ x: o.x, y }, { x: o.x + d.mazeW - 1, y });
+    const holes = ring.filter((c) => {
+      const end = resolveEnd(field, c);
+      return end?.kind === 'hole' && end.cell.x === c.x && end.cell.y === c.y;
+    });
+    expect(holes.length).toBeGreaterThan(2);
+    for (const a of holes) {
+      for (const b of holes) {
         if (a === b) continue;
-        const walk = walkLength(field, { cell: a.gate, kind: 'hole' }, { cell: b.gate, kind: 'hole' });
+        const walk = walkLength(field, { cell: a, kind: 'hole' }, { cell: b, kind: 'hole' });
         if (walk !== null) expect(walk).toBeLessThanOrEqual(chosen);
       }
     }
   });
 
   /**
-   * A DESTINATION IS REACHED WITHOUT BEING BUILT ON. The plaza is unbuildable, so the maze routes
+   * A destination is reached without being built on. The plaza is unbuildable, so the maze routes
    * around it and the end is the corridor touching its edge — which is also why the plaza makes a
    * better default than an edge: arriving somewhere means something.
    */
   it('puts the destination on the corridor touching the plaza, and builds nothing on it', () => {
     const state = islandState();
     // A region around the square itself, so the plaza is inside the maze's own rectangle. The
-    // square is an OBJECT on grass rather than a zone — `createGrid` lays no Plaza cells — so its
+    // square is an object on grass rather than a zone, so its
     // footprint is what both this test and the generator read.
-    const plaza: MacroCoord[] = [];
-    for (const obj of state.objects.values()) {
-      if (!obj.locked) continue;
-      const rect = objectRect(obj);
-      for (let y = Math.floor(rect.y); y < Math.ceil(rect.y + rect.h); y++) {
-        for (let x = Math.floor(rect.x); x < Math.ceil(rect.x + rect.w); x++) plaza.push({ x, y });
-      }
-    }
+    const plaza = plazaCells(state);
     expect(plaza.length).toBeGreaterThan(0);
     const square = new Set(plaza.map(c => `${c.x},${c.y}`));
-    const cx = Math.round(plaza.reduce((s, c) => s + c.x, 0) / plaza.length);
-    const cy = Math.round(plaza.reduce((s, c) => s + c.y, 0) / plaza.length);
-    const region = regionCells(cx - 20, cy - 20, cx + 20, cy + 20);
+    const region = aroundPlaza(state);
 
-    const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
-    const start = exec.getUndoStackSize();
-    const { gates } = generateMaze(state, 5, 3, 1, region, (c: Command) => exec.execute(c));
-    expect(exec.commitStroke(start)).toEqual([]);
+    const exec = makeExecutor(state);
+    const start = exec.beginStroke();
+    const { gates } = generateMaze({ state, execute: (c: Command) => exec.execute(c) }, { seed: 5, maxElevation: 3, corridorWidth: 1, region: region });
+    expect(start.commit()).toEqual([]);
 
     const exit = gates.exit!;
     expect(getCell(state.cells, exit.x, exit.y)?.terrain ?? null).toBeNull();
@@ -369,10 +407,10 @@ describe('Maze endpoints', () => {
   });
 
   /**
-   * THE WALK ALWAYS EXISTS. On the real map the maze's rectangle covers sea and sand, so the
+   * The walk always exists. On the real map the maze's rectangle covers sea and sand, so the
    * walkable cells are several disconnected patches, and an end dropped in an awkward place (a sea
    * corner, over the rim) snapped to its nearest cell can land in a pocket no corridor joins. Both
-   * asked-for ends snap into the MAINLAND (the largest component), so one spanning tree holds the pair
+   * asked-for ends snap into the mainland (the largest component), so one spanning tree holds the pair
    * and the walk between them exists by construction.
    */
   it('lands every asked-for pair where a walk exists between them, on the real map', () => {
@@ -383,11 +421,13 @@ describe('Maze endpoints', () => {
     ];
     for (const [i, asked] of askedPairs.entries()) {
       const state = islandState();
-      const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
-      const start = exec.getUndoStackSize();
+      const exec = makeExecutor(state);
+      const start = exec.beginStroke();
       const fp = mazeFootprint(state, null, 1)!;
-      const { gates, walk } = generateMaze(state, 7 + i, 3, 1, null, (c: Command) => exec.execute(c), asked);
-      exec.commitStroke(start);
+      const { gates, walk } = generateMaze(
+        { state, execute: (c: Command) => exec.execute(c) }, { seed: 7 + i, maxElevation: 3, corridorWidth: 1, region: null, mazeGates: asked },
+      );
+      start.commit();
 
       expect(gates.entrance, `pair ${i}: entrance landed`).toBeTruthy();
       expect(gates.exit, `pair ${i}: exit landed`).toBeTruthy();
@@ -399,7 +439,7 @@ describe('Maze endpoints', () => {
       const length = walkLength(field, kindOf(gates.entrance!), kindOf(gates.exit!));
       expect(length, `pair ${i}: a walk joins the pair`).not.toBeNull();
 
-      // THE WALK STAYS IN THE MAZE. The run's own reported walk runs through carved corridors and
+      // The walk stays in the maze. The run's own reported walk runs through carved corridors and
       // never skims the rim: on the map the coast refuses some walls, and a route over all open
       // ground could slip through such a gap and skirt the rectangle's edge — cheating, since no
       // corridor put it there. Gates are the only ring cells the walk may touch.

@@ -28,7 +28,36 @@ import path_square_brick from './path-square-brick.json';
 import path_urban_asphalt from './path-urban-asphalt.json';
 import path_wavy_terracotta from './path-wavy-terracotta.json';
 
-// The dirt path LEADS, and the position is load-bearing: the tile brush arms the category's first
+import path_flower_meadow from './path-flower-meadow.json';
+import print_leaves_spring from './print-leaves-spring.json';
+import print_leaves_summer from './print-leaves-summer.json';
+import print_leaves_autumn from './print-leaves-autumn.json';
+import print_leaves_winter from './print-leaves-winter.json';
+import print_field_line from './print-field-line.json';
+import print_field_junction from './print-field-junction.json';
+import print_field_cross from './print-field-cross.json';
+import print_field_corner from './print-field-corner.json';
+import print_field_arc from './print-field-arc.json';
+import print_flight_blue_airport from './print-flight-blue-airport.json';
+import print_flight_aqua_airport from './print-flight-aqua-airport.json';
+import print_flight_pink_airport from './print-flight-pink-airport.json';
+import print_flight_orange_airport from './print-flight-orange-airport.json';
+import print_flight_blue_route from './print-flight-blue-route.json';
+import print_flight_aqua_route from './print-flight-aqua-route.json';
+import print_flight_pink_route from './print-flight-pink-route.json';
+import print_flight_orange_route from './print-flight-orange-route.json';
+import print_flight_blue_goal from './print-flight-blue-goal.json';
+import print_flight_aqua_goal from './print-flight-aqua-goal.json';
+import print_flight_pink_goal from './print-flight-pink-goal.json';
+import print_flight_orange_goal from './print-flight-orange-goal.json';
+import print_flight_jump_1 from './print-flight-jump-1.json';
+import print_flight_jump_2 from './print-flight-jump-2.json';
+import print_flight_jump_3 from './print-flight-jump-3.json';
+import print_flight_jump_4 from './print-flight-jump-4.json';
+import print_flight_jump_5 from './print-flight-jump-5.json';
+import print_flight_jump_6 from './print-flight-jump-6.json';
+
+// The dirt path leads, and the position is load-bearing: the tile brush arms the category's first
 // road when nobody has picked one (`state/slices/edit.ts`), and the road macros fall back to it.
 // A plain dirt track is what an unplanned lane should be; the boardwalks and patterned tiling are
 // choices a hand makes for one courtyard.
@@ -63,4 +92,32 @@ export const road: CatalogItem[] = [
   path_square_brick,
   path_urban_asphalt,
   path_wavy_terracotta,
+  path_flower_meadow,
+  print_leaves_spring,
+  print_leaves_summer,
+  print_leaves_autumn,
+  print_leaves_winter,
+  print_field_line,
+  print_field_junction,
+  print_field_cross,
+  print_field_corner,
+  print_field_arc,
+  print_flight_blue_airport,
+  print_flight_aqua_airport,
+  print_flight_pink_airport,
+  print_flight_orange_airport,
+  print_flight_blue_route,
+  print_flight_aqua_route,
+  print_flight_pink_route,
+  print_flight_orange_route,
+  print_flight_blue_goal,
+  print_flight_aqua_goal,
+  print_flight_pink_goal,
+  print_flight_orange_goal,
+  print_flight_jump_1,
+  print_flight_jump_2,
+  print_flight_jump_3,
+  print_flight_jump_4,
+  print_flight_jump_5,
+  print_flight_jump_6,
 ] as CatalogItem[];

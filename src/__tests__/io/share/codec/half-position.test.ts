@@ -2,26 +2,28 @@
 // while half-cell maps must round-trip exact coordinates through both the codec and image path.
 import { describe, it, expect } from 'vitest';
 import { encodeMapPayload, decodeMapPayload } from '../../../../io/share/codec/payload';
-import { createGridState } from '../../../../core/model/planet';
-import { canonicalize, canonicalBytes } from '../../../../io/share/canonical';
+import { createGridState, holdsTemplateTerrain } from '../../../../core/model/template';
+import { canonicalize, canonicalBytes } from '../../../../io/save/canonical';
 import { encodeMap, decodeMap, MODEL_VARIANTS } from '../../../../io/share/codec/map-coder';
 import { RangeEncoder, RangeDecoder } from '../../../../io/share/codec/bitio';
 import { tokensOf, parseToken } from '../../../../io/share/codec/grid-io';
 import { getMapTemplate } from '../../../../config/maps';
 import { buildShareCode, importFromRaster } from '../../../../io/share';
-import { CURRENT_VERSION } from '../../../../io/save-format';
+import { CURRENT_VERSION } from '../../../../io/save/format';
 import { TerrainType, type Rotation } from '../../../../core/model/types';
 import type { GridState } from '../../../../core/model/types';
-import type { SaveObject } from '../../../../io/save-format';
+import type { SaveObject } from '../../../../io/save/format';
+import { exportable } from '../../../_support/exportable';
 
 const META = { appVersion: 'half-pin', saveVersion: 1 };
 
 const unhex = (value: string) => Uint8Array.from(value.match(/../g) ?? [], (byte) => Number.parseInt(byte, 16));
 
 function place(
-  s: GridState, id: string, catalogId: string, x: number, y: number,
-  rotation: Rotation, elevation: number, spanLength?: number,
+  s: GridState, id: string, catalogId: string,
+  pose: { x: number; y: number; rotation: Rotation; elevation: number; spanLength?: number },
 ): void {
+  const { x, y, rotation, elevation, spanLength } = pose;
   s.objects.set(id, {
     id, catalogId, position: { x, y }, rotation, elevation,
     ...(spanLength !== undefined ? { spanLength } : {}),
@@ -35,10 +37,10 @@ function wholeMap(): GridState {
     s.cells[y]![x]!.terrain = { type: TerrainType.Mountain, elevation: 2 };
   }
   for (let x = 30; x < 34; x++) s.cells[24]![x]!.terrain = { type: TerrainType.Water, elevation: 0 };
-  place(s, 'a', 'tree-ginkgo', 18, 18, 0, 0);
-  place(s, 'b', 'path-garden-stone', 19, 19, 0, 0);
-  place(s, 'c', 'bridge-plank', 29, 24, 90, 0, 4);
-  place(s, 'd', 'ramp-plank', 20, 27, 180, 2);
+  place(s, 'a', 'tree-ginkgo', { x: 18, y: 18, rotation: 0, elevation: 0 });
+  place(s, 'b', 'path-garden-stone', { x: 19, y: 19, rotation: 0, elevation: 0 });
+  place(s, 'c', 'bridge-plank', { x: 29, y: 24, rotation: 90, elevation: 0, spanLength: 4 });
+  place(s, 'd', 'ramp-plank', { x: 20, y: 27, rotation: 180, elevation: 2 });
   return s;
 }
 
@@ -46,7 +48,10 @@ describe('share codec: half positions are additive', () => {
   it('decodes the pinned pre-mask frame 4 bytes', async () => {
     const bytes = unhex('5032040001056865786961fd3134f1608676390b00010868616c662d70696e74cb594a33adc19c6f761a4551f77c4e5cd6f16ab700cf52a1e5405b5d1a920f0000000000000344927b32bc639534e56b6a2c4ab69c73f633d9fbdab19376000c66d4970d587d0f00000000000000011b7de923f0005597ce127d6bb1f38e7828b110f000000000');
     const decoded = await decodeMapPayload(bytes);
-    expect(canonicalBytes(decoded.canonical)).toEqual(canonicalBytes({ ...canonicalize(wholeMap()), version: 1 }));
+    // Pinned before the mountain under the plaza was map terrain.
+    const then = wholeMap();
+    then.cells.forEach((row, y) => row.forEach((cell, x) => { if (cell.terrain && holdsTemplateTerrain(then.template, x, y, cell)) cell.terrain = null; }));
+    expect(canonicalBytes(decoded.canonical)).toEqual(canonicalBytes({ ...canonicalize(then), version: 1 }));
   });
 
   it('returns a map with no half position exactly', async () => {
@@ -57,9 +62,10 @@ describe('share codec: half positions are additive', () => {
 
   it('returns a half-anchored ramp and bridge exactly', async () => {
     const state = wholeMap();
-    place(state, 'e', 'ramp-teak-stair', 40.5, 30, 0, 1);
-    place(state, 'f', 'bridge-teak', 44, 50.5, 90, 0, 4);
-    place(state, 'g', 'ramp-plank', 60.5, 60.5, 270, 2);
+    place(state, 'e', 'ramp-teak-stair', { x: 40.5, y: 30, rotation: 0, elevation: 1 });
+    place(state, 'f', 'bridge-teak', { x: 44, y: 50.5, rotation: 90, elevation: 0, spanLength: 4 });
+    place(state, 'g', 'ramp-plank', { x: 60.5, y: 60.5, rotation: 270, elevation: 2 });
+    place(state, 'h', 'ramp-grassy', { x: 70.5, y: 60.5, rotation: 90, elevation: 1 });
     const dec = await decodeMapPayload(await encodeMapPayload(state, null, META));
     expect(canonicalBytes(dec.canonical)).toEqual(canonicalBytes(canonicalize(state)));
     const by = new Map(dec.canonical.objects.map((o) => [o.catalogId, o]));
@@ -73,7 +79,7 @@ describe('share codec: half positions are additive', () => {
     expect(MODEL_VARIANTS[plain[3]!]!.half).toBe(false);
 
     const state = wholeMap();
-    place(state, 'e', 'ramp-teak-stair', 40.5, 30, 0, 1);
+    place(state, 'e', 'ramp-teak-stair', { x: 40.5, y: 30, rotation: 0, elevation: 1 });
     const half = await encodeMapPayload(state, null, META);
     expect(MODEL_VARIANTS[half[3]!]!.half).toBe(true);
   });
@@ -109,9 +115,9 @@ describe('share codec: half positions are additive', () => {
   it('carries a half anchor the whole way out and back', async () => {
     // Exercise image rendering, raster decoding, save loading, and import validation together.
     const state = wholeMap();
-    place(state, 'e', 'ramp-teak-stair', 40.5, 30, 0, 1);
-    place(state, 'f', 'bridge-teak', 44, 50.5, 90, 0, 4);
-    const code = await buildShareCode(state, null, { ...META, saveVersion: CURRENT_VERSION }, 1600);
+    place(state, 'e', 'ramp-teak-stair', { x: 40.5, y: 30, rotation: 0, elevation: 1 });
+    place(state, 'f', 'bridge-teak', { x: 44, y: 50.5, rotation: 90, elevation: 0, spanLength: 4 });
+    const code = await buildShareCode(exportable(state), null, { ...META, saveVersion: CURRENT_VERSION }, 1600);
     const res = await importFromRaster(code!.rgba, code!.width, code!.height);
     expect(res.ok && res.warnings).toEqual([]);
     const objects = [...(res as { state: GridState }).state.objects.values()];

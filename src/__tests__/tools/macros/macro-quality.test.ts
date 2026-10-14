@@ -9,35 +9,31 @@
  * user pointed and plant nothing, and the stream carved the same ten cells at every dial setting.
  * All seven are ordinary tests now.
  *
- * ONE FIXTURE: a terraced cone near the west shore with flat grass east of it. Each macro is aimed
+ * One fixture: a terraced cone near the west shore with flat grass east of it. Each macro is aimed
  * where its own material is, because a probe that fails for want of ground says nothing about the
- * macro. A stream is pointed at the cone's flank, since water has to fall from somewhere and reach
- * somewhere; everything else is pointed at the flat, which is where a person aims them.
+ * macro. A river is dragged from the cone's flank to the flat, since water has to fall from somewhere
+ * and reach somewhere; everything else is pointed at the flat, which is where a person aims them.
  */
+import { placeObjectCommand } from '../../../core/model/command-build';
+import { makeToolCtx } from '../../_support/tool-ctx';
 import { describe, expect, it, vi } from 'vitest';
 import { CommandExecutor } from '../../../core/commands/command-executor';
-import { EventBus } from '../../../core/commands/event-bus';
 import { createDefaultTerrainCell } from '../../../core/model/grid-model';
-import {
-  CellZone, TerrainType,
-  type EditorEvents, type GridState, type MacroCoord, type PlacedObject,
-} from '../../../core/model/types';
-import { roadLookup } from '../../../state/object-index';
-import { objectPlacementCommand } from '../../../tools/objects/object-placer';
+import { TerrainType, type GridState, type MacroCoord, type PlacedObject } from '../../../core/model/types';
+import { CellZone } from '../../../core/game/zones';
 import { generateObjectId } from '../../../core/model/object-id';
 import { applyMacro, type MacroId, type MacroOpts } from '../../../tools/macros';
-import { MacroTool } from '../../../tools/macros/macro-tool';
-import type { ToolContext } from '../../../tools/runtime/types';
-import type { KitContext } from '../../../kit/context';
-import { createDefaultRegistry } from '../../../rules';
-import { makeState } from '../../rules/_helpers';
+import { MacroTool } from '../../../tools/pointer/macros/macro-tool';
+import type { EditContext } from '../../../core/commands/edit-context';
+import { makeState, makeExecutor } from '../../_support/map-state';
+import { cell, point } from '../../_support/grid';
 
 /** The macros that build where the user pointed. `roads` works over the whole region instead, so it
- *  takes no aim point and answers no dial. `road-link` is aimed at a POINT PAIR rather than a disc
- *  around one cell, so it sits outside `AIMED` too: it has no ground to "read" under a radius, no
+ *  takes no aim point and answers no dial. `road-link` and `stream` are aimed at a point pair rather
+ *  than a disc around one cell, so they sit outside `AIMED` too: it has no ground to "read" under a radius, no
  *  dial that widens a footprint, and (by design — the same taps must lay the same road) no seed to
- *  vary by. Its own endpoint gesture is pinned directly, in `road-link.test.ts`. */
-const AIMED: MacroId[] = ['raise', 'stream', 'patch-tree', 'patch-flora'];
+ *  vary by. Their endpoint gestures are pinned directly, in `road-link.test.ts` and `landforms.test.ts`. */
+const AIMED: MacroId[] = ['raise', 'patch-tree', 'patch-flora'];
 const EVERY: MacroId[] = ['raise', 'stream', 'road-link', 'roads', 'patch-tree', 'patch-flora'];
 
 const SIZE = 40;
@@ -52,19 +48,19 @@ const FLAT: MacroCoord = { x: 24, y: 20 };
 /** road-link's source: the same open column as `FLAT`, far enough north for a real route. */
 const ROAD_FROM: MacroCoord = { x: 24, y: 10 };
 const AIM: Record<MacroId, MacroCoord> = {
-  raise: FLAT, 'patch-tree': FLAT, 'patch-flora': FLAT, roads: FLAT, stream: FLANK, 'road-link': FLAT,
+  raise: FLAT, 'patch-tree': FLAT, 'patch-flora': FLAT, roads: FLAT, stream: FLAT, 'road-link': FLAT,
 };
-/** road-link's own second tap, alongside `AIM`: absent for every other id. */
-const FROM: Partial<Record<MacroId, MacroCoord>> = { 'road-link': ROAD_FROM };
+/** The point-pair macros' first tap, alongside `AIM`: absent for every other id. */
+const FROM: Partial<Record<MacroId, MacroCoord>> = { 'road-link': ROAD_FROM, stream: FLANK };
 const RADIUS = 5;
 
-/** `AIM`/`radius`, plus `from` for `road-link` — the one id whose gesture is a point PAIR. Every
+/** `AIM`/`radius`, plus `from` for the ids whose gesture is a point pair. Every
  *  probe below reads its opts through this, so the endpoint shape rides along automatically. */
 function macroOpts(id: MacroId, seed: number, radius = RADIUS): MacroOpts {
   return { seed, at: AIM[id], radius, ...(FROM[id] ? { from: FROM[id] } : {}) };
 }
 
-interface Kit extends KitContext { executor: CommandExecutor }
+interface Kit extends EditContext { executor: CommandExecutor }
 
 function makeKit(): Kit {
   const state = makeState(SIZE, SIZE);
@@ -74,7 +70,7 @@ function makeKit(): Kit {
     }
   }
   raiseCone(state, CONE.at, CONE.radius, CONE.peak);
-  const executor = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
+  const executor = makeExecutor(state);
   return { state, executor, registry: executor.getRegistry() };
 }
 
@@ -95,7 +91,7 @@ function raiseCone(state: GridState, at: MacroCoord, radius: number, peak: numbe
 /**
  * A staircase rising to the south-east across `at`'s neighbourhood, one tier every four cells and
  * never lowering what is already there. The ground the "reads its ground" probe changes, and it has
- * to sit UNDER the aim point: relief somewhere else on the map is not the ground a macro lands on.
+ * to sit under the aim point: relief somewhere else on the map is not the ground a macro lands on.
  *
  * Two things keep the result legal, and both are load-bearing: the ramp is feathered back down to
  * the edge of its own box, so no cell drops to bare ground from a tier V-MTN-03 owes a 3x3 base;
@@ -118,7 +114,7 @@ function raiseSlope(kit: Kit, at: MacroCoord, reach = 6, cap = 3): void {
 
 function place(kit: Kit, catalogId: string, x: number, y: number): string | null {
   const obj: PlacedObject = { id: generateObjectId(), catalogId, position: { x, y }, rotation: 0, elevation: 0 };
-  return kit.executor.execute(objectPlacementCommand(obj)).success ? obj.id : null;
+  return kit.executor.execute(placeObjectCommand(obj)).success ? obj.id : null;
 }
 
 /** The fixture with work already standing on it: two buildings out on the flat for the router to
@@ -135,8 +131,8 @@ function populatedKit(): { kit: Kit; mine: string[] } {
   return { kit, mine };
 }
 
-/** Terrain and objects, ids excluded. An id is minted with `Date.now()`/`Math.random()` and is never
- *  seed-derived, so leaving one in would make every "does it vary" comparison pass on its own. So
+/** Terrain and objects, ids excluded. Every placement mints a new id and none is seed-derived, so
+ *  leaving one in would make every "does it vary" comparison pass on its own. So
  *  would the provenance ledger, which carries the seed. */
 function shapeOf(state: GridState): string {
   const cells = state.cells.map((row) => row.map((c) => terrainMark(c.terrain)).join(' ')).join('\n');
@@ -195,7 +191,7 @@ describe('a macro is not a gimmick', () => {
   }
 
   /**
-   * A STAMP IS SUBTRACTIVE. Its shape was decided before the ground was read, so on higher ground it
+   * A stamp is subtractive. Its shape was decided before the ground was read, so on higher ground it
    * lays the same thing on a subset of the same cells: every cell it touches gets exactly what it
    * would have got on the flat, and the ones already at that height are simply skipped. A macro that
    * reads its ground breaks that pattern somewhere, by laying on a cell the flat run never touched or
@@ -249,7 +245,7 @@ describe('a macro is not a gimmick', () => {
   });
 
   /**
-   * A HELD press over what a person built: several staged bursts must never rewrite a hand-placed
+   * A held press over what a person built: several staged bursts must never rewrite a hand-placed
    * tree or flower standing in the same disc, only grow the hold's own stand beside it. The single
    * press above already proves placement leaves them alone; this proves ageing does too.
    */
@@ -266,20 +262,11 @@ describe('a macro is not a gimmick', () => {
     try {
       const tool = new MacroTool();
       tool.onActivate();
-      const ctx = {
-        gridState: kit.state,
-        overlay: { showGhost: vi.fn(), clearGhost: vi.fn() },
-        getUndoStackSize: () => kit.executor.getUndoStackSize(),
-        collapseHistory: (start: number) => kit.executor.collapseHistory(start),
-        t: (key: string) => key,
-        armedMacro: id,
-        brushSize: RADIUS - 3,
-        macroContext: { state: kit.state, executor: kit.executor, registry: kit.executor.getRegistry() },
-      } as unknown as ToolContext;
-      tool.onPointerDown(at as MacroCoord, { x: at.x, y: at.y }, ctx);
+      const ctx = makeToolCtx(kit.state, kit.executor, RADIUS - 3, 1, { armedMacro: id });
+      tool.onPointerDown(cell(at as MacroCoord), point({ x: at.x, y: at.y }), ctx);
       // Several bursts: enough to climb the succession ladder.
       vi.advanceTimersByTime(350 * 5);
-      tool.onPointerUp(at as MacroCoord, { x: at.x, y: at.y }, ctx);
+      tool.onPointerUp(cell(at as MacroCoord), point({ x: at.x, y: at.y }), ctx);
     } finally {
       vi.useRealTimers();
     }
@@ -304,10 +291,10 @@ describe('a macro is not a gimmick', () => {
   it.each(EVERY)('%s is one undo entry', (id) => {
     const { kit } = populatedKit();
     const before = gridSnapshot(kit.state);
-    const depth = kit.executor.getUndoStackSize();
+    const depth = kit.executor.historyDepth();
 
     const out = applyMacro(kit, id, macroOpts(id, 3));
-    expect(kit.executor.getUndoStackSize(), `${id} landed as more than one entry`).toBeLessThanOrEqual(depth + 1);
+    expect(kit.executor.historyDepth(), `${id} landed as more than one entry`).toBeLessThanOrEqual(depth + 1);
     if (out.changes === 0) return;
 
     kit.executor.undo();

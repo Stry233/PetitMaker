@@ -1,0 +1,267 @@
+import * as PIXI from 'pixi.js-legacy';
+import type { PlacedObject } from '../../../core/model/types';
+import { TILE_SIZE } from '../geometry/world';
+import { getCatalogItem } from '../../../state/catalog';
+import { getPlacedObjectSize } from '../../../state/object-geometry';
+import { iconUrl } from '../../../assets/icon-urls';
+import { animConfig, easeOutBack } from '../../shared/motion/anim-config';
+import { arcMotion, arcOffset, spinOffset } from '../../shared/motion/group-arc';
+import { plopScale, spinEase } from '../../shared/motion/object-beats';
+import type { GroupRotation } from '../../../tools/objects';
+import { isMotionReduced } from '../../../platform/channels/motion-state';
+import { spawnPuff } from '../draw/particles';
+import { iconColor } from '../draw/icon-texture';
+import { itemTint } from '../../shared/icon/item-tint';
+import { OBJECT_CHILD, taggedChild } from '../draw/object-children';
+
+export function fadeLayer(
+  lc: PIXI.Container, elev: number, show: boolean,
+  layerFadeAnim: Map<number, number>,
+  /** Opens the render window of the renderer the layer container lives on. */
+  requestRender: () => void,
+): void {
+  const prev = layerFadeAnim.get(elev);
+  if (prev !== undefined) { cancelAnimationFrame(prev); layerFadeAnim.delete(elev); }
+  if (isMotionReduced()) { lc.visible = show; lc.alpha = 1; return; }
+  if (show) lc.visible = true;                 // reveal before fading in
+  const target = show ? 1 : 0;
+  const from = lc.alpha;
+  if (from === target && lc.visible === show) return;
+  const { durationMs } = animConfig.layerFade;
+  let start: number | null = null;
+  const tick = (ts: number) => {
+    requestRender();
+    if (start === null) start = ts;
+    const t = Math.min((ts - start) / durationMs, 1);
+    lc.alpha = from + (target - from) * t;
+    if (t < 1) {
+      layerFadeAnim.set(elev, requestAnimationFrame(tick));
+    } else {
+      lc.alpha = target;
+      if (!show) lc.visible = false;           // hide only after fading out
+      layerFadeAnim.delete(elev);
+    }
+  };
+  layerFadeAnim.set(elev, requestAnimationFrame(tick));
+}
+
+/**
+ * How far the selection ring shrinks before popping back, as a scale fraction.
+ *
+ * Derived from the box's own size so the edges always travel the same number of pixels, whether
+ * the ring surrounds a single tree or a whole landmark. `maxAmp` caps a sub-tile box at the
+ * amplitude of a 1x1.
+ */
+export function selectionPopAmplitude(spanPx: number): number {
+  const { travelPx, maxAmp } = animConfig.selectionPop;
+  return Math.min(maxAmp, travelPx / Math.max(spanPx, 1));
+}
+
+/**
+ * Placement plop: the shared `plopScale` curve on the wrapper, squashing on landing and settling
+ * back to rest with an overshoot. No-op under reduced motion (the object is already at its final
+ * scale).
+ */
+export function animateSquash(
+  objectMap: Map<string, PIXI.Container>, objectId: string, sizeCells = 1,
+  /** Opens the render window of the renderer the wrapper lives on. */
+  requestRender: () => void,
+): void {
+  if (isMotionReduced()) return;
+  const wrapper = objectMap.get(objectId);
+  if (!wrapper) return;
+  const { settleMs } = animConfig.plop;
+  const cx = wrapper.width / 2;
+  const cy = wrapper.height / 2;
+  wrapper.pivot.set(cx, cy);
+  wrapper.x += cx;
+  wrapper.y += cy;
+
+  let start: number | null = null;
+  const tick = (ts: number) => {
+    // The wrapper dies mid-flight when the placement is undone or deleted within the
+    // settle window; a tick on a destroyed display object throws inside rAF.
+    if (wrapper.destroyed) return;
+    requestRender();
+    if (start === null) start = ts;
+    const t = Math.min((ts - start) / settleMs, 1);
+    const { across, up } = plopScale(t, sizeCells);
+    wrapper.scale.set(across, up);
+    if (t < 1) {
+      requestAnimationFrame(tick);
+    } else {
+      wrapper.scale.set(1, 1);
+      wrapper.pivot.set(0, 0);
+      wrapper.x -= cx;
+      wrapper.y -= cy;
+    }
+  };
+  requestAnimationFrame(tick);
+}
+
+/**
+ * Rotation beat: the object *turns* — ease the icon sprite from its old angle
+ * to the new one (mild overshoot) rather than squashing it (a turn reads as a
+ * rotation; a squash would read as a re-place). The wrapper has already been
+ * rebuilt at the new angle (rotate = Remove + Place),
+ * so this sets the icon back to `fromDeg` and eases forward to `toDeg`. No-op
+ * under reduced motion (the icon is already at the final angle). Only rotatable
+ * items have a tagged icon (`OBJECT_CHILD.icon`).
+ */
+export function animateRotation(
+  objectMap: Map<string, PIXI.Container>, id: string, turn: { fromDeg: number; toDeg: number },
+  /** Opens the render window of the renderer the wrapper lives on. */
+  requestRender: () => void,
+  onFrame?: (eased: number) => void,
+): void {
+  if (isMotionReduced()) return;
+  const { fromDeg, toDeg } = turn;
+  const wrapper = objectMap.get(id);
+  if (!wrapper) return;
+  const icon = taggedChild(wrapper.children, OBJECT_CHILD.icon);
+  if (!icon) return;
+  const fromRad = (fromDeg * Math.PI) / 180;
+  const toRad = (toDeg * Math.PI) / 180;
+  const { durationMs } = animConfig.rotation;
+  icon.rotation = fromRad;
+  let start: number | null = null;
+  const tick = (ts: number) => {
+    requestRender();
+    if (icon.destroyed) return;
+    if (start === null) start = ts;
+    const t = Math.min((ts - start) / durationMs, 1);
+    const e = spinEase(t);
+    icon.rotation = fromRad + (toRad - fromRad) * e;
+    // A caller (the selection ring) rides this same progress rather than computing its own — see
+    // group-arc.ts's file header for why a second interpolation of the same motion is the bug class
+    // this whole feature exists to avoid. Exactly 1 on the settling frame, matching icon.rotation
+    // below landing exactly on toRad.
+    onFrame?.(t < 1 ? e : 1);
+    if (t < 1) {
+      requestAnimationFrame(tick);
+    } else {
+      icon.rotation = toRad;
+    }
+  };
+  requestAnimationFrame(tick);
+}
+
+/**
+ * Group-rotation beat: the selection turns as one rigid body. Every member travels an arc about the
+ * shared centre (a straight line would squash the arrangement mid-turn); a spun member's icon turns
+ * by the same quarter on its own axis, and a carried member arcs without spinning. One rAF drives
+ * every member, so they share start, duration and easing, and the frame costs one render request.
+ * The commands have already applied, so the tween is an offset back from the rest pose that
+ * reaches zero at the end; under reduced motion it does nothing, which is that end state.
+ */
+export function animateGroupRotation(
+  objectMap: Map<string, PIXI.Container>, turn: GroupRotation,
+  /** Opens the render window of the renderer the members live on. */
+  requestRender: () => void,
+  onFrame?: (eased: number) => void,
+): void {
+  if (isMotionReduced()) return;
+  const sweepRad = (turn.sweepDeg * Math.PI) / 180;
+  const parts = turn.members.flatMap((m) => {
+    const wrapper = objectMap.get(m.id);
+    if (!wrapper) return [];
+    // Only a rotatable item tags an icon; a carried member has none to spin anyway.
+    const icon = m.spun ? taggedChild(wrapper.children, OBJECT_CHILD.icon) ?? null : null;
+    return [{
+      wrapper, icon,
+      restX: wrapper.x, restY: wrapper.y, restRot: icon?.rotation ?? 0,
+      motion: arcMotion(turn.pivot, m.from),
+    }];
+  });
+  if (parts.length === 0) return;
+
+  const { durationMs, overshoot } = animConfig.groupRotation;
+  let start: number | null = null;
+  const tick = (ts: number) => {
+    requestRender();
+    if (start === null) start = ts;
+    const t = Math.min((ts - start) / durationMs, 1);
+    // Exactly 1 on the settling frame (never the raw formula there), so every member's offset and
+    // spin land on precisely zero — see arcOffset/spinOffset's file header. The selection ring rides
+    // this same value via onFrame instead of computing its own interpolation of the same turn.
+    const eased = t < 1 ? easeOutBack(t, overshoot) : 1;
+    for (const p of parts) {
+      // A member can die mid-flight (undo, a delete, a layer rebuild) — its wrapper is destroyed
+      // while the others keep turning, so skip it rather than abandoning the whole tween.
+      if (p.wrapper.destroyed) continue;
+      const { dx, dy } = arcOffset(p.motion, sweepRad, eased);
+      p.wrapper.x = p.restX + dx * TILE_SIZE;
+      p.wrapper.y = p.restY + dy * TILE_SIZE;
+      if (p.icon && !p.icon.destroyed) {
+        p.icon.rotation = p.restRot + spinOffset(sweepRad, eased);
+      }
+    }
+    onFrame?.(eased);
+    if (t < 1) requestAnimationFrame(tick);
+  };
+  requestAnimationFrame(tick);
+}
+
+/**
+ * Deletion beat: collapse the object inward + fade (the "where did it
+ * go" carrier), and fire an energetic same-hue poof partway through. The
+ * wrapper is detached from objectMap up front so the deferred sync /
+ * removeObjects won't double-destroy it — this method owns its teardown. Must
+ * be called before the RemoveObject command executes, while the wrapper still
+ * exists. No-op under reduced motion (the normal removal path makes the object
+ * disappear instantly).
+ */
+export function animateRemove(
+  objectMap: Map<string, PIXI.Container>, container: PIXI.Container, id: string,
+  /** The object as the layer's own map holds it, for its footprint and tint. */
+  obj: PlacedObject | undefined,
+  /** Opens the render window of the renderer the wrapper lives on. */
+  requestRender: () => void,
+): void {
+  if (isMotionReduced()) return;
+  const wrapper = objectMap.get(id);
+  if (!wrapper) return;
+  objectMap.delete(id);
+
+  const item = obj ? getCatalogItem(obj.catalogId) : undefined;
+  // Same-hue tint: the icon's own colour, else the item's tint.
+  const delUrl = item?.icon ? iconUrl(item.icon) : undefined;
+  const color = (delUrl ? iconColor(delUrl) : null) ?? itemTint(item);
+  const size = obj ? getPlacedObjectSize(obj) : { w: 1, h: 1 };
+  const lcx = (size.w * TILE_SIZE) / 2, lcy = (size.h * TILE_SIZE) / 2;
+  const worldCx = wrapper.x + lcx, worldCy = wrapper.y + lcy;
+  wrapper.pivot.set(lcx, lcy);
+  wrapper.x += lcx;
+  wrapper.y += lcy;
+
+  const { collapseMs, poofOffsetFrac } = animConfig.deletion;
+  const del = animConfig.puff.delete;
+  const poofCount = Math.min(del.countCap, del.countBase + Math.round(size.w * size.h * del.countPerArea));
+
+  let start: number | null = null;
+  let poofed = false;
+  const tick = (ts: number) => {
+    requestRender();
+    if (wrapper.destroyed) return;
+    if (start === null) start = ts;
+    const t = Math.min((ts - start) / collapseMs, 1);
+    wrapper.scale.set(1 - t, 1 - t);
+    wrapper.alpha = 1 - t * t;
+    if (!poofed && t >= poofOffsetFrac) {
+      poofed = true;
+      spawnPuff(container, worldCx, worldCy, {
+        // Footprint-INDEPENDENT spread (~one tile) so large items don't get a
+        // long, slow trajectory — a tight central burst at any size.
+        count: poofCount, color, spreadPx: del.spreadMul * TILE_SIZE * 0.5,
+        lifetimeMs: del.lifetimeMs, risePx: del.risePx, gravity: del.gravity,
+        arcSpread: del.arcSpread, maxRadiusPx: del.maxRadiusPx,
+      }, requestRender);
+    }
+    if (t < 1) {
+      requestAnimationFrame(tick);
+    } else {
+      try { wrapper.parent?.removeChild(wrapper); wrapper.destroy({ children: true }); } catch { /* already gone */ }
+    }
+  };
+  requestAnimationFrame(tick);
+}

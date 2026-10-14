@@ -1,11 +1,14 @@
 /** An executor built for a map answers road questions about that map. */
 import { describe, it, expect } from 'vitest';
 import { EventBus } from '../../core/commands/event-bus';
-import { ItemCategory, type EditorEvents } from '../../core/model/types';
+import { TerrainType } from '../../core/model/types';
+import { paintTerrainCommand } from '../../core/model/command-build';
+import { type EditorEvents } from '../../state/editing/events';
 import { createDefaultRegistry } from '../../rules/index';
 import { getPlaceableByCategory } from '../../state/catalog';
 import { createExecutor } from '../../state/executor';
-import { makeState } from '../rules/_helpers';
+import { makeState } from '../_support/map-state';
+import { ItemCategory } from '../../config/catalog/categories';
 
 describe('createExecutor', () => {
   it('binds the roads of its map and the given bus, or a fresh one', () => {
@@ -16,9 +19,13 @@ describe('createExecutor', () => {
     const seen: string[] = [];
     bus.on('history-changed', () => { seen.push('history'); });
     const executor = createExecutor(state, createDefaultRegistry(), bus);
-    expect(executor.roadAt(3, 3)?.id).toBe('r1');
     executor.restoreHistory([]);
     expect(seen).toEqual(['history']);
+    // Raising the ground under the road carries it up: the policy found it on this map.
+    const stroke = executor.beginStroke();
+    executor.execute(paintTerrainCommand([{ x: 3, y: 3 }, { x: 4, y: 3 }, { x: 3, y: 4 }, { x: 4, y: 4 }], TerrainType.Mountain, 1));
+    stroke.commit();
+    expect(state.objects.get('r1')?.elevation).toBe(1);
     expect(() => createExecutor(state, createDefaultRegistry()).restoreHistory([])).not.toThrow();
   });
 });

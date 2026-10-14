@@ -1,17 +1,24 @@
 // GF(2^8) arithmetic with primitive polynomial 0x11d,
 // generator 2. Tables built once; used by the Reed–Solomon codec.
-const gfExp = new Uint8Array(512);
-const gfLog = new Uint8Array(256);
-(() => {
+
+/** The field's exponent table, doubled so a sum of two logarithms indexes it directly, and its
+ *  logarithm table. */
+function fieldTables(): { exp: Uint8Array; log: Uint8Array } {
+  const exp = new Uint8Array(512);
+  const log = new Uint8Array(256);
   let x = 1;
   for (let i = 0; i < 255; i++) {
-    gfExp[i] = x;
-    gfLog[x] = i;
+    exp[i] = x;
+    log[x] = i;
     x <<= 1;
     if (x & 0x100) x ^= 0x11d;
   }
-  for (let i = 255; i < 512; i++) gfExp[i] = gfExp[i - 255]!;
-})();
+  for (let i = 255; i < 512; i++) exp[i] = exp[i - 255]!;
+  return { exp, log };
+}
+const FIELD = fieldTables();
+const gfExp = FIELD.exp;
+const gfLog = FIELD.log;
 
 export function gfMul(a: number, b: number): number {
   return a === 0 || b === 0 ? 0 : gfExp[gfLog[a]! + gfLog[b]!]!;

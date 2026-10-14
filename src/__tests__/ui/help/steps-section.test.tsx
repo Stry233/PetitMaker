@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 /** Provider walkthroughs pair localized names with the correct console links. */
 import { StrictMode } from 'react';
 import { MotionConfig } from 'framer-motion';
@@ -5,10 +6,10 @@ import { cleanup, render, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { providerName } from '../../../i18n/providers';
 import { I18nProvider, translateFor } from '../../../i18n/context';
-import { HelpModal } from '../../../ui/chrome/modals/help/HelpModal';
+import { HelpModal } from '../../../ui/help/HelpModal';
 import { PROVIDER_IDS, PROVIDER_META } from '../../../agent/providers/defaults';
-import { makeState } from '../../rules/_helpers';
-import { setStoreState } from '../../_store';
+import { makeState } from '../../_support/map-state';
+import { setStoreState } from '../../_support/store';
 
 beforeEach(() => {
   setStoreState({ gridState: makeState(20, 20), locale: 'en', helpTarget: { page: 'agent-setup' } });
@@ -29,7 +30,7 @@ const agentIds = PROVIDER_IDS.filter((id) => id !== 'custom');
 describe('the key walkthrough on Connecting the agent', () => {
   it.each(['en', 'zh'] as const)('lists localized providers with steps and console links (%s)', async (locale) => {
     setStoreState({ locale });
-    const { container } = render(<Help />);
+    const { baseElement: container } = render(<Help />);
     await waitFor(() => expect(container.querySelector('#help-agsetup-keys')).toBeTruthy());
     const section = container.querySelector('#help-agsetup-keys')!.closest('section')!;
     await waitFor(() => expect(section.querySelector('[data-provider]')).toBeTruthy());
@@ -50,8 +51,8 @@ describe('the key walkthrough on Connecting the agent', () => {
     }
   });
 
-  it('answers who bills for the agent', async () => {
-    const { container } = render(<Help />);
-    await waitFor(() => expect(container.textContent).toContain('Does the agent cost money'));
+  it('answers who bills for the assistant', async () => {
+    const { baseElement: container } = render(<Help />);
+    await waitFor(() => expect(container.textContent).toContain('Does the assistant cost money'));
   });
 });

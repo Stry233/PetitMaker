@@ -1,9 +1,10 @@
+// @vitest-environment jsdom
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { render, screen, cleanup } from '@testing-library/react';
 import { BrandLockup } from '../../../ui/chrome/BrandLockup';
 import { I18nProvider } from '../../../i18n/context';
-import { setStoreState } from '../../_store';
-import { APP_NAME } from '../../../version';
+import { setStoreState } from '../../_support/store';
+import { APP_NAME } from '../../../i18n/brand';
 
 const wrapper = ({ children }: { children: React.ReactNode }) => <I18nProvider>{children}</I18nProvider>;
 
@@ -44,6 +45,6 @@ describe('BrandLockup', () => {
   it('scales the gap with the logo, matching the masthead proportions', () => {
     const { container } = render(<BrandLockup size={100} />, { wrapper });
     const row = container.firstElementChild as HTMLElement;
-    expect(row.style.gap).toBe('19px'); // 32/172 of the logo size, per the README masthead
+    expect(row.style.gap).toBe('19px'); // 32/172 of the logo size, per the readme masthead
   });
 });

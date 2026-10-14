@@ -1,20 +1,30 @@
-import { helpTargetAttr } from '../modals/help/targets';
+import { helpTargetAttr } from '../../session/help-targets';
 import { useRef, type PointerEvent } from 'react';
-import { getActiveView } from '../../../canvas/active-view';
-import { resizeMeasurement } from '../../../core/model/annotation-dimensions';
-import type { MeasureNote } from '../../../core/model/annotations';
-import { clientPoint } from '../../../core/runtime/viewport-space';
+import { getActiveView } from '../../../view/active-view';
+import { moveMeasureEnd } from '../../../editor/editing/annotation-edit';
+import { zoneCellCentre, type MeasureNote } from '../../../core/model/annotations';
+import { clientPoint } from '../../../platform/device/viewport-space';
 import { useT } from '../../../i18n/context';
 import { useEditorStore } from '../../../state/store';
-import { colors, cursors, shadows, z } from '../../design/styles';
+import { cursors, shadows, z } from '../../design/styles';
+import { PLACEMENT_GRID } from '../../../core/game/profile';
+import { cellUnder } from '../../../core/grid/pointer';
+import { FRAME_INK, ACTIVE } from '../../design/tokens';
 
 /** The parent reprojects on camera, terrain, view and annotation changes. */
 export function MeasurementHandles({ note }: { note: MeasureNote }) {
   const t = useT();
-  const grab = useRef<{ pointer: number; endpoint: 0 | 1; original: MeasureNote; expected: MeasureNote; began: boolean; offset: { x: number; y: number } } | null>(null);
+  const grab = useRef<{
+    pointer: number;
+    endpoint: 0 | 1;
+    original: MeasureNote;
+    expected: MeasureNote;
+    began: boolean;
+    offset: { x: number; y: number };
+  } | null>(null);
   const projection = getActiveView()?.projection;
   if (!projection) return null;
-  const anchors = note.points.map(p => projection.cellToScreen(p.x, p.y));
+  const anchors = note.points.map(p => { const c = zoneCellCentre(p); return projection.cellToScreen(c.x, c.y); });
   const dx = anchors[1]!.x - anchors[0]!.x, dy = anchors[1]!.y - anchors[0]!.y;
   const distance = Math.hypot(dx, dy);
   const spread = Math.max(0, (40 - distance) / 2);
@@ -34,20 +44,16 @@ export function MeasurementHandles({ note }: { note: MeasureNote }) {
     const proj = getActiveView()?.projection;
     if (!proj || !s.gridState) return;
     const p = clientPoint(event);
-    const cell = proj.screenToHalf?.(p.x - g.offset.x, p.y - g.offset.y) ?? proj.screenToMacro(p.x - g.offset.x, p.y - g.offset.y);
+    const cell = cellUnder(proj, p.x - g.offset.x, p.y - g.offset.y, PLACEMENT_GRID);
     if (!Number.isFinite(cell.x) || !Number.isFinite(cell.y)) return;
-    const points = resizeMeasurement(g.original.points, g.endpoint, {
-      x: Math.max(0, Math.min(s.gridState.template.width - 1, cell.x)),
-      y: Math.max(0, Math.min(s.gridState.template.height - 1, cell.y)),
-    });
-    if (s.setMeasurementPoints(note.id, points, !g.began)) {
+    if (moveMeasureEnd(g.original, g.endpoint, cell, !g.began)) {
       g.began = true;
       g.expected = useEditorStore.getState().gridState!.annotations!.items.find(n => n.id === note.id) as MeasureNote;
     }
   };
   return <>
     {spread > 0 && anchors.every(p => !p.behind) && <svg aria-hidden style={{ position: 'fixed', inset: 0, width: '100%', height: '100%', pointerEvents: 'none', zIndex: z.canvasControls }}>
-      {anchors.map((p, i) => <line key={i} x1={p.x} y1={p.y} x2={handles[i]!.x} y2={handles[i]!.y} stroke={colors.frameDark} strokeWidth={2} />)}
+      {anchors.map((p, i) => <line key={i} x1={p.x} y1={p.y} x2={handles[i]!.x} y2={handles[i]!.y} stroke={FRAME_INK} strokeWidth={2} />)}
     </svg>}
     {note.points.map((p, index) => {
     const at = handles[index]!;
@@ -71,20 +77,13 @@ export function MeasurementHandles({ note }: { note: MeasureNote }) {
         const delta = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[event.key];
         if (!delta) return;
         event.preventDefault(); event.stopPropagation();
-        const s = useEditorStore.getState();
-        const grid = s.gridState;
-        if (!grid) return;
-        const points = resizeMeasurement(note.points, index as 0 | 1, {
-          x: Math.max(0, Math.min(grid.template.width - 1, p.x + delta[0]!)),
-          y: Math.max(0, Math.min(grid.template.height - 1, p.y + delta[1]!)),
-        });
-        s.setMeasurementPoints(note.id, points, true);
+        moveMeasureEnd(note, index as 0 | 1, { x: p.x + delta[0]!, y: p.y + delta[1]! }, true);
       }}
       style={{ position: 'fixed', left: at.x - 18, top: at.y - 18, width: 36, height: 36,
         zIndex: z.canvasControls, display: 'flex', alignItems: 'center', justifyContent: 'center',
         padding: 0, border: 0, background: 'transparent', borderRadius: '50%', touchAction: 'none', cursor: cursors.clickable }}>
-      <span style={{ width: 14, height: 14, borderRadius: '50%', background: colors.tileYellow,
-        border: `2px solid ${colors.frameDark}`, boxShadow: shadows.float, pointerEvents: 'none' }} />
+      <span style={{ width: 14, height: 14, borderRadius: '50%', background: ACTIVE,
+        border: `2px solid ${FRAME_INK}`, boxShadow: shadows.float, pointerEvents: 'none' }} />
     </button>;
   })}</>;
 }

@@ -1,30 +1,16 @@
-// Export sizing — keeps four distinct concepts separate:
-//   - mapNativePx   : the 2D map at the renderer's native tile density (64 px/cell).
-//   - mapCapturePx  : what the map was ACTUALLY captured at (≤ native; GPU MAX_TEXTURE_SIZE
-//                     may clamp it). Read from the loaded capture image's width/height.
-//   - mapPreviewRect: where the map is drawn in the composition. Original mode = capture size
-//                     1:1 (no resample); presets letterbox into a layout band.
-//   - compositionPx : the final export image, bounded by browser canvas limits.
-import { TILE_SIZE } from '../../core/model/constants';
-import { mapCaptureFrame } from '../../core/model/map-chunks';
+/**
+ * Export sizing: the map's native pixel size at the renderer's tile density (`mapNativePx`), the
+ * largest capture this device can request (`clampedCaptureRequestPx`), and the uniform shrink that
+ * keeps a composition inside the canvas ceiling (`canvasFitScale`). What a capture actually came
+ * back at is read from its own width and height.
+ */
+import { TILE_SIZE } from '../../view/map2d/geometry/world';
+import { bandGeometry } from '../../core/grid/map-chunks';
 import type { MapTemplate } from '../../core/model/types';
 
 export interface PixelSize { w: number; h: number }
 
-/** The same cell frame as the 2D capture, so separately rendered maps, grids and annotations align. */
-export interface BandGeometry {
-  /** Top-left of the capture in saved cell coordinates, including surrounding sea or terrain bleed. */
-  originX: number;
-  originY: number;
-  widthCells: number;
-  heightCells: number;
-}
 type CaptureTemplate = Pick<MapTemplate, 'width' | 'height' | 'chunkGrid'>;
-
-export function bandGeometry(t: CaptureTemplate): BandGeometry {
-  const frame = mapCaptureFrame(t);
-  return { originX: frame.x, originY: frame.y, widthCells: frame.width, heightCells: frame.height };
-}
 
 /** Native pixel size of the 2D map capture region. At capture resolution 1.0 this is 64 px/cell. */
 export function mapNativePx(t: CaptureTemplate): PixelSize {

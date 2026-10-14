@@ -5,14 +5,15 @@
  * experience than one started again. Skipping counts as seen: the tour is a courtesy, and someone
  * who skipped has made their choice.
  *
- * "Seen" is written when the tour STARTS, not when it ends: a reload halfway through would
+ * "Seen" is written when the tour starts, not when it ends: a reload halfway through would
  * otherwise replay it from step one, which is the same tour again for someone who was already
  * partway out of it. The cost is that a reload during the first minute spends the one automatic
  * offer; the Settings row is the way back, and it is the way anyone replays it anyway.
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useEditorStore } from '../../../state/store';
-import { PREFS, readStoredPref, writePref } from '../../../core/runtime/prefs';
+import { PREFS, readStoredPref } from '../../../platform/storage/prefs';
+import { markTourSeen } from '../../../state/slices/shell';
 import type { TourStep } from './steps';
 
 export const TOUR_SEEN_KEY = PREFS.tourSeen.key;
@@ -25,30 +26,24 @@ export function hasSeenTour(): boolean {
   return !stored.available || stored.raw === '1';
 }
 
-/** A refused write leaves the tour to offer itself again next time. */
-export function markTourSeen(): void {
-  writePref('tourSeen', '1');
-}
-
 /** Run the tour from its first step. Used by the startup check and by the Settings replay row. */
 export function startTour(): void {
-  markTourSeen();
-  useEditorStore.getState().setTourRunning(true);
+  useEditorStore.getState().startTour();
 }
 
 interface TourController {
   running: boolean;
   step: TourStep | null;
   index: number;
-  /** How many steps THIS run has, which is not always how many the array has. */
+  /** How many steps this run has, which is not always how many the array has. */
   total: number;
   isLast: boolean;
   /** Where a step sits in this run, 0-based, or -1 for one the run left out. The overlay's card can
    *  be showing a step the index has already moved past, so its counter is numbered from the step
-   *  ON it rather than from the current index. */
+   *  On it rather than from the current index. */
   indexOf(step: TourStep): number;
   next(): void;
-  /** Advance from a NAMED step rather than from the current index. The overlay's card can lag the
+  /** Advance from a named step rather than from the current index. The overlay's card can lag the
    *  current step while a target settles, and a Next press in that window must move on from the
    *  step the visitor actually read, not from the one already being measured. */
   advanceFrom(from: TourStep): void;
@@ -61,22 +56,19 @@ interface TourController {
  *  interface draws. */
 export function useTour(steps: readonly TourStep[]): TourController {
   const running = useEditorStore((s) => s.tourRunning);
-  const setTourRunning = useEditorStore((s) => s.setTourRunning);
-  const setModal = useEditorStore((s) => s.setModal);
+  const finishTour = useEditorStore((s) => s.finishTour);
   const [index, setIndex] = useState(0);
 
-  // The index is reset HERE, as a run ends, rather than by an effect watching `running`: the overlay
+  // The index is reset here, as a run ends, rather than by an effect watching `running`: the overlay
   // stays mounted for the app's life, so a passive reset lands a commit late and the first commit of
   // a replay renders (announces, applies the menu action of, and paints) the step the last run
   // stopped on. `finish` is the only path out of a run, so this is the whole reset.
+  // The send-off is for reaching the end. Skipping is a request to be left alone, and a
+  // congratulation on top of it would be the tour talking back.
   const finish = useCallback((completed: boolean) => {
-    markTourSeen(); // already written by startTour; repeated here so a run opened any other way ends seen
     setIndex(0);
-    setTourRunning(false);
-    // The send-off is for reaching the end. Skipping is a request to be left alone, and a
-    // congratulation on top of it would be the tour talking back.
-    if (completed) setModal('tourDone', true);
-  }, [setTourRunning, setModal]);
+    finishTour(completed);
+  }, [finishTour]);
 
   const skip = useCallback(() => finish(false), [finish]);
 

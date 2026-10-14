@@ -1,6 +1,7 @@
+// @vitest-environment jsdom
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import { render, cleanup } from '@testing-library/react';
-import { ShapeEdge, isWebKitEngine, __clearShapeEdgeProbe } from '../../../ui/design/shape-edge';
+import { ShapeEdge, isWebKitEngine } from '../../../ui/design/shape-edge';
 import { INK, MAP_EDGE_ALPHA, MAP_SHAPE_EDGE, plateShapeEdge } from '../../../ui/design/tokens';
 
 /**
@@ -12,7 +13,6 @@ import { INK, MAP_EDGE_ALPHA, MAP_SHAPE_EDGE, plateShapeEdge } from '../../../ui
  */
 
 function standIn(webkit: boolean): ReturnType<typeof vi.fn> {
-  __clearShapeEdgeProbe();
   const supports = vi.fn((prop: string) => webkit && String(prop).startsWith('-webkit-nbsp-mode'));
   vi.stubGlobal('CSS', { supports });
   return supports;
@@ -20,7 +20,6 @@ function standIn(webkit: boolean): ReturnType<typeof vi.fn> {
 
 afterEach(() => {
   vi.unstubAllGlobals();
-  __clearShapeEdgeProbe();
   cleanup();
 });
 
@@ -32,12 +31,6 @@ describe('the engine probe', () => {
     expect(isWebKitEngine()).toBe(false);
   });
 
-  it('is memoised: the engine cannot change under a running page', () => {
-    const supports = standIn(true);
-    expect(isWebKitEngine()).toBe(true);
-    supports.mockReturnValue(false);
-    expect(isWebKitEngine()).toBe(true);
-  });
 });
 
 describe('ShapeEdge', () => {

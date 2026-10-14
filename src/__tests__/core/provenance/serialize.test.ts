@@ -68,3 +68,34 @@ describe('the wire record is untrusted', () => {
   });
 });
 
+describe('origins on the wire', () => {
+  it('a human-made map keeps origin Human and the human_created disclosure across a save and load', () => {
+    const t = new ProvenanceTracker(4, 4, { now: () => 0 });
+    t.record('create', [{ x: 1, y: 1 }], [{ id: 'o1', kind: 'create' }], { layers: [1], zones: [2] });
+    const wire = JSON.parse(JSON.stringify(serializeProvenance(t.state)));
+    const restored = new ProvenanceTracker(4, 4, { adopt: deserializeProvenance(wire, 4, 4) });
+    const cell = restored.state.cellTaint[1]![1]!;
+    expect(cell.origin).toBe(ProvSource.Human);
+    expect(hasFlag(cell.flags, TaintFlag.UNKNOWN)).toBe(false);
+    expect(restored.state.objectTaint.get('o1')!.origin).toBe(ProvSource.Human);
+    expect(restored.getSummary().exportDisclosure).toBe('human_created');
+  });
+
+  it('every ProvSource value is read back as itself', () => {
+    const sources = Object.values(ProvSource).filter((v): v is ProvSource => typeof v === 'number');
+    const cells = sources.map((origin, i) => ({ k: `${i},0`, t: { createdByOp: 'op', lastModifiedByOp: 'op', origin, contribution: { ai: 0, human: 1, procedural: 0 }, flags: 0 } }));
+    const st = deserializeProvenance({ v: 1, ledger: [], session: undefined as never, cells, objects: [] }, sources.length, 1);
+    expect(st.cellTaint[0]!.map((c) => c!.origin)).toEqual(sources);
+  });
+
+  it('an origin outside the enum, or its name as a string, reads Unknown', () => {
+    const t = (origin: unknown) => ({ createdByOp: 'op', lastModifiedByOp: 'op', origin, contribution: { ai: 0, human: 1, procedural: 0 }, flags: 0 });
+    const cells = [{ k: '0,0', t: t(99) }, { k: '1,0', t: t('Human') }, { k: '2,0', t: t(1.5) }];
+    const st = deserializeProvenance({ v: 1, ledger: [], session: undefined as never, cells: cells as never, objects: [] }, 3, 1);
+    for (const c of st.cellTaint[0]!) {
+      expect(c!.origin).toBe(ProvSource.Unknown);
+      expect(hasFlag(c!.flags, TaintFlag.UNKNOWN)).toBe(true);
+    }
+  });
+});
+

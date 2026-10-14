@@ -4,7 +4,7 @@
  * the composition being painted.
  */
 import type { BandWindow } from './banded';
-import type { Rect } from '../../core/model/types';
+import type { Rect } from '../../core/grid/rect';
 
 /** A region in the map frame's own pixels, origin at the frame's top-left. */
 export interface RegionPx { x: number; y: number; w: number; h: number }

@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { GRID_COLS } from '../../../io/share/glyph/geometry';
-import { computeComposition, fitAspect, RESOLUTION_WIDTHS, BASE_WIDTH, PAD, type ExportOptions, type Rect } from '../../../io/export/compose';
+import { computeComposition, RESOLUTION_WIDTHS, PAD, type ExportOptions, type Rect } from '../../../io/export/compose';
 
-const base: ExportOptions = { title: '', description: '', preset: 'plain', importable: false, showBadge: false, layerPreview: false, card3d: false, grid: true, annotations: true, footer: false, footerTemplate: '{date}{fill} · {dims}', resolution: 'standard' };
+const base: ExportOptions = { title: '', description: '', preset: 'plain', showBadge: false, layerPreview: false, card3d: false, grid: true, annotations: true, footer: false, footerTemplate: '{date}{fill} · {dims}', resolution: 'standard' };
 function overlaps(a: Rect, b: Rect) { return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y; }
 
 describe('computeComposition', () => {
@@ -35,7 +35,7 @@ describe('computeComposition', () => {
     expect(c.map.h).toBeGreaterThan(Math.round(c.width / 1.2));
   });
   it('the maker band stands LAST on every export, code band included', () => {
-    for (const extra of [{}, { footer: true }, { importable: true, footer: true }] as const) {
+    for (const extra of [{}, { footer: true }, { preset: 'share', footer: true }] as const) {
       const c = computeComposition({ ...base, ...extra }, 1.2, [], { layerCount: 1 });
       for (const band of [c.map, c.header, c.card3d, c.codeBand, c.footer]) {
         if (band) expect(c.brand.y).toBeGreaterThanOrEqual(band.y + band.h);
@@ -44,7 +44,7 @@ describe('computeComposition', () => {
     }
   });
   it('any extra band brings the card chrome back', () => {
-    for (const extra of [{ footer: true }, { layerPreview: true }, { card3d: true }, { importable: true }, { title: 'Hexia' }] as const) {
+    for (const extra of [{ footer: true }, { layerPreview: true }, { card3d: true }, { preset: 'share' }, { title: 'Hexia' }] as const) {
       const c = computeComposition({ ...base, ...extra }, 1.2, [], { layerCount: 1 });
       expect(c.bare).toBeUndefined();
       expect(c.map.x).toBeGreaterThan(0);
@@ -58,9 +58,9 @@ describe('computeComposition', () => {
   });
   it('nothing overlaps the map band', () => {
     const o: ExportOptions = { ...base, title: 'Hexia', description: 'desc', showBadge: true, layerPreview: true, card3d: true, footer: true };
-    const c = computeComposition(o, 1.2, [{ label: 'prov.badge_ai', color: '#8E7BD6' }], { layerCount: 5 });
+    const c = computeComposition(o, 1.2, [{ label: 'export.badge_ai', color: '#8E7BD6' }], { layerCount: 5 });
     for (const band of [c.header, c.card3d, c.footer] as (Rect | undefined)[]) if (band) expect(overlaps(c.map, band)).toBe(false);
-    // layerCol is to the RIGHT of map — not overlapping
+    // layerCol is to the right of map — not overlapping
     if (c.layerCol) expect(overlaps(c.map, c.layerCol)).toBe(false);
   });
   it('layer-preview / 3D / footer options each add their element', () => {
@@ -79,13 +79,14 @@ describe('computeComposition', () => {
     expect(lo.width).toBe(RESOLUTION_WIDTHS.compact);
     expect(hi.width).toBeGreaterThan(lo.width);
   });
-  it('scale = width / BASE_WIDTH', () => {
-    const c = computeComposition({ ...base, resolution: 'standard' }, 1.2, [], { layerCount: 1 });
-    expect(c.scale).toBeCloseTo(RESOLUTION_WIDTHS.standard / BASE_WIDTH, 5);
+  it('scales the whole layout with the output width', () => {
+    const std = computeComposition({ ...base, resolution: 'standard' }, 1.2, [], { layerCount: 1 });
+    const high = computeComposition({ ...base, resolution: 'high' }, 1.2, [], { layerCount: 1 });
+    expect(high.scale / std.scale).toBeCloseTo(RESOLUTION_WIDTHS.high / RESOLUTION_WIDTHS.standard, 5);
   });
   it('the map is a healthy fraction of the composition height (~40-60%)', () => {
     const o: ExportOptions = { ...base, title: 'Hexia', description: 'desc', showBadge: true, layerPreview: true, card3d: true, footer: true };
-    const c = computeComposition(o, 1.2, [{ label: 'prov.badge_ai', color: '#8E7BD6' }], { layerCount: 5 });
+    const c = computeComposition(o, 1.2, [{ label: 'export.badge_ai', color: '#8E7BD6' }], { layerCount: 5 });
     expect(c.map.h / c.height).toBeGreaterThan(0.30);
     expect(c.map.h / c.height).toBeLessThan(0.70);
   });
@@ -108,7 +109,7 @@ describe('computeComposition', () => {
     const off = computeComposition({ ...base, footer: true, resolution: 'high' }, 1.2, [], { layerCount: 1 });
     expect(off.codeBand).toBeUndefined(); // base is not importable → no band
 
-    const on: ExportOptions = { ...base, importable: true, footer: true, resolution: 'high' };
+    const on: ExportOptions = { ...base, preset: 'share', footer: true, resolution: 'high' };
     const c = computeComposition(on, 1.2, [], { layerCount: 1 });
     expect(c.codeBand).toBeDefined();
     // In-bounds horizontally, and sits between the map and the footer.
@@ -119,9 +120,9 @@ describe('computeComposition', () => {
     expect(overlaps(c.map, c.codeBand!)).toBe(false);
   });
   it('the PetitGlyph band sits at the page margin, on whole module pixels', () => {
-    const c = computeComposition({ ...base, importable: true, resolution: 'high' }, 1.2, [], { layerCount: 1 });
+    const c = computeComposition({ ...base, preset: 'share', resolution: 'high' }, 1.2, [], { layerCount: 1 });
     expect(c.codeBand).toBeDefined();
-    // High is 2400 wide; at PAD*S = 84 either side the band gets 2232, which holds GRID_COLS
+    // High is 2400 wide; at `PAD`*S = 84 either side the band gets 2232, which holds GRID_COLS
     // modules of 18px exactly — so the margin is the page's, and no module is resampled.
     const mb = c.codeBand!.w / GRID_COLS;
     expect(Number.isInteger(mb) && mb % 6 === 0, `module base ${mb}`).toBe(true);
@@ -130,7 +131,7 @@ describe('computeComposition', () => {
     expect(c.codeBandUnavailable).toBeUndefined();
   });
   it('a composition too small for any module base reports codeBandUnavailable, no band', () => {
-    const c = computeComposition({ ...base, importable: true, resolution: 'compact' }, 1.2, [], { layerCount: 1 });
+    const c = computeComposition({ ...base, preset: 'share', resolution: 'compact' }, 1.2, [], { layerCount: 1 });
     expect(c.codeBand).toBeUndefined();
     expect(c.codeBandUnavailable).toBe(true);
   });
@@ -140,7 +141,7 @@ describe('computeComposition', () => {
     const c = computeComposition(o, mapPx.w / mapPx.h, [], { layerCount: 1, mapPx });
     // Native width follows the map's native pixel width (so the image is full-resolution).
     expect(c.width).toBe(mapPx.w);
-    // The map is a proportional band (letterboxed), NOT the whole image — same ratio as presets.
+    // The map is a proportional band (letterboxed), not the whole image — same ratio as presets.
     const preset = computeComposition({ ...o, resolution: 'high' }, mapPx.w / mapPx.h, [], { layerCount: 1, mapPx });
     expect(c.map.h / c.height).toBeCloseTo(preset.map.h / preset.height, 2);
     expect(c.map.w / c.width).toBeCloseTo(preset.map.w / preset.width, 2);
@@ -162,7 +163,7 @@ describe('computeComposition', () => {
   it('original mode: the share code band is inside the device ceiling too', () => {
     // The band's modules are exact device pixels measured after the fit, so its height has to be
     // reserved before it: a composition fitted without it is over the ceiling again once it lands.
-    const o: ExportOptions = { ...base, importable: true, footer: true, layerPreview: true, resolution: 'original' };
+    const o: ExportOptions = { ...base, preset: 'share', footer: true, layerPreview: true, resolution: 'original' };
     const mapPx = { w: 10848, h: 9838 };
     const webkit = { maxDim: 16384, maxArea: 4096 * 4096 };
     for (const extra of [{}, { title: 'A map', description: 'with a header row' }]) {
@@ -178,29 +179,5 @@ describe('computeComposition', () => {
     expect(c.map.w).toBeLessThan(mapPx.w);
     expect(c.width).toBeLessThanOrEqual(16384);
     expect(c.height).toBeLessThanOrEqual(16384);
-  });
-});
-
-describe('fitAspect (letterbox, never stretch)', () => {
-  const rect: Rect = { x: 10, y: 20, w: 200, h: 100 };
-  it('wider source → fit to width, centered vertically (pillar/letterbox top+bottom)', () => {
-    const f = fitAspect(rect, 4);
-    expect(f.w).toBe(rect.w);
-    expect(f.h).toBeLessThan(rect.h);
-    expect(f.x).toBe(rect.x);
-    expect(f.y).toBeGreaterThan(rect.y);
-    expect(f.w / f.h).toBeCloseTo(4, 5);
-  });
-  it('taller source → fit to height, centered horizontally', () => {
-    const f = fitAspect(rect, 1);
-    expect(f.h).toBe(rect.h);
-    expect(f.w).toBeLessThan(rect.w);
-    expect(f.y).toBe(rect.y);
-    expect(f.x).toBeGreaterThan(rect.x);
-    expect(f.w / f.h).toBeCloseTo(1, 5);
-  });
-  it('matching aspect → fills the rect exactly', () => {
-    const f = fitAspect(rect, 2);
-    expect(f).toEqual(rect);
   });
 });

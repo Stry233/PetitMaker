@@ -1,0 +1,35 @@
+{
+  "id": "print-field-line",
+  "category": "road",
+  "icon": "print-field-line",
+  "name": {
+    "en": "Field Line Print",
+    "zh": "绿茵直线印花",
+    "ja": "フィールドの直線模様",
+    "ru": "Прямая разметка поля",
+    "th": "ลายเส้นตรงสนาม",
+    "id": "Motif Garis Lapangan",
+    "fr": "Marquage droit de terrain"
+  },
+  "color": "#f0eedb",
+  "width": 1,
+  "height": 1,
+  "loadValue": 0,
+  "rotatable": true,
+  "placementMode": "brush",
+  "traits": [
+    {
+      "type": "flat"
+    },
+    {
+      "type": "surfaceCoating",
+      "layer": 1
+    }
+  ],
+  "surfacePrint": {
+    "kind": "image",
+    "image": "print-field-line",
+    "repeat": 1
+  },
+  "strokeConnections": 5
+}

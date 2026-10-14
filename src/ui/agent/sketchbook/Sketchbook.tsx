@@ -7,51 +7,37 @@
 import { useEffect, useId, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { useReducedMotionConfig } from 'framer-motion';
 
-import { seaFrame } from '../../../canvas/thumbnail';
-import { WATER_COLOR } from '../../../core/model/constants';
+import { seaFrame } from '../../../view/map2d/capture/thumbnail';
+import { WATER_COLOR } from '../../../core/model/palette';
 import { useT } from '../../../i18n/context';
 import { useEditorStore } from '../../../state/store';
-import { INK, INSET, PLATE, PLATE_INK, TRACK } from '../../design/tokens';
+import { INK, INSET, PLATE, PLATE_INK, TRACK, rgbaOf } from '../../design/tokens';
 import { cursors, font, radii } from '../../design/styles';
-import { roleFont } from '../../design/text-weight';
+import { roleFont, LINE_HEIGHT } from '../../design/text-weight';
 import { ActionButton } from '../../primitives/ActionButton';
 import { LoadingDots } from '../../primitives/LoadingDots';
-import { getCharacterHandle } from '../character/Character';
-import { Icon } from '../icons';
-import { MapShot } from '../map-shot';
-import { edge, POSTCARD } from '../tokens';
-import { withAlpha } from '../../design/styles';
+import { cueCharacter } from '../character/intent';
+import { Icon } from '../parts/sprite';
+import { MapShot } from '../parts/map-shot';
+import { edge, POSTCARD } from '../panel-skin';
 import type { SketchArt, SketchIdea } from './propose';
 import { GARNISH, RITUALS, SCRIBBLE_BADGE_MS, SKETCH, type Beat } from './sketch-motion';
+import { LOADING_DOT, SCALE } from '../../shell/units';
+import { MASK_KEEP } from '../../design/drawing-palette';
+import { useEffectEvent } from '../../primitives/use-effect-event';
 
 /** Full-width card thumbnail size in CSS pixels. */
 const THUMB = { width: POSTCARD.width, height: 172 } as const;
 
-/**
- * The tracing-paper wash over the photograph: the sketch reads as an overlay, not as map paint.
- *
- * The ground is a full-saturation live map, so the wash must separate pencil marks while leaving the
- * map legible: too light, and the dashed proposal competes with the map's own road lines and reads as
- * one more thing painted on it rather than as a plan laid over it.
- */
-const WASH = withAlpha(PLATE, 0.45);
-/** Below this the pencil competes with the map's own lines (see `WASH`). Exported for the token
- *  guard. */
-export const WASH_FLOOR = 0.35;
+/** The tracing-paper wash over the live map, strong enough that the dashed proposal reads as a plan over it. */
+const WASH = rgbaOf(PLATE, 0.45);
 
-/**
- * THE PENCIL, and the weight it draws at.
- *
- * Every measure below is a SHARE OF THE PICTURE'S OWN WIDTH rather than a number of cells, because
- * the drawing has to read at the size the card is: a line fixed at a cell is a hairline on a 285-cell
- * frame and a stripe on a 40-cell one. Proportions keep the line weight stable across map sizes;
- * `MIN_*` floors keep figures visible on small maps.
- */
-const PENCIL = withAlpha(INK, 0.8);
-const PENCIL_SOFT = withAlpha(INK, 0.5);
+/** The pencil. Measures are shares of the picture's width so line weight holds across map sizes; `MIN_*` floors keep figures visible on small maps. */
+const PENCIL = rgbaOf(INK, 0.8);
+const PENCIL_SOFT = rgbaOf(INK, 0.5);
 const STROKE_SHARE = 0.0095;
 const DASH_SHARE = { on: 0.029, off: 0.0224 } as const;
-/** A pip is a MARK on a tree, not a drawing of one: it reads at this share however small the tree. */
+/** A pip is a mark on a tree, not a drawing of one: it reads at this share however small the tree. */
 const PIP_SHARE = 0.017;
 const MIN_STROKE = 0.6;
 const MIN_DASH = 1.4;
@@ -61,7 +47,7 @@ const MASK_BLEED_SHARE = 1.5;
 /** What the built thing would look like, under the dashes: the road's own pale band, the pond's own
  *  water, the deck's shadow. No colour is invented for a sketch. */
 const GHOST_BAND = TRACK;
-const GHOST_DECK = withAlpha(INK, 0.35);
+const GHOST_DECK = rgbaOf(INK, 0.35);
 
 const CARD_STYLE: CSSProperties = {
   display: 'flex',
@@ -196,13 +182,7 @@ function play(el: Element | null | undefined, frames: Keyframe[], beat: Beat, ex
   el.animate(frames, { duration: beat.dur, easing: beat.easing, delay: beat.delay ?? 0, fill: 'forwards', ...extra });
 }
 
-/**
- * The photograph with one figure drawn on it.
- *
- * KEYED BY THE IDEA at the call site, so a new proposal is a NEW instance and its draw-in is that
- * instance's own mount effect. `wiping` fades the whole figure out where it stands, which is the
- * last beat of a cycle rather than a change of idea.
- */
+/** The map with one figure drawn on it, keyed by the idea so each proposal draws in on mount; `wiping` fades it out in place. */
 function SketchPaper({ idea, wiping, still, mapVersion }: {
   idea: SketchIdea; wiping: boolean; still: boolean; mapVersion?: string | number;
 }) {
@@ -218,7 +198,8 @@ function SketchPaper({ idea, wiping, still, mapVersion }: {
   const ghost = ghostOf(idea.art, sea?.width ?? 1);
   const dash = pencil(sea?.width ?? 1).dash;
 
-  useEffect(() => {
+  // The instance is keyed by its idea, so the figure draws once per idea and again when it stills.
+  const draw = useEffectEvent(() => {
     const ghostEl = ghostRef.current;
     if (still) {
       revealRefs.current.forEach((el) => { if (el) el.style.strokeDashoffset = '0'; });
@@ -238,9 +219,8 @@ function SketchPaper({ idea, wiping, still, mapVersion }: {
       ghostEl.style.opacity = '0';
       play(ghostEl, [{ opacity: 0 }, { opacity: ghost.to }], SKETCH.ghost);
     }
-    // The figure is redrawn per IDEA, and the instance is keyed by it: this is a mount effect.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [still]);
+  });
+  useEffect(() => { draw(); }, [still]);
 
   useEffect(() => {
     if (!wiping || still) return;
@@ -254,7 +234,7 @@ function SketchPaper({ idea, wiping, still, mapVersion }: {
         width={THUMB.width}
         height={THUMB.height}
         whole
-        // THE PICTURE AND THE PROPOSALS ARE OF ONE MAP. The grid is mutated in place, so without a
+        // The picture and the proposals are of one map. The grid is mutated in place, so without a
         // version the first capture would stand for the map's whole life and a lane read off a
         // map the photograph predates would be drawn on the wrong ground.
         {...(mapVersion !== undefined ? { version: mapVersion } : {})}
@@ -263,7 +243,7 @@ function SketchPaper({ idea, wiping, still, mapVersion }: {
             display: 'flex', width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center',
           }}
           >
-            <LoadingDots color={PLATE_INK} />
+            <LoadingDots color={PLATE_INK} size={LOADING_DOT * SCALE} />
           </span>
         )}
       />
@@ -286,7 +266,7 @@ function SketchPaper({ idea, wiping, still, mapVersion }: {
                 ref={(el) => { revealRefs.current[i] = el; }}
                 d={stroke.d}
                 fill="none"
-                stroke="#fff"
+                stroke={MASK_KEEP}
                 strokeWidth={stroke.width * MASK_BLEED_SHARE}
                 strokeLinecap="round"
                 strokeDasharray={`${stroke.len} ${stroke.len}`}
@@ -322,7 +302,7 @@ interface SketchbookProps {
   ideas: readonly SketchIdea[];
   /** Hand the standing order to the composer. Fills the field; never sends. */
   onOrder(text: string): void;
-  /** The reading the caller took the proposals AT, so the photograph is of the same map they were
+  /** The reading the caller took the proposals at, so the photograph is of the same map they were
    *  read from (`MapShot`'s own `version`). */
   mapVersion?: string | number;
 }
@@ -340,7 +320,7 @@ export function Sketchbook({ ideas, onOrder, mapVersion }: SketchbookProps) {
     : null;
 
   /**
-   * THE ONE ENGINE. A single rAF loop off one clock: which idea is up is `beat`, the wipe lands
+   * The one engine. A single rAF loop off one clock: which idea is up is `beat`, the wipe lands
    * `cycle - erase` before the next one, and the ritual sits inside the hold. Reduced motion runs
    * none of it — the still below is what stands instead — and one idea alone needs no rotation, so
    * the loop is not started at all for it (it would wipe a card with nothing to replace it).
@@ -375,17 +355,11 @@ export function Sketchbook({ ideas, onOrder, mapVersion }: SketchbookProps) {
     return () => cancelAnimationFrame(frame);
   }, [reduced, ideas.length]);
 
-  /**
-   * THE CAPTION SWAPS RATHER THAN CUTTING, and the swap is TWO BEATS (`sketchEngine.swapCap`): the
-   * standing line fades OUT first, the words underneath change only once that finishes, then the
-   * new line fades IN from below. `capText` is what the DOM shows, held apart from `words.cap` so
-   * the out beat has something to fade while the words it will reveal are already decided. Skipped
-   * on the first paint (nothing stands yet to fade from) and under reduced motion, where the line
-   * simply stands as whatever the current idea says.
-   */
+  /** The caption fades out, changes, then fades in (`sketchEngine.swapCap`); `capText` holds the shown words apart from the decided ones. It stands still on first paint and under reduced motion. */
   const first = useRef(true);
   const [capText, setCapText] = useState(words?.cap ?? '');
-  useEffect(() => {
+  // `words` derives from `beat`; the swap plays once per beat.
+  const swapCaption = useEffectEvent(() => {
     if (!words) return;
     if (reduced || first.current) {
       first.current = false;
@@ -403,11 +377,8 @@ export function Sketchbook({ ideas, onOrder, mapVersion }: SketchbookProps) {
       { duration: SKETCH.capOut.dur, easing: SKETCH.capOut.easing, fill: 'forwards' },
     );
     out.onfinish = swapIn;
-    // The idea (and so `words`) is read fresh each run rather than added to the deps: it is a plain
-    // derivation of `beat`, already in the array, and adding it would fire this twice per beat (once
-    // for `beat`, again the moment `words` is recomputed on the same render).
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [beat, reduced]);
+  });
+  useEffect(() => { swapCaption(); }, [beat, reduced]);
 
   if (!idea || !words) return null;
 
@@ -436,7 +407,7 @@ export function Sketchbook({ ideas, onOrder, mapVersion }: SketchbookProps) {
           <span
             ref={capRef}
             data-testid="sketch-caption"
-            style={{ ...roleFont('label'), fontFamily: font.family, color: INK, lineHeight: 1.35 }}
+            style={{ ...roleFont('label'), fontFamily: font.family, color: INK, lineHeight: LINE_HEIGHT.snug }}
           >
             {capText}
           </span>
@@ -448,27 +419,13 @@ export function Sketchbook({ ideas, onOrder, mapVersion }: SketchbookProps) {
 
 /** She takes up the pencil: the note badge, a lean over the page, and the hand's own rhythm. */
 function scribble(): void {
-  const hero = getCharacterHandle();
-  if (!hero) return;
-  hero.setBadge('note');
-  for (const move of GARNISH.scribble) {
-    play(hero.parts[move.part], move.keyframes, move, {
-      fill: 'none', ...(move.composite ? { composite: move.composite } : {}),
-    });
-  }
-  window.setTimeout(() => { getCharacterHandle()?.setBadge(null); }, SCRIBBLE_BADGE_MS);
+  cueCharacter({ kind: 'garnish', moves: GARNISH.scribble, badge: { id: 'note', ms: SCRIBBLE_BADGE_MS } });
 }
 
 /** One small thing between sketches, in turn. Never two at once, never a show. */
 let nextRitual = 0;
 function ritual(): void {
-  const hero = getCharacterHandle();
-  if (!hero) return;
   const name = RITUALS[nextRitual % RITUALS.length]!;
   nextRitual++;
-  for (const move of GARNISH[name]) {
-    play(hero.parts[move.part], move.keyframes, move, {
-      fill: 'none', ...(move.composite ? { composite: move.composite } : {}),
-    });
-  }
+  cueCharacter({ kind: 'garnish', moves: GARNISH[name] });
 }

@@ -3,10 +3,10 @@
  * carries its anchor, and a nonsense query answers with nothing rather than everything.
  */
 import { beforeEach, describe, expect, it } from 'vitest';
-import { __resetHelpSearch, searchHelp } from '../../../ui/chrome/modals/help/search';
-import { ensureHelpStrings } from '../../../i18n/locales/help';
+import { __resetHelpSearch, searchHelp } from '../../../ui/help/search';
+import { installHelpTables } from '../../_support/locale-tables';
 
-ensureHelpStrings();
+installHelpTables();
 
 beforeEach(() => __resetHelpSearch());
 

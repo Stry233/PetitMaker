@@ -1,17 +1,17 @@
+// @vitest-environment jsdom
 /**
- * The plate is ONE element that moves, not five that appear.
+ * The plate is one element that moves, not five that appear.
  *
  * The shell is a single frame with swappable contents, so a mode switch should read as the shell
  * reconfiguring itself rather than as one panel replaced by another. A shared `layoutId` is what
  * makes Framer animate the same node between two parents; five conditionally-rendered images cannot
  * travel however they are tweened.
  *
- * jsdom lays nothing out, so what a DOM test can hold is the STRUCTURE the travel needs: one plate
+ * jsdom lays nothing out, so what a DOM test can hold is the structure the travel needs: one plate
  * in the row at a time, carrying the id both blocks name it by. That the travel then reads as a
  * slide is a visual claim, checked in a browser.
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-// @ts-ignore - node:fs is untyped here (no @types/node)
 import { readFileSync } from 'node:fs';
 import { act, cleanup, fireEvent, render, renderHook, screen, waitFor } from '@testing-library/react';
 import { MotionConfig } from 'framer-motion';
@@ -19,10 +19,10 @@ import { I18nProvider } from '../../../i18n/context';
 import { useEditorStore } from '../../../state/store';
 import { Shell } from '../../../ui/shell/Shell';
 import { MODE_PLATE_ID } from '../../../ui/shell/frame';
-import { SCORES, beatOf, beatsOf } from '../../../ui/shell/motion/choreography';
-import { MOTIONS } from '../../../ui/shell/motion/registry';
-import { useBeat } from '../../../ui/shell/motion/use-motion';
-import { setStoreState } from '../../_store';
+import { SCORES, beatOf } from '../../../ui/design/motion/choreography';
+import { MOTIONS } from '../../../ui/design/motion/registry';
+import { useBeat } from '../../../ui/design/motion/use-motion';
+import { setStoreState } from '../../_support/store';
 
 const wrapper = ({ children }: { children: React.ReactNode }) => <I18nProvider>{children}</I18nProvider>;
 
@@ -45,7 +45,7 @@ afterEach(cleanup);
 
 describe('the mode transition', () => {
   /**
-   * The plate is MADE and DESTROYED, not carried.
+   * The plate is made and destroyed, not carried.
    *
    * A plate that travelled would read as one splat sliding along the row, a claim about the row
    * rather than about the block. What the mark means is "this is the one", and the block that was it
@@ -72,34 +72,38 @@ describe('the mode transition', () => {
   it('leaves the assistant out of the plate the row shares', () => {
     mount();
     fireEvent.click(screen.getByRole('button', { name: 'Mountains' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Agent' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Assistant' }));
     expect(plates(), 'the assistant marks itself with a plate of its own').toHaveLength(1);
   });
 
   /**
    * The bar belongs to the mode, so a switch takes one off and puts the next on.
    *
-   * The one leaving is STILL THERE the moment the next arrives: that overlap is the handover the two
-   * bar beats describe, and it is why the count has to be waited for rather than read.
+   * The one leaving is still there the moment the next arrives: that overlap is the handover the two
+   * bar beats describe, and it is why the count has to be waited for rather than read. The editing
+   * toolbars are one bar for this purpose: between them the host stays and morphs its controls.
    */
   it('hands the bottom bar from the mode being left to the one arriving', async () => {
     mount();
-    const bars = () => document.querySelectorAll('[data-tour-target="bar"]');
+    const bars = () => document.querySelector('[data-testid="shell-mode-bar"]')!.children;
     fireEvent.click(screen.getByRole('button', { name: 'Mountains' }));
     expect(bars()).toHaveLength(1);
 
     fireEvent.click(screen.getByRole('button', { name: 'Water' }));
+    expect(bars(), 'the terrain surfaces share one toolbar').toHaveLength(1);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Objects' }));
     expect(bars(), 'the bar being left is still on screen for the handover').toHaveLength(2);
     await waitFor(() => expect(bars(), 'and then it is gone').toHaveLength(1));
 
-    fireEvent.click(screen.getByRole('button', { name: 'Water' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Objects' }));
     await waitFor(() => expect(bars(), 'rest shows no bar').toHaveLength(0));
   });
 });
 
 describe('the mode switch is one score', () => {
   it('names a registered motion for every beat, and anchors on the plate', () => {
-    const beats = beatsOf('mode.switch');
+    const beats = SCORES['mode.switch'].beats;
     expect(beats.length).toBeGreaterThan(1);
     for (const beat of beats) {
       expect(MOTIONS[beat.motion], `${beat.target} names an unregistered motion`).toBeDefined();
@@ -112,14 +116,14 @@ describe('the mode switch is one score', () => {
   });
 
   it('declares a score for every choreography it names', () => {
-    for (const id of Object.keys(SCORES)) expect(beatsOf(id as keyof typeof SCORES).length).toBeGreaterThan(0);
+    for (const [id, score] of Object.entries(SCORES)) expect(score.beats.length, id).toBeGreaterThan(0);
   });
 
   /** A beat is only worth declaring if something plays it: an unplayed one is the half-rolled-out
    *  rollout this system exists to stop. Every target is named at the site that moves it. */
   it('is played in full by the shell', () => {
-    const shell = readFileSync('src/ui/shell/Shell.tsx', 'utf8');
-    for (const beat of beatsOf('mode.switch')) {
+    const shell = ['Shell.tsx', 'controls/ModeRow.tsx', 'controls/ModeBar.tsx'].map((f) => readFileSync(`src/ui/shell/${f}`, 'utf8')).join('\n');
+    for (const beat of SCORES['mode.switch'].beats) {
       expect(shell, `nothing plays the ${beat.target} beat`).toContain(`'${beat.target}'`);
     }
   });

@@ -3,7 +3,7 @@
  * object load. Per-catalogId tallies live in `state/object-index.ts:countByCatalog` instead, so this
  * module keeps no second, differently-scoped count of the same fact.
  *
- * Memoized per GridState and PATCHED from `state.objectsDelta` rather than rebuilt, because a
+ * Memoized per GridState and patched from `state.objectsDelta` rather than rebuilt, because a
  * rebuild costs one catalog lookup, one rect and one chunk bucketing per object and a stroke
  * mutates objects once per cell. The terrain half rebuilds on `cellsVersion`, which is one grid
  * walk per frame in which cells moved: consumers coalesce, and a stroke changes cells for only as
@@ -13,16 +13,18 @@
  */
 import type { EventBus } from '../core/commands/event-bus';
 import { roundLoad } from '../core/model/load';
-import { chunkKey } from '../core/model/grid-model';
-import { mapChunkAt } from '../core/model/map-chunks';
-import { TerrainType, type EditorEvents, type GridState, type MapTemplate, type ObjectsDelta, type PlacedObject } from '../core/model/types';
-import { getCatalogItem } from './catalog';
-import { getPlacedObjectSize } from './object-geometry';
-import { ELEVATION_MAX } from '../core/model/game-profile';
+import { chunkKey } from '../core/grid/rect';
+import { isBuildableZone } from '../core/game/zones';
+import { mapChunkAt } from '../core/grid/map-chunks';
+import { TerrainType, type GridState, type MapTemplate, type ObjectsDelta, type PlacedObject } from '../core/model/types';
+import { type EditorEvents } from './editing/events';
+import { catalogLoadValue, getCatalogItem } from './catalog';
+import { getPlacedObjectSize, objectElevation } from './object-geometry';
+import { ELEVATION_MAX } from '../core/game/profile';
 
 interface ChunkStat { objects: number; load: number; unknownLoads: number }
 
-/** A LIVE view, not a snapshot: `getMapStats`'s cached instance is MUTATED IN PLACE by the
+/** A live view, not a snapshot: `getMapStats`'s cached instance is mutated in place by the
  *  object-delta patch path (`applyObject`), so a held reference keeps reading current values
  *  rather than the map state at the moment it was returned. Memoize on its field values, never on
  *  its identity. */
@@ -30,35 +32,48 @@ export interface MapStats {
   /** cellsByLayer[n] = cells whose terrain reaches at least layer n. Fixed length
    *  ELEVATION_MAX + 1; index 0 is unused (terrain never occupies layer 0). */
   cellsByLayer: number[];
-  /** waterByLayer[n] = cells whose SURFACE is water at exactly layer n, index 0 included: a
+  /** waterByLayer[n] = cells whose surface is water at exactly layer n, index 0 included: a
    *  ground-level river occupies no layer at all in `cellsByLayer`, so it is invisible there.
    *  A water cell at elevation n is counted at n only — the n-1 layers under it are the mass it
    *  sits on, which `cellsByLayer` already carries. Fixed length ELEVATION_MAX + 1. */
   waterByLayer: number[];
-  /** objectsByLayer[n] = unlocked objects standing at elevation n, patchOnly included — the
-   *  layer panel's question, which does not care how a road's corners got cut. Fixed length
-   *  ELEVATION_MAX + 1. */
+  /** objectsByLayer[n] = unlocked objects standing at elevation n (`objectElevation`, recounted
+   *  whenever cells change), patchOnly included: the layer panel's question, which does not care
+   *  how a road's corners got cut. Fixed length ELEVATION_MAX + 1. */
   objectsByLayer: number[];
+  /** cellsAtElevation[n] = cells whose surface stands at exactly elevation n, clamped to
+   *  ELEVATION_MAX; a cell with no terrain counts at 0. Fixed length ELEVATION_MAX + 1. */
+  cellsAtElevation: number[];
+  /** Cells by terrain type, a cell with no terrain counted as `TerrainType.None`. */
+  cellsByTerrain: Record<TerrainType, number>;
+  /** The highest elevation any terrain reaches, clamped to ELEVATION_MAX; objects excluded. */
+  terrainTop: number;
+  /** Cells on buildable ground, at least one, the denominator every floor's share of the map reads. */
+  buildableCells: number;
   maxElevation: number;
-  /** Per-chunk object count + load. Locked objects (the plaza) DO occupy chunk capacity;
+  /** Per-chunk object count + load. Locked objects (landmarks) do occupy chunk capacity;
    *  patchOnly ones are excluded — a cosmetic corner-cut re-index of a road already on the
    *  map, not new load. Meaningful only while CHUNK_LOAD_ENABLED. */
   chunks: Map<string, ChunkStat>;
 }
 
 /** What patching folds against: every object currently counted, by id, as the exact snapshot
- *  it was counted UNDER. Never the live object reference — command-apply.ts mutates a road's
- *  object in place for a corner-cut re-index (same id, same identity, new corners/rotation/
- *  patchOnly), so a stored live reference would silently drift to describe the NEW state and
- *  folding it back out would cancel the wrong counts. Not part of MapStats: it is patching's
- *  own bookkeeping, never read by a consumer. */
-type Folded = Map<string, PlacedObject>;
+ *  it was counted under and the layer it was counted at. Never the live object reference:
+ *  command-apply.ts mutates a road's object in place for a corner-cut re-index (same id, same
+ *  identity, new corners/rotation/patchOnly), so a stored live reference would drift to describe
+ *  the new state and folding it back out would cancel the wrong counts. */
+interface FoldedObject { obj: PlacedObject; layer: number }
+type Folded = Map<string, FoldedObject>;
 
 interface Cached { stats: MapStats; folded: Folded; objectsVersion: number; cellsVersion: number }
 
 const cache = new WeakMap<GridState, Cached>();
 
-const loadOf = (obj: PlacedObject): number => getCatalogItem(obj.catalogId)?.loadValue ?? 0;
+/** The load a placed object adds to the map: a patch-only object is a cosmetic corner-cut re-index
+ *  of a road already on the map and adds none. */
+export function placedLoad(obj: Pick<PlacedObject, 'catalogId' | 'patchOnly'>): number {
+  return obj.patchOnly ? 0 : catalogLoadValue(obj.catalogId);
+}
 
 /** Every chunk key an object's footprint touches. Exported for rules/chunk-load.ts, which
  *  needs the same footprint-to-chunk-keys computation for a candidate that has not been
@@ -85,16 +100,16 @@ export function chunksOf(obj: PlacedObject, template: Pick<MapTemplate, 'chunkGr
  *  incremental high-water mark can only ever rise, so removing the tallest object would leave
  *  it stale.
  *
- *  `locked` and `patchOnly` gate two DIFFERENT questions and must not share a guard: `locked`
- *  (the plaza) is excluded from what the user placed — the layer panel's per-layer counts;
+ *  `locked` and `patchOnly` gate two different questions and must not share a guard: `locked`
+ *  (a landmark) is excluded from what the user placed — the layer panel's per-layer counts;
  *  `patchOnly` is excluded from chunk load only — a road's cosmetic corner-cut re-index, still
  *  standing on the map and still in its layer row. */
-function applyObject(stats: MapStats, obj: PlacedObject, sign: 1 | -1, template: MapTemplate): void {
+function applyObject(stats: MapStats, { obj, layer }: FoldedObject, sign: 1 | -1, template: MapTemplate): void {
   if (!obj.locked) {
-    stats.objectsByLayer[obj.elevation] = (stats.objectsByLayer[obj.elevation] ?? 0) + sign;
+    stats.objectsByLayer[layer] = (stats.objectsByLayer[layer] ?? 0) + sign;
   }
   if (!obj.patchOnly) {
-    const load = loadOf(obj);
+    const load = placedLoad(obj);
     for (const key of chunksOf(obj, template)) {
       const entry = stats.chunks.get(key) ?? { objects: 0, load: 0, unknownLoads: 0 };
       entry.objects += sign;
@@ -106,15 +121,25 @@ function applyObject(stats: MapStats, obj: PlacedObject, sign: 1 | -1, template:
   }
 }
 
-/** Fold `obj` in as `folded`'s current entry for its id. An id already present is an IN-PLACE
+/** Fold `obj` in as `folded`'s current entry for its id. An id already present is an in-place
  *  edit (command-apply.ts's road corner-cut re-index publishes `{ added: [obj] }` for an
  *  object already in `state.objects`, mirroring state/object-index's re-add-in-place contract)
  *  — idempotent only because the stored snapshot, not the live object, is folded out first. */
-function foldIn(folded: Folded, stats: MapStats, obj: PlacedObject, template: MapTemplate): void {
+function foldIn(folded: Folded, stats: MapStats, obj: PlacedObject, state: GridState): void {
   const prior = folded.get(obj.id);
-  if (prior) applyObject(stats, prior, -1, template);
-  applyObject(stats, obj, 1, template);
-  folded.set(obj.id, { ...obj });
+  if (prior) applyObject(stats, prior, -1, state.template);
+  const entry = { obj: { ...obj }, layer: objectElevation(state, obj) };
+  applyObject(stats, entry, 1, state.template);
+  folded.set(obj.id, entry);
+}
+
+/** Re-buckets every folded object at the elevation the current terrain gives it. */
+function recountObjectLayers(state: GridState, stats: MapStats, folded: Folded): void {
+  stats.objectsByLayer = freshLayerArray();
+  for (const entry of folded.values()) {
+    entry.layer = objectElevation(state, entry.obj);
+    if (!entry.obj.locked) stats.objectsByLayer[entry.layer] = (stats.objectsByLayer[entry.layer] ?? 0) + 1;
+  }
 }
 
 /** True if every `removed` id is actually folded in — the precondition for patching a removal
@@ -130,15 +155,26 @@ function deltaIsFoldable(folded: Folded, delta: ObjectsDelta): boolean {
  *  layer past what is occupied) never sees `undefined`. */
 const freshLayerArray = (): number[] => new Array<number>(ELEVATION_MAX + 1).fill(0);
 
+const freshTerrainTally = (): Record<TerrainType, number> => ({ [TerrainType.None]: 0, [TerrainType.Mountain]: 0, [TerrainType.Water]: 0 });
+
 function walkTerrain(state: GridState, stats: MapStats): void {
   stats.cellsByLayer = freshLayerArray();
   stats.waterByLayer = freshLayerArray();
+  stats.cellsAtElevation = freshLayerArray();
+  stats.cellsByTerrain = freshTerrainTally();
+  let buildable = 0;
+  let top = 0;
   for (let y = 0; y < state.template.height; y++) {
     const row = state.cells[y];
     if (!row) continue;
     for (let x = 0; x < row.length; x++) {
+      if (row[x] && isBuildableZone(row[x]!.zone)) buildable++;
       const terrain = row[x]?.terrain;
+      const elevation = terrain ? Math.min(Math.max(terrain.elevation, 0), ELEVATION_MAX) : 0;
+      stats.cellsAtElevation[elevation]!++;
+      stats.cellsByTerrain[terrain?.type ?? TerrainType.None]++;
       if (!terrain || terrain.type === TerrainType.None) continue;
+      if (elevation > top) top = elevation;
       if (terrain.type === TerrainType.Water) {
         stats.waterByLayer[terrain.elevation] = (stats.waterByLayer[terrain.elevation] ?? 0) + 1;
       }
@@ -147,6 +183,8 @@ function walkTerrain(state: GridState, stats: MapStats): void {
       }
     }
   }
+  stats.buildableCells = Math.max(1, buildable);
+  stats.terrainTop = top;
 }
 
 /** The highest layer either half of the map actually occupies. Recomputed from the two
@@ -163,21 +201,19 @@ function deriveMaxElevation(stats: MapStats): number {
 function rebuild(state: GridState): { stats: MapStats; folded: Folded } {
   const stats: MapStats = {
     cellsByLayer: freshLayerArray(), waterByLayer: freshLayerArray(),
-    objectsByLayer: freshLayerArray(), maxElevation: 0, chunks: new Map(),
+    cellsAtElevation: freshLayerArray(), cellsByTerrain: freshTerrainTally(), terrainTop: 0,
+    objectsByLayer: freshLayerArray(), buildableCells: 1, maxElevation: 0, chunks: new Map(),
   };
   const folded: Folded = new Map();
   walkTerrain(state, stats);
-  for (const obj of state.objects.values()) {
-    applyObject(stats, obj, 1, state.template);
-    folded.set(obj.id, { ...obj });
-  }
+  for (const obj of state.objects.values()) foldIn(folded, stats, obj, state);
   stats.maxElevation = deriveMaxElevation(stats);
   return { stats, folded };
 }
 
 export function getMapStats(state: GridState): MapStats {
-  const objectsVersion = state.objectsVersion ?? 0;
-  const cellsVersion = state.cellsVersion ?? 0;
+  const objectsVersion = state.objectsVersion;
+  const cellsVersion = state.cellsVersion;
   const cached = cache.get(state);
 
   if (cached && cached.objectsVersion === objectsVersion && cached.cellsVersion === cellsVersion) {
@@ -207,9 +243,12 @@ export function getMapStats(state: GridState): MapStats {
         applyObject(stats, folded.get(obj.id)!, -1, state.template);
         folded.delete(obj.id);
       }
-      for (const obj of delta!.added ?? []) foldIn(folded, stats, obj, state.template);
+      for (const obj of delta!.added ?? []) foldIn(folded, stats, obj, state);
     }
-    if (cached.cellsVersion !== cellsVersion) walkTerrain(state, stats);
+    if (cached.cellsVersion !== cellsVersion) {
+      walkTerrain(state, stats);
+      recountObjectLayers(state, stats, folded);
+    }
     stats.maxElevation = deriveMaxElevation(stats);
   } else {
     ({ stats, folded } = rebuild(state));
@@ -222,21 +261,13 @@ export function getMapStats(state: GridState): MapStats {
 /**
  * One rAF-coalesced subscription to whole-map stats, for a consumer (the layer panel, the shell's
  * load gauge) that must track edits live without rolling its own coalescing loop. `cells-changed`
- * and `objects-changed` fire once per COMMAND — a stroke or a generate issues dozens in one
+ * and `objects-changed` fire once per command — a stroke or a generate issues dozens in one
  * frame — so this collapses a burst to a single `cb` call carrying the state as of the frame it
  * fires in.
  *
- * `getState` is a parameter, not a store import, so this module stays a pure derivation usable
- * outside the one app that owns a particular store (the same shape as `RoadLookup` and
- * `RuleDispatcher`). It is called at FIRE time, not subscribe time: a `GridState` captured up
- * front would go on answering for a map the user has since replaced, since `initMap`/`loadMap`
- * install a new grid. A `null` return means no map is loaded, so that frame is skipped rather
- * than calling back with empty stats.
- *
- * Two subscribers in the same frame cost only one derivation walk despite each running its own
- * rAF: `getMapStats` is memoized per `GridState`, so whichever of the two fires second is a memo
- * hit on what the first just cached. This function adds no registry to force that — the memo
- * already gives it.
+ * `getState` is read at fire time, since `initMap`/`loadMap` install a new grid; a `null` return
+ * (no map loaded) skips that frame. Two subscribers in one frame cost one derivation walk, because
+ * `getMapStats` is memoized per `GridState`.
  */
 export function subscribeMapStats(
   bus: EventBus<EditorEvents>,

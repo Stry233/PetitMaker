@@ -1,20 +1,29 @@
 import {
   ProvSource, TaintFlag, setFlag, hasFlag,
-  type UnitTaint, type DisclosureClass, type MapProvenanceSummary, type SessionFlags, type AuthorClass,
+  type UnitTaint, type DisclosureClass, type MapProvenanceSummary, type SessionFlags, type AuthorClass, type ActorType,
 } from './types';
 
-export const PROVENANCE_POLICY = {
+const PROVENANCE_POLICY = {
   COSMETIC_WEIGHT: 0.35,   // a cosmetic modify contributes fractionally to its source, never full replacement weight
   AI_EPSILON: 0.001,       // contribution above which a source "counts"
 } as const;
 
 export type OpKind = 'create' | 'replace' | 'cosmetic' | 'delete';
 
-export function sourceClass(s: ProvSource): AuthorClass {
-  if (s === ProvSource.AiWrite || s === ProvSource.AiAccepted) return 'ai';
-  if (s === ProvSource.Procedural) return 'procedural';
-  return 'human'; // Human, AutoRepair, AutoTrim, Imported, Unknown (derived inherit handled by caller's source)
-}
+/** Each source's actor (who performed the operation) and author class (whose work its result
+ *  counts as). Automatic repairs and trims act as the system on the user's behalf, an analysis call
+ *  writes nothing of the model's own, and imported or unknown work counts as human. */
+export const SOURCE_ROLES: Readonly<Record<ProvSource, { readonly actor: ActorType; readonly author: AuthorClass }>> = {
+  [ProvSource.Human]: { actor: 'user', author: 'human' },
+  [ProvSource.Procedural]: { actor: 'system', author: 'procedural' },
+  [ProvSource.AiWrite]: { actor: 'ai', author: 'ai' },
+  [ProvSource.AiAccepted]: { actor: 'ai', author: 'ai' },
+  [ProvSource.AiAnalysis]: { actor: 'ai', author: 'human' },
+  [ProvSource.AutoRepair]: { actor: 'system', author: 'human' },
+  [ProvSource.AutoTrim]: { actor: 'system', author: 'human' },
+  [ProvSource.Imported]: { actor: 'imported', author: 'human' },
+  [ProvSource.Unknown]: { actor: 'imported', author: 'human' },
+};
 
 function vecFor(cls: AuthorClass): Record<AuthorClass, number> {
   return { ai: cls === 'ai' ? 1 : 0, human: cls === 'human' ? 1 : 0, procedural: cls === 'procedural' ? 1 : 0 };
@@ -42,7 +51,7 @@ function deriveFlags(c: Record<AuthorClass, number>, lastClass: AuthorClass, sou
  *  `null` out → the unit is now empty (deleted). */
 export function applyOpToTaint(prev: UnitTaint | null, source: ProvSource, kind: OpKind, opId: string): UnitTaint | null {
   if (kind === 'delete') return null;
-  const cls = sourceClass(source);
+  const cls = SOURCE_ROLES[source].author;
 
   if (kind === 'create' || kind === 'replace' || prev === null) {
     const contribution = vecFor(cls);
@@ -74,7 +83,7 @@ export function applyOpToTaint(prev: UnitTaint | null, source: ProvSource, kind:
 
 /** Moves preserve contribution shares while recording the mover in the flags and ledger. */
 export function applyMoveToTaint(prev: UnitTaint, source: ProvSource, opId: string): UnitTaint {
-  const cls = sourceClass(source);
+  const cls = SOURCE_ROLES[source].author;
   return {
     ...prev,
     contribution: { ...prev.contribution },
@@ -122,7 +131,6 @@ export function deriveSummary(
   const aiUsedNoRemaining = aiEverUsed && !containsAi;
 
   const aiTerrainPct = contentCells ? Math.round((aiCells / contentCells) * 100) : 0;
-  const aiAreaPct = aiTerrainPct; // area ≈ tainted-content coverage; refined by caller if needed
   const proceduralAreaPct = contentCells ? Math.round((procCells / contentCells) * 100) : 0;
 
   let exportDisclosure: DisclosureClass;
@@ -135,8 +143,7 @@ export function deriveSummary(
 
   return {
     containsAi, containsProcedural, aiEverUsed, aiUsedNoRemaining,
-    aiTerrainPct, aiObjectCount, aiAreaPct, proceduralAreaPct,
-    counts: { aiWrites: session.aiWritesUsed ? 1 : 0, aiAccepted: session.aiAcceptedCount, proceduralRuns: session.proceduralRuns, analysisOnlyCalls: session.analysisOnlyCalls },
-    humanAfterAi, aiAfterHuman, dominant: exportDisclosure, exportDisclosure,
+    aiTerrainPct, aiObjectCount, proceduralAreaPct,
+    humanAfterAi, aiAfterHuman, exportDisclosure,
   };
 }

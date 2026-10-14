@@ -1,45 +1,30 @@
+// @vitest-environment jsdom
 /**
  * Accessibility acceptance criteria for the legal surfaces:
- *
- *  - full keyboard-only walkthrough (open a doc, reach the language toggle,
- *    Escape closes the modal, focus returns to the opener);
- *  - the ModalShell focus trap + Escape handler (shared by all 7 modals —
- *    unit-tested directly in `src/__tests__/ui/primitives/modal-shell.test.tsx`; this
- *    file only exercises them through the real About/LegalDocView surface);
- *  - accessible names for the back button, the language selector, and the
- *    "open page" link;
- *  - WCAG contrast: `PROSE` text colors vs `panelCream`, and the About
- *    footer's `textSecondary` usage vs `panelCream`;
- *  - table wrapper `overflow-x: auto` on the React side (the static-page
- *    emitter's `.tbl` wrapper already has it — this pins parity);
- *  - reduced motion: with `MotionGlobalConfig.skipAnimations = true`, the
- *    About-modal A<->B view transition completes synchronously;
- *  - heading hierarchy: every rendered doc has exactly one h1, and heading
- *    levels never skip a level going deeper.
- *
- * "Opener" in the keyboard-walkthrough harness below = the DOM element that
- * had focus at the moment the modal mounted — the same as a real menu button
- * in `App.tsx` (`onClick={() => setShowAbout(true)}` immediately followed by
- * `{showAbout && <AboutModal ... />}`): native post-click focus stays on the
- * button that was clicked, and that's the only element `ModalShell` can
- * plausibly return focus to when it closes.
+ *  - keyboard only: open a doc, reach the language toggle, Escape closes, focus returns to the
+ *    element focused when the modal mounted (ModalShell's trap is unit-tested in `modal-shell.test`);
+ *  - accessible names for the back button, the language selector and the "open page" link;
+ *  - WCAG contrast of `PROSE` text and the About footer's `textSecondary` on `panelCream`;
+ *  - the React table wrapper's `overflow-x: auto`, matching the static pages' `.tbl`;
+ *  - reduced motion: with `MotionGlobalConfig.skipAnimations` the About view swap is synchronous;
+ *  - heading hierarchy: one h1 per doc, and no level skipped going deeper.
  */
 import { describe, it, expect, beforeAll, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, within, act } from '@testing-library/react';
 import { useState } from 'react';
 import { MotionGlobalConfig } from 'framer-motion';
-import { AboutModal } from '../../ui/chrome/modals/AboutModal';
-import { LegalMarkdown } from '../../legal/LegalMarkdown';
+import { AboutModal } from '../../ui/chrome/modals/about/AboutModal';
+import { LegalMarkdown } from '../../ui/primitives/LegalMarkdown';
 import { parseLegalMarkdown } from '../../legal/markdown';
 import { DOCS, docNodes, type DocId } from '../../legal/registry';
 import { LEGAL } from '../../legal/config';
 import { I18nProvider } from '../../i18n/context';
 import { TourOverlay } from '../../ui/chrome/tour/TourOverlay';
-import { SHELL_TOUR_STEPS } from '../../ui/shell/tour-steps';
+import { SHELL_TOUR_STEPS } from '../../ui/shell/tour/tour-steps';
 import { startTour } from '../../ui/chrome/tour/use-tour';
 import { useEditorStore } from '../../state/store';
-import { colors } from '../../ui/design/styles';
-import { setStoreState } from '../_store';
+import { MUTED, ON_DARK, PLATE, SURFACE_SECONDARY, TEXT_PRIMARY, TEXT_SECONDARY } from '../../ui/design/tokens';
+import { setStoreState } from '../_support/store';
 
 // ── WCAG 2.x relative-luminance contrast ratio, computed from the hex tokens
 //    themselves (no external library) — the same formula as
@@ -73,7 +58,7 @@ function contrastRatio(hexA: string, hexB: string): number {
 const AA_BODY_TEXT = 4.5;
 
 /** A rendered inline color as hex. jsdom normalises `color`/`background` to `rgb(r, g, b)`, so a
- *  contrast check on what an element ACTUALLY renders has to come back through this. */
+ *  contrast check on what an element actually renders has to come back through this. */
 function renderedHex(value: string): string {
   const rgb = /rgb\(\s*(\d+)[,\s]+(\d+)[,\s]+(\d+)/.exec(value);
   if (rgb) return `#${rgb.slice(1, 4).map((c) => Number(c).toString(16).padStart(2, '0')).join('')}`;
@@ -85,7 +70,7 @@ function renderedHex(value: string): string {
 function renderModal(onClose: () => void = () => {}) {
   return render(
     <I18nProvider>
-      <AboutModal onClose={onClose} />
+      <AboutModal open onClose={onClose} />
     </I18nProvider>,
   );
 }
@@ -112,35 +97,35 @@ afterEach(() => {
 });
 
 describe('contrast — WCAG AA (>=4.5:1) for body text against panelCream', () => {
-  it('PROSE body text (colors.textPrimary) passes against panelCream', () => {
-    expect(contrastRatio(colors.textPrimary, colors.panelCream)).toBeGreaterThanOrEqual(AA_BODY_TEXT);
+  it('PROSE body text (TEXT_PRIMARY) passes against panelCream', () => {
+    expect(contrastRatio(TEXT_PRIMARY, PLATE)).toBeGreaterThanOrEqual(AA_BODY_TEXT);
   });
 
   it('the raw textSecondary token FAILS at 4.5:1 against panelCream (why it cannot be used for small body text)', () => {
-    // The About footer's small-print disclaimer therefore takes `colors.brownText` instead;
+    // The About footer's small-print disclaimer therefore takes `MUTED` instead;
     // putting textSecondary back there trips this file rather than failing AA silently.
-    expect(contrastRatio(colors.textSecondary, colors.panelCream)).toBeLessThan(AA_BODY_TEXT);
+    expect(contrastRatio(TEXT_SECONDARY, PLATE)).toBeLessThan(AA_BODY_TEXT);
   });
 
-  it('colors.brownText (the token used for the About footer disclaimer/© line) passes against panelCream', () => {
-    expect(contrastRatio(colors.brownText, colors.panelCream)).toBeGreaterThanOrEqual(AA_BODY_TEXT);
+  it('MUTED (the token used for the About footer disclaimer/© line) passes against panelCream', () => {
+    expect(contrastRatio(MUTED, PLATE)).toBeGreaterThanOrEqual(AA_BODY_TEXT);
   });
 
-  it('colors.brownText (used for the zh-only note / doc footer bar) passes against surfaceSecondary too', () => {
+  it('MUTED (used for the zh-only note / doc footer bar) passes against surfaceSecondary too', () => {
     // The zh-only note sits on `surfaceSecondary`, not `panelCream` — a
     // slightly darker background, so it needs its own check.
-    expect(contrastRatio(colors.brownText, colors.surfaceSecondary)).toBeGreaterThanOrEqual(AA_BODY_TEXT);
+    expect(contrastRatio(MUTED, SURFACE_SECONDARY)).toBeGreaterThanOrEqual(AA_BODY_TEXT);
   });
 
   it("the brand lockup's tagline passes AA on both surfaces it appears on", () => {
-    // BrandLockup's tagline is colors.brownText. It renders on the About modal's card
+    // BrandLockup's tagline is `MUTED`. It renders on the About modal's card
     // (surfacePrimary) and, once the tour's welcome step lands, on a white bubble.
-    expect(contrastRatio(colors.brownText, colors.surfacePrimary)).toBeGreaterThanOrEqual(AA_BODY_TEXT);
-    expect(contrastRatio(colors.brownText, colors.white)).toBeGreaterThanOrEqual(AA_BODY_TEXT);
+    expect(contrastRatio(MUTED, PLATE)).toBeGreaterThanOrEqual(AA_BODY_TEXT);
+    expect(contrastRatio(MUTED, ON_DARK)).toBeGreaterThanOrEqual(AA_BODY_TEXT);
   });
 
   it("the tour bubble's body, skip link and progress counter pass AA against the bubble's own background", () => {
-    // Rendered, not tokens: a pair of assertions over `colors.brownText` stays green with
+    // Rendered, not tokens: a pair of assertions over `MUTED` stays green with
     // TourOverlay reverted to the failing textSecondary, which is what it is meant to catch. The
     // background comes off the card too, so the check cannot drift from the surface it is about.
     startTour();
@@ -165,26 +150,26 @@ describe('contrast — WCAG AA (>=4.5:1) for body text against panelCream', () =
     renderModal();
     const disclaimer = screen.getByText(LEGAL_DISCLAIMER_MATCH());
     const style = disclaimer.getAttribute('style') ?? '';
-    expect(style).not.toContain(colors.textSecondary);
+    expect(style).not.toContain(TEXT_SECONDARY);
   });
 
   // These small-text elements use the darker brown required for AA contrast on the About surface.
   it('the tagline is NOT set in the failing textSecondary color', () => {
     renderModal();
     const tagline = screen.getByText('Map Editor');
-    expect(tagline.getAttribute('style') ?? '').not.toContain(colors.textSecondary);
+    expect(tagline.getAttribute('style') ?? '').not.toContain(TEXT_SECONDARY);
   });
 
   it('the version-card lines are NOT set in the failing textSecondary color', () => {
     renderModal();
     const versionLine = screen.getByText(/^Version /);
-    expect(versionLine.getAttribute('style') ?? '').not.toContain(colors.textSecondary);
+    expect(versionLine.getAttribute('style') ?? '').not.toContain(TEXT_SECONDARY);
   });
 
   it('both section titles (Team, Legal & policies) are NOT set in the failing textSecondary color', () => {
     renderModal();
     for (const title of [screen.getByText('Team'), screen.getByText('Legal & policies')]) {
-      expect(title.getAttribute('style') ?? '').not.toContain(colors.textSecondary);
+      expect(title.getAttribute('style') ?? '').not.toContain(TEXT_SECONDARY);
     }
   });
 
@@ -193,7 +178,7 @@ describe('contrast — WCAG AA (>=4.5:1) for body text against panelCream', () =
     LEGAL.icpUrl = 'https://beian.miit.gov.cn/';
     renderModal();
     const filingLink = screen.getByRole('link', { name: /京ICP备12345678号/ });
-    expect(filingLink.getAttribute('style') ?? '').not.toContain(colors.textSecondary);
+    expect(filingLink.getAttribute('style') ?? '').not.toContain(TEXT_SECONDARY);
   });
 });
 
@@ -218,7 +203,7 @@ describe('heading hierarchy — every rendered doc has exactly one h1, no skippe
 
   // `docNodes` (not the raw parser) — same node tree LegalDocView renders,
   // incl. the synthetic-h1 fallback for a raw doc with no markdown heading
-  // (LICENSE, pinned byte-exact by license-files.test.ts).
+  // (license, pinned byte-exact by license-files.test.ts).
   for (const id of ids) {
     it(`${id} (en): exactly one h1, no skipped heading levels`, () => {
       const nodes = docNodes(id, 'en', LEGAL, DOCS[id].titleKey);
@@ -253,14 +238,14 @@ describe('reduced motion — the About-modal A<->B view transition is instant', 
   // its resolved payload on the module-level object itself, independent of
   // any one render tree — so warming it here with one real `await` means
   // every later mount in this file (including the assertions below that
-  // must NOT use `waitFor`) sees it already resolved and renders
-  // synchronously. Without this warm-up the FIRST doc-view mount in the
+  // must not use `waitFor`) sees it already resolved and renders
+  // synchronously. Without this warm-up the first doc-view mount in the
   // process always suspends for a microtask regardless of motion settings,
   // which would make the "no waitFor" assertion flaky on suite ordering.
   beforeAll(async () => {
     const { unmount } = renderModal();
     fireEvent.click(screen.getByTestId('legal-row-privacy'));
-    await screen.findByRole('heading', { level: 1, name: 'Privacy Policy' });
+    await screen.findByRole('heading', { level: 1, name: 'Privacy Policy' }, { timeout: 5000 });
     unmount();
   });
 
@@ -308,7 +293,7 @@ describe('accessible names — back button, language selector', () => {
     LEGAL.canonicalOrigin = 'https://petit-maker.example';
     renderModal();
     fireEvent.click(screen.getByTestId('legal-row-privacy'));
-    await screen.findByRole('heading', { level: 1, name: 'Privacy Policy' });
+    await screen.findByRole('heading', { level: 1, name: 'Privacy Policy' }, { timeout: 5000 });
 
     expect(screen.getByRole('button', { name: 'Back' })).toBeTruthy();
     expect(screen.getByRole('group', { name: 'Document language' })).toBeTruthy();
@@ -329,7 +314,7 @@ describe('keyboard-only walkthrough', () => {
     return (
       <I18nProvider>
         <button onClick={() => setOpen(true)}>Open About</button>
-        {open && <AboutModal onClose={() => setOpen(false)} />}
+        {open && <AboutModal open onClose={() => setOpen(false)} />}
       </I18nProvider>
     );
   }
@@ -396,7 +381,7 @@ describe('in-modal cross-doc links', () => {
       return (
         <I18nProvider>
           <button onClick={() => setOpen(true)}>Open About</button>
-          {open && <AboutModal onClose={() => setOpen(false)} />}
+          {open && <AboutModal open onClose={() => setOpen(false)} />}
         </I18nProvider>
       );
     }

@@ -1,8 +1,7 @@
 /** Brush width in cells, with one tick per available size. */
 import { useT } from '../../../i18n/context';
 import { BarSlider } from './BarSlider';
-import { BRUSH } from './terrain-cells';
-import { CELL_BOX } from './ToolCell';
+import { BRUSH, CELL_BOX } from './terrain-cells';
 import { SCALE } from '../units';
 
 import track from '../../../assets/shell/shelf-mountain/brush-size/roundrect.svg';
@@ -28,7 +27,7 @@ export function BrushSizeSlider({ value, onChange, disabled }: {
       value={value}
       onChange={onChange}
       label={t('design.brush_size')}
-      valueText={t(value === 1 ? 'units.cells_one' : 'units.cells', { n: value })}
+      valueText={t('units.cells', { n: value })}
       disabled={disabled}
     />
   );

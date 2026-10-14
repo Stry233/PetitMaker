@@ -1,0 +1,33 @@
+/**
+ * Retired catalog ids, and the item a save carrying one now loads as.
+ *
+ * The four plain colour road surfaces (`road-dirt`/`road-stone`/`road-brick`/`road-slate`) had no
+ * in-game counterpart, so each reads as the in-game path surface nearest it in material and colour,
+ * and a save, autosave or share code made before their removal still opens as a buildable map.
+ *
+ * Every load decodes through `io/save/json-codec.ts:decodeSave`, share codes included (a raster
+ * import decodes the payload, gates it on the content hash, then hands the save JSON to that same
+ * decoder). The undo history a sectioned export carries is replayed straight into state, so
+ * `io/save/history-codec.ts` reads the map too.
+ *
+ * The share format is untouched. An object's catalog item travels as an index into
+ * `io/share/codec/catalog-order.ts`, and the content hash covers the ids the decoder produced — so the
+ * retired names keep their slots there and the mapping happens after the gate, where decoded objects
+ * become a GridState. Renumbering the order, or mapping inside the coded bytes, would turn every
+ * code already in the wild into a hash mismatch.
+ *
+ * An entry is permanent: nothing rewrites a file in place, so the oldest save must still resolve.
+ */
+export const RETIRED_CATALOG_IDS: Readonly<Record<string, string>> = {
+  // Plain dirt reads as the game's own plain dirt track, which arrived in the catalog after the
+  // retirement had already settled for the weedy one.
+  'road-dirt': 'path-rustic-dirt',
+  'road-stone': 'path-garden-stone',
+  'road-brick': 'path-lattice-red-brick',
+  'road-slate': 'path-urban-asphalt',
+};
+
+/** What a retired id reads as now; any other id unchanged. */
+export function currentCatalogId(id: string): string {
+  return RETIRED_CATALOG_IDS[id] ?? id;
+}

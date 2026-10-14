@@ -1,6 +1,6 @@
 /*
  * V-PLACE-BLOCK over a Γ fillet (#18): a tree standing on the ground beside a 1-layer mountain
- * refused the mountain's notch its fillet, because the rule judged the fillet by its whole CELL.
+ * refused the mountain's notch its fillet, because the rule judged the fillet by its whole cell.
  *
  * The geometry is the reported map, minimised: mountain@1 at (11,3), (12,3), (12,4) wraps the
  * empty cell (11,4) at its TR corner; the tree stands at (10,4). Terrain sits half a tile up-left
@@ -8,19 +8,17 @@
  * [4, 5] does overlap it — but only in its BL quadrant, three quadrants away from the TR fillet.
  */
 import { describe, it, expect } from 'vitest';
-import { CommandExecutor } from '../../core/commands/command-executor';
 import { EventBus } from '../../core/commands/event-bus';
 import { createDefaultRegistry } from '../../rules/index';
-import { EdgeCutTool } from '../../tools/edge-cut/edge-cut-tool';
-import { applyAutoEdgeCut } from '../../tools/edge-cut/auto-edge-cut';
+import { EdgeCutTool } from '../../tools/pointer/edge-cut/edge-cut-tool';
+import { applyAutoEdgeCut } from '../../tools/trim/auto-edge-cut';
 import { getCell } from '../../core/model/grid-model';
-import { roadLookup } from '../../state/object-index';
-import { makeState, setTerrain, makeObject, paintCmd } from './_helpers';
-import { makeToolCtx } from '../tools/_tool-ctx';
-import {
-  CommandType, TerrainType,
-  type Corners, type EditorEvents, type GridState, type TrimCornersCommand, type ValidationError,
-} from '../../core/model/types';
+import { makeState, setTerrain, makeObject, paintCmd, makeExecutor } from '../_support/map-state';
+import { makeToolCtx } from '../_support/tool-ctx';
+import { CommandType, TerrainType, type Corners, type GridState, type TrimCornersCommand, type ValidationError } from '../../core/model/types';
+import { type EditorEvents } from '../../state/editing/events';
+import { cell, point } from '../_support/grid';
+import { createExecutor } from '../../state/executor';
 
 /** The reported notch: an L of mountain@1 wrapping the empty cell (11,4) at its TR corner. */
 function notchState(): GridState {
@@ -33,8 +31,9 @@ function notchState(): GridState {
 
 /** A standing cosmetic Γ patch: tier `elev` over a `base` support block, carrying `corners`. */
 function setPatch(
-  state: GridState, x: number, y: number, elev: number, corners: Corners, base = 0,
+  state: GridState, at: { x: number; y: number }, elev: number, corners: Corners, base = 0,
 ): void {
+  const { x, y } = at;
   const cell = state.cells[y]?.[x];
   if (cell) cell.terrain = { type: TerrainType.Mountain, elevation: elev, patchOnly: true, corners, patchBase: base };
 }
@@ -49,8 +48,7 @@ function filletCmd(x: number, y: number, cornerIdx: number): TrimCornersCommand 
   const after: Corners = ['empty', 'empty', 'empty', 'empty'];
   after[cornerIdx] = 'fan';
   return {
-    type: CommandType.TrimCorners, timestamp: 0,
-    x, y, layer: 'terrain', afterCorners: after,
+    type: CommandType.TrimCorners,     x, y, layer: 'terrain', afterCorners: after,
     patchOnly: true, terrainType: TerrainType.Mountain, elevation: 1, patchBase: 0,
   } as TrimCornersCommand;
 }
@@ -94,11 +92,10 @@ describe('V-PLACE-BLOCK — a Γ fillet is judged by its corner quadrant, not it
   it('re-shaping a corner already drawn adds nothing, so it is never blocked', () => {
     // The patch stands at tier 2 already; cycling one corner's shape moves no mass anywhere.
     const state = notchState();
-    setPatch(state, 11, 4, 2, ['square', 'fan', 'square', 'square'], 1);
+    setPatch(state, { x: 11, y: 4 }, 2, ['square', 'fan', 'square', 'square'], 1);
     addTree(state, 10, 4);
     const reshape = {
       ...filletCmd(11, 4, 1),
-      beforeCorners: ['square', 'fan', 'square', 'square'] as Corners,
       afterCorners: ['square', 'tri-NE', 'square', 'square'] as Corners,
       elevation: 2, patchBase: 1,
     } as TrimCornersCommand;
@@ -110,24 +107,22 @@ describe('V-PLACE-BLOCK — a Γ fillet is judged by its corner quadrant, not it
     // No corner's shape changes, so nothing moves horizontally — but each drawn quadrant grows a
     // taller column, and a patch is cosmetic, so an object may have arrived in one meanwhile.
     const state = notchState();
-    setPatch(state, 11, 4, 1, ['empty', 'fan', 'empty', 'empty']);
+    setPatch(state, { x: 11, y: 4 }, 1, ['empty', 'fan', 'empty', 'empty']);
     addTree(state, 11, 3);   // stands in the TR quadrant, [11,11.5] x [3.5,4]
     const reseat = {
       ...filletCmd(11, 4, 1),
-      beforeCorners: ['empty', 'fan', 'empty', 'empty'] as Corners,
       elevation: 2,
     } as TrimCornersCommand;
     expect(blockErrors(state, reseat).length, 'the column grows under the object').toBe(1);
   });
 
   it('a re-seat still spares a quadrant the patch does not draw', () => {
-    // The rise widens WHICH corners are judged, never the rect each one covers.
+    // The rise widens which corners are judged, never the rect each one covers.
     const state = notchState();
-    setPatch(state, 11, 4, 1, ['empty', 'fan', 'empty', 'empty']);
+    setPatch(state, { x: 11, y: 4 }, 1, ['empty', 'fan', 'empty', 'empty']);
     addTree(state, 10, 4);   // the BL quadrant, which this patch leaves empty
     const reseat = {
       ...filletCmd(11, 4, 1),
-      beforeCorners: ['empty', 'fan', 'empty', 'empty'] as Corners,
       elevation: 2,
     } as TrimCornersCommand;
     expect(blockErrors(state, reseat)).toEqual([]);
@@ -135,11 +130,10 @@ describe('V-PLACE-BLOCK — a Γ fillet is judged by its corner quadrant, not it
 
   it('re-issuing a patch at its OWN tier adds nothing, so it is never blocked', () => {
     const state = notchState();
-    setPatch(state, 11, 4, 1, ['empty', 'fan', 'empty', 'empty']);
+    setPatch(state, { x: 11, y: 4 }, 1, ['empty', 'fan', 'empty', 'empty']);
     addTree(state, 11, 3);
     const same = {
       ...filletCmd(11, 4, 1),
-      beforeCorners: ['empty', 'fan', 'empty', 'empty'] as Corners,
       elevation: 1,
     } as TrimCornersCommand;
     expect(blockErrors(state, same)).toEqual([]);
@@ -163,10 +157,10 @@ describe('EdgeCutTool — the notch beside a tree', () => {
     const bus = new EventBus<EditorEvents>();
     const refusals: unknown[] = [];
     bus.on('validation-failed', (e) => refusals.push(e));
-    const exec = new CommandExecutor(state, bus, createDefaultRegistry(), roadLookup(state));
+    const exec = createExecutor(state, createDefaultRegistry(), bus);
 
     // The intersection shared by (11,3), (12,3), (11,4), (12,4) — the L's concave corner.
-    new EdgeCutTool().onPointerDown({ x: 11, y: 3 }, { x: 11, y: 3 }, makeToolCtx(state, exec));
+    new EdgeCutTool().onPointerDown(cell({ x: 11, y: 3 }), point({ x: 11, y: 3 }), makeToolCtx(state, exec));
 
     const patch = getCell(state.cells, 11, 4)!.terrain!;
     expect(patch.patchOnly, 'the notch took a cosmetic fillet').toBe(true);
@@ -177,16 +171,16 @@ describe('EdgeCutTool — the notch beside a tree', () => {
   it('the hover ghost and the click agree — green, and the click acts', () => {
     const state = notchState();
     addTree(state, 10, 4);
-    const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
+    const exec = makeExecutor(state);
     let paint: unknown = null;
     const ctx = makeToolCtx(state, exec, 1, 1, {
       overlay: { showGhost: (_c: unknown, p: unknown) => { paint = p; }, clearGhost() {} } as never,
     });
     const tool = new EdgeCutTool();
 
-    tool.onPointerMove({ x: 11, y: 3 }, { x: 11, y: 3 }, ctx);
+    tool.onPointerMove(cell({ x: 11, y: 3 }), point({ x: 11, y: 3 }), ctx);
     expect(paint, 'ghost reads cuttable').toEqual({ icon: 'trim', valid: true });
-    tool.onPointerDown({ x: 11, y: 3 }, { x: 11, y: 3 }, ctx);
+    tool.onPointerDown(cell({ x: 11, y: 3 }), point({ x: 11, y: 3 }), ctx);
     expect(getCell(state.cells, 11, 4)!.terrain!.corners?.[1]).toBe('fan');
   });
 
@@ -199,9 +193,9 @@ describe('EdgeCutTool — the notch beside a tree', () => {
     const bus = new EventBus<EditorEvents>();
     const refusals: unknown[] = [];
     bus.on('validation-failed', (e) => refusals.push(e));
-    const exec = new CommandExecutor(state, bus, createDefaultRegistry(), roadLookup(state));
+    const exec = createExecutor(state, createDefaultRegistry(), bus);
 
-    new EdgeCutTool().onPointerDown({ x: 11, y: 3 }, { x: 11, y: 3 }, makeToolCtx(state, exec));
+    new EdgeCutTool().onPointerDown(cell({ x: 11, y: 3 }), point({ x: 11, y: 3 }), makeToolCtx(state, exec));
 
     expect(getCell(state.cells, 11, 4)?.terrain ?? null, 'the notch stayed open').toBe(null);
     expect(refusals.length, 'the fillet was refused').toBe(1);
@@ -212,7 +206,7 @@ describe('auto-trim — the same notch, the same answer', () => {
   it('fills the Γ notch beside the tree', () => {
     const state = notchState();
     addTree(state, 10, 4);
-    const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
+    const exec = makeExecutor(state);
     applyAutoEdgeCut(makeToolCtx(state, exec), 'round', [{ x: 11, y: 3 }, { x: 12, y: 3 }, { x: 12, y: 4 }], []);
 
     const patch = getCell(state.cells, 11, 4)?.terrain;
@@ -226,9 +220,9 @@ describe('auto-trim — the same notch, the same answer', () => {
     // stays where it was rather than growing through the object.
     const state = makeState(20, 20);
     for (const [x, y] of [[11, 3], [12, 3], [12, 4]] as const) setTerrain(state, x, y, TerrainType.Mountain, 2);
-    setPatch(state, 11, 4, 1, ['empty', 'fan', 'empty', 'empty']);
+    setPatch(state, { x: 11, y: 4 }, 1, ['empty', 'fan', 'empty', 'empty']);
     addTree(state, 11, 3);   // on the raised wall, over the fillet's TR quadrant
-    const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
+    const exec = makeExecutor(state);
     applyAutoEdgeCut(makeToolCtx(state, exec), 'round', [{ x: 11, y: 3 }, { x: 12, y: 3 }, { x: 12, y: 4 }], []);
 
     expect(getCell(state.cells, 11, 4)?.terrain?.elevation, 'the fillet stayed at its own tier').toBe(1);
@@ -237,8 +231,8 @@ describe('auto-trim — the same notch, the same answer', () => {
   it('re-seats that same fillet when nothing stands in its quadrant', () => {
     const state = makeState(20, 20);
     for (const [x, y] of [[11, 3], [12, 3], [12, 4]] as const) setTerrain(state, x, y, TerrainType.Mountain, 2);
-    setPatch(state, 11, 4, 1, ['empty', 'fan', 'empty', 'empty']);
-    const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
+    setPatch(state, { x: 11, y: 4 }, 1, ['empty', 'fan', 'empty', 'empty']);
+    const exec = makeExecutor(state);
     applyAutoEdgeCut(makeToolCtx(state, exec), 'round', [{ x: 11, y: 3 }, { x: 12, y: 3 }, { x: 12, y: 4 }], []);
 
     expect(getCell(state.cells, 11, 4)?.terrain?.elevation, 'the fillet followed the walls up').toBe(2);

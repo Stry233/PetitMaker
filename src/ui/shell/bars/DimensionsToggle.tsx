@@ -2,9 +2,13 @@ import { useT } from '../../../i18n/context';
 import { SCALE } from '../units';
 import { OptionPill } from './OptionPill';
 
-export function DimensionsToggle({ value, onChange }: { value: boolean; onChange: (value: boolean) => void }) {
+/** Show or hide width and height. `commandId` names the key that cycles it; null leaves it to
+ *  the pointer where the toolbar's keys are spoken for. */
+export function DimensionsToggle({ value, onChange, commandId = 'tool.option_cycle' }: {
+  value: boolean; onChange: (value: boolean) => void; commandId?: string | null;
+}) {
   const t = useT();
-  return <OptionPill value={value ? 'show' : 'hide'} label={t('region.dimensions')} commandId="tool.auto_trim"
+  return <OptionPill value={value ? 'show' : 'hide'} label={t('region.dimensions')} commandId={commandId ?? undefined}
     onChange={next => onChange(next === 'show')} options={(['show', 'hide'] as const).map(mode => ({
       value: mode, label: t(mode === 'show' ? 'region.dimensions_show' : 'region.dimensions_hide'),
       glyph: <svg width={51 * SCALE} height={51 * SCALE} viewBox="0 0 28 28" aria-hidden>

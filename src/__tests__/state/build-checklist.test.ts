@@ -1,50 +1,46 @@
 /**
- * The build checklist is read by someone rebuilding a map by hand, so being SHORT is the failure
+ * The build checklist is read by someone rebuilding a map by hand, so being short is the failure
  * mode: an item it omits is an item that never gets built. These probes therefore check the list
  * against the map itself, on a real generated planet, rather than against a fixture of what the
  * list is expected to say.
  */
 import { describe, it, expect } from 'vitest';
-// @ts-ignore - node:fs is untyped here (no @types/node); the test reads the shipped map JSONs.
 import { readFileSync } from 'node:fs';
 import { CommandExecutor } from '../../core/commands/command-executor';
-import { EventBus } from '../../core/commands/event-bus';
-import { PLAZA_ID } from '../../core/model/constants';
-import { createGrid, createPlazaObject } from '../../core/model/grid-model';
-import {
-  CommandType, ItemCategory, TerrainType,
-  type Command, type EditorEvents, type GenerateConfig, type GridState, type MapTemplate, type PlaceObjectCommand,
-} from '../../core/model/types';
-import { createDefaultRegistry } from '../../rules/index';
+import { createGrid } from '../../core/model/grid-model';
+import { templateLandmarkObjects } from '../../core/model/landmarks';
+import { CommandType, TerrainType, type Command, type GridState, type MapTemplate, type PlaceObjectCommand } from '../../core/model/types';
+import { defaultConfig, type GenerateConfig } from '../../tools/generation/recipe';
 import { buildChecklist } from '../../state/build-checklist';
 import { getRoadMaterials } from '../../state/catalog';
 import { getMapStats } from '../../state/map-stats';
-import { getObjectIndex, roadLookup } from '../../state/object-index';
-import { clearAllObjects, clearAllTerrain, generateTerrain } from '../../tools/generation/terrain-generator';
+import { getObjectIndex } from '../../state/object-index';
+import { clearAllObjects, clearAllTerrain, generateTerrain } from '../../tools/generation';
+import { LANDMARKS } from '../../core/game/profile';
+import { ANCHOR_LANDMARK } from '../_support/anchor';
+import { makeExecutor } from '../_support/map-state';
+import { ItemCategory } from '../../config/catalog/categories';
 
 function realState(file: string): GridState {
   const template = JSON.parse(readFileSync(`src/config/maps/${file}`, 'utf8')) as MapTemplate;
   const cells = createGrid(template);
   const objects = new Map();
-  const plaza = createPlazaObject(template);
-  if (plaza) objects.set(plaza.id, plaza);
-  return { template, cells, objects, lockedLayers: new Set() };
+  for (const landmark of templateLandmarkObjects(template)) objects.set(landmark.id, landmark);
+  return { template, cells, objects, objectsVersion: 0, cellsVersion: 0, lockedLayers: new Set() };
 }
 
 /** A generated planet on a shipped map: real terrain at several layers, real water, and the whole
  *  planet generator's output (buildings, trees, flora, facilities, crossings, roads). */
 function generated(): { state: GridState; exec: CommandExecutor } {
   const state = realState('hexia.json');
-  const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
-  const config: GenerateConfig = {
-    algorithm: 'designed', mode: 'mixed', corridorWidth: 1, maxElevation: 5, seed: 7, region: null,
-  };
+  const exec = makeExecutor(state);
+  const config: GenerateConfig = defaultConfig('designed', { maxElevation: 5, seed: 7 });
   const run = (c: Command) => exec.execute(c);
-  const start = exec.getUndoStackSize();
-  clearAllObjects(state, run);
-  clearAllTerrain(state, run);
-  generateTerrain(config, state, run, exec.getRegistry());
-  exec.commitStroke(start);
+  const start = exec.beginStroke();
+  clearAllObjects({ state, execute: run });
+  clearAllTerrain({ state, execute: run });
+  generateTerrain({ state, execute: run, reg: exec.getRegistry() }, config);
+  start.commit();
   return { state, exec };
 }
 
@@ -76,17 +72,18 @@ describe('build checklist against a real generated map', () => {
       expect(listed.has(item.catalogId), `${item.catalogId} listed twice`).toBe(false);
       listed.set(item.catalogId, item.count);
     }
-    for (const [id, n] of counts) {
-      if (id === PLAZA_ID) continue;
-      expect(listed.get(id), `${id} missing from the checklist`).toBe(n);
+    for (const item of list.landmarks) {
+      expect(listed.has(item.catalogId), `${item.catalogId} listed twice`).toBe(false);
+      listed.set(item.catalogId, item.count);
     }
+    for (const [id, n] of counts) expect(listed.get(id), `${id} missing from the checklist`).toBe(n);
     // …and nothing invented: every listed id is actually on the map.
     for (const [id, n] of listed) expect(counts.get(id), `${id} listed but not placed`).toBe(n);
   });
 
   it('nothing falls between the sections: the counts add up to every object on the map', () => {
     const placed = list.groups.reduce((n, g) => n + g.total, 0);
-    expect(placed + list.roadTotal + (list.hasPlaza ? 1 : 0) + list.unresolved).toBe(state.objects.size);
+    expect(placed + list.roadTotal + list.landmarkTotal + list.unresolved).toBe(state.objects.size);
     expect(list.unresolved, 'the shipped catalog names everything the generator places').toBe(0);
   });
 
@@ -132,11 +129,11 @@ describe('build checklist against a real generated map', () => {
     }
   });
 
-  it('the locked plaza is named as part of the map, never as a material', () => {
-    expect(state.objects.has(PLAZA_ID), 'the map under test has a plaza').toBe(true);
-    expect(list.hasPlaza).toBe(true);
+  it('the landmarks are listed in their own section, never as a material', () => {
+    expect(state.objects.has(ANCHOR_LANDMARK.id), 'the map under test has a plaza').toBe(true);
+    expect(list.landmarks.map((i) => i.catalogId)).toEqual(LANDMARKS.map((l) => l.id));
     const ids = [...list.groups.flatMap((g) => g.items), ...list.roads].map((i) => i.catalogId);
-    expect(ids).not.toContain(PLAZA_ID);
+    for (const landmark of LANDMARKS) expect(ids).not.toContain(landmark.id);
   });
 
   it('the six placeable categories are always present, in build order', () => {
@@ -161,8 +158,7 @@ describe('road surfaces', () => {
     let n = 0;
     for (const material of getRoadMaterials()) {
       const cmd: PlaceObjectCommand = {
-        type: CommandType.PlaceObject, timestamp: 0,
-        object: {
+        type: CommandType.PlaceObject,         object: {
           id: `checklist-road-${n}`, catalogId: material.id,
           position: { x: 1 + n, y: 1 }, rotation: 0, elevation: 0,
         },
@@ -185,14 +181,20 @@ describe('road surfaces', () => {
   });
 });
 
-describe('an empty map', () => {
-  it('lists nothing but still names the plaza the map came with', () => {
-    const state = realState('hexia.json');
-    const list = buildChecklist(state);
-    expect(list.groups.every((g) => g.items.length === 0)).toBe(true);
-    expect(list.roads).toEqual([]);
-    expect(list.layers).toEqual([]);
-    expect(list.hasPlaza).toBe(true);
-    expect(list.unresolved).toBe(0);
-  });
+describe('an empty built-in map', () => {
+  for (const file of ['hexia.json', 'tafa.json']) {
+    it(`${file} lists nothing placed but names every landmark the map came with`, () => {
+      const state = realState(file);
+      const list = buildChecklist(state);
+      expect(list.groups.every((g) => g.items.length === 0)).toBe(true);
+      expect(list.roads).toEqual([]);
+      expect(list.layers).toEqual([]);
+      expect(list.landmarks.map((i) => [i.catalogId, i.count])).toEqual(LANDMARKS.map((l) => [l.id, 1]));
+      expect(list.landmarkTotal).toBe(LANDMARKS.length);
+      expect(list.unresolved).toBe(0);
+      const placed = list.groups.reduce((n, g) => n + g.total, 0);
+      expect(placed + list.roadTotal + list.landmarkTotal + list.unresolved).toBe(state.objects.size);
+      expect(list.objectTotal).toBe(state.objects.size);
+    });
+  }
 });

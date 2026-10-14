@@ -1,45 +1,49 @@
 /**
- * WHAT A SMALL BOX DOES DIFFERENTLY, pinned on pictures whose right answer is arithmetic.
+ * What a small box does differently, pinned on pictures whose right answer is arithmetic.
  *
  * The engine's small-box treatment (`tools/generation/stencil/stencil-small.ts`) is three levers over
  * one gate, and every case here is about one of them:
  *
- *  - the GATE: full below `SMALL_BOX_FULL`, blended to nothing at `SMALL_BOX_OFF`, and a caller above
+ *  - the gate: full below `SMALL_BOX_FULL`, blended to nothing at `SMALL_BOX_OFF`, and a caller above
  *    it must produce exactly what it produced before there was a small-box path at all — the
  *    large-scale output of this generator is frozen by fingerprint, so "off" has to mean off.
- *  - the HUE LIFT: a palette of one hue can only tell two areas apart by lightness, so hue is spent on
- *    lightness. Two areas of the SAME tone and different colour must arrive as different tiers.
- *  - the AREAS: what a small box has to spend its few palette entries on, and a speck is not one.
+ *  - the hue lift: a palette of one hue can only tell two areas apart by lightness, so hue is spent on
+ *    lightness. Two areas of the same tone and different colour must arrive as different tiers.
+ *  - the areas: what a small box has to spend its few palette entries on, and a speck is not one.
  */
 import { describe, it, expect } from 'vitest';
 import { CommandExecutor } from '../../../../core/commands/command-executor';
-import { EventBus } from '../../../../core/commands/event-bus';
-import { createDefaultRegistry } from '../../../../rules';
-import { roadLookup } from '../../../../state/object-index';
-import { ItemCategory, TerrainType, type EditorEvents, type GridState, type Stencil } from '../../../../core/model/types';
-import { makeState } from '../../../rules/_helpers';
+import { TerrainType, type GridState } from '../../../../core/model/types';
+import { type Stencil } from '../../../../tools/generation/recipe';
+import { makeState, makeExecutor } from '../../../_support/map-state';
 import {
-  allocateEntries, areaSalience, AREA_MIN, bedCells, blendColour, cellDepths, coherentAreas, figureRim,
-  fuseAreas, hueMatched, hueOf, hueReach, hueToneOffsets, mergeToTarget, nearestEntry, regionFlatness,
-  regionTarget, planBorrow, planColourFill, settleWaterBodies, signedTurn, smallBoxWeight,
-  type Area, type AreaReading, type FillGate,
-  BORROW_ACCENT_SHARE, FILL_BUDGET_SHARE, FILL_HUE_MAX, FILL_MAX_REGIONS,
-  HUE_CHROMA_MIN, HUE_RANGE_SHARE, REGION_TARGET_MAX, REGION_TARGET_MIN,
-  SMALL_BOX_FULL, SMALL_BOX_OFF, WATER_BODY_MIN,
+  bedCells, hueReach, hueToneOffsets, planBorrow, planColorFill, settleWaterBodies, smallBoxWeight, type FillGate,
 } from '../../../../tools/generation/stencil/stencil-small';
+import {
+  allocateEntries, areaSalience, AREA_MIN, cellDepths, coherentAreas, figureRim, fuseAreas, mergeToTarget, regionFlatness,
+  regionTarget, type Area, type AreaReading,
+} from '../../../../tools/generation/stencil/stencil-areas';
+import { HUE_CHROMA_MIN, blendColor, hueMatched, hueOf, luma, nearestEntry, signedTurn } from '../../../../tools/generation/stencil/color';
 import { FEATURE_MAX_SHARE } from '../../../../tools/generation/stencil/stencil-feature';
 import { layStencilColor } from '../../../../tools/generation/stencil/stencil-generator';
-import { luma, paletteToneRange, terrainPalette } from '../../../../tools/generation/stencil/stencil';
+import { paletteToneRange, terrainPalette } from '../../../../tools/generation/stencil/stencil';
 import { declaredColorPalette } from '../../../../tools/generation/stencil/stencil-palette';
 import { getCatalogItem } from '../../../../state/catalog';
-import { ELEVATION_COLORS } from '../../../../core/model/constants';
-import { hexStringToNumber } from '../../../../core/model/colors';
+import { ELEVATION_COLORS } from '../../../../core/model/palette';
+import { hexStringToNumber } from '../../../../core/base/color';
+import { ItemCategory } from '../../../../config/catalog/categories';
+
+const square = (side: number) => ({ width: side, height: side });
+/** The gate's edges as the weight reads them: the last side treated in full, and the first side left alone. */
+const SIDES = Array.from({ length: 128 }, (_, side) => side);
+const SMALL_BOX_FULL = SIDES.filter((side) => smallBoxWeight(square(side)) === 1).at(-1)!;
+const SMALL_BOX_OFF = SIDES.find((side) => smallBoxWeight(square(side)) === 0)!;
 
 const exec = (state: GridState): CommandExecutor =>
-  new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
+  makeExecutor(state);
 
 /**
- * A fully covered stencil whose colour each cell takes from `at`, read as a DRAWING.
+ * A fully covered stencil whose colour each cell takes from `at`, read as a drawing.
  *
  * The nature is stated because these cases are about one lever each: a photographic reading diffuses
  * its quantisation error across the picture, and on a flat synthetic half that dither is most of what
@@ -54,7 +58,7 @@ function paint(side: number, at: (x: number, y: number) => number): Stencil {
   };
 }
 
-/** A colour of a given HUE at a given tone: what the eye tells apart by colour alone. `luma`'s own
+/** A colour of a given hue at a given tone: what the eye tells apart by colour alone. `luma`'s own
  *  weights, solved for the scale of a fixed direction, so the two halves of a case have one tone. */
 function hueAtTone(dir: readonly [number, number, number], tone: number): number {
   const weight = 0.299 * dir[0] + 0.587 * dir[1] + 0.114 * dir[2];
@@ -64,7 +68,7 @@ function hueAtTone(dir: readonly [number, number, number], tone: number): number
 }
 
 // Kept unsaturated enough that no channel clips on the way to the tone asked for: what these cases
-// need is two colours of ONE lightness, and a clipped channel is a different lightness.
+// need is two colours of one lightness, and a clipped channel is a different lightness.
 /** The terrain ramp's own tonal span, and the hue reach a full-weight small box takes out of it. */
 const RAMP = paletteToneRange(terrainPalette(8, false));
 const FULL_REACH = hueReach(1, RAMP);
@@ -91,16 +95,20 @@ function tiers(side: number, run: (state: GridState) => void): number[] {
 function build(stencil: Stencil): number[] {
   return tiers(stencil.width, (state) => {
     const e = exec(state);
-    layStencilColor(state, { origin: { x: 4, y: 4 }, stencil }, 8, (c) => e.execute(c));
-    expect(e.commitStroke(0)).toEqual([]);
+    const whole = e.beginStroke();
+    layStencilColor(state, { origin: { x: 4, y: 4 }, stencil }, (c) => e.execute(c), { maxElevation: 8 });
+    expect(whole.commit()).toEqual([]);
   });
 }
 
 describe('the small-box gate', () => {
   it('is full in a small box, blended between, and off in a large one', () => {
     expect(smallBoxWeight({ width: 16, height: 16 })).toBe(1);
-    expect(smallBoxWeight({ width: SMALL_BOX_FULL, height: SMALL_BOX_FULL })).toBe(1);
-    expect(smallBoxWeight({ width: SMALL_BOX_OFF, height: SMALL_BOX_OFF })).toBe(0);
+    expect(SMALL_BOX_FULL).toBeGreaterThanOrEqual(16);
+    expect(SMALL_BOX_OFF).toBeLessThan(62);
+    for (let side = SMALL_BOX_FULL; side <= SMALL_BOX_OFF; side++) {
+      expect(smallBoxWeight(square(side))).toBeCloseTo((SMALL_BOX_OFF - side) / (SMALL_BOX_OFF - SMALL_BOX_FULL), 12);
+    }
     expect(smallBoxWeight({ width: 62, height: 62 })).toBe(0);
     expect(smallBoxWeight({ width: 120, height: 96 })).toBe(0);
     const between = smallBoxWeight({ width: 28, height: 28 });
@@ -117,7 +125,7 @@ describe('the small-box gate', () => {
 
 describe('hue is spent on tone where the palette has only tone', () => {
   it('turns a colour difference at one tone into a tier difference', () => {
-    // Two halves of one lightness, red and green: nothing about their TONE separates them, so the
+    // Two halves of one lightness, red and green: nothing about their tone separates them, so the
     // green ramp answered with one tier for both and the picture arrived as a flat slab.
     const side = 16, mid = side / 2;
     const tone = 120;
@@ -177,7 +185,7 @@ describe('hue is spent on tone where the palette has only tone', () => {
     expect(Math.abs(half[15]!)).toBeCloseTo(Math.abs(full[15]!) / 2, 4);
     expect(hueToneOffsets(stencil, () => true, hueReach(0, RAMP))).toBeNull();
     // And the reach is a share of the palette's own range, so a narrower palette spends less tone.
-    expect(hueReach(1, RAMP)).toBeCloseTo(((RAMP.hi - RAMP.lo) * HUE_RANGE_SHARE) / 2, 5);
+    expect(hueReach(1, { ...RAMP, hi: (RAMP.lo + RAMP.hi) / 2 })).toBeCloseTo(hueReach(1, RAMP) / 2, 5);
   });
 
   it('hueToneOffsets is one answer per picture, asked twice', () => {
@@ -239,7 +247,7 @@ describe('the areas a small box spends its palette on', () => {
 
   it('keeps a speck that is nothing like its neighbour, which is what saves an outline', () => {
     // A one-cell dark rim is a chain of one- and two-cell pieces under 4-connectivity, so a fold that
-    // asked only about SIZE swallowed a drawing's outline into the body it surrounds.
+    // asked only about size swallowed a drawing's outline into the body it surrounds.
     const side = 7;
     const rim = (x: number, y: number): boolean => x === 0 || y === 0 || x === side - 1 || y === side - 1;
     const s = paint(side, (x, y) => (rim(x, y) ? 0x101010 : 0xf0f0f0));
@@ -337,9 +345,9 @@ describe('which entry each area is told in', () => {
   });
 
   it('blends a colour toward another, and at the ends is each one exactly', () => {
-    expect(blendColour(0x000000, 0xffffff, 0)).toBe(0x000000);
-    expect(blendColour(0x000000, 0xffffff, 1)).toBe(0xffffff);
-    expect(blendColour(0x000000, 0x646464, 0.5)).toBe(0x323232);
+    expect(blendColor(0x000000, 0xffffff, 0)).toBe(0x000000);
+    expect(blendColor(0x000000, 0xffffff, 1)).toBe(0xffffff);
+    expect(blendColor(0x000000, 0x646464, 0.5)).toBe(0x323232);
   });
 });
 
@@ -353,7 +361,7 @@ describe('a pond wants a body', () => {
     const isWater = new Uint8Array(side * side);
     isWater[2 * side + 2] = 1;
     // Everything around it is far below the water's tone, so the speck has nowhere to grow.
-    const moved = settleWaterBodies(s, isWater, 1, () => 10, 200, 15, () => true);
+    const moved = settleWaterBodies(s, isWater, 1, { tone: () => 10, cut: 200, step: 15 }, () => true);
     expect(moved).toBe(1);
     expect([...isWater].filter(Boolean)).toHaveLength(0);
   });
@@ -364,9 +372,9 @@ describe('a pond wants a body', () => {
     const isWater = new Uint8Array(side * side);
     isWater[2 * side + 2] = 1;
     const tone = (i: number): number => (i === 2 * side + 3 ? 199 : i === 3 * side + 2 ? 198 : 100);
-    settleWaterBodies(s, isWater, 1, tone, 200, 15, () => true);
+    settleWaterBodies(s, isWater, 1, { tone: tone, cut: 200, step: 15 }, () => true);
     const body = [...isWater].filter(Boolean).length;
-    expect(body).toBe(WATER_BODY_MIN);
+    expect(body).toBe(3);                         // the least body water keeps
     expect(isWater[2 * side + 3]).toBe(1);          // the brightest neighbour went first
     expect(isWater[3 * side + 2]).toBe(1);
   });
@@ -376,7 +384,7 @@ describe('a pond wants a body', () => {
     const s = host(side);
     const isWater = new Uint8Array(side * side);
     for (const i of [2 * side + 2, 2 * side + 3, 3 * side + 2]) isWater[i] = 1;
-    expect(settleWaterBodies(s, isWater, 1, () => 210, 200, 15, () => true)).toBe(0);
+    expect(settleWaterBodies(s, isWater, 1, { tone: () => 210, cut: 200, step: 15 }, () => true)).toBe(0);
     expect([...isWater].filter(Boolean)).toHaveLength(3);
   });
 
@@ -386,7 +394,7 @@ describe('a pond wants a body', () => {
     const isWater = new Uint8Array(side * side);
     isWater[2 * side + 2] = 1;
     const closed = new Set([2 * side + 3, 3 * side + 2, 2 * side + 1, side + 2]);
-    settleWaterBodies(s, isWater, 1, () => 210, 200, 15, (i) => !closed.has(i));
+    settleWaterBodies(s, isWater, 1, { tone: () => 210, cut: 200, step: 15 }, (i) => !closed.has(i));
     expect([...isWater].filter(Boolean)).toHaveLength(0);   // nowhere legal to grow, so back to land
   });
 
@@ -395,18 +403,18 @@ describe('a pond wants a body', () => {
     const s = host(side);
     const isWater = new Uint8Array(side * side);
     isWater[2 * side + 2] = 1;
-    expect(settleWaterBodies(s, isWater, 0, () => 10, 200, 15, () => true)).toBe(0);
+    expect(settleWaterBodies(s, isWater, 0, { tone: () => 10, cut: 200, step: 15 }, () => true)).toBe(0);
     expect(isWater[2 * side + 2]).toBe(1);
   });
 });
 
 /**
- * THE PICTURE AS A COMPOSITION: a few spatial regions rather than a quantisation of every cell.
+ * The picture as a composition: a few spatial regions rather than a quantisation of every cell.
  *
  * Three things are pinned here, and each is a way the composition can be wrong rather than merely
- * different: the merge keeps a small HIGH-CONTRAST feature and spends its budget on the near-identical
- * neighbours instead; the OUTLINE survives as one region, which is what it never is when read as
- * coherent areas; and a region that is genuinely a GRADIENT keeps its own shading rather than being
+ * different: the merge keeps a small high-contrast feature and spends its budget on the near-identical
+ * neighbours instead; the outline survives as one region, which is what it never is when read as
+ * coherent areas; and a region that is genuinely a gradient keeps its own shading rather than being
  * posterised to one entry.
  */
 describe('a small box composes the picture in regions', () => {
@@ -415,18 +423,20 @@ describe('a small box composes the picture in regions', () => {
 
   it('asks for three to six regions, by the box\'s own side', () => {
     const none: Area[] = [];
-    expect(regionTarget({ width: 12, height: 12 }, none, 1)).toBe(REGION_TARGET_MIN);
+    expect(regionTarget({ width: 12, height: 12 }, none, 1)).toBe(3);
+    expect(regionTarget({ width: 4, height: 4 }, none, 1)).toBe(3);
     expect(regionTarget({ width: 16, height: 16 }, none, 1)).toBe(4);
     expect(regionTarget({ width: 20, height: 20 }, none, 1)).toBe(5);
     expect(regionTarget({ width: 24, height: 24 }, none, 1)).toBe(6);
-    expect(regionTarget({ width: 48, height: 48 }, none, 1)).toBe(REGION_TARGET_MAX);
+    expect(regionTarget({ width: 48, height: 48 }, none, 1)).toBe(6);
+    expect(regionTarget({ width: 96, height: 96 }, none, 1)).toBe(6);
   });
 
   it('blends back toward the picture\'s own areas as the gate closes', () => {
     const side = 20;
     const s = paint(side, (x, y) => ((x + y) % 3) * 0x303030 + 0x202020);
     const areas = coherentAreas(s, all, colourOf(s));
-    expect(areas.length).toBeGreaterThan(REGION_TARGET_MAX);
+    expect(areas.length).toBeGreaterThan(6);                   // more than the most regions any box asks for
     // Half weight is halfway between the composition and the reading it was made from, so a region one
     // cell wider cannot re-compose the picture.
     const half = regionTarget(s, areas, 0.5);
@@ -472,7 +482,7 @@ describe('a small box composes the picture in regions', () => {
   });
 
   it('reads a drawing\'s outline as ONE region, which is what it never is on its own', () => {
-    // A DIAMOND with a dark line round it. Under 4-connectivity a diagonal line is a chain of separate
+    // A diamond with a dark line round it. Under 4-connectivity a diagonal line is a chain of separate
     // pieces — each step touches the next only at a corner — so no coherent area is the outline and it
     // has to be constructed.
     const side = 21, mid = 10, r = 9;
@@ -521,9 +531,9 @@ describe('a small box composes the picture in regions', () => {
     const flatArea = paint(side, () => 0x808080);
     expect(regionFlatness(flatArea, coherentAreas(flatArea, all, colourOf(flatArea)), colourOf(flatArea), step))
       .toEqual([1]);
-    // A ramp across the whole picture, composed as ONE region: a wide range in small steps, which is a
+    // A ramp across the whole picture, composed as one region: a wide range in small steps, which is a
     // gradient rather than a composition the merge had no budget to separate. (A gradient is never one
-    // coherent AREA — every bucket boundary cuts it — which is why the merge is what makes it a region.)
+    // coherent area — every bucket boundary cuts it — which is why the merge is what makes it a region.)
     const ramp = paint(side, (x) => { const v = 0x50 + x * 8; return (v << 16) | (v << 8) | v; });
     const one = mergeToTarget(ramp, coherentAreas(ramp, all, colourOf(ramp)), 1).areas;
     expect(one).toHaveLength(1);
@@ -532,11 +542,11 @@ describe('a small box composes the picture in regions', () => {
 });
 
 /**
- * WHAT A MATERIAL LETS A PICTURE BORROW, and the two promises that bound it: the map stays legal, and
+ * What a material lets a picture borrow, and the two promises that bound it: the map stays legal, and
  * the material a visitor asked for is the material they get.
  *
  * The green ramp is eight greens, so a warm or a grey region arrives as a tier of green and says nothing
- * about its own colour. The road surfaces carry real hues and are COATINGS, so a region told in one keeps
+ * about its own colour. The road surfaces carry real hues and are coatings, so a region told in one keeps
  * the terrain underneath it — which is what makes this a borrow rather than a substitution.
  */
 describe('a small box borrows a hue its own palette has none of', () => {
@@ -548,10 +558,10 @@ describe('a small box borrows a hue its own palette has none of', () => {
   it('borrows for a region the ramp cannot say, and not for one it can', () => {
     const warm = region([0, 1, 2, 3, 4], 0xc06030);
     const green = region([10, 11, 12, 13, 14], hexStringToNumber(ELEVATION_COLORS[3]!));
-    const plan = planBorrow([warm, green], -1, own, ramp, roads, 'free');
+    const plan = planBorrow({ regions: [warm, green], rim: -1 }, own, ramp, roads, 'free');
     expect(plan.has(0)).toBe(true);
     expect(plan.has(1)).toBe(false);
-    // And what it borrows is a WARM surface: the point is the hue, not merely a second material.
+    // And what it borrows is a warm surface: the point is the hue, not merely a second material.
     const took = roads.find((entry) => entry.catalogId === plan.get(0))!;
     expect(hueOf(took.rgb).hue).toBeLessThan(60);
     expect(hueOf(took.rgb).chroma).toBeGreaterThan(HUE_CHROMA_MIN);
@@ -560,7 +570,7 @@ describe('a small box borrows a hue its own palette has none of', () => {
   it('never borrows for the outline, whose job is the boundary', () => {
     const rim = region([0, 1, 2, 3, 4, 5], 0x40201a);
     const body = region([10, 11, 12, 13, 14], 0xc06030);
-    const plan = planBorrow([rim, body], 0, own, ramp, roads, 'free');
+    const plan = planBorrow({ regions: [rim, body], rim: 0 }, own, ramp, roads, 'free');
     expect(plan.has(0)).toBe(false);
     expect(plan.has(1)).toBe(true);
   });
@@ -575,11 +585,11 @@ describe('a small box borrows a hue its own palette has none of', () => {
     const regions = [big, mid, small];
     const cells = (plan: Map<number, string>): number =>
       [...plan.keys()].reduce((sum, id) => sum + regions[id]!.cells.length, 0);
-    const accent = planBorrow(regions, -1, own, ramp, roads, 'accent');
+    const accent = planBorrow({ regions, rim: -1 }, own, ramp, roads, 'accent');
     expect(accent.has(0)).toBe(false);                       // the subject's own mass stays in the ramp
-    expect(cells(accent)).toBeLessThanOrEqual(90 * BORROW_ACCENT_SHARE);
-    expect(cells(planBorrow(regions, -1, own, ramp, roads, 'free'))).toBe(90);
-    expect(planBorrow(regions, -1, own, ramp, roads, 'none').size).toBe(0);
+    expect(cells(accent)).toBeLessThanOrEqual(90 / 3);
+    expect(cells(planBorrow({ regions, rim: -1 }, own, ramp, roads, 'free'))).toBe(90);
+    expect(planBorrow({ regions, rim: -1 }, own, ramp, roads, 'none').size).toBe(0);
   });
 
   it('borrows NOTHING for a mountain or a water picture, whatever the colours are', () => {
@@ -591,16 +601,16 @@ describe('a small box borrows a hue its own palette has none of', () => {
       region([...Array(60).keys()].map((i) => 100 + i), 0xc06030),
       region([...Array(20).keys()].map((i) => 200 + i), 0xa04828),
     ];
-    expect(planBorrow(regions, 0, own, ramp, roads, 'none').size).toBe(0);
-    expect(planColourFill(regions, 0, own, ramp, roads, {
+    expect(planBorrow({ regions, rim: 0 }, own, ramp, roads, 'none').size).toBe(0);
+    expect(planColorFill({ regions, rim: 0 }, own, ramp, roads, {
       bodyShare: FEATURE_MAX_SHARE, paved: new Set<number>(), ground: () => 99, policy: 'none', coated: 0,
     })).toEqual([]);
   });
 
   it('planBorrow is one answer per picture, asked twice', () => {
     const regions = [region([0, 1, 2], 0xc06030), region([10, 11, 12], 0x6080c0), region([20, 21, 22], 0x909090)];
-    const once = [...planBorrow(regions, -1, own, ramp, roads, 'free')];
-    expect(once).toEqual([...planBorrow(regions, -1, own, ramp, roads, 'free')]);
+    const once = [...planBorrow({ regions, rim: -1 }, own, ramp, roads, 'free')];
+    expect(once).toEqual([...planBorrow({ regions, rim: -1 }, own, ramp, roads, 'free')]);
   });
 
   it('lays the borrowed paving on the map, legally, and leaves the terrain under it', () => {
@@ -610,10 +620,9 @@ describe('a small box borrows a hue its own palette has none of', () => {
     const stencil = paint(side, (x) => (x < side / 2 ? 0xc85a2a : hexStringToNumber(ELEVATION_COLORS[2]!)));
     const state = makeState(side + 8, side + 8);
     const e = exec(state);
-    const res = layStencilColor(
-      state, { origin: { x: 4, y: 4 }, stencil }, 8, (c) => e.execute(c), 1, 'palette',
-    );
-    expect(e.commitStroke(0)).toEqual([]);                   // the map is legal, coatings and all
+    const whole = e.beginStroke();
+    const res = layStencilColor(state, { origin: { x: 4, y: 4 }, stencil }, (c) => e.execute(c), { maxElevation: 8, water: 'palette' });
+    expect(whole.commit()).toEqual([]);                   // the map is legal, coatings and all
     expect(res.coated).toBeGreaterThan(0);
     const paved = [...state.objects.values()];
     expect(paved.length).toBe(res.coated);
@@ -633,10 +642,9 @@ describe('a small box borrows a hue its own palette has none of', () => {
     for (const water of ['none', 'primary'] as const) {
       const state = makeState(side + 8, side + 8);
       const e = exec(state);
-      const res = layStencilColor(
-        state, { origin: { x: 4, y: 4 }, stencil }, 8, (c) => e.execute(c), 1, water,
-      );
-      expect(e.commitStroke(0)).toEqual([]);
+      const whole = e.beginStroke();
+      const res = layStencilColor(state, { origin: { x: 4, y: 4 }, stencil }, (c) => e.execute(c), { maxElevation: 8, water });
+      expect(whole.commit()).toEqual([]);
       expect(res.coated).toBeUndefined();
       expect(state.objects.size).toBe(0);
       expect(res.placed).toBeGreaterThan(0);                 // the picture itself is still built
@@ -648,23 +656,22 @@ describe('a small box borrows a hue its own palette has none of', () => {
     const stencil = paint(side, (x) => (x < side / 2 ? 0xc85a2a : hexStringToNumber(ELEVATION_COLORS[2]!)));
     const state = makeState(side + 8, side + 8);
     const e = exec(state);
-    const res = layStencilColor(
-      state, { origin: { x: 4, y: 4 }, stencil }, 8, (c) => e.execute(c), 1, 'palette',
-    );
-    expect(e.commitStroke(0)).toEqual([]);
+    const whole = e.beginStroke();
+    const res = layStencilColor(state, { origin: { x: 4, y: 4 }, stencil }, (c) => e.execute(c), { maxElevation: 8, water: 'palette' });
+    expect(whole.commit()).toEqual([]);
     expect(res.coated).toBeUndefined();
     expect(state.objects.size).toBe(0);
   });
 });
 
 /**
- * A BODY THE GROUND REFUSED, and the bed of its own colour that says so.
+ * A body the ground refused, and the bed of its own colour that says so.
  *
- * The borrow above pays for a region only where the paving can COVER it, and the accent
+ * The borrow above pays for a region only where the paving can cover it, and the accent
  * (`stencil-feature.ts`) is refused a region that is the subject's own mass — so a body whose colour no
  * green approximates, standing on ground too broken to hold a paved region, would arrive entirely in
  * green. A bed is one block inside such a body: bounded so it cannot read as the region's surface, laid
- * only where the borrowed material says the region's OWN hue, and absent where nothing can say it.
+ * only where the borrowed material says the region's own hue, and absent where nothing can say it.
  */
 describe('a body no other instrument can say gets a bed of borrowed colour', () => {
   const roads = declaredColorPalette('roads');
@@ -680,11 +687,11 @@ describe('a body no other instrument can say gets a bed of borrowed colour', () 
   it('fills a body the ramp is silent about, and not one it approximates', () => {
     const warm = body(60, 0xc0481b);
     const green = body(60, hexStringToNumber(ELEVATION_COLORS[4]!), 1000);
-    expect(planColourFill([warm], -1, own, ramp, roads, gate()).map((f) => f.region)).toEqual([0]);
-    expect(planColourFill([green], -1, own, ramp, roads, gate())).toEqual([]);
+    expect(planColorFill({ regions: [warm], rim: -1 }, own, ramp, roads, gate()).map((f) => f.region)).toEqual([0]);
+    expect(planColorFill({ regions: [green], rim: -1 }, own, ramp, roads, gate())).toEqual([]);
     // And the bed's own material carries the body's hue rather than merely a second colour.
-    const took = roads.find((entry) => entry.catalogId === planColourFill([warm], -1, own, ramp, roads, gate())[0]!.catalogId)!;
-    expect(Math.abs(signedTurn(hueOf(0xc0481b).hue, hueOf(took.rgb).hue))).toBeLessThanOrEqual(FILL_HUE_MAX);
+    const took = roads.find((entry) => entry.catalogId === planColorFill({ regions: [warm], rim: -1 }, own, ramp, roads, gate())[0]!.catalogId)!;
+    expect(Math.abs(signedTurn(hueOf(0xc0481b).hue, hueOf(took.rgb).hue))).toBeLessThanOrEqual(40);
   });
 
   it('says nothing for a body with no hue to say, however far off the ramp it is', () => {
@@ -693,8 +700,8 @@ describe('a body no other instrument can say gets a bed of borrowed colour', () 
     const grey = body(60, 0xcecece);
     const black = body(60, 0x1a1017);
     expect(nearestEntry(ramp, 0xcecece).off).toBeGreaterThan(0);
-    expect(planColourFill([grey], -1, own, ramp, roads, gate())).toEqual([]);
-    expect(planColourFill([black], -1, own, ramp, roads, gate())).toEqual([]);
+    expect(planColorFill({ regions: [grey], rim: -1 }, own, ramp, roads, gate())).toEqual([]);
+    expect(planColorFill({ regions: [black], rim: -1 }, own, ramp, roads, gate())).toEqual([]);
   });
 
   it('leaves the outline, the features and an already-paved region alone', () => {
@@ -702,20 +709,20 @@ describe('a body no other instrument can say gets a bed of borrowed colour', () 
     const mass = body(60, 0xc0481b, 1000);
     const speck = body(4, 0xc0481b, 2000);              // under an eighth of the figure: the accent's
     const regions = [rim, mass, speck];
-    expect(planColourFill(regions, 0, own, ramp, roads, gate()).map((f) => f.region)).toEqual([1]);
-    expect(planColourFill(regions, 0, own, ramp, roads, gate({ paved: new Set([1]) }))).toEqual([]);
+    expect(planColorFill({ regions, rim: 0 }, own, ramp, roads, gate()).map((f) => f.region)).toEqual([1]);
+    expect(planColorFill({ regions, rim: 0 }, own, ramp, roads, gate({ paved: new Set([1]) }))).toEqual([]);
   });
 
   it('spends a sixteenth of the figure over at most two bodies, and never a stray tile', () => {
     const regions = [body(60, 0xc0481b), body(50, 0x2a3f8f, 1000), body(40, 0xb08a2a, 2000)];
     const figure = 150;
-    const plan = planColourFill(regions, -1, own, ramp, roads, gate());
-    expect(plan.length).toBe(FILL_MAX_REGIONS);
-    expect(plan.reduce((sum, fill) => sum + fill.want, 0)).toBeLessThanOrEqual(Math.round(figure * FILL_BUDGET_SHARE));
+    const plan = planColorFill({ regions, rim: -1 }, own, ramp, roads, gate());
+    expect(plan.length).toBe(2);
+    expect(plan.reduce((sum, fill) => sum + fill.want, 0)).toBeLessThanOrEqual(Math.round(figure / 16));
     // The ground is the other bound, and a body that can hold only one cell holds none.
-    expect(planColourFill(regions, -1, own, ramp, roads, gate({ ground: () => 3 }))
+    expect(planColorFill({ regions, rim: -1 }, own, ramp, roads, gate({ ground: () => 3 }))
       .every((fill) => fill.want === 3)).toBe(true);
-    expect(planColourFill(regions, -1, own, ramp, roads, gate({ ground: () => 1 }))).toEqual([]);
+    expect(planColorFill({ regions, rim: -1 }, own, ramp, roads, gate({ ground: () => 1 }))).toEqual([]);
   });
 
   it('reads the material through the SAME policy the paving does, and spends only what is left', () => {
@@ -723,15 +730,15 @@ describe('a body no other instrument can say gets a bed of borrowed colour', () 
     // and a bounded one may take only what its own share has not already been paved with — a third of
     // this 60-cell figure is 20 cells, so 17 already laid leaves 3 and 19 leaves too few for a bed.
     const regions = [body(60, 0xc0481b)];
-    expect(planColourFill(regions, -1, own, ramp, roads, gate({ policy: 'none' }))).toEqual([]);
-    expect(planColourFill(regions, -1, own, ramp, roads, gate({ policy: 'accent', coated: 17 }))[0]!.want).toBe(3);
-    expect(planColourFill(regions, -1, own, ramp, roads, gate({ policy: 'accent', coated: 19 }))).toEqual([]);
+    expect(planColorFill({ regions, rim: -1 }, own, ramp, roads, gate({ policy: 'none' }))).toEqual([]);
+    expect(planColorFill({ regions, rim: -1 }, own, ramp, roads, gate({ policy: 'accent', coated: 17 }))[0]!.want).toBe(3);
+    expect(planColorFill({ regions, rim: -1 }, own, ramp, roads, gate({ policy: 'accent', coated: 19 }))).toEqual([]);
   });
 
-  it('planColourFill is one answer per picture, asked twice', () => {
+  it('planColorFill is one answer per picture, asked twice', () => {
     const regions = [body(60, 0xc0481b), body(50, 0x2a3f8f, 1000)];
-    const once = planColourFill(regions, -1, own, ramp, roads, gate());
-    expect(once).toEqual(planColourFill(regions, -1, own, ramp, roads, gate()));
+    const once = planColorFill({ regions, rim: -1 }, own, ramp, roads, gate());
+    expect(once).toEqual(planColorFill({ regions, rim: -1 }, own, ramp, roads, gate()));
   });
 
   it('gathers a bed around ONE seed out of the cells the ground holds', () => {
@@ -757,14 +764,14 @@ describe('a body no other instrument can say gets a bed of borrowed colour', () 
 
   it('matches a hue or answers nothing', () => {
     const greys = [{ rgb: 0x808080 }, { rgb: 0xd0d0d0 }];
-    expect(hueMatched(greys, 0xc0481b, FILL_HUE_MAX)).toBeNull();
-    for (const turn of [10, FILL_HUE_MAX]) {
+    expect(hueMatched(greys, 0xc0481b, 40)).toBeNull();
+    for (const turn of [10, 40]) {
       const match = hueMatched(roads, 0xc0481b, turn);
       if (!match) continue;
       expect(Math.abs(signedTurn(hueOf(0xc0481b).hue, hueOf(roads[match.at]!.rgb).hue))).toBeLessThanOrEqual(turn);
       expect(hueOf(roads[match.at]!.rgb).chroma).toBeGreaterThanOrEqual(HUE_CHROMA_MIN);
     }
-    expect(hueMatched(roads, 0xc0481b, FILL_HUE_MAX)).not.toBeNull();
+    expect(hueMatched(roads, 0xc0481b, 40)).not.toBeNull();
   });
 
   it('lays a bed on the map legally, inside the body, and none above the gate', () => {
@@ -776,8 +783,9 @@ describe('a body no other instrument can say gets a bed of borrowed colour', () 
       (x < side / 2 ? ((x + y) % 5 === 0 ? 0xf6f2e8 : warm) : hexStringToNumber(ELEVATION_COLORS[2]!));
     const state = makeState(side + 8, side + 8);
     const e = exec(state);
-    const res = layStencilColor(state, { origin: { x: 4, y: 4 }, stencil: paint(side, at) }, 8, (c) => e.execute(c), 1, 'palette');
-    expect(e.commitStroke(0)).toEqual([]);                   // legal, bed and all
+    const whole = e.beginStroke();
+    const res = layStencilColor(state, { origin: { x: 4, y: 4 }, stencil: paint(side, at) }, (c) => e.execute(c), { maxElevation: 8, water: 'palette' });
+    expect(whole.commit()).toEqual([]);                   // legal, bed and all
     expect(res.coated).toBeGreaterThan(0);
     const byMaterial = new Map<string, number>();
     for (const object of state.objects.values()) {
@@ -788,26 +796,23 @@ describe('a body no other instrument can say gets a bed of borrowed colour', () 
     // The bed's own signature beside the covered region's paving: a second material, and no more of it
     // than the fill's budget — a block inside a body rather than a claim on the body's surface.
     expect(byMaterial.size).toBeGreaterThan(1);
-    expect(Math.min(...byMaterial.values())).toBeLessThanOrEqual(Math.round(side * side * FILL_BUDGET_SHARE));
+    expect(Math.min(...byMaterial.values())).toBeLessThanOrEqual(Math.round((side * side) / 16));
     const big = SMALL_BOX_OFF;
     const above = makeState(big + 8, big + 8);
     const eAbove = exec(above);
-    const res2 = layStencilColor(
-      above, { origin: { x: 4, y: 4 }, stencil: paint(big, (x, y) => at(Math.floor((x * side) / big), Math.floor((y * side) / big))) },
-      8, (c) => eAbove.execute(c), 1, 'palette',
-    );
+    const res2 = layStencilColor(above, { origin: { x: 4, y: 4 }, stencil: paint(big, (x, y) => at(Math.floor((x * side) / big), Math.floor((y * side) / big))) }, (c) => eAbove.execute(c), { maxElevation: 8, water: 'palette' });
     expect(res2.coated).toBeUndefined();
     expect(above.objects.size).toBe(0);
   });
 });
 
 /**
- * THE OUTLINE'S OWN TIER, and the amplitude it stops holding down.
+ * The outline's own tier, and the amplitude it stops holding down.
  *
  * A thin dark line at a figure's edge can stand three layers above the ground beside it and no more, so
  * while the picture is kept in one order that cap is the whole picture's cap. Given its own tier, the
  * mass it encloses is free to use the ramp — at the price of the picture's own light and dark being
- * inverted across exactly that boundary, which is why it is only done where the outline is a LINE.
+ * inverted across exactly that boundary, which is why it is only done where the outline is a line.
  */
 describe('the outline is spent apart where it is a line', () => {
   const tones = terrainPalette(8, false).map((entry) => luma(entry.rgb));

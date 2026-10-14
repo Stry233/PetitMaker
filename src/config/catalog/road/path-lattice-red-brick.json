@@ -4,7 +4,7 @@
   "icon": "path-lattice-red-brick",
   "name": {
     "en": "Lattice Red Brick Path",
-    "zh": "网格红砖路",
+    "zh": "井格红砖路",
     "ja": "格子赤レンガの道",
     "ru": "Красная кирпичная дорожка «решётка»",
     "th": "ทางอิฐแดงลายตาราง",
@@ -24,5 +24,17 @@
     {
       "type": "surfaceCoating"
     }
-  ]
+  ],
+  "roadMaterial": {
+    "feather": 0.035,
+    "edge": {
+      "color": "#ffffff",
+      "pattern": {
+        "kind": "image",
+        "image": "path-lattice-red-brick",
+        "repeat": 2.5
+      }
+    },
+    "layers": []
+  }
 }

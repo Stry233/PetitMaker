@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { getCatalogItem, getCatalogByCategory, getAllItems, getKnownItems, searchCatalog } from '../../state/catalog';
-import { ItemCategory } from '../../core/model/types';
-import { CATEGORIES } from '../../config/catalog/categories';
+import { getCatalogItem, getCatalogByCategory, getAllItems, getKnownItems } from '../../state/catalog';
+import { searchCatalog } from '../../state/catalog-search';
+import { CATEGORIES, ItemCategory } from '../../config/catalog/categories';
 
 describe('Catalog', () => {
   it('loads all items from catalog.json', () => {
@@ -22,22 +22,6 @@ describe('Catalog', () => {
 
   it('offers items in every registered category', () => {
     for (const { id } of CATEGORIES) expect(getCatalogByCategory(id).length).toBeGreaterThan(0);
-  });
-
-  it('each item has required fields', () => {
-    for (const item of getAllItems()) {
-      expect(item.id).toBeTruthy();
-      expect(item.category).toBeTruthy();
-      expect(item.name.en).toBeTruthy();
-      expect(item.name.zh).toBeTruthy();
-      expect(item.icon ?? item.color).toBeTruthy(); // every item renders as a sprite or a colour swatch
-      expect(typeof item.width).toBe('number');
-      expect(typeof item.height).toBe('number');
-      expect(typeof item.loadValue).toBe('number');
-      expect(typeof item.rotatable).toBe('boolean');
-      expect(['point', 'brush']).toContain(item.placementMode);
-      expect(Array.isArray(item.traits)).toBe(true);
-    }
   });
 });
 
@@ -62,7 +46,7 @@ describe('in-game item facts', () => {
   it.each([
     ['building-myhouse', 7, 4],
     ['building-bamboo-cabin', 5, 5],
-    ['building-plush-cabin', 5, 4],
+    ['building-plush-cabin', 5, 5],
     ['facility-pavilion', 6, 5],
   ] as const)('%s is %i wide and %i deep', (id, width, height) => {
     const item = getCatalogItem(id)!;

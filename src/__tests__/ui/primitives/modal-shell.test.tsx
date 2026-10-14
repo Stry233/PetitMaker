@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 // ModalShell — the shared cozy-modal boilerplate used by all 7 modals
 // (About/Settings/Help/NewProject/Export/ExportJson/Import). It carries the
 // accessibility floor every consumer inherits for free: Escape-to-close, a
@@ -13,7 +14,8 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, fireEvent, screen } from '@testing-library/react';
 import { useState } from 'react';
-import { ModalShell, SIZE_MORPH_TWEEN } from '../../../ui/primitives/ModalShell';
+import { ModalShell } from '../../../ui/primitives/ModalShell';
+import { framerMotion } from '../../../ui/design/motion';
 
 function Harness({ initialOpen = false }: { initialOpen?: boolean } = {}) {
   const [open, setOpen] = useState(initialOpen);
@@ -181,18 +183,20 @@ describe('ModalShell — focus trap', () => {
 
 // A `motionSize` morph (ShareWindow's mode switch, among others) travels up to +420px of card
 // width/height. A fixed-damping spring's overshoot scales with travel, so a spring imperceptible on a
-// small control visibly pumps over that distance; the default morph transition is a TWEEN, which has
+// small control visibly pumps over that distance; the default morph transition is a tween, which has
 // no overshoot term to scale.
 describe('ModalShell — the default size-morph transition does not spring', () => {
+  /** The motion the shell morphs its card on, as the registry declares it. */
+  const resize = framerMotion('modal.resize') as Record<string, unknown>;
+
   it('is a tween, not a spring', () => {
-    expect(SIZE_MORPH_TWEEN.type).toBe('tween');
-    expect(SIZE_MORPH_TWEEN).not.toHaveProperty('stiffness');
-    expect(SIZE_MORPH_TWEEN).not.toHaveProperty('damping');
+    expect(resize).not.toHaveProperty('stiffness');
+    expect(resize).not.toHaveProperty('damping');
   });
 
   it('carries a duration and an ease curve, as a tween must', () => {
-    expect(SIZE_MORPH_TWEEN.duration).toBeGreaterThan(0);
-    expect(Array.isArray(SIZE_MORPH_TWEEN.ease)).toBe(true);
+    expect(resize.duration).toBeGreaterThan(0);
+    expect(Array.isArray(resize.ease)).toBe(true);
   });
 });
 

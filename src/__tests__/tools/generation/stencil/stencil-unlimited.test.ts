@@ -1,13 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { CommandExecutor } from '../../../../core/commands/command-executor';
-import { EventBus } from '../../../../core/commands/event-bus';
-import { hashJSON } from '../../../../core/model/hash';
-import { TerrainType, type EditorEvents, type StencilPlan } from '../../../../core/model/types';
-import { createDefaultRegistry } from '../../../../rules';
-import { roadLookup } from '../../../../state/object-index';
+import { hashJSON } from '../../../../core/base/hash';
+import { TerrainType } from '../../../../core/model/types';
+import { type StencilPlan } from '../../../../tools/generation/recipe';
 import { runStencilPlan } from '../../../../tools/generation/stencil/stencil-generator';
 import { declaredColorPalette } from '../../../../tools/generation/stencil/stencil-palette';
-import { makeState } from '../../../rules/_helpers';
+import { makeState, makeExecutor } from '../../../_support/map-state';
 
 function generate(kind: string, side: number): string {
   const state = makeState(40, 40);
@@ -29,7 +26,7 @@ function generate(kind: string, side: number): string {
     ...(kind === 'terrain' ? { water: 'palette' as const, decor: { palette } } : {}),
   };
   if (kind === 'terrain') plan.fill = { kind: 'terrain', terrain: TerrainType.Mountain };
-  const executor = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
+  const executor = makeExecutor(state);
   const result = runStencilPlan(state, plan, 3, c => executor.execute(c));
   return hashJSON({
     result,

@@ -3,22 +3,24 @@
  * Import planet rows ahead of the saved ones. The planet the map stands on carries a dot.
  */
 import { useLayoutEffect, useRef, type CSSProperties, type ReactNode } from 'react';
-import { ZONE_COLORS } from '../../../../core/model/constants';
-import { CellZone, type Locale, type MapTemplate } from '../../../../core/model/types';
+import { type MapTemplate } from '../../../../core/model/types';
+import { type Locale } from '../../../../core/model/locale';
 import { MAP_LIST } from '../../../../config/maps';
 import { isCustomTemplate } from '../../../../core/model/planet';
 import { iconUrl } from '../../../../assets/icon-urls';
 import { useT } from '../../../../i18n/context';
-import { shownPlanetName, type PlanetEntry } from '../../../../io/planet-library';
+import type { PlanetEntry } from '../../../../io/storage/planet-library';
+import { shownPlanetName } from '../../../../editor/session/planet-names';
 import { ActionButton } from '../../../primitives/ActionButton';
 import { ImportFileIcon, PlusIcon } from '../../../primitives/line-glyphs';
-import { paintPlanet } from '../../../primitives/planet-painter';
+import { paintPlanet } from '../../../../view/map2d/capture/planet-painter';
 import { ScrollArea } from '../../../primitives/ScrollArea';
 import { CONTROL_CLEARANCE } from '../../../primitives/use-scroll-row';
 import { cssMotion } from '../../../design/motion';
-import { font, inkTint, radii } from '../../../design/styles';
+import { font, radii, shadows } from '../../../design/styles';
 import { roleFont } from '../../../design/text-weight';
 import { skin } from '../../../design/window-skin';
+import { SEA } from '../../../design/tokens';
 
 /** One planet the window can choose: a built-in by its template id, a saved one by its entry id, and an
  *  unsaved current planet by its template id with no entry. */
@@ -34,7 +36,7 @@ export function planetChoices(entries: readonly PlanetEntry[], locale: Locale): 
 const ART = 44;
 
 const listStyle: CSSProperties = { width: 250, flex: 'none', height: '100%' };
-const groupStyle: CSSProperties = { ...roleFont('subhead'), color: skin.muted, fontFamily: font.family, margin: '12px 12px 4px' };
+const groupStyle: CSSProperties = { ...roleFont('subhead'), color: skin.muted, fontFamily: font.family, marginTop: 12, marginInline: 12, marginBottom: 4 };
 const rowStyle: CSSProperties = {
   display: 'flex', alignItems: 'center', gap: 12, width: '100%', minHeight: 56, padding: '6px 10px',
   border: 'none', borderRadius: radii.lg, textAlign: 'start', color: skin.ink, fontFamily: font.family,
@@ -57,8 +59,8 @@ function PlanetThumb({ template, size = ART }: { template: MapTemplate; size?: n
   }, [template, size]);
   return (
     <canvas ref={ref} aria-hidden style={{
-      ...artStyle, width: size, height: size, borderRadius: '50%', background: ZONE_COLORS[CellZone.Void],
-      boxShadow: `inset 0 0 0 1.5px ${skin.line}`, filter: `drop-shadow(0 2px 4px ${inkTint(0.2)})`,
+      ...artStyle, width: size, height: size, borderRadius: '50%', background: SEA,
+      boxShadow: `inset 0 0 0 1.5px ${skin.line}`, filter: shadows.thumbDrop,
     }} />
   );
 }

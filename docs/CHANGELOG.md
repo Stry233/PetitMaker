@@ -4,6 +4,126 @@ All notable changes to PetitMaker are documented here.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.1784] - 2026-10-13
+
+### Added
+
+- Added the Station, on the south coast of Taffeh and Hexia. In the planet editor of a custom planet, you can place the Station on the coast and move it in half-cell steps. Importing a planet from a game video places the Station where the video shows it.
+- Added surface prints. In Roads, press Switch to prints to paint prints over roads. You can rotate a print and erase it without touching the road under it.
+- Added catalog items: the Flower Meadow Path road and the Grassy Ramp.
+- Added annotation tags you name yourself. Press Add a tag at the end of the tag row in Annotations. Tags are saved with the map and its share code.
+- Added annotation display options. Choose Hide dimensions next to Brush to hide a zone's width and height, or No text under Font size to show no text. Routes have their own line width on the width slider.
+
+### Changed
+
+- Importing a planet from a game video reads grass edges and beaches more accurately, and reads the ground under inland ponds as grass, as the game does.
+- Importing a planet from a game video skips a landmark that lies outside the planet and completes, so you can place the landmark yourself. Before, the import failed.
+- Letter generation accepts up to 64 characters, up from 6, and wraps lines that are wider than the Area.
+- Letters generated with prints have joined straight and curved strokes and sit on a fully paved, level background.
+- The Curve shape for drawing an Area works like the terrain Curve Brush: click to place the points the curve passes through, and double-click to finish. Before, you clicked the two ends and then a control point.
+- The assistant digs rivers and plants forests the way Smart build does. Rivers run downhill, fall over terrace steps and end in a small pool. Large forests grow as several stands, each with one main tree.
+- Ramp and bridge previews show the real model at the direction, height and span it will have once placed.
+- Placing and rotating items in the 3D view uses the same bounce and turn as the 2D view.
+- Every window has a close button, Cancel sits to the left of the main action, and every button responds to hover and press. The What's new window is wider.
+- Clicking outside a menu or floating card only closes it. Before, the click also reached the map or button under it.
+- When you switch between terrain tools or between annotation tools, the controls they share slide to their new place. Before, they disappeared and reappeared.
+- When you press Stop, rewind or remove in the assistant panel, the confirmation appears next to that button. Rewinding from the plan list asks for confirmation first.
+- When the assistant reports a problem, its status card offers the same fix buttons as the banner.
+- The assistant's status lines and key setup notes use plainer first-person wording, in every language.
+- The build list in Into the game lists the Neighbor Center and the Station under Fixed buildings.
+- PetitMaker loads the 3D view, Help, the assistant panel, export and Illustrate this map in the background after it starts, so they open without waiting the first time.
+- Objects, layers, the Mountains mode, the assistant and Smart build have one name throughout the interface, in every language. Renamed the map's Notes to Annotations, and the JSON export's Notes switch to Title and description.
+- Generated planets lay the street's paving under street-facing buildings. Before, these buildings stood on grass.
+- Downloaded file names start with petitmaker- in place of petit-planet-.
+
+### Fixed
+
+- Fixed Taffeh's coastline differing from the game along its west, south and north shores. Grass edges, beaches and the waterline follow the game, and Taffeh maps saved earlier use the corrected ground.
+- Fixed the Neighbor Center's size and position differing from the game. On Taffeh and Hexia it stands on a layer-1 mountain. Maps saved earlier open with it in place and with the objects and terrain it covers removed.
+- Fixed Medowlyn's Floofy House's 3D model and footprint differing from the game. It takes 5 × 5 cells in place of 5 × 4.
+- Fixed roads not going under buildings.
+- Fixed flowers and crops not growing on planting surfaces.
+- Fixed road patterns, the seams between neighbouring roads, road icons and Chinese road names differing from the game.
+- Fixed the rounded corners in a road preview differing from the placed road.
+- Fixed Edge Cut leaving a square inside corner where raised water meets a taller mountain.
+- Fixed a JSON file with damaged map data replacing your map. Such files are refused.
+- Fixed one damaged object stopping a JSON import. The damaged object is skipped.
+- Fixed undo and redo removing the Neighbor Center, changing where you can build or losing steps after you import a JSON map with damaged undo history.
+- Fixed JSON maps saved by a newer PetitMaker showing only a general import error. They ask you to update first.
+- Fixed PetitMaker reopening with the map from before you cleared it, without the undo history that followed.
+- Fixed erasing local data in Settings offering to restore the erased map when the app restarts.
+- Fixed Bring your build along putting your build in a different place when you switch back between custom planets.
+- Fixed objects the assistant turned to an odd angle vanishing when you reopened the map and blocking share codes. The assistant turns objects only in quarter turns.
+- Fixed undoing a generation or a Clear leaving the generation settings changed, which made JSON exports and share codes describe a different map.
+- Fixed Redo leaving the map different from how it was before Undo.
+- Fixed locked layers changing through edits in the 3D view, Edge Cut and Auto Trim.
+- Fixed Auto Trim changing hidden layers.
+- Fixed the layer panel counting objects on the wrong layer.
+- Fixed the layer panel highlighting the wrong layer while you paint mountain over water or a rounded corner.
+- Fixed the brush shape and material differing from the toolbar after you create or load a map or leave the planet editor.
+- Fixed one click with a wide brush in the 3D view painting a long strip toward the camera when the camera looks across the ground.
+- Fixed a stroke interrupted by a system gesture or a second finger changing the map.
+- Fixed a second finger landing while you draw an eraser curve losing the points already placed.
+- Fixed double-click and double-tap failing to finish a curve on slower devices.
+- Fixed moving curve points leaving out the roads and rounded corners the curve had removed.
+- Fixed drawing an Area sometimes marking the cell next to the pointer.
+- Fixed brush refusal messages showing codes in braces in place of the rule's numbers.
+- Fixed Undo and Redo on the left rail skipping strokes while you draw an Area.
+- Fixed the grey box under the pointer jumping by whole cells and missing the item under it when nothing is selected to place. It moves in half-cell steps, and a click selects the item or ground inside it.
+- Fixed a click on a toolbar, a panel button or the map in the other view clearing the selection after you drag a selected item.
+- Fixed rough annotation brush and Erase lines. They offer the same brush shapes as Roads and draw fine, smooth lines at every zoom.
+- Fixed routes changing shape after you draw them. A route keeps the line you drew.
+- Fixed the pointer showing no grab hand over a selected Tag chip in Annotations.
+- Fixed the undo flash for a placement covering more than the object's footprint.
+- Fixed highlights piling up in the 3D view.
+- Fixed the 2D view missing its starting zoom after you scroll in and out by the same number of wheel notches.
+- Fixed the 2D zoom buttons zooming about the whole window, which shifted the map while the assistant panel was open.
+- Fixed trackpad pinch and Ctrl+scroll zooming by a different amount than the gesture, and sometimes twice.
+- Fixed scrolling over a toolbar wider than the window scrolling the map.
+- Fixed pan keys bound to the numpad, Space or the AZERTY digit row not working.
+- Fixed Ctrl with the numpad plus key, and hold-down shortcuts bound to Ctrl alone, not working.
+- Fixed held pan speed depending on the display's refresh rate.
+- Fixed blurry key labels in the Keyboard Shortcuts window at large interface scales.
+- Fixed Neighbor Center buildings blocking the 3D camera up close.
+- Fixed previews and shadows of bridges, ramps and large items floating above lower ground in the 3D view.
+- Fixed the Regional load in JSON exports differing from the editor.
+- Fixed maps losing the origin of their AI-assisted and procedural content when reopened or imported, so exported pictures dropped the AI-assisted and Procedural badges.
+- Fixed JSON exports of maps generated from a Picture being very large.
+- Fixed maps exported with Editor session opening at a different view.
+- Fixed the page freezing when you choose an oversized planet file in Import planet. Such files are refused right away.
+- Fixed exported pictures leaving gaps when they have no share code or 3D card.
+- Fixed Chinese and Japanese descriptions running outside the card in exported pictures.
+- Fixed shortened titles in exported pictures cutting characters and emoji.
+- Fixed objects the assistant placed on rounded hill corners sitting on the wrong layer.
+- Fixed the assistant sometimes placing items on the left or top edge of the map by mistake.
+- Fixed the assistant failing to build walls along the coast on Taffeh and Hexia.
+- Fixed the assistant not fitting the conversation to what the chosen model can handle. Long conversations could fail the task, and long tasks forgot earlier parts of the conversation too soon.
+- Fixed the assistant waiting too long when a provider asks it to retry later. It waits at most one minute.
+- Fixed a whole assistant task failing when part of one edit broke a rule. The assistant takes back that part, finishes the task and says what it took back.
+- Fixed the picture of a finished task missing the area the assistant edited.
+- Fixed assistant approval requests leaving out the details. Sinking a pool shows the pool's corners, a redo shows its number of steps, and drawing a figure names the item its ring plants.
+- Fixed Try again restarting at once during a running task. It waits for the task to finish.
+- Fixed the assistant's past tasks appearing under the wrong date heading on the day after a daylight saving change.
+- Fixed Illustrate this map saving a rejected key without a message. It says the key was rejected and does not save it.
+- Fixed Illustrate this map giving no reason when a provider's quota runs out or the chosen style cannot run on this device.
+- Fixed the Illustrate this map connection check running forever when the service does not answer.
+- Fixed the Illustrate this map export preview ignoring the interface language.
+- Fixed Illustrate this map showing illustrations of an earlier map after you edited the map while it was closed.
+- Fixed Illustrate this map copying the style sample's content with OpenAI, SiliconFlow, Doubao or a custom endpoint. It takes only the sample's style and draws your map.
+- Fixed a failed preview card in Generate spinning forever and disabling New batch and Clear. The failed card goes blank.
+- Fixed closing Generate while a chosen preview was being built changing your map and undo history.
+- Fixed generated towns on custom planets ignoring the Neighbor Center.
+- Fixed a Picture preview that failed to load staying blank until you reloaded the page.
+- Fixed a maze's highlighted way disappearing when you switch between the 2D and 3D views.
+- Fixed About showing its documents in a different language from the interface.
+- Fixed objects from a newer catalog showing the first three letters of their id. They show a question mark.
+- Fixed Help and the tour naming buttons and messages differently from the interface.
+- Fixed Help in Chinese, Japanese, Russian, Thai, Indonesian and French differing from the English pages. Every language gives the smallest Area a Picture needs.
+- Fixed cell, object and step counts reading wrongly in some languages in the Into the game list, assistant approval requests and the selection card.
+- Fixed map and tag names containing curly braces showing differently from what you typed.
+- Fixed Regional load showing four-digit numbers with a thousands separator, unlike every other number.
+- Fixed shortcut tooltips, Facing in the selection card, the version line in About and the Help generation figures writing numbers and punctuation wrongly in some languages.
+
 ## [1.5.557] - 2026-10-04
 
 ### Added

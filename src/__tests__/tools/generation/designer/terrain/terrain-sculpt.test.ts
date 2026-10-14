@@ -1,13 +1,13 @@
-// The SCULPTOR: the ground the design stands on, realized from the composition's plates. Two kinds
+// The sculptor: the ground the design stands on, realized from the composition's plates. Two kinds
 // of claim are pinned here.
 //
-// The SHAPE claims are read off the pure sculpt (`sculptTerrain` takes the three stages' plans and
+// The shape claims are read off the pure sculpt (`sculptTerrain` takes the three stages' plans and
 // gives a TerrainPlan back): the ground a cell ends at is the composition's own tier, a flight's
 // landings are carved where stage B declared them, and the water speaks the grammar the reference
 // maps read — bodies at every tier, falls with capped ends, and dry beds between the bars of a
 // comb rather than planting standing in water.
 //
-// The LEGALITY claims are read off a COMMITTED map, because that is the only place they mean
+// The legality claims are read off a committed map, because that is the only place they mean
 // anything: the sculpt draws only shapes the water and base-support rules already accept, so the
 // finished state must re-validate with no violations and no refused layer — a repaired-away terrace
 // would pass a rule check while failing the design.
@@ -16,24 +16,17 @@ import { describe, it, expect, vi } from 'vitest';
 // Synchronous generation batch; tens of seconds on an idle machine.
 vi.setConfig({ testTimeout: 60_000 });
 import { MAP_TEMPLATES } from '../../../../../config/maps';
-import { CommandExecutor } from '../../../../../core/commands/command-executor';
-import { EventBus } from '../../../../../core/commands/event-bus';
-import { createGrid, createPlazaObject, flatIndex } from '../../../../../core/model/grid-model';
-import { detectWaterfalls } from '../../../../../core/model/waterfall-geometry';
-import {
-  ItemCategory, TerrainType,
-  type Command, type EditorEvents, type GridState, type MapTemplate,
-} from '../../../../../core/model/types';
-import { createDefaultRegistry } from '../../../../../rules';
+import { flatIndex } from '../../../../../core/grid/rect';
+import { detectWaterfalls } from '../../../../../core/domain/terrain/waterfall-geometry';
+import { TerrainType, type MapTemplate } from '../../../../../core/model/types';
 import { categoryOf } from '../../../../../state/catalog';
-import { planAnchors } from '../../../../../tools/generation/designer/places/anchors';
-import { cellTiers, planComposition } from '../../../../../tools/generation/designer/composition/composition';
-import { planDistricts } from '../../../../../tools/generation/designer/places/districts';
-import { planKitGround } from '../../../../../tools/generation/designer/dressing';
-import { generateDesigned, type DesignedOutcome } from '../../../../../tools/generation/designer/pipeline';
-import { planStreets } from '../../../../../tools/generation/designer/streets/streets';
+import { cellTiers } from '../../../../../tools/generation/designer/planet';
+import { planDesign } from '../../../../../tools/generation/designer/pipeline';
+import { planComposition } from '../../../../../tools/generation/designer/composition/composition';
+import { designedMap, memo, type DesignedRun } from '../_designed-map';
 import { sculptTerrain, type TerrainSculpt } from '../../../../../tools/generation/designer/terrain/terrain-sculpt';
-import { terraceShape, TERRACE_FILL_MAX } from '../../../../../tools/generation/designer/eval';
+import { terraceShape, TERRACE_FILL_MAX } from '../../../../_support/design-eval';
+import { ItemCategory } from '../../../../../config/catalog/categories';
 
 const HEXIA = MAP_TEMPLATES['hexia']!;
 const TAFA = MAP_TEMPLATES['tafa']!;
@@ -41,42 +34,24 @@ const SEEDS = [12345, 777, 42, 2026, 7];
 
 /** The pure sculpt for one seed: the three planning stages, then the ground they stand on. No map is
  *  touched, which is the whole point — every stage is data in, data out. */
-function sculpt(seed: number, template: MapTemplate, richness: number): TerrainSculpt {
-  const composition = planComposition(seed, template, richness);
-  const streets = planStreets(seed, template, composition, richness);
-  const plan = planDistricts(seed, template, composition, streets, richness).design;
-  return sculptTerrain({
-    template, composition, streets, plan, anchors: planAnchors(seed, plan), seed, richness,
-    ground: planKitGround(plan, seed, richness),
-  });
+function sculptFor(seed: number, template: MapTemplate, richness: number): TerrainSculpt {
+  const { composition, streets, plan, anchors, ground } = planDesign({ seed, template, richness });
+  return sculptTerrain({ template, composition, streets, plan, anchors, seed, richness, ground });
 }
 
-interface Run { state: GridState; outcome: DesignedOutcome; violations: unknown[] }
+/** `sculptFor`, sculpted once per (seed, template, richness) for this file. Read-only. */
+const sculpt = memo(sculptFor);
 
-/** One designed map, built the way the app builds one: a silent stroke group, committed at the end
- *  so the post-stroke rules judge the finished state. */
-function build(seed: number, template: MapTemplate, richness = 0.5): Run {
-  const state: GridState = {
-    template, cells: createGrid(template), objects: new Map(), lockedLayers: new Set(),
-  };
-  const plaza = createPlazaObject(template);
-  if (plaza) state.objects.set(plaza.id, plaza);
-  const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), () => null);
-  let outcome: DesignedOutcome | undefined;
-  exec.runSilently(() => {
-    outcome = generateDesigned({
-      state, execute: (c: Command) => exec.execute(c), reg: exec.getRegistry(),
-      seed, richness, maxElevation: 8,
-    });
-  });
-  return { state, outcome: outcome!, violations: exec.commitStroke(exec.getUndoStackSize()) };
+/** One designed map, generated once per (seed, template, richness) for this file. Read-only. */
+function build(seed: number, template: MapTemplate, richness = 0.5): DesignedRun {
+  return designedMap(seed, template, { richness, maxElevation: 8 });
 }
 
 describe('the ground is the composition, realized', () => {
   it('stands every cell at its plate tier, on both templates', () => {
     for (const template of [HEXIA, TAFA]) {
       for (const seed of SEEDS) {
-        const composition = planComposition(seed, template, 1);
+        const composition = planComposition({ seed, template, richness: 1 });
         const tiers = cellTiers(template, composition);
         const s = sculpt(seed, template, 1);
         let cells = 0, agreed = 0;
@@ -84,7 +59,7 @@ describe('the ground is the composition, realized', () => {
           if (tiers[i]! <= 0) continue;
           cells++;
           // Water carries its own level, a flight's landing is a tier the plan asked for, and a
-          // composed place stands ONE above its block's floor on purpose; every other cell stands
+          // composed place stands one above its block's floor on purpose; every other cell stands
           // exactly where the composition put it.
           const level = s.terrain.water[i]! >= 0 ? s.terrain.water[i]! : s.terrain.tier[i]!;
           if (level === tiers[i] || level === tiers[i]! + 1) agreed++;
@@ -98,13 +73,8 @@ describe('the ground is the composition, realized', () => {
 
   it('carves every flight landing at the tier the street plan declared', () => {
     for (const seed of SEEDS) {
-      const composition = planComposition(seed, HEXIA, 1);
-      const streets = planStreets(seed, HEXIA, composition, 1);
-      const plan = planDistricts(seed, HEXIA, composition, streets, 1).design;
-      const s = sculptTerrain({
-        template: HEXIA, composition, streets, plan, anchors: planAnchors(seed, plan), seed,
-        richness: 1, ground: planKitGround(plan, seed, 1),
-      });
+      const { composition, streets, plan, anchors, ground } = planDesign({ seed, template: HEXIA, richness: 1 });
+      const s = sculptTerrain({ template: HEXIA, composition, streets, plan, anchors, seed, richness: 1, ground });
       for (const flight of streets.flights) {
         for (const landing of flight.landings) {
           for (let y = landing.rect.y; y < landing.rect.y + landing.rect.h; y++) {
@@ -131,15 +101,10 @@ describe('the ground is the composition, realized', () => {
   });
 
   it('honours a lowered ceiling', () => {
-    const composition = planComposition(42, HEXIA, 1, 3);
-    const streets = planStreets(42, HEXIA, composition, 1);
-    const plan = planDistricts(42, HEXIA, composition, streets, 1).design;
-    const s = sculptTerrain({
-      template: HEXIA, composition, streets, plan, anchors: planAnchors(42, plan), seed: 42,
-      richness: 1,
-    });
-    // NOT PASSED A CEILING OF ITS OWN. The composition was drawn under one and the sculptor reads it
-    // off the plan, so a caller that caps the composition caps the map: the passes that ADD a tier —
+    const { composition, streets, plan, anchors } = planDesign({ seed: 42, template: HEXIA, richness: 1, maxElevation: 3 });
+    const s = sculptTerrain({ template: HEXIA, composition, streets, plan, anchors, seed: 42, richness: 1 });
+    // Not passed a ceiling of its own. The composition was drawn under one and the sculptor reads it
+    // off the plan, so a caller that caps the composition caps the map: the passes that add a tier —
     // a place's terrace, a door's backing, a shop's ring — are held to the plan's own ask.
     expect(s.wall.peak).toBeLessThanOrEqual(3);
     expect(Math.max(...s.terrain.tier)).toBeLessThanOrEqual(3);
@@ -148,14 +113,8 @@ describe('the ground is the composition, realized', () => {
 
   it('never puts water under a building or its doorstep', () => {
     for (const template of [HEXIA, TAFA]) {
-      const composition = planComposition(31337, template, 1);
-      const streets = planStreets(31337, template, composition, 1);
-      const plan = planDistricts(31337, template, composition, streets, 1).design;
-      const anchors = planAnchors(31337, plan);
-      const s = sculptTerrain({
-        template, composition, streets, plan, anchors, seed: 31337, richness: 1,
-        ground: planKitGround(plan, 31337, 1),
-      });
+      const { composition, streets, plan, anchors, ground } = planDesign({ seed: 31337, template, richness: 1 });
+      const s = sculptTerrain({ template, composition, streets, plan, anchors, seed: 31337, richness: 1, ground });
       for (const p of anchors.placements) {
         for (const cell of [p.position, p.gate, p.approach]) {
           const i = flatIndex(cell.x, cell.y, template.width);
@@ -167,7 +126,7 @@ describe('the ground is the composition, realized', () => {
 });
 
 describe('the ground is not a box (I5.3)', () => {
-  // TOFU TERRAIN is a raised terrace drawn as a full rectangle with a ruled seam where two plates
+  // Tofu terrain is a raised terrace drawn as a full rectangle with a ruled seam where two plates
   // meet. Two passes answer it — the corner chamfers `liftRect` gives a lift, and the bite
   // `erodeSeams` takes out of a seam where nothing is built — and what is pinned here is the shape
   // they leave and the legality they keep.
@@ -188,7 +147,7 @@ describe('the ground is not a box (I5.3)', () => {
   it('erodes a seam only where nothing is built against it', () => {
     // Pavement, doorsteps and the figure's panel are reserved before the bite is taken, so a paved
     // cell can never stand on ground the erosion moved: read on the finished map, every road tile
-    // stands on ONE level with its own 2x2 window, which is what a coating validates.
+    // stands on one level with its own 2x2 window, which is what a coating validates.
     for (const seed of SEEDS.slice(0, 3)) {
       const { state, violations } = build(seed, HEXIA, 1);
       expect(violations, `hexia/${seed}`).toEqual([]);
@@ -219,14 +178,14 @@ describe('water is a material', () => {
         for (const row of state.cells) {
           for (const cell of row) if (cell.terrain?.type === TerrainType.Water) water++;
         }
-        // The planet's water is spent on a COURSE, its fountain courts, the cascades and a few
+        // The planet's water is spent on a course, its fountain courts, the cascades and a few
         // accents rather than on beds cut into every terrace, so the count is a small share of the
-        // ground. What is pinned is that a full-richness map is WET: measured 567-936 cells on hexia
+        // ground. What is pinned is that a full-richness map is wet: measured 567-936 cells on hexia
         // and 707-1080 on tafa over these seeds.
         expect(water, `${template.id}/${seed}`).toBeGreaterThan(450);
         // A fall is cut where a terrace step offers a run with caps at both ends, so how many a map
         // carries is its composition's to say: a plate map with few long steps carries a handful, a
-        // terraced one carries dozens. What is pinned is that the water FALLS somewhere.
+        // terraced one carries dozens. What is pinned is that the water falls somewhere.
         expect(detectWaterfalls(state).length, `${template.id}/${seed}`).toBeGreaterThan(2);
       }
     }

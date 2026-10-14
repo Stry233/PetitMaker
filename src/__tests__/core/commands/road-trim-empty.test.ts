@@ -1,22 +1,21 @@
 import { describe, it, expect } from 'vitest';
-import { CommandType, type Corners, type EditorEvents, type PlacedObject, type TrimCornersCommand } from '../../../core/model/types';
+import { CommandType, type Corners, type PlacedObject, type TrimCornersCommand } from '../../../core/model/types';
 import { CommandExecutor } from '../../../core/commands/command-executor';
-import { EventBus } from '../../../core/commands/event-bus';
 import { RuleRegistry } from '../../../rules/registry';
-import { roadLookup } from '../../../state/object-index';
-import { makeState, makeExecutor } from '../../rules/_helpers';
+import { makeState, makeExecutor } from '../../_support/map-state';
 import { executeToolCall, type AgentToolDeps } from '../../../agent/tools';
+import { createExecutor } from '../../../state/executor';
 
 const ROAD = 'path-overgrown-dirt';
 const EMPTY: Corners = ['empty', 'empty', 'empty', 'empty'];
 
 function placeRoad(ex: CommandExecutor, x: number, y: number, extra: Partial<PlacedObject> = {}): PlacedObject {
   const obj: PlacedObject = { id: `r-${x}-${y}`, catalogId: ROAD, position: { x, y }, rotation: 0, elevation: 0, ...extra };
-  expect(ex.execute({ type: CommandType.PlaceObject, timestamp: 0, object: obj }).success).toBe(true);
+  expect(ex.execute({ type: CommandType.PlaceObject, object: obj }).success).toBe(true);
   return obj;
 }
-const trim = (obj: PlacedObject, beforeCorners: Corners | undefined, afterCorners: Corners): TrimCornersCommand => ({
-  type: CommandType.TrimCorners, timestamp: 0, x: obj.position.x, y: obj.position.y, layer: 'road', objectId: obj.id, beforeCorners, afterCorners,
+const trim = (obj: PlacedObject, afterCorners: Corners): TrimCornersCommand => ({
+  type: CommandType.TrimCorners, x: obj.position.x, y: obj.position.y, layer: 'road', objectId: obj.id, afterCorners,
 });
 
 describe('road corner trim to all-empty', () => {
@@ -27,7 +26,7 @@ describe('road corner trim to all-empty', () => {
     const road = placeRoad(ex, 3, 3, { corners: prior, rotation: 90 });
     const snapshot = structuredClone(state.objects.get(road.id));
 
-    expect(ex.execute(trim(road, prior, EMPTY)).success).toBe(true);
+    expect(ex.execute(trim(road, EMPTY)).success).toBe(true);
     expect(state.objects.has(road.id)).toBe(false);
 
     ex.undo();
@@ -43,12 +42,12 @@ describe('road corner trim to all-empty', () => {
     const state = makeState(10, 10);
     const ex = makeExecutor(state);
     const road = placeRoad(ex, 4, 4);
-    const start = ex.getUndoStackSize();
+    const start = ex.beginStroke();
     const half: Corners = ['empty', 'empty', 'square', 'square'];
-    ex.execute(trim(road, undefined, half));
-    ex.execute(trim(road, half, EMPTY));
-    ex.commitStroke(start, { reconcile: false });
-    expect(ex.getUndoStackSize()).toBe(start + 1);
+    ex.execute(trim(road, half));
+    ex.execute(trim(road, EMPTY));
+    start.commit({ reconcile: false });
+    expect(start.size).toBe(1);
     expect(state.objects.has(road.id)).toBe(false);
 
     ex.undo();
@@ -63,12 +62,12 @@ describe('road corner trim to all-empty', () => {
 
   it('a trim that runs after the road was already emptied away does not bring it back on redo', () => {
     const state = makeState(10, 10);
-    const ex = new CommandExecutor(state, new EventBus<EditorEvents>(), new RuleRegistry(), roadLookup(state));
+    const ex = createExecutor(state, new RuleRegistry());
     const road = placeRoad(ex, 4, 4);
-    const start = ex.getUndoStackSize();
-    ex.execute(trim(road, undefined, EMPTY));
-    ex.execute(trim(road, undefined, ['fan', 'square', 'square', 'square']));
-    ex.commitStroke(start, { reconcile: false });
+    const start = ex.beginStroke();
+    ex.execute(trim(road, EMPTY));
+    ex.execute(trim(road, ['fan', 'square', 'square', 'square']));
+    start.commit({ reconcile: false });
     expect(state.objects.has(road.id)).toBe(false);
 
     ex.undo();

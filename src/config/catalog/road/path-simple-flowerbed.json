@@ -4,7 +4,7 @@
   "icon": "path-simple-flowerbed",
   "name": {
     "en": "Simple Flowerbed Path",
-    "zh": "简约花圃路",
+    "zh": "简易花坛路",
     "ja": "シンプル花壇の道",
     "ru": "Простая дорожка с клумбами",
     "th": "ทางแปลงดอกไม้เรียบง่าย",
@@ -27,5 +27,27 @@
     {
       "type": "plantable"
     }
-  ]
+  ],
+  "roadMaterial": {
+    "feather": 0.035,
+    "edge": {
+      "color": "#ae755c"
+    },
+    "edgeJoints": {
+      "spacing": 0.5,
+      "width": 0.012,
+      "color": "#967654"
+    },
+    "layers": [
+      {
+        "inset": 0.2,
+        "color": "#ffffff",
+        "pattern": {
+          "kind": "image",
+          "image": "path-simple-flowerbed",
+          "repeat": 2
+        }
+      }
+    ]
+  }
 }

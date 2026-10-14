@@ -1,8 +1,8 @@
 import type { SourcePixels } from './stencil-sample';
 import { stencilFromPixels } from './stencil-sample';
-import type { Stencil } from '../../../core/model/types';
+import type { Stencil } from '../recipe';
 import { textTopology } from './stencil-text-grid';
-import { NEIGHBORS4_NESW } from '../../../core/model/grid-model';
+import { NEIGHBORS4_NESW } from '../../../core/grid/directions';
 
 export interface EmojiDrawing {
   width: number;

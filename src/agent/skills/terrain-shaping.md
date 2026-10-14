@@ -16,7 +16,7 @@ TOOL MOVES
 
 WATER TECHNIQUES
 - Ground pond: paint_terrain water elevation 0 on open grass. Surrounding flat ground contains it; no mountain rim is needed. Choose its size and outline for the requested scene.
-- River: carve_river makes a ground-level channel through 3-5 waypoints. Where a bridge is needed, reserve a straight uniform span and verify it with find_bridge_sites. Add a river only when the brief calls for one.
+- River: carve_river makes a channel through 3-5 waypoints that runs downhill, dropping over each terrace step it crosses in a framed waterfall. Where a bridge is needed, reserve a straight uniform span and verify it with find_bridge_sites. Add a river only when the brief calls for one.
 - Pond in a terrace: build the bench at elevation N, then paint_terrain water elevation N on interior cells keeping a >=1-cell ring of mountain at exactly N. Size the pond to leave usable ground for its route and requested details.
 - Waterfall: ONE lip, not drawn falling water. The lip is 1-3 water cells at elevation N framed by mountain at exactly N on both perpendicular sides, with the row directly in front already ONE uniform lower elevation (V-WTR-03). The game animates the fall. Give a fall a downstream: a pool or river below it.
 - Cascade: when requested, repeat the contained pool and framed lip at each level, leaving enough bench depth for containment and any route.

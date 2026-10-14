@@ -1,44 +1,26 @@
 /*
- * The hovered tile's name, floating above the row that clips it.
- *
- * A scroll container clips on both axes, so a label standing above a tile inside one would be cut
- * in half. This draws OUTSIDE the row, at a `centre` the caller has already corrected for its own
- * scroll offset, which is what lets the object shelf's card row and the road strip share one
- * component even though their coordinate spaces are scaled differently.
- *
- * THE BUBBLE HAS A WIDTH IT WILL NOT PASS. A catalog name is as long as its language makes it — the
- * Russian cobblestone path runs to forty characters — and a bubble that simply grew to fit reached
- * across half the row and named a tile nowhere near its middle. So the name is given a window of
- * `MAX_EM` and, where it does not fit, travels along inside it, softened at both ends by the same
- * shade a scroller wears (`primitives/scroll-fade.ts`) so the cut reads as more word rather than as
- * a drawing error. Under reduced motion the window is the same width and the name WRAPS down it
- * instead: the travel is decoration, the name is not.
+ * The hovered tile's name, drawn outside the clipping row at a scroll-corrected `centre` (the object
+ * shelf and the road strip share it). The bubble stops at `MAX_EM`: a longer name travels inside it,
+ * faded at both ends, or wraps under reduced motion.
  */
-import { AnimatePresence, motion } from 'framer-motion';
+import { AnimatePresence, motion, useReducedMotionConfig } from 'framer-motion';
 import { useLayoutEffect, useRef, useState } from 'react';
 import { fadeMask } from '../../primitives/scroll-fade';
 import { MAP_LABEL } from '../../design/tokens';
 import { TEXT } from '../units';
 import { useFrameReadableWeight } from '../use-frame-zoom';
-import { MOTIONS } from '../motion/registry';
-import { useMotion, useMotionAllowed } from '../motion/use-motion';
-import { NO_MOTION } from '../../design/motion';
+import { MOTIONS } from '../../design/motion/registry';
+import { useTransition, useMotionAllowed } from '../../design/motion/use-motion';
+import { NO_MOTION, presence } from '../../design/motion';
 
-/**
- * How wide the bubble may grow, in ems of its own type.
- *
- * Written in em rather than px because what has to be judged is how much WORD stands over a tile,
- * and that is a measure of the type and not of the frame: at thirteen the longest names in the
- * catalog show most of themselves at once and the bubble stays about three swatches wide, which is
- * near enough to the tile it names for the two to read as one thing.
- */
+/** How wide the bubble may grow, in ems of its type, so it stays near the tile it names. */
 const MAX_EM = 13;
 
 /** How far the name is softened at each end of the window it runs through, in css px: about two
  *  thirds of an em, which is a glyph's worth of dissolve at this size. */
 const FADE = Math.round(TEXT.label * 0.66);
 
-/** The share of one round trip the name stands STILL at an end, either end. A name that turned the
+/** The share of one round trip the name stands still at an end, either end. A name that turned the
  *  moment it arrived would never be readable at the end that matters most, which is the far one. */
 const REST = 0.18;
 
@@ -53,16 +35,9 @@ export interface CardNameReach {
   centre: number;
 }
 
-/**
- * The name itself, inside the bubble's window.
- *
- * Its OWN component, so each keyed bubble carries its own refs and its own measurement: while one
- * name is leaving and the next arriving, `AnimatePresence` holds both on screen at once, and a
- * single pair of refs shared between them would be pointed at whichever mounted last and then
- * nulled by whichever unmounted first.
- */
+/** The name inside the bubble, its own component so leaving and arriving bubbles keep their own refs. */
 function NameText({ name }: { name: string }) {
-  const marquee = useMotion('item.name.marquee');
+  const marquee = useTransition('item.name.marquee');
   const travels = useMotionAllowed('item.name.marquee');
   const boxRef = useRef<HTMLSpanElement>(null);
   const textRef = useRef<HTMLSpanElement>(null);
@@ -95,7 +70,7 @@ function NameText({ name }: { name: string }) {
         // a second timer, so the turn cannot drift out of phase with the travel.
         animate={runs ? { x: [0, 0, -over, -over, 0] } : { x: 0 }}
         transition={runs ? { ...marquee, times: [0, REST, 0.5, 0.5 + REST, 1] } : NO_MOTION}
-        // Centred only where it WRAPS: a centred line wider than its box overhangs both ends of it,
+        // Centred only where it wraps: a centred line wider than its box overhangs both ends of it,
         // which would start the travel with the name already half off its left edge.
         style={{
           display: 'block',
@@ -111,7 +86,7 @@ function NameText({ name }: { name: string }) {
 /** `lift` is the air the caller keeps between its own tiles and the name over them, in css px. Zero
  *  where the row already reserves that room above itself, as the object shelf's does. */
 export function CardNameBubble({ reached, lift = 0 }: { reached: CardNameReach | null; lift?: number }) {
-  const nameMotion = useMotion('item.name.reach');
+  const reduced = useReducedMotionConfig();
   const weightAt = useFrameReadableWeight();
   return (
     <AnimatePresence>
@@ -119,15 +94,10 @@ export function CardNameBubble({ reached, lift = 0 }: { reached: CardNameReach |
         <motion.span
           key={reached.name}
           data-testid="shell-card-name"
-          initial={{ opacity: 0, x: '-50%', y: 4 }}
-          animate={{ opacity: 1, x: '-50%', y: 0 }}
-          exit={{ opacity: 0, x: '-50%' }}
-          transition={nameMotion}
+          {...presence('item.name.reach', { opacity: 0, y: 4 }, { exit: { opacity: 0 }, hold: { x: '-50%' }, reduced })}
           style={{
-            // Block, and the width is the name's own: an absolutely positioned box shrinks to fit
-            // its content, so a short name keeps exactly the bubble it has today and only a long one
-            // meets the cap. It is also what keeps a scaled label off the parent's unscaled strut.
-            position: 'absolute', display: 'block',
+            // Size to the name even when its anchor is a single tile, then cap long labels.
+            position: 'absolute', display: 'block', width: 'max-content',
             bottom: lift ? `calc(100% + ${lift}px)` : '100%', left: reached.centre,
             maxWidth: `${MAX_EM}em`,
             fontSize: TEXT.label, fontWeight: weightAt(800, TEXT.label), lineHeight: 1.15,

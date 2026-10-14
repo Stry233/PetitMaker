@@ -29,13 +29,6 @@ describe('ProvenanceTracker', () => {
     expect(t.getSummary().aiEverUsed).toBe(true); // ledger remembers
   });
 
-  it('analysis-only never taints but is recorded', () => {
-    const t = tracker();
-    t.noteAnalysisOnly();
-    expect(t.getSummary().containsAi).toBe(false);
-    expect(t.getSummary().counts.analysisOnlyCalls).toBe(1);
-  });
-
   it('derived auto-trim inherits the active source', () => {
     const t = tracker();
     t.withSource({ source: ProvSource.AiWrite }, () => {
@@ -78,20 +71,5 @@ describe('ProvenanceTracker', () => {
     expect(cell.before).toBeNull();                 // first-before = original empty
     expect(cell.after!.lastModifiedByOp).toBe(d2.opIds[0]); // last-after = latest op
     expect(merged.opIds).toEqual([...d1.opIds, ...d2.opIds]);
-  });
-
-  it('finalizeObjectModifies preserves AI when a human moves an AI-placed object', () => {
-    const t = tracker();
-    t.withSource({ source: ProvSource.AiWrite }, () => t.record('create', [], [{ id: 'o1', kind: 'create' }], { layers: [], zones: [] }));
-    // human "move" = remove + re-add the SAME id within one stroke
-    let dr!: ReturnType<ProvenanceTracker['record']>, da!: ReturnType<ProvenanceTracker['record']>;
-    t.withSource({ source: ProvSource.Human }, () => {
-      dr = t.record('delete', [], [{ id: 'o1', kind: 'delete' }], { layers: [], zones: [] });
-      da = t.record('create', [], [{ id: 'o1', kind: 'create' }], { layers: [], zones: [] });
-    });
-    t.finalizeObjectModifies(t.mergeDeltas([dr, da]));
-    const o = t.state.objectTaint.get('o1')!;
-    expect(o.contribution.ai).toBeGreaterThan(0);    // AI preserved
-    expect(o.contribution.human).toBeGreaterThan(0); // human edit recorded -> mixed
   });
 });

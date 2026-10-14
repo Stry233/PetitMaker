@@ -1,15 +1,18 @@
 import { describe, it, expect } from 'vitest';
-import { applyOpToTaint, deriveSummary, PROVENANCE_POLICY } from '../../../core/provenance/policy';
+import { applyOpToTaint, deriveSummary } from '../../../core/provenance/policy';
 import { ProvSource, TaintFlag, hasFlag, type UnitTaint, type SessionFlags } from '../../../core/provenance/types';
 
-describe('PROVENANCE_POLICY', () => {
-  it('exports numeric constants', () => {
-    expect(typeof PROVENANCE_POLICY.COSMETIC_WEIGHT).toBe('number');
-    expect(typeof PROVENANCE_POLICY.AI_EPSILON).toBe('number');
-  });
-  it('has mandated constant values', () => {
-    expect(PROVENANCE_POLICY.COSMETIC_WEIGHT).toBe(0.35);
-    expect(PROVENANCE_POLICY.AI_EPSILON).toBe(0.001);
+describe('policy weights', () => {
+  it('a cosmetic edit carries a 0.35 share, and a source counts above a 0.001 share', () => {
+    let t = applyOpToTaint(null, ProvSource.AiWrite, 'create', 'op-0')!;
+    t = applyOpToTaint(t, ProvSource.Human, 'cosmetic', 'op-1')!;
+    expect(t.contribution.ai).toBeCloseTo(0.65, 12);
+    expect(t.contribution.human).toBeCloseTo(0.35, 12);
+    // 0.65^16 = 0.00103 still counts; 0.65^17 = 0.00067 no longer does.
+    for (let i = 2; i <= 16; i++) t = applyOpToTaint(t, ProvSource.Human, 'cosmetic', `op-${i}`)!;
+    expect(hasFlag(t.flags, TaintFlag.CONTAINS_AI)).toBe(true);
+    t = applyOpToTaint(t, ProvSource.Human, 'cosmetic', 'op-17')!;
+    expect(hasFlag(t.flags, TaintFlag.CONTAINS_AI)).toBe(false);
   });
 });
 
@@ -73,7 +76,9 @@ describe('policy.deriveSummary', () => {
 function taint(ai: number, human: number, procedural: number): UnitTaint {
   return { createdByOp: 'o', lastModifiedByOp: 'o', origin: 0, contribution: { ai, human, procedural }, flags: 0 };
 }
-const NO_SESSION: SessionFlags = { aiAnalysisUsed: false, aiWritesUsed: false, aiAcceptedCount: 0, proceduralRuns: 0, analysisOnlyCalls: 0, humanAfterAi: false, aiAfterHuman: false };
+const NO_SESSION: SessionFlags = {
+  aiAnalysisUsed: false, aiWritesUsed: false, aiAcceptedCount: 0, proceduralRuns: 0, analysisOnlyCalls: 0, humanAfterAi: false, aiAfterHuman: false,
+};
 
 describe('deriveSummary proceduralAreaPct', () => {
   it('reports procedural coverage as a percentage of content cells, mirroring aiTerrainPct', () => {

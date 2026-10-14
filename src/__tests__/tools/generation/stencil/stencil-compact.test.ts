@@ -1,13 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { CommandExecutor } from '../../../../core/commands/command-executor';
-import { EventBus } from '../../../../core/commands/event-bus';
-import { TerrainType, type EditorEvents, type StencilWaterRole } from '../../../../core/model/types';
-import { createDefaultRegistry } from '../../../../rules';
-import { roadLookup } from '../../../../state/object-index';
-import { generateTerrain } from '../../../../tools/generation/terrain-generator';
-import { luma } from '../../../../tools/generation/stencil/stencil';
+import { TerrainType } from '../../../../core/model/types';
+import { defaultConfig, type StencilWaterRole } from '../../../../tools/generation/recipe';
+import { generateTerrain } from '../../../../tools/generation';
+import { luma } from '../../../../tools/generation/stencil/color';
 import { stencilFromPixels, type SourcePixels } from '../../../../tools/generation/stencil/stencil-sample';
-import { makeState } from '../../../rules/_helpers';
+import { makeState, makeExecutor } from '../../../_support/map-state';
 
 /** Each eye covers a quarter of its destination cell, so a majority vote would erase it. */
 function face(width: number, height: number): SourcePixels {
@@ -44,12 +41,10 @@ describe('compact image detail', () => {
     const side = 7;
     const stencil = stencilFromPixels(face(side, side), { width: side, height: side }, { background: false, trim: false })!;
     const state = makeState(side + 6, side + 6);
-    const executor = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
-    generateTerrain({
-      algorithm: 'stencil', mode: 'mixed', corridorWidth: 1, maxElevation: 8, seed: 1, region: null,
-      stencilPlan: { read: 'color', stencil, origin: { x: 3, y: 3 }, water },
-    }, state, command => executor.execute(command), executor.getRegistry());
-    expect(executor.commitStroke(0)).toEqual([]);
+    const executor = makeExecutor(state);
+    const whole = executor.beginStroke();
+    generateTerrain({ state, execute: command => executor.execute(command), reg: executor.getRegistry() }, defaultConfig('stencil', { maxElevation: 8, seed: 1, stencilPlan: { read: 'color', stencil, origin: { x: 3, y: 3 }, water } }));
+    expect(whole.commit()).toEqual([]);
     for (const x of [2, 4]) {
       const eye = state.cells[5]![x + 3]!.terrain!;
       const between = state.cells[5]![6]!.terrain!;

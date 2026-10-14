@@ -4,16 +4,17 @@
  * `PlacedObject.elevation` is a placement-time cache that nothing re-derives, so any terrain edit
  * under a standing object leaves it stale and the object draws at a height the ground no longer has.
  *
- * A SPANNING object is an exception: a bridge and a ramp are placed across a gap or a step by
+ * A spanning object is an exception: a bridge and a ramp are placed across a gap or a step by
  * their own traits, so their elevation is the high end they reach and no cell beneath them holds it.
- * A TERRAIN-BASE object (the plaza) is the other: its footprint is itself a base at its authored
+ * A terrain-base object (the plaza) is the other: its footprint is itself a base at its authored
  * elevation, the same field the base-support rule reads.
  */
 import { describe, expect, it } from 'vitest';
 import { objectElevation } from '../../state/object-geometry';
-import { surfaceElevation } from '../../core/edge-cut/terrain-silhouette';
-import { makeState, setTerrain } from '../rules/_helpers';
-import { CellZone, TerrainType, type GridState, type PlacedObject } from '../../core/model/types';
+import { surfaceElevation } from '../../core/domain/terrain/terrain-surface';
+import { makeState, setTerrain } from '../_support/map-state';
+import { TerrainType, type GridState, type PlacedObject } from '../../core/model/types';
+import { CellZone } from '../../core/game/zones';
 
 const SIZE = 20;
 
@@ -52,7 +53,7 @@ describe('objectElevation', () => {
 
   it('leaves a spanning crossing on the height it reaches', () => {
     // A ramp climbs from the ground to tier 2 and is stored at its high end. The cell under its
-    // anchor is the LOW one, so deriving from the ground would drop it to the foot of its own slope.
+    // anchor is the low one, so deriving from the ground would drop it to the foot of its own slope.
     const state = flatMap();
     const ramp = put(state, 'ramp-park-steps', 6, 6, 2);
     expect(objectElevation(state, ramp)).toBe(2);
@@ -68,15 +69,16 @@ describe('objectElevation', () => {
     expect(objectElevation(state, house)).toBe(1);
   });
 
-  it('a terrainBase object (the plaza) keeps its authored elevation', () => {
-    // Its footprint is itself a structural base at the stored elevation (the base-support rule
-    // reads the same field), so the bare ground beneath does not hold its height.
+  it('a landmark stands on the surface under its anchor, whatever it stored', () => {
     const state = flatMap();
     const plaza: PlacedObject = {
-      id: '__plaza__', catalogId: '__plaza__', position: { x: 4.5, y: 4.5 },
-      rotation: 0, elevation: 1, width: 3, height: 2, color: '#e2e8f0', locked: true,
+      id: '__plaza__', catalogId: '__plaza__', position: { x: 4, y: 4 },
+      rotation: 0, elevation: 3, width: 4, height: 3, color: '#e2e8f0', locked: true,
     };
     state.objects.set(plaza.id, plaza);
+    expect(objectElevation(state, plaza), 'flat ground').toBe(0);
+    // A layer-1 mountain on the terrain cells [4, 8) x [4, 7) rests on, x 4 to 8 and y 4 to 7.
+    for (let y = 4; y <= 7; y++) for (let x = 4; x <= 8; x++) setTerrain(state, x, y, TerrainType.Mountain, 1);
     expect(objectElevation(state, plaza)).toBe(1);
   });
 });

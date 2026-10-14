@@ -1,19 +1,19 @@
+// @vitest-environment jsdom
 /** Pins grouping, ordering, verdict summary, and transient expansion for settled approval decks. */
+import { useState } from 'react';
 import { describe, it, expect, beforeEach } from 'vitest';
-import { render, fireEvent } from '@testing-library/react';
-import { MotionConfig } from 'framer-motion';
-import { I18nProvider } from '../../../i18n/context';
-import { AskDeck, DECK_MIN, deckRuns, faceMark } from '../../../ui/agent/AskDeck';
-import { GateBlock } from '../../../ui/agent/GateBlock';
+import { cleanup, fireEvent, within } from '@testing-library/react';
+import { AskDeck, deckRuns } from '../../../ui/agent/record/AskDeck';
+import { GateBlock } from '../../../ui/agent/record/GateBlock';
 import { PanelShell } from '../../../ui/agent/PanelShell';
 import { LINE, PLATE } from '../../../ui/design/tokens';
 import { useEditorStore } from '../../../state/store';
-import { useAgentPanelSettings } from '../../../ui/agent/settings';
+import { useAgentConnection } from '../../../agent/connection/store';
 import { PROVIDER_IDS, type ProviderId } from '../../../agent/providers/defaults';
-import type { AskRecord, JobView, PanelView } from '../../../agent/core/project-view';
+import type { AskRecord, JobView } from '../../../agent/core/project-view';
+import { makeView, panelProps, renderWithI18n } from '../../_support/agent-panel';
 
 const backing = new Map<string, string>();
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 (globalThis as any).localStorage = {
   getItem: (k: string) => backing.get(k) ?? null,
   setItem: (k: string, v: string) => void backing.set(k, String(v)),
@@ -21,22 +21,10 @@ const backing = new Map<string, string>();
   clear: () => backing.clear(),
 };
 
-function Wrapper({ children }: { children: React.ReactNode }) {
-  return (
-    <MotionConfig reducedMotion="always">
-      <I18nProvider>{children}</I18nProvider>
-    </MotionConfig>
-  );
-}
-
-function renderWithI18n(node: React.ReactElement) {
-  return render(node, { wrapper: Wrapper });
-}
-
 beforeEach(() => {
   backing.clear();
   useEditorStore.setState({ locale: 'en' });
-  useAgentPanelSettings.setState({
+  useAgentConnection.setState({
     provider: 'claude',
     model: Object.fromEntries(PROVIDER_IDS.map((id) => [id, ''])) as Record<ProviderId, string>,
     oversight: 'checkpoint', customBaseUrl: '', keyed: ['claude'], hydrated: true,
@@ -59,14 +47,6 @@ function answered(over: Partial<AskRecord> = {}): AskRecord {
   return ask({ verdict: 'approved', ...over });
 }
 
-function makeView(over: Partial<PanelView> = {}): PanelView {
-  return {
-    phase: 'idle', jobs: [], queuedSteers: [],
-    vitals: { cells: 0, objects: 0, reverts: 0, jobs: 0 },
-    suggestion: null, lastEventAt: 0, ...over,
-  };
-}
-
 function makeJob(over: Partial<JobView> = {}): JobView {
   return {
     orderSeq: 1, orderText: 'Connect the plaza to the old mill', orderAt: 0,
@@ -81,7 +61,6 @@ const VERBS = { onSend: () => {}, onStop: () => {}, onPause: () => {}, onGateAns
 
 describe('deckRuns: which entries deck', () => {
   it('stacks a run of consecutive answered asks at the minimum, and not below it', () => {
-    expect(DECK_MIN).toBe(3);
     const two = deckRuns([answered(), answered()]);
     expect(two.map((r) => r.deck)).toEqual([false, false]);
 
@@ -124,7 +103,16 @@ describe('deckRuns: which entries deck', () => {
 
 /* ── the face's two facts ──────────────────────────────────────────────────── */
 
-describe('faceMark: the newest verdict, refined the way the card refines it', () => {
+/** What a deck whose newest ask is `newest` shows on its face: the verdict chip's mark and words. */
+function faceMark(newest: AskRecord): { mark: string; text: string } | undefined {
+  const view = renderWithI18n(<AskDeck asks={[newest]} open={false} onOpenChange={() => {}}>{null}</AskDeck>);
+  const chip = within(view.getByTestId('ask-deck-face')).queryByTestId('gate-verdict');
+  const face = chip ? { mark: chip.dataset.verdict!, text: chip.textContent! } : undefined;
+  cleanup();
+  return face;
+}
+
+describe('the deck face: the newest verdict, refined the way the card refines it', () => {
   it('reads a plain verdict unchanged', () => {
     expect(faceMark(answered())?.mark).toBe('approved');
     expect(faceMark(answered({ verdict: 'declined' }))?.mark).toBe('declined');
@@ -133,7 +121,7 @@ describe('faceMark: the newest verdict, refined the way the card refines it', ()
   it('reads a words answer matching a quick pill as a quick answer, with the word', () => {
     const mark = faceMark(ask({ verdict: 'words', words: 'Two lanes', quickAnswers: ['Two lanes', 'One lane'] }));
     expect(mark?.mark).toBe('quick');
-    expect(mark?.word).toBe('Two lanes');
+    expect(mark?.text).toContain('Two lanes');
   });
 
   it('reads a words answer matching an option caption as picked', () => {
@@ -151,12 +139,18 @@ describe('faceMark: the newest verdict, refined the way the card refines it', ()
 
 /* ── the deck component ────────────────────────────────────────────────────── */
 
-function deckOf(asks: AskRecord[]) {
+/** The deck with its open flag held the way `PanelShell` holds it. */
+function HeldDeck({ asks }: { asks: AskRecord[] }) {
+  const [open, setOpen] = useState(false);
   return (
-    <AskDeck asks={asks}>
+    <AskDeck asks={asks} open={open} onOpenChange={setOpen}>
       {asks.map((a) => <GateBlock key={a.gateId} ask={a} onAnswer={() => {}} />)}
     </AskDeck>
   );
+}
+
+function deckOf(asks: AskRecord[]) {
+  return <HeldDeck asks={asks} />;
 }
 
 describe('the deck, collapsed and expanded', () => {
@@ -165,7 +159,7 @@ describe('the deck, collapsed and expanded', () => {
     const { getByTestId, getAllByTestId, queryByTestId } = renderWithI18n(deckOf(asks));
     expect(getByTestId('ask-deck').getAttribute('data-open')).toBe('false');
     expect(getByTestId('ask-deck-count').textContent).toBe('3 answered questions');
-    // The NEWEST verdict, which is the last ask's.
+    // The newest verdict, which is the last ask's.
     expect(getByTestId('gate-verdict').getAttribute('data-verdict')).toBe('declined');
     expect(getAllByTestId('ask-deck-edge').length).toBe(2);
     expect(queryByTestId('gate-block')).toBeNull();
@@ -219,10 +213,10 @@ describe('the record decks its answered asks and never the standing one', () => 
   it('stacks three answered asks behind the standing question, which keeps its buttons', () => {
     const { view } = gatedView(3);
     const { getByTestId, getAllByTestId } = renderWithI18n(
-      <PanelShell view={view} connected now={0} {...VERBS} />,
+      <PanelShell {...panelProps({ view, connected: true, now: 0, ...VERBS })} />,
     );
     expect(getByTestId('ask-deck-count').textContent).toBe('3 answered questions');
-    // ONE full card stands: the standing ask, with its own controls.
+    // One full card stands: the standing ask, with its own controls.
     expect(getAllByTestId('gate-block').length).toBe(1);
     expect(getByTestId('gate-approve')).toBeTruthy();
     // The deck sits where the answered cards sat: before the standing ask in the record's order.
@@ -234,7 +228,7 @@ describe('the record decks its answered asks and never the standing one', () => 
   it('expands into the full card list in place', () => {
     const { view } = gatedView(3);
     const { getByTestId, getAllByTestId } = renderWithI18n(
-      <PanelShell view={view} connected now={0} {...VERBS} />,
+      <PanelShell {...panelProps({ view, connected: true, now: 0, ...VERBS })} />,
     );
     fireEvent.click(getByTestId('ask-deck-face'));
     expect(getAllByTestId('gate-block').length).toBe(4);
@@ -243,7 +237,7 @@ describe('the record decks its answered asks and never the standing one', () => 
   it('lists two answered asks plainly: a deck of two is not a pile', () => {
     const { view } = gatedView(2);
     const { getAllByTestId, queryByTestId } = renderWithI18n(
-      <PanelShell view={view} connected now={0} {...VERBS} />,
+      <PanelShell {...panelProps({ view, connected: true, now: 0, ...VERBS })} />,
     );
     expect(queryByTestId('ask-deck')).toBeNull();
     expect(getAllByTestId('gate-block').length).toBe(3);

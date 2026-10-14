@@ -1,0 +1,8 @@
+{
+  // The one program ESLint's type-aware rules read: every linted file except the tests, which it
+  // lints without types. It is never type-checked; the four tsc programs own types.
+  "extends": "./scripts/tsconfig.json",
+  "compilerOptions": { "incremental": false },
+  "include": ["src", "scripts", "security", "*.ts"],
+  "exclude": ["src/__tests__", "scripts/**/*.test.*", "vitest.*.ts"]
+}

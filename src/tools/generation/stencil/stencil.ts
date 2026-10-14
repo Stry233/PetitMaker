@@ -1,32 +1,35 @@
 /*
  * A picture to build from, and the two things a generator does with one.
  *
- * A STENCIL IS AN INPUT, NOT SOMETHING A GENERATOR DRAWS. Turning a letter, an emoji or a photograph
+ * A stencil is an input, not something a generator draws. Turning a letter, an emoji or a photograph
  * into pixels needs a canvas, and the candidate/preview pipeline runs in a worker that is
- * browser-API-free by construction (`kit/operations/candidate.worker.ts`). So the main thread
- * rasterizes once (`ui/shell/bars/stencil-raster.ts`) and hands the result down as plain numbers,
+ * browser-API-free by construction (`tools/generation/run/candidate.worker.ts`). So the main thread
+ * rasterizes once (`stencil-raster.ts`) and hands the result down as plain numbers,
  * which is also what lets everything below be tested with no browser at all: feed it a stencil.
  *
- * It carries COVERAGE and COLOUR because the two modes ask different questions of the same picture.
+ * It carries coverage and colour because the two modes ask different questions of the same picture.
  * The text mode asks "is this cell inside the shape", and builds the shape out of terrain or out of
  * objects. The image mode ignores shape and asks "what colour is this cell", then picks the terrain
  * whose own colour comes closest. One structure answers both.
  */
-import { ELEVATION_COLORS, WATER_COLOR } from '../../../core/model/constants';
-import { hexStringToNumber } from '../../../core/model/colors';
-import { TerrainType, type CatalogItem, type Stencil } from '../../../core/model/types';
-import { isEmojiGrapheme, textGraphemes } from './stencil-text-segments';
+import { ELEVATION_COLORS, WATER_COLOR } from '../../../core/model/palette';
+import { hexStringToNumber } from '../../../core/base/color';
+import { TerrainType, type CatalogItem } from '../../../core/model/types';
+import { FLAT_SAFE_ELEVATION, type Stencil } from '../recipe';
+import { colorDistanceSq, luma } from './color';
+import { isEmojiGrapheme } from './stencil-text-segments';
+import { graphemes } from '../../../core/base/text';
 import { isCoating, isCrossing } from '../../../core/model/traits';
-import { BASE_SUPPORT } from '../../../core/model/game-profile';
-import { NEIGHBORS4_NESW } from '../../../core/model/grid-model';
+import { NEIGHBORS4_NESW } from '../../../core/grid/directions';
+import { labelComponents } from '../../../core/grid/cell-sets';
 
 export type { Stencil };
 
 /**
- * Whether an item can TILE a shape, which is the only thing the letter mode does with one.
+ * Whether an item can tile a shape, which is the only thing the letter mode does with one.
  *
  * A letter needs the same item many times over, so anything the rules cap is unusable here: an
- * item with `maxCount` makes a letter whose cells past that count are refused. A bridge or a ramp SPANS terrain it is placed against rather than standing on it, so
+ * item with `maxCount` makes a letter whose cells past that count are refused. A bridge or a ramp spans terrain it is placed against rather than standing on it, so
  * neither tiles either, whatever its count.
  *
  * Read from the item, never from a list of ids: a catalog addition is then offered or excluded on
@@ -45,10 +48,10 @@ export function tilesAShape(item: CatalogItem): boolean {
 export const COVERAGE_ON = 128;
 
 /**
- * The least coverage that counts as the face having TOUCHED a cell: a quarter of the way to the
+ * The least coverage that counts as the face having touched a cell: a quarter of the way to the
  * threshold, which is a quarter of the cell inked.
  *
- * A QUARTER because it has to sit clear of both neighbours of the question it answers. Above it are
+ * A quarter because it has to sit clear of both neighbours of the question it answers. Above it are
  * the cells an antialiased edge grazes — a stroke passing near a corner leaves a third or a half —
  * and below it is the noise a rasterizer leaves in a cell the drawing does not enter at all. What
  * reads it wants "did the face put ink here", and both a lower bar (which would call the noise ink)
@@ -56,7 +59,7 @@ export const COVERAGE_ON = 128;
  */
 export const TOUCHED_INK = COVERAGE_ON / 4;
 
-/** What KIND of shape the characters are, which is what decides how much room the strokes need. */
+/** What kind of shape the characters are, which is what decides how much room the strokes need. */
 export type Script = 'simple' | 'dense' | 'picture';
 
 /**
@@ -67,7 +70,7 @@ export type Script = 'simple' | 'dense' | 'picture';
  * Read from code points rather than from a locale: the string is what is being drawn.
  */
 export function scriptOf(text: string): Script {
-  if (textGraphemes(text).some(isEmojiGrapheme)) return 'picture';
+  if (graphemes(text).some(isEmojiGrapheme)) return 'picture';
   return /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/u.test(text) ? 'dense' : 'simple';
 }
 
@@ -78,9 +81,9 @@ export function scriptOf(text: string): Script {
  */
 const GLYPH_FLOOR = { alone: 8, together: 10, dense: 14 } as const;
 
-export function textMinSide(text: string): number {
+function textMinSide(text: string): number {
   if (scriptOf(text) === 'dense') return GLYPH_FLOOR.dense;
-  return textGraphemes(text).length > 1 ? GLYPH_FLOOR.together : GLYPH_FLOOR.alone;
+  return graphemes(text).length > 1 ? GLYPH_FLOOR.together : GLYPH_FLOOR.alone;
 }
 
 /** Minimum ink span used only to decide whether a glyph can spare an outer air cell. */
@@ -88,7 +91,7 @@ const INK_MIN = { simple: 5, dense: 13, picture: 5 } as const;
 
 /** Keep one outer cell only when the remaining box still fits the script's minimum ink span. */
 export function airCells(text: string, box: { width: number; height: number }): number {
-  const glyphs = Math.max(1, textGraphemes(text).length);
+  const glyphs = Math.max(1, graphemes(text).length);
   const withAir = Math.min(box.height - AIR_CELLS, (box.width - AIR_CELLS) / glyphs);
   return withAir >= INK_MIN[scriptOf(text)] ? AIR_CELLS : 0;
 }
@@ -108,16 +111,16 @@ export const COMPACT_IMAGE_LIMIT = 20;
 /** Minimum box accounts for the width divided among all characters. */
 export function textMinBox(text: string): { width: number; height: number } {
   const side = textMinSide(text);
-  return { width: side * Math.max(1, textGraphemes(text).length), height: side };
+  return { width: side * Math.max(1, graphemes(text).length), height: side };
 }
 
 /**
  * Whether covering (x, y) would close a letter's own daylight rather than fill a dent in a stroke.
  *
- * A CHANNEL AND A NOTCH LOOK THE SAME FROM ONE CELL, and the difference is in the WALLS. A notch
+ * A channel and a notch look the same from one cell, and the difference is in the walls. A notch
  * bitten out of a stroke has the stroke's own body either side of it — ink that carries on past the
  * cell that touches the notch. A gap between two strokes has one cell of stroke either side and then
- * open ground, since that is what a stroke at this size IS. So a promotion whose ink neighbours face
+ * open ground, since that is what a stroke at this size is. So a promotion whose ink neighbours face
  * each other across the cell is refused unless one of those two walls is more than a cell thick.
  *
  * The test is on the pairs, not on the count: a dent in the top of a bar has ink east and west of it
@@ -136,7 +139,7 @@ export function bridgesDaylight(s: Stencil, x: number, y: number): boolean {
 }
 
 /**
- * Ink RUNS along one row or column: how many separate pieces of the shape it crosses.
+ * Ink runs along one row or column: how many separate pieces of the shape it crosses.
  *
  * Two strokes with daylight between them are two runs; the same two fused are one. That makes this
  * the reading behind "the path is clear" — a letter is legible when its strokes are still separate
@@ -154,19 +157,11 @@ export function runsAlong(s: Stencil, lane: number, vertical: boolean): number {
 }
 
 /**
- * HOW MUCH OF THE DRAWING'S OWN STROKE SEPARATION A QUANTISED SHAPE STILL CARRIES: 1 where every row
- * and column of it crosses as many separate pieces as the drawing did, and lower where they fused.
- *
- * `runsRow` and `runsCol` are that drawing's answer, counted at a HIGHER resolution than the shape
- * being judged. They have to come from there: a weight heavy enough to fuse two strokes fuses them in
- * any picture drawn at the same weight, so a shape compared against its own resolution scores
- * perfectly while arriving as a block. An M is two stems and a middle V — three strokes across one
- * row with nothing enclosed anywhere — so the fusion shows in no count of pieces, counters or
- * outline damage.
- *
- * A SHARE RATHER THAN A COUNT of failing lines, because a stroke that MEETS another is the letter
- * rather than a defect: the diagonal of an N joins both its stems. Summed over the whole shape a
- * junction costs a little, and a letter that filled in costs most of it.
+ * How much of the drawing's stroke separation a quantised shape still carries: 1 where every row and
+ * column crosses as many pieces as the drawing did. `runsRow` and `runsCol` must come from a higher
+ * resolution, since a weight that fuses two strokes fuses them in any picture at that weight; an M's
+ * fusion shows in no count of pieces, counters or outline damage. A share, because a stroke meeting
+ * another (an N's diagonal) is the letter: a junction costs a little, a filled letter most of it.
  */
 export function separationOf(
   s: Stencil, runsRow: readonly number[], runsCol: readonly number[], shift: readonly [number, number] = [0, 0],
@@ -177,7 +172,7 @@ export function separationOf(
     const want = runsRow[y - dy] ?? 0;
     const got = runsAlong(s, y, false);
     // A line the shape does not reach at all is an extent difference, which other readings answer
-    // for; only a line it IS on can have lost a gap.
+    // for; only a line it is on can have lost a gap.
     if (want > 0 && got > 0) { had += want; kept += Math.min(got, want); }
   }
   for (let x = 0; x < s.width; x++) {
@@ -191,9 +186,9 @@ export function separationOf(
 /**
  * How much of the shape's own bounding box is ink.
  *
- * A LETTER IS MOSTLY NOT INK. Its strokes are what the eye follows and the ground between them is
+ * A letter is mostly not ink. Its strokes are what the eye follows and the ground between them is
  * what makes them followable, so past about three quarters of the box the strokes have eaten the gaps
- * and the shape reads as a slab with dents in it. Measured over the ink's OWN box rather than the
+ * and the shape reads as a slab with dents in it. Measured over the ink's own box rather than the
  * region, since a letter narrower than its region would otherwise read as light for being small.
  */
 export function densityOf(s: Stencil): number {
@@ -212,43 +207,20 @@ export function densityOf(s: Stencil): number {
 }
 
 /**
- * The pieces a shape is in, counted the way the MAP counts them: two cells meeting at a corner alone
+ * The pieces a shape is in, counted the way the map counts them: two cells meeting at a corner alone
  * are two blocks with ground between them.
  */
 export function piecesOf(s: Stencil): number {
-  const seen = new Uint8Array(s.width * s.height);
-  let count = 0;
-  for (let start = 0; start < seen.length; start++) {
-    if (seen[start] || !covered(s, start % s.width, (start / s.width) | 0)) continue;
-    count++;
-    const stack = [start];
-    seen[start] = 1;
-    while (stack.length) {
-      const i = stack.pop()!;
-      const x = i % s.width, y = (i / s.width) | 0;
-      for (const [dx, dy] of NEIGHBORS4_NESW) {
-        const nx = x + dx, ny = y + dy;
-        if (!covered(s, nx, ny)) continue;
-        const n = ny * s.width + nx;
-        if (!seen[n]) { seen[n] = 1; stack.push(n); }
-      }
-    }
-  }
-  return count;
+  const mask = new Uint8Array(s.width * s.height);
+  for (let i = 0; i < mask.length; i++) mask[i] = covered(s, i % s.width, (i / s.width) | 0) ? 1 : 0;
+  return labelComponents(mask, s.width, s.height).sizes.length - 1;
 }
 
 /**
- * The bars a drawn glyph has to clear to be worth building, and the ONE place they are written.
- *
- * The evaluation matrix holds every committed letter to them and the shelf's card gate asks the same
- * two of a letter a visitor has actually typed (`stencil-raster.ts:glyphSurvives`), so a card can
- * only ever offer what the matrix would call legible.
- *
- * SEPARATION at 0.7 with the worst passing cell at 0.73, and the gap is headroom: the matrix is
- * fourteen glyph sets and the alphabet is not, so the bar sits below the worst letter MEASURED rather
- * than on top of it. The letters that fail sit at 0.53 to 0.62, which is nowhere near either number.
- * DENSITY at 0.8 against a worst pass of 0.73, for the same reason and with the same distance from
- * the blobs (0.90 and up).
+ * The bars a drawn glyph has to clear to be worth building, written once: every committed letter is
+ * held to them and the shelf's card gate asks the same of a typed letter
+ * (`stencil-raster.ts:glyphSurvives`). Each bar sits a little past the worst passing letter, as
+ * headroom for letters outside the matrix, and well clear of the failing ones.
  */
 export const GLYPH_LEGIBLE = { separation: 0.7, density: 0.8 } as const;
 
@@ -264,16 +236,15 @@ export interface GlyphReading {
 }
 
 /**
- * WHETHER A DRAWN GLYPH IS WORTH BUILDING, from those numbers alone — the one decision, so the shelf
- * cannot offer what the evaluation matrix would call illegible.
+ * Whether a drawn glyph is worth building, from those numbers alone: the one decision, so the shelf
+ * cannot offer a letter that reads as illegible.
  *
- * THREE BARS, and the pieces are the one a share cannot see. Separation is summed over every row and
- * column, so two LETTERS fusing into each other costs a couple of runs out of a whole row and comes
- * back at 0.9: measured, HELLO in a six-cell region scores 0.898 separation and 0.540 density while
- * arriving as three pieces of five. What a row of letters loses first is not the ground inside a
- * letter but the ground BETWEEN them, and that is a count of pieces rather than a proportion of runs.
+ * Three bars, and the pieces are the one a share cannot see. Separation is summed over every row and
+ * column, so two letters fusing into each other costs a couple of runs out of a whole row and comes
+ * back at 0.9 while the word arrives as fewer pieces than it has letters. What a row of letters loses first is not the ground inside a
+ * letter but the ground between them, and that is a count of pieces rather than a proportion of runs.
  *
- * DENSITY is asked only of a shape the drawing gave more than one stroke to, since a bare stem fills
+ * Density is asked only of a shape the drawing gave more than one stroke to, since a bare stem fills
  * its own box by definition.
  */
 export function glyphLegible(r: GlyphReading): boolean {
@@ -288,24 +259,13 @@ export function covered(s: Stencil, x: number, y: number): boolean {
   return (s.coverage[y * s.width + x] ?? 0) >= COVERAGE_ON;
 }
 
-/** The tallest a cell may stand with no base under it: the layers V-MTN-03 exempts. */
-export const FLAT_SAFE_ELEVATION = BASE_SUPPORT.fromLayer - 1;
 
 /**
- * Lower whatever cannot stand, until everything can.
- *
- * The COLOUR mode has no freedom to terrace: a cell's elevation is its colour, so the picture
- * decides the heights and they land beside each other in any order. V-MTN-03 then refuses every cell
- * more than three layers above its own 3x3 neighbourhood, and a refused layer takes the stroke down
- * with it.
- *
- * So the heights are relaxed FIRST, in place: while any cell stands more than `FLAT_SAFE_ELEVATION`
- * above the lowest of the eight around it, it comes down to exactly that much. Repeated to a
- * fixpoint, which it always reaches — every pass only ever lowers, and zero is the floor. A cell off
- * the picture reads 0, so the edges slope down to the ground they sit on.
- *
- * What this costs is the top of the ramp in the brightest places, and what it buys is a picture that
- * commits instead of one that vanishes.
+ * Lower whatever cannot stand, until everything can. In colour mode a cell's elevation is its colour,
+ * so heights land in any order and V-MTN-03 refuses any cell more than three layers above its 3x3.
+ * Heights are relaxed first: a cell more than `FLAT_SAFE_ELEVATION` above its lowest neighbour comes
+ * down to exactly that, to a fixpoint (passes only lower, zero is the floor). Off-picture cells read
+ * 0, so the edges slope to the ground. It costs the top of the ramp in the brightest places.
  */
 export function relaxHeights(target: Int16Array, width: number, height: number): void {
   let moved = true;
@@ -333,11 +293,11 @@ export function relaxHeights(target: Int16Array, width: number, height: number):
 }
 
 /**
- * What the map can be COLOURED with, and the whole of it.
+ * What the map can be coloured with, and the whole of it.
  *
  * The terrain palette is a colour ramp already: eight greens climbing with elevation, plus one blue
  * for water. That is what makes an image mode possible without inventing anything — a cell's
- * ELEVATION is chosen for the colour it draws in, not for the height it means. The result reads as a
+ * Elevation is chosen for the colour it draws in, not for the height it means. The result reads as a
  * mosaic of the picture and is a real, buildable map underneath.
  */
 interface PaletteEntry {
@@ -357,11 +317,6 @@ export function terrainPalette(maxElevation: number, water = true): PaletteEntry
     if (hex) out.push({ type: TerrainType.Mountain, elevation: e, rgb: hexStringToNumber(hex) });
   }
   return out;
-}
-
-/** Brightness as the eye weighs the channels. The one measure of tone this file works in. */
-export function luma(rgb: number): number {
-  return 0.299 * ((rgb >> 16) & 0xff) + 0.587 * ((rgb >> 8) & 0xff) + 0.114 * (rgb & 0xff);
 }
 
 /** A span of tone, in luma. */
@@ -393,7 +348,7 @@ export function sourceToneRange(lumas: readonly number[]): ToneRange {
 /**
  * A range narrowed by `contrast` about its own middle — 1 leaves it alone.
  *
- * CONTRAST IS THE WINDOW, not a push away from mid-grey. What a contrast control has to decide here
+ * Contrast is the window, not a push away from mid-grey. What a contrast control has to decide here
  * is how much of the picture's range is spread across the palette and how much of it clips at the
  * ends: above 1 the window narrows and the extremes flatten out, below 1 it widens and the result is
  * gentler. Pushing away from mid-grey instead does nothing useful to art that has no mid-greys in it
@@ -401,30 +356,19 @@ export function sourceToneRange(lumas: readonly number[]): ToneRange {
  */
 export function narrowRange(range: ToneRange, contrast: number): ToneRange {
   const amount = contrast > 0 ? contrast : 1;
-  if (amount === 1) return range;   // the range ITSELF, so a caller can recognise "nothing was asked"
+  if (amount === 1) return range;   // the range itself, so a caller can recognise "nothing was asked"
   const mid = (range.lo + range.hi) / 2, half = (range.hi - range.lo) / 2 / amount;
   return { lo: mid - half, hi: mid + half };
 }
 
 /**
- * The tones a picture should be LANDED on, given what the palette can draw: MOVED into the palette's
- * reach, and squeezed only if it is wider than the palette is.
- *
- * A picture whose own range already sits inside the palette's is left exactly where it is. The
- * object catalogue carries dozens of hues from white to near-black, so a sticker matched against it
- * is already reproducible and moving its tones only makes the colours wrong — measured, a stretch
- * there cost a third of the reproduction. The terrain ramp is the other case: eight greens between
- * luma 79 and 184, against art that lives above 200, so nothing of the picture is in reach and every
- * cell of it matches layer 1.
- *
- * NEVER MAGNIFIED. Moving a picture in is what the out-of-gamut case needs; blowing a narrow range
- * up to fill the ramp is a contrast decision, and making it here would amplify a flat picture's own
- * noise into a relief and leave a single-colour picture — which has no range to speak of — landing
- * in the middle of the ramp instead of where its colour actually is. Contrast is the visitor's, and
- * it is the window (`narrowRange`).
+ * The tones a picture should land on, given the palette's reach: moved into it, and squeezed only if
+ * wider. A range already inside the palette stays put (the object catalogue spans white to
+ * near-black). Never magnified: stretching a narrow range is a contrast decision that would amplify a
+ * flat picture's noise and misplace a single-colour one; contrast is the visitor's (`narrowRange`).
  */
 export function fitTarget(source: ToneRange, palette: ToneRange): ToneRange {
-  // The range ITSELF when it is already in reach, rather than one arithmetically equal to it: the
+  // The range itself when it is already in reach, rather than one arithmetically equal to it: the
   // fit recognises "nothing to do" by comparing the two, and `lo + (hi - lo)` is not always `hi`.
   if (source.lo >= palette.lo && source.hi <= palette.hi) return source;
   const span = Math.min(source.hi - source.lo, palette.hi - palette.lo);
@@ -433,25 +377,7 @@ export function fitTarget(source: ToneRange, palette: ToneRange): ToneRange {
 }
 
 /**
- * The transform that lands a picture's own tones on the ones a palette can draw.
- *
- * THIS IS THE WHOLE OF WHY A BRIGHT PICTURE CAME OUT FLAT. The terrain ramp runs from luma 184 at
- * layer 1 down to 79 at layer 8, and pastel art — a sticker, an emoji, most of what anybody pastes —
- * lives above 200 nearly everywhere. Every cell of it is therefore nearer layer 1 than anything else
- * and the picture arrives as one solid tier: a shape with no drawing in it. Matching absolute
- * colours only works while the two gamuts overlap, and here they mostly do not.
- *
- * So the picture's OWN range is stretched onto the palette's before anything is matched: the
- * brightest thing in it becomes the palette's brightest entry and the darkest its darkest, which is
- * what puts an outline, a face and a shadow on different tiers instead of all on one.
- *
- * HUE SURVIVES AS FAR AS IT FITS. Each channel moves by the same amount, so the differences between
- * them — which is what colour is — are untouched; where that would take a channel past 0 or 255 the
- * chroma is pulled in by exactly as much as it has to be and no more, rather than the channel being
- * clipped on its own (which would swing the hue).
- */
-/**
- * The same colour at a different TONE: the tone is set to `want` and the chroma is given up only as
+ * The same colour at a different tone: the tone is set to `want` and the chroma is given up only as
  * far as it has to be.
  *
  * Each channel moves by the same amount, so the differences between them — which is what colour is —
@@ -474,8 +400,16 @@ export function withTone(rgb: number, want: number): number {
   return ((out(r) << 16) | (out(g) << 8) | out(b)) >>> 0;
 }
 
+/**
+ * The transform that lands a picture's tones on the ones a palette can draw. The terrain ramp runs
+ * from luma 184 at layer 1 to 79 at layer 8, and pastel art lives above 200, so absolute matching
+ * lands it all on layer 1. The picture's own range is stretched onto the palette's, putting outline,
+ * face and shadow on different tiers. Each channel moves by the same amount, so hue survives; where
+ * a channel would pass 0 or 255 the chroma is pulled in just enough, rather than clipping one channel
+ * and swinging the hue.
+ */
 export function toneFit(from: ToneRange, to: ToneRange): (rgb: number) => number {
-  // NOTHING TO DO IS NOT THE SAME AS DOING NOTHING MEASURABLE. Mapping a range onto itself still
+  // Nothing to do is not the same as doing nothing measurable. Mapping a range onto itself still
   // clamps every cell outside the measured percentiles back to them — which is 4% of the picture by
   // construction — and rounds every channel on the way through. So a picture the palette already
   // covers, which is meant to be matched exactly as it always was, would come back quietly altered
@@ -496,17 +430,13 @@ export function toneFit(from: ToneRange, to: ToneRange): (rgb: number) => number
  * The weights are the usual luma coefficients, which is the cheapest thing that behaves.
  *
  * `nearestByColor` above is the same arithmetic over anything carrying an `rgb`, which is what lets
- * a picture be matched against the OBJECT catalogue as well as against the terrain ramp.
+ * a picture be matched against the object catalogue as well as against the terrain ramp.
  */
 export function nearestByColor<T extends { rgb: number }>(palette: readonly T[], rgb: number): T | null {
-  const r = (rgb >> 16) & 0xff, g = (rgb >> 8) & 0xff, b = rgb & 0xff;
   let best: T | null = null;
   let bestD = Infinity;
   for (const entry of palette) {
-    const dr = r - ((entry.rgb >> 16) & 0xff);
-    const dg = g - ((entry.rgb >> 8) & 0xff);
-    const db = b - (entry.rgb & 0xff);
-    const d = 0.299 * dr * dr + 0.587 * dg * dg + 0.114 * db * db;
+    const d = colorDistanceSq(rgb, entry.rgb);
     if (d < bestD) { bestD = d; best = entry; }
   }
   return best;

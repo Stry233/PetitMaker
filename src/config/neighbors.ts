@@ -1,10 +1,11 @@
-import type { LocalizedName } from '../core/model/types';
+import type { LocalizedName } from '../core/model/locale';
 
 /** The game's neighbours whose portraits ship verbatim beside the catalog art (`assets/neighbors/<id>-icon.png`),
  *  with their localized names. */
 export const NEIGHBORS: readonly { id: string; name: LocalizedName }[] = [
   { id: 'dorjelang', name: { en: 'Dorjelang', zh: '多杰朗', ja: 'ドジェロ', ru: 'Дорджеланг', th: 'ดอร์เจลาง', id: 'Dorjelang', fr: 'Dorjelang' } },
   { id: 'elsasani', name: { en: 'Elsasani', zh: '艾莎莎尼', ja: 'エササーニ', ru: 'Эльзасани', th: 'เอลซาซานี', id: 'Elsasani', fr: 'Elsasani' } },
+  // Frostia's recorded names cover English, Chinese and Japanese only; the other locales read the English.
   { id: 'frostia', name: { en: 'Frostia', zh: '幻雪', ja: 'フロスティア' } },
   { id: 'glenn', name: { en: 'Glenn', zh: '格连', ja: 'グレン', ru: 'Гленн', th: 'เกล็น', id: 'Glenn', fr: 'Glenn' } },
   { id: 'harpeno', name: { en: 'Harpeno', zh: '哈佩诺', ja: 'ハーペノ', ru: 'Харпено', th: 'ฮาร์เปโน', id: 'Harpeno', fr: 'Harpeno' } },

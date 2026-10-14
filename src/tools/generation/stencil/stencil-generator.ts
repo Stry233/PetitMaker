@@ -1,34 +1,43 @@
 /*
  * Laying a `Stencil` onto the map, in the two ways the shelf offers.
  *
- * SHAPE (the text mode) reads the stencil's coverage: the cells inside the glyph become terrain, or
- * carry an object each. COLOUR (the image mode) ignores the shape and reads each cell's colour,
+ * Shape (the text mode) reads the stencil's coverage: the cells inside the glyph become terrain, or
+ * carry an object each. Colour (the image mode) ignores the shape and reads each cell's colour,
  * choosing the terrain whose own colour comes nearest — the elevation palette is a green ramp, so a
  * picture lands as a mosaic that is still a real, buildable map underneath.
  *
- * EVERYTHING IS BUILT BOTTOM-UP, one layer at a time, exactly as the maze builds its walls: a cell
- * that wants layer 4 gets 1, 2 and 3 under it first. That is what keeps an arbitrary picture legal
- * without the rules having to reject most of it — nothing ever floats, so the 3x3 base rule has a
- * mass to find. A layer refused as a batch is retried cell by cell and only the cells that took it
- * climb any further, so the shape degrades at its edges rather than vanishing.
+ * Everything is built bottom-up through `terrain-plan/commit.ts:raiseBottomUp`, as the maze builds
+ * its walls: a cell that wants layer 4 gets 1, 2 and 3 under it first. That is what keeps an arbitrary
+ * picture legal without the rules having to reject most of it — nothing ever floats, so the 3x3 base
+ * rule has a mass to find. A layer refused as a batch is retried cell by cell and only the cells that
+ * took it climb any further, so the shape degrades at its edges rather than vanishing.
  */
-import { CommandType, TerrainType } from '../../../core/model/types';
-import type { Command, GridState, MacroCoord, PlacedObject, Stencil, StencilBudgetOutcome, StencilPlan, StencilWaterRole, ValidationResult } from '../../../core/model/types';
-import { getCell, isBuildableZone, NEIGHBORS4_NESW } from '../../../core/model/grid-model';
-import { realSurface, surfaceElevation } from '../../../core/edge-cut/terrain-silhouette';
-import { getCatalogItem } from '../../../state/catalog';
+import { placeObjectCommand, removeObjectCommand } from '../../../core/model/command-build';
+import { paintLayer, raiseBottomUp, type RaiseTarget } from '../terrain-plan';
+import { TerrainType } from '../../../core/model/types';
+import type { Command, GridState, MacroCoord, PlacedObject, ValidationResult } from '../../../core/model/types';
+import { FLAT_SAFE_ELEVATION, type Stencil, type StencilBudgetOutcome, type StencilPlan, type StencilWaterRole } from '../recipe';
+import { getCell } from '../../../core/model/grid-model';
+import { NEIGHBORS4_NESW } from '../../../core/grid/directions';
+import { isBuildableZone } from '../../../core/game/zones';
+import { surfaceElevation } from '../../../core/domain/terrain/terrain-surface';
+import { flatSweepOffenders } from '../../../rules/placement';
+import { getAllItems, getCatalogItem } from '../../../state/catalog';
 import { generateObjectId } from '../../../core/model/object-id';
-import { objectPlacementCommand, removeObjectCommand } from '../../objects/object-placer';
+import { overlappingCoatings } from '../../placement/coatings';
 import { getObjectIndex, objectAt } from '../../../state/object-index';
-import { COMPACT_IMAGE_LIMIT, covered, fitTarget, FLAT_SAFE_ELEVATION, luma, narrowRange, nearestByColor, nearestTerrain, paletteToneRange, relaxHeights, sourceToneRange, terrainPalette, toneFit, withTone, type ToneRange } from './stencil';
+import { COMPACT_IMAGE_LIMIT, covered, fitTarget, narrowRange, nearestByColor, nearestTerrain, paletteToneRange, relaxHeights, sourceToneRange, terrainPalette, toneFit, withTone, type ToneRange } from './stencil';
 import { DIFFUSION, matchWithDiffusion, RAMP_DIFFUSION } from './stencil-sample';
-import { bedCells, hueReach, hueToneOffsets, planBorrow, planColourFill, readSmallBox, settleWaterBodies, smallBoxWeight, sourceColour, BORROW_COVER_MIN, type BorrowPolicy } from './stencil-small';
+import { colorDistance, luma } from './color';
+import { bedCells, hueReach, hueToneOffsets, planBorrow, planColorFill, readSmallBox, settleWaterBodies, smallBoxWeight, sourceColor, BORROW_COVER_MIN, type BorrowPolicy } from './stencil-small';
 import { detectFeatures, featureBudget, planFeatureMarks, FEATURE_MAX_SHARE } from './stencil-feature';
 import { declaredColorPalette, type ColorEntry } from './stencil-palette';
 import { isChunkLoadEnforced } from '../../../core/model/load';
 import { LoadBudget } from '../../../state/load-budget';
 import { budgetStencil } from './stencil-budget';
-import { ELEVATION_MAX } from '../../../core/model/game-profile';
+import { strokeTilePalette, strokeTileMask } from './stencil-line-tiles';
+import { coatingLayer, isCoatingItem } from '../../../core/model/traits';
+import { ELEVATION_MAX } from '../../../core/game/profile';
 
 export interface StencilResult {
   budget?: StencilBudgetOutcome;
@@ -38,33 +47,33 @@ export interface StencilResult {
    *  layer above it, so this is what a caller reports when it says where the text landed. */
   base?: number;
   /**
-   * shape/terrain runs: covered cells left alone because they stand on a DIFFERENT surface than the
+   * shape/terrain runs: covered cells left alone because they stand on a different surface than the
    * majority — a step through the middle of the word, or a pond under it. Reported rather than
    * mangled: a glyph laid across a step would either float or carve, and both are worse than a
    * shorter word.
    */
   offBase?: number;
   /**
-   * shape/terrain runs: covered cells ON the base whose own neighbourhood could not carry the layer
+   * shape/terrain runs: covered cells on the base whose own neighbourhood could not carry the layer
    * — the rim of a plateau, where the ground beside it falls too far for V-MTN-03 (or, for water,
    * anywhere the body would have an uncapped face).
    *
-   * SEPARATE FROM `offBase` because they are separate things to say: one is "your word crosses a
+   * Separate from `offBase` because they are separate things to say: one is "your word crosses a
    * step", the other is "your word reaches the edge of the ground it stands on".
    */
   unsupported?: number;
   /**
-   * shape/terrain runs: covered cells whose surface is ALREADY the tallest layer the grid has, so
+   * shape/terrain runs: covered cells whose surface is already the tallest layer the grid has, so
    * the one above it does not exist. A run that writes nothing for this reason is otherwise
    * indistinguishable from one with nothing to write.
    */
   atCeiling?: number;
-  /** How many of the placements were the DECORATION rather than the primary material. Absent when
+  /** How many of the placements were the decoration rather than the primary material. Absent when
    *  the picture is built from one material alone. */
   decorated?: number;
-  /** color runs in a small box: how many cells were paved in a BORROWED material because the picture's
+  /** color runs in a small box: how many cells were paved in a borrowed material because the picture's
    *  own palette had no hue for them — a region covered whole (`stencil-small.ts:planBorrow`) or a bed
-   *  inside a body the ground would not hold one over (`planColourFill`). */
+   *  inside a body the ground would not hold one over (`planColorFill`). */
   coated?: number;
 }
 
@@ -75,9 +84,8 @@ interface StencilPlacement { origin: MacroCoord; stencil: Stencil; allow?: Reado
  * A cell the generator may write to at all: on the map, buildable ground, and inside the run's own
  * scope where it has one.
  *
- * The scope matters because a stencil is fitted to the region's BOUNDING BOX rather than to the
- * region. A rectangle's box is itself, so the two agreed and the gap went unnoticed; anything else
- * has a box bigger than it is, and the picture filled the box.
+ * The scope matters because a stencil is fitted to the region's bounding box rather than to the
+ * region, and any region but a rectangle is smaller than its box.
  */
 function writable(state: GridState, x: number, y: number, allow?: ReadonlySet<number>): boolean {
   const cell = getCell(state.cells, x, y);
@@ -85,62 +93,7 @@ function writable(state: GridState, x: number, y: number, allow?: ReadonlySet<nu
   return !allow || allow.has(y * state.template.width + x);
 }
 
-/**
- * Raise `targets` bottom-up, each cell to its own height.
- *
- * One pass per layer over the cells that still want to be that tall, batched — and on refusal
- * retried singly, so one illegal cell cannot take the layer down with it. A cell that fails a layer
- * stops climbing, and everything targeted around it comes down with it: the 3x3 base rule is a
- * POST-stroke rule, so a neighbour left climbing over the stump would pass every command and be
- * found floating only at commit, taking the whole stroke down in the auto-revert.
- */
-function raise(
-  targets: Map<number, { coord: MacroCoord; type: TerrainType; top: number }>,
-  maxElevation: number,
-  mapWidth: number,
-  executeCommand: (cmd: Command) => ValidationResult,
-): StencilResult {
-  // `top` lowered at `coord`: every neighbouring target may now stand at most 3 above it.
-  const settle = (seed: { coord: MacroCoord; top: number }): void => {
-    const queue = [seed];
-    for (let q = 0; q < queue.length; q++) {
-      const { coord, top } = queue[q]!;
-      const cap = top + FLAT_SAFE_ELEVATION;
-      for (let dy = -1; dy <= 1; dy++) {
-        for (let dx = -1; dx <= 1; dx++) {
-          if (!dx && !dy) continue;
-          const n = targets.get((coord.y + dy) * mapWidth + (coord.x + dx));
-          if (n && n.top > cap) { n.top = cap; queue.push(n); }
-        }
-      }
-    }
-  };
-  let placed = 0, skipped = 0;
-  let live = [...targets.values()];
-  for (let e = 1; e <= maxElevation && live.length > 0; e++) {
-    // Water is one block deep and sits AT its own layer, so it is laid once, at the top of the
-    // column the layers below it have already built.
-    const wants = live.filter((t) => t.top >= e);
-    const mountain = wants.filter((t) => t.type === TerrainType.Mountain || t.top > e);
-    const water = wants.filter((t) => t.type === TerrainType.Water && t.top === e);
-
-    for (const [type, group] of [[TerrainType.Mountain, mountain], [TerrainType.Water, water]] as const) {
-      if (group.length === 0) continue;
-      const cells = group.map((t) => t.coord);
-      const cmd: Command = { type: CommandType.PaintTerrain, timestamp: 0, cells, terrainType: type, elevation: e };
-      if (executeCommand(cmd).success) { placed += cells.length; continue; }
-      for (const t of group) {
-        const one: Command = { type: CommandType.PaintTerrain, timestamp: 0, cells: [t.coord], terrainType: type, elevation: e };
-        if (executeCommand(one).success) placed++;
-        else { skipped++; t.top = e - 1; settle(t); }  // stops here, and its neighbours come down to what it can carry
-      }
-    }
-    live = live.filter((t) => t.top > e);
-  }
-  return { placed, skipped };
-}
-
-/** Whether a cell is GROUND a glyph could be written on: a surface that is not water.
+/** Whether a cell is ground a glyph could be written on: a surface that is not water.
  *
  *  Water reads as a perfectly good standable tier through the kernel (a lake sits at ground level and
  *  a boat could be on it), and it is not one for this: a letter written over a pond would paint
@@ -152,13 +105,13 @@ function standableBase(state: GridState, x: number, y: number): number | null {
 }
 
 /**
- * The tier the figure is written ON: the standable surface most of the cells it may write stand at.
+ * The tier the figure is written on: the standable surface most of the cells it may write stand at.
  *
  * Read through the silhouette kernel (`realSurface`/`surfaceElevation`), never off `terrain.elevation`
  * — a Γ patch is cosmetic above its own base, and a raw read sees a fillet as a full block.
  *
- * Ties go to the LOWER tier, so the answer is one function of the map rather than of iteration order.
- * `null` when there is no writable GROUND under the stencil at all.
+ * Ties go to the lower tier, so the answer is one function of the map rather than of iteration order.
+ * `null` when there is no writable ground under the stencil at all.
  */
 function stencilBaseTier(state: GridState, { origin, stencil, allow }: StencilPlacement): number | null {
   const counts = new Map<number, number>();
@@ -195,23 +148,13 @@ function lowestAround(state: GridState, x: number, y: number): number {
 }
 
 /**
- * The glyph as TERRAIN: every covered cell written as ONE layer standing on the region's own surface.
- *
- * BASE+1, AND NOTHING ELSE. Terracing the shape by inset — the outline at tier 1 and each ring inward
- * three tiers higher, up to a picked height — gives a letter a layer-1 SKIRT around a taller core (an edging band)
- * and leaves every stroke too thin to hold a second ring down at the skirt's tier, reading as a hole
- * through the middle of the letter. It also reads the map as if it were always sea level: on a region
- * standing on a mountain it paints tier 1 INTO the plateau.
- *
- * A single layer on the measured surface has neither failure by construction, and it is what makes a
- * glyph legible at small sizes: the shape is the whole subject, and a relief is only ever noise in it.
- *
- * WATER SINKS AT THE SURFACE ITSELF rather than one above it. A body raised over the ground beside it
- * has an exposed face at every border cell and V-WTR-02 wants each capped by mountain at exactly the
- * water's height; at the surface tier the mass around it IS that cap, and on open ground there is
- * nothing lower and so no face at all.
+ * The glyph as terrain: every covered cell written as one layer on the region's own surface.
+ * Terracing by inset would give a letter a skirt round a taller core, leave thin strokes reading as
+ * holes, and paint tier 1 into a plateau; one layer on the measured surface keeps the shape the whole
+ * subject. Water sinks at the surface itself, where the surrounding mass is the cap V-WTR-02 wants
+ * and open ground has no face at all.
  */
-export function layStencilTerrain(
+function layStencilTerrain(
   state: GridState,
   placement: StencilPlacement,
   terrainType: TerrainType,
@@ -224,7 +167,7 @@ export function layStencilTerrain(
 
   // What the neighbourhood has to hold up for this layer to survive the commit. V-MTN-03 gives a
   // block three layers of grace over its 3x3; water is asked for a full cap at its own height, so a
-  // pool may not overhang anything lower at all. Both rules are POST-stroke: a cell laid without
+  // pool may not overhang anything lower at all. Both rules are post-stroke: a cell laid without
   // this check passes every command and takes the whole run down in the auto-revert.
   const floor = terrainType === TerrainType.Water ? elevation : Math.max(0, elevation - FLAT_SAFE_ELEVATION);
 
@@ -247,20 +190,14 @@ export function layStencilTerrain(
   const counts = { base, offBase, unsupported, atCeiling };
   if (cells.length === 0) return { placed: 0, skipped: 0, ...counts };
 
-  const cmd: Command = { type: CommandType.PaintTerrain, timestamp: 0, cells, terrainType, elevation };
-  if (executeCommand(cmd).success) return { placed: cells.length, skipped: 0, ...counts };
-  let placed = 0, skipped = 0;
-  for (const coord of cells) {
-    const one: Command = { type: CommandType.PaintTerrain, timestamp: 0, cells: [coord], terrainType, elevation };
-    if (executeCommand(one).success) placed++; else skipped++;
-  }
-  return { placed, skipped, ...counts };
+  const placed = paintLayer(cells, terrainType, elevation, executeCommand);
+  return { placed, skipped: cells.length - placed, ...counts };
 }
 
 /**
- * The glyph as OBJECTS: one item per footprint-sized step across the covered cells.
+ * The glyph as objects: one item per footprint-sized step across the covered cells.
  *
- * Stepped by the ITEM'S OWN SIZE rather than per cell, so a 2x2 building fills the shape instead of
+ * Stepped by the item's own size rather than per cell, so a 2x2 building fills the shape instead of
  * refusing at every second cell for overlapping the one before it. A step whose whole footprint is
  * not covered is skipped, which is what keeps the outline readable at the size the glyph was drawn.
  */
@@ -279,7 +216,7 @@ function* shapeTiles(stencil: Stencil, catalogId: string): Iterable<{ x: number;
   }
 }
 
-export function layStencilObjects(
+function layStencilObjects(
   state: GridState,
   { origin, stencil, allow }: StencilPlacement,
   catalogId: string,
@@ -294,8 +231,38 @@ export function layStencilObjects(
       position: at, rotation: 0,
       elevation: surfaceElevation(getCell(state.cells, at.x, at.y)?.terrain),
     };
-    if (executeCommand(objectPlacementCommand(obj)).success) placed++;
+    if (executeCommand(placeObjectCommand(obj)).success) placed++;
     else skipped++;
+  }
+  return { placed, skipped };
+}
+
+function layStencilLines(
+  state: GridState, { origin, stencil, allow }: StencilPlacement,
+  executeCommand: (cmd: Command) => ValidationResult,
+): StencilResult {
+  const palette = strokeTilePalette(getAllItems()), curved = strokeTilePalette(getAllItems(), true);
+  let placed = 0, skipped = 0;
+  for (let y = 0; y < stencil.height; y++) for (let x = 0; x < stencil.width; x++) {
+    if (!covered(stencil, x, y)) continue;
+    const index = y * stencil.width + x;
+    const tile = (stencil.curves?.[index] ? curved : palette).get(strokeTileMask(stencil, index));
+    const position = { x: origin.x + x, y: origin.y + y };
+    if (!tile || !writable(state, position.x, position.y, allow)) { skipped++; continue; }
+    const object: PlacedObject = {
+      id: generateObjectId(), ...tile, position,
+      elevation: surfaceElevation(getCell(state.cells, position.x, position.y)?.terrain),
+    };
+    const previous = overlappingCoatings(state, [position], coatingLayer(getCatalogItem(tile.catalogId)));
+    const removed: PlacedObject[] = [];
+    for (const old of previous) {
+      if (executeCommand(removeObjectCommand(old)).success) removed.push(old);
+    }
+    if (executeCommand(placeObjectCommand(object)).success) placed++;
+    else {
+      for (const old of removed) executeCommand(placeObjectCommand(old));
+      skipped++;
+    }
   }
   return { placed, skipped };
 }
@@ -306,18 +273,22 @@ export function layStencilObjects(
  * palette range. `hueAware` converts hue separation into tone only for small, single-hue palettes;
  * `plain` retains the unshifted tone reading for lightness decisions.
  */
+interface PaletteReading {
+  contrast: number;
+  damping: number;
+  fitTones: boolean;
+  span?: boolean;
+  hueAware?: boolean;
+}
+
 function paletteReader(
   state: GridState,
   { origin, stencil, allow }: StencilPlacement,
   palette: readonly { rgb: number }[],
-  contrast: number,
-  damping: number,
-  fitTones: boolean,
-  span = false,
-  hueAware = false,
+  { contrast, damping, fitTones, span = false, hueAware = false }: PaletteReading,
 ): {
   wanted: (index: number) => number | null;
-  /** The same reading with no hue lift in it: the picture's own TONE, landed on the palette. What
+  /** The same reading with no hue lift in it: the picture's own tone, landed on the palette. What
    *  asks a question about lightness (which cells are the picture's light) reads this, so a lever
    *  about colour cannot move a decision about tone. */
   plain: (index: number) => number | null;
@@ -357,10 +328,10 @@ function paletteReader(
 }
 
 /**
- * Whether a covered cell sits on the picture's own EDGE: one of its four neighbours is not part of
+ * Whether a covered cell sits on the picture's own edge: one of its four neighbours is not part of
  * the picture.
  *
- * A cell off the stencil counts as COVERED here, so a picture that fills its whole box — a
+ * A cell off the stencil counts as covered here, so a picture that fills its whole box — a
  * photograph, anything without transparency — has no silhouette at all rather than a rectangular
  * frame drawn round its border.
  */
@@ -384,6 +355,18 @@ function waterTone(palette: readonly { rgb: number }[]): number {
   return (top + next) / 2;
 }
 
+export interface StencilColorOptions {
+  /** The ramp's depth: how many greens the picture may be told in. */
+  maxElevation: number;
+  /** How much of the picture's tonal range spreads across the palette; 1 leaves it alone. */
+  contrast?: number;
+  /** The part water plays (`recipe.ts:StencilWaterRole`): the green ramp alone, the ramp with the
+   *  blue as one more entry, or water as the body with mountain drawing its outline. `none` when absent. */
+  water?: StencilWaterRole;
+  /** Whether source tones are fitted to the palette's range; on when absent. */
+  fitTones?: boolean;
+}
+
 /**
  * Renders covered image cells with the nearest terrain palette entry; transparent cells retain the
  * map beneath them. Water may be excluded, participate as an ordinary colour, or serve as the primary
@@ -393,18 +376,15 @@ function waterTone(palette: readonly { rgb: number }[]): number {
 export function layStencilColor(
   state: GridState,
   { origin, stencil, allow }: StencilPlacement,
-  maxElevation: number,
   executeCommand: (cmd: Command) => ValidationResult,
-  contrast = 1,
-  water: StencilWaterRole = 'none',
-  fitTones = true,
+  { maxElevation, contrast = 1, water = 'none', fitTones = true }: StencilColorOptions,
 ): StencilResult {
   const compact = Math.min(stencil.width, stencil.height) < COMPACT_IMAGE_LIMIT;
   const palette = terrainPalette(Math.max(1, maxElevation), water === 'palette');
-  // The COATINGS a terrain picture may borrow a hue from: the road surfaces, which declare their own
+  // The coatings a terrain picture may borrow a hue from: the road surfaces, which declare their own
   // colours in the catalog, so this needs no canvas and crosses into the candidate worker intact.
   const smallCoatings = declaredColorPalette('roads');
-  // WHAT THE PICTURE IS FITTED AGAINST, which is not always what it is matched against. As the
+  // What the picture is fitted against, which is not always what it is matched against. As the
   // primary material the blue is the light end of the picture's own range, so the fit has to know
   // about it; the match below still runs over the greens alone, since a cell that is not the water's
   // is the ramp's.
@@ -415,20 +395,19 @@ export function layStencilColor(
   // separately: it is laid at ground level and takes no part in the support arithmetic. A cell this
   // run cannot write stays 0, so the relax below treats it as the ground it will remain.
   //
-  // The match is DIFFUSED: nine colours cannot hold a photograph's shading, so each cell's error is
+  // The match is diffused: nine colours cannot hold a photograph's shading, so each cell's error is
   // spent on the cells after it and the area reads as the colour the picture had.
   const want = new Int16Array(sw * sh);
   const isWater = new Uint8Array(sw * sh);
-  const read = paletteReader(
-    state, { origin, stencil, ...(allow ? { allow } : {}) }, fitted, contrast, RAMP_DIFFUSION,
-    fitTones, water === 'primary', true,
-  );
+  const read = paletteReader(state, { origin, stencil, ...(allow ? { allow } : {}) }, fitted, {
+    contrast, damping: RAMP_DIFFUSION, fitTones, span: water === 'primary', hueAware: true,
+  });
   let wanted = read.wanted;
   if (water === 'primary') {
-    // The cells water may take are the picture's INSIDE: its silhouette is the bank, whatever the
+    // The cells water may take are the picture's inside: its silhouette is the bank, whatever the
     // tone there, so a pond is always drawn within a shape.
     //
-    // A PICTURE OF ONE COLOUR IS ALL LIGHT. It has no tones to grade, so the fit lands the whole of
+    // A picture of one colour is all light. It has no tones to grade, so the fit lands the whole of
     // it on one tier and a nearest-tone cut would find either none of it or all of it; the material
     // it was asked for decides, and the answer is a lake in the shape of the subject with its own
     // outline as the bank.
@@ -438,13 +417,12 @@ export function layStencilColor(
       if (rgb === null || silhouetteEdge(stencil, i % sw, (i / sw) | 0)) continue;
       if (luma(rgb) >= cut) isWater[i] = 1;
     }
-    // A POND WANTS A BODY. At this size a highlight is a few scattered cells and lands as that many
+    // A pond wants a body. At this size a highlight is a few scattered cells and lands as that many
     // one-cell ponds, which read as holes in the figure rather than as water in it, so a body under the
     // minimum either grows out of the lightest cells beside it or goes back to being land.
     settleWaterBodies(
       stencil, isWater, smallBoxWeight(stencil),
-      (i) => { const rgb = read.wanted(i); return rgb === null ? null : luma(rgb); },
-      cut, paletteStep(fitted),
+      { tone: (i) => { const rgb = read.wanted(i); return rgb === null ? null : luma(rgb); }, cut, step: paletteStep(fitted) },
       (i) => read.wanted(i) !== null && !silhouetteEdge(stencil, i % sw, (i / sw) | 0),
     );
     // A water cell is declined by the match, so it neither takes a green nor spends an error on the
@@ -454,11 +432,11 @@ export function layStencilColor(
   const boxWeight = smallBoxWeight(stencil);
   const ramp = palette.filter((entry) => entry.type === TerrainType.Mountain);
   if (boxWeight > 0 && water === 'palette') {
-    // WATER IS A MATERIAL, NOT ONE MORE STEP OF LIGHTNESS, and the small box's allocation spreads areas
-    // across the palette by tone: with the blue in it as the brightest entry, a merely pale area was
-    // pushed onto water and a picture of flat ground came back as a pond. So where the blue is one entry
-    // among the greens, the cells nearest to IT are decided first, exactly as the primary role does, and
-    // the areas are then allocated over the ramp alone.
+    // Water is a material, not one more step of lightness, and the small box's allocation spreads areas
+    // across the palette by tone: with the blue in it as the brightest entry, a merely pale area would
+    // land on water. So where the blue is one entry among the greens, the cells nearest to it are
+    // decided first, exactly as the primary role does, and the areas are then allocated over the ramp
+    // alone.
     for (let i = 0; i < sw * sh; i++) {
       const rgb = wanted(i);
       if (rgb === null) continue;
@@ -467,35 +445,37 @@ export function layStencilColor(
     const blue = palette.find((entry) => entry.type === TerrainType.Water);
     settleWaterBodies(
       stencil, isWater, boxWeight,
-      (i) => { const rgb = wanted(i); return rgb === null ? null : luma(rgb); },
-      blue ? luma(blue.rgb) : Infinity, paletteStep(palette),
+      {
+        tone: (i) => { const rgb = wanted(i); return rgb === null ? null : luma(rgb); },
+        cut: blue ? luma(blue.rgb) : Infinity, step: paletteStep(palette),
+      },
       (i) => wanted(i) !== null,
     );
     const terrainOnly = wanted;
     wanted = (i): number | null => (isWater[i] ? null : terrainOnly(i));
   }
   // Compact terrain keeps local details; mixed material still needs coherent plateaus for coatings.
-  const small = readSmallBox(
-    stencil, (i) => wanted(i) !== null, (i) => wanted(i) ?? 0,
-    boxWeight, ramp, !compact || water === 'palette', read.damping,
+  const small = readSmallBox(stencil, {
+    matchable: (i) => wanted(i) !== null, colorAt: (i) => wanted(i) ?? 0,
+    weight: boxWeight, entries: ramp, distinct: !compact || water === 'palette', damping: read.damping,
     // What an area of this depth may be told in: the support rules give a block three layers over the
     // ground beside it, so a cell one step inside the figure can stand at three and no higher. Read
     // as the palette's own tone, since that is what the allocation orders entries by.
-    (depth) => {
+    minTone: (depth) => {
       const cap = Math.max(1, Math.min(maxElevation, FLAT_SAFE_ELEVATION * Math.max(1, depth)));
       let tone = Infinity;
       for (const entry of ramp) if (entry.elevation <= cap) tone = Math.min(tone, luma(entry.rgb));
       return tone;
     },
-  );
-  // WHERE THE WATER HAS ALREADY BEEN DECIDED, THE MATCH IS OVER THE RAMP ALONE. The blue is the palette's
+  });
+  // Where the water has already been decided, the match is over the ramp alone. The blue is the palette's
   // brightest entry, so a cell the water pass left as land could still be handed it here — one cell at a
   // time, which is the speck the pass exists to remove.
-  // WHICH REGIONS ARE TOLD IN A BORROWED MATERIAL, decided on the picture's own colours over the
+  // Which regions are told in a borrowed material, decided on the picture's own colours over the
   // regions the reading above composed — so what the ramp cannot say is spent once per region rather
   // than once per cell. The coatings are laid after the terrain is up (below).
   const borrow = small && smallCoatings.length > 0
-    ? planBorrow(small.regions, small.rim, (area) => sourceColour(stencil, area), ramp, smallCoatings, borrowPolicy(water))
+    ? planBorrow(small, (area) => sourceColor(stencil, area), ramp, smallCoatings, borrowPolicy(water))
     : null;
   let coated = 0;
   const matched = boxWeight > 0 && water === 'palette' ? ramp : palette;
@@ -516,7 +496,8 @@ export function layStencilColor(
   // without this every bright cell beside a dark one is refused and takes the stroke with it.
   relaxHeights(want, sw, sh);
 
-  const targets = new Map<number, { coord: MacroCoord; type: TerrainType; top: number }>();
+  const ceiling = Math.max(1, maxElevation);
+  const targets: RaiseTarget[] = [];
   const blue: MacroCoord[] = [];
   for (let y = 0; y < sh; y++) {
     for (let x = 0; x < sw; x++) {
@@ -526,15 +507,15 @@ export function layStencilColor(
       if (!writable(state, coord.x, coord.y, allow)) continue;
       if (isWater[i]) { blue.push(coord); continue; }
       const top = want[i]!;
-      if (top >= 1) targets.set(coord.y * state.template.width + coord.x, { coord, type: TerrainType.Mountain, top });
+      if (top >= 1) targets.push({ coord, top: Math.min(top, ceiling) });
     }
   }
-  const res = raise(targets, Math.max(1, maxElevation), state.template.width, executeCommand);
-  // A REGION WHOSE COLOUR THE RAMP CANNOT SAY IS PAVED IN ONE THAT CAN (`stencil-small.ts:planBorrow`).
+  const res: StencilResult = raiseBottomUp(targets, executeCommand, { settle: FLAT_SAFE_ELEVATION });
+  // A region whose colour the ramp cannot say is paved in one that can (`stencil-small.ts:planBorrow`).
   // Eight greens have one hue between them, so a warm or a grey region arrives as a tier of green and
   // says nothing about its own colour; the road surfaces carry real hues and are coatings, so a region
-  // told in one keeps the terrain underneath it. Laid AFTER the terrain, against the surface the rules
-  // actually built rather than the one the match asked for. Only the MIXED material reaches any of it
+  // told in one keeps the terrain underneath it. Laid after the terrain, against the surface the rules
+  // actually built rather than the one the match asked for. Only the mixed material reaches any of it
   // (`borrowPolicy`), so the whole of what follows is a no-op for a mountain or a water picture.
   if (small) {
     // Whether a cell of a region will hold a coating at all, against the surface the rules just built.
@@ -550,32 +531,31 @@ export function layStencilColor(
           id: generateObjectId(), catalogId, position: at, rotation: 0,
           elevation: surfaceElevation(getCell(state.cells, at.x, at.y)?.terrain),
         };
-        if (executeCommand(objectPlacementCommand(obj)).success) { res.placed++; coated++; }
+        if (executeCommand(placeObjectCommand(obj)).success) { res.placed++; coated++; }
         else res.skipped++;
       }
     };
     const paved = new Set<number>();
     for (const [id, catalogId] of borrow ?? []) {
       const cells = small.regions[id]!.cells.filter(holds);
-      // A BORROW EITHER COVERS ITS REGION OR IS NOT WORTH TAKING. A coating wants flat ground and a
+      // A borrow either covers its region or is not worth taking. A coating wants flat ground and a
       // region is a plateau, so its right and bottom edge rows sit against a different tier and refuse:
       // that is a fringe on a paved area, which is fine, and on a region where most of the cells refuse
       // it is a scatter of paving over a tier of green — the region arrives in two colours and reads as
-      // neither (measured: paving whatever would take it fragmented the areas the composition had just
-      // made, region survival 0.72 to 0.70 and the result's area count 7.1 to 8.0 at 16 cells).
+      // neither, which fragments the areas the composition has just made.
       if (cells.length < small.regions[id]!.cells.length * BORROW_COVER_MIN) continue;
       paved.add(id);
       pave(cells, catalogId);
     }
-    // AND A BODY THE GROUND REFUSED GETS A BED OF THE SAME COLOUR (`stencil-small.ts:planColourFill`).
+    // And a body the ground refused gets a bed of the same colour (`stencil-small.ts:planColorFill`).
     // The region above is either paved whole or told in green, and a subject's own mass on broken ground
-    // is the second: a colour no green can approximate, too big for the accent to mark, said by nothing
-    // (T8 — a quarter of the pictures at sixteen cells). A bed is a block INSIDE the body rather than a
+    // is the second: a colour no green can approximate, too big for the accent to mark, said by nothing.
+    // A bed is a block inside the body rather than a
     // claim on its surface, so it is bounded to a sixteenth of the figure and gathered around one seed.
-    // Behind the SAME policy the paving above read, and charged against what that paving actually LAID:
+    // Behind the same policy the paving above read, and charged against what that paving actually laid:
     // a borrow the cover test declined took none of the promise, so the room reappears.
-    for (const fill of planColourFill(
-      small.regions, small.rim, (area) => sourceColour(stencil, area), ramp, smallCoatings,
+    for (const fill of planColorFill(
+      small, (area) => sourceColor(stencil, area), ramp, smallCoatings,
       {
         bodyShare: FEATURE_MAX_SHARE, paved, policy: borrowPolicy(water), coated,
         ground: (id) => small.regions[id]!.cells.filter(holds).length,
@@ -585,33 +565,20 @@ export function layStencilColor(
     }
     if (coated > 0) res.coated = coated;
   }
-  // BATCHED, then retried singly on refusal — `raise`'s own pattern. A picture is a cell per cell of
-  // the figure, and one command each came to thousands of commands on a planet-scale run.
-  if (blue.length > 0) {
-    const all: Command = { type: CommandType.PaintTerrain, timestamp: 0, cells: blue, terrainType: TerrainType.Water, elevation: 0 };
-    if (executeCommand(all).success) res.placed += blue.length;
-    else {
-      for (const coord of blue) {
-        const one: Command = { type: CommandType.PaintTerrain, timestamp: 0, cells: [coord], terrainType: TerrainType.Water, elevation: 0 };
-        if (executeCommand(one).success) res.placed++; else res.skipped++;
-      }
-    }
-  }
+  // Batched like every layer: one command per cell would come to thousands on a planet-scale run.
+  const wet = paintLayer(blue, TerrainType.Water, 0, executeCommand);
+  res.placed += wet;
+  res.skipped += blue.length - wet;
   return res;
 }
 
 /**
- * WHAT THE MATERIAL A PICTURE WAS ASKED FOR LETS IT BORROW (`stencil-small.ts:BorrowPolicy`).
- *
- * THE MODE PROMISE IS ABSOLUTE: a mountain picture is mountain, a water picture is water and its banks,
- * and neither lays a road: a road on a single-terrain picture confuses the read. Only the MIXED
- * material, which exists to spend colour, borrows at all, and there it borrows freely. Read off the water
- * role because that is what the three terrain materials differ by: `none` is the mountain picture,
- * `primary` the water one, `palette` the mixed one. A picture built from objects never reaches here —
- * its palette has hues of its own.
- *
- * Both borrowing instruments read this one answer — the paved REGION (`stencil-small.ts:planBorrow`) and
- * the bed inside a body (`planColourFill`) — so a material cannot promise one thing and lay the other.
+ * What the water role a picture was asked for lets it borrow (`stencil-small.ts:BorrowPolicy`). A
+ * mountain picture is mountain and a water picture is water and its banks, and neither lays a road,
+ * which would confuse a single-terrain read; the ramp with water as one more entry, which exists to
+ * spend colour, borrows freely. Both borrowing instruments, the paved region (`stencil-small.ts:planBorrow`) and
+ * the bed inside a body (`planColorFill`), read this one answer. A picture built from objects never
+ * reaches here, since its palette has hues of its own.
  */
 function borrowPolicy(water: StencilWaterRole): BorrowPolicy {
   return water === 'palette' ? 'free' : 'none';
@@ -621,22 +588,14 @@ function borrowPolicy(water: StencilWaterRole): BorrowPolicy {
  * Whether a 1x1 coating placed here would pass its own flat trait: the cell, the one right of it, the
  * one below and the corner between them, all at one surface elevation and none of them water.
  *
- * ASKED BEFORE THE RULES REFUSE, not instead of them. The placement still goes through the executor and
+ * Asked before the rules refuse, not instead of them. The placement still goes through the executor and
  * the rules still decide; what this avoids is issuing a command per cell of a region that is a hillside,
- * where every one of them is a refusal. The sweep is `rules/placement.ts`'s own (terrain renders half a
- * cell off the macro grid, so a whole-coordinate footprint bleeds one cell past each end).
+ * where every one of them is a refusal. The sweep is the `flat` trait's own test.
  */
 function coatable(state: GridState, x: number, y: number): boolean {
   const own = getCell(state.cells, x, y);
   if (!own) return false;
-  const base = surfaceElevation(own.terrain);
-  for (const [dx, dy] of [[0, 0], [1, 0], [0, 1], [1, 1]] as const) {
-    const cell = getCell(state.cells, x + dx, y + dy);
-    if (!cell) continue;                             // off the map has no cliff to report
-    const surf = realSurface(cell.terrain);
-    if (surf?.type === TerrainType.Water || (surf?.elevation ?? 0) !== base) return false;
-  }
-  return true;
+  return flatSweepOffenders(state, { x, y }, 1, 1, surfaceElevation(own.terrain)).length === 0;
 }
 
 function matchObjectColors(
@@ -646,14 +605,14 @@ function matchObjectColors(
   contrast: number,
   fitTones: boolean,
 ): (ColorEntry | null)[] {
-  const read = paletteReader(state, { origin, stencil, ...(allow ? { allow } : {}) }, palette, contrast, DIFFUSION, fitTones);
-  // The AREA reading a small box gets, without the hue lift or the forced distinctness that a ramp of
+  const read = paletteReader(state, { origin, stencil, ...(allow ? { allow } : {}) }, palette, { contrast, damping: DIFFUSION, fitTones });
+  // The area reading a small box gets, without the hue lift or the forced distinctness that a ramp of
   // one hue needs: this palette has real hues, so an area's own colour already lands somewhere the
   // picture recognises, and what a small box still wants is the area rather than the dithered cell.
-  const small = readSmallBox(
-    stencil, read.matchable, (i) => read.wanted(i) ?? 0,
-    smallBoxWeight(stencil), palette, false, read.damping,
-  );
+  const small = readSmallBox(stencil, {
+    matchable: read.matchable, colorAt: (i) => read.wanted(i) ?? 0,
+    weight: smallBoxWeight(stencil), entries: palette, distinct: false, damping: read.damping,
+  });
   return matchWithDiffusion(
     stencil,
     small?.wanted ?? read.wanted,
@@ -664,28 +623,18 @@ function matchObjectColors(
 }
 
 /**
- * The picture as OBJECTS: per cell, the item whose own colour comes nearest to the picture's there.
- *
- * This is what a colour mode wants. The terrain ramp is eight greens and one blue, so a photograph
- * matched against it comes back as a green relief of itself; the catalogue carries dozens of hues,
- * and one item per cell reproduces a picture rather than paraphrasing it.
- *
- * ONE CELL EACH, so the palette is expected to hold only items that occupy a single cell — a bigger
- * footprint would overlap its neighbour and be refused for it. Refusals are counted and skipped: a
- * cell already occupied, or ground an item will not stand on, simply keeps what it had.
- *
- * `fitTones` off matches the picture's colours where they are, as above. It changes little here in
- * practice: the catalogue's own hues run from white to near-black, so a picture is usually inside
- * them already and the fit leaves it alone of its own accord.
+ * The picture as objects: per cell, the item whose colour comes nearest the picture's there. The
+ * catalogue has dozens of hues where the terrain ramp has eight greens and a blue, so a colour mode
+ * reproduces rather than paraphrases. The palette must hold single-cell items; refusals (an occupied
+ * cell, ground an item will not stand on) are counted and skipped. `fitTones` off changes little,
+ * since the catalogue's hues already span white to near-black.
  */
 export function layStencilObjectColor(
   state: GridState,
   { origin, stencil, allow }: StencilPlacement,
   palette: readonly { catalogId: string; rgb: number }[],
   executeCommand: (cmd: Command) => ValidationResult,
-  contrast = 1,
-  fitTones = true,
-  matches?: (ColorEntry | null)[],
+  { contrast = 1, fitTones = true, matches }: { contrast?: number; fitTones?: boolean; matches?: (ColorEntry | null)[] } = {},
 ): StencilResult {
   if (palette.length === 0) return { placed: 0, skipped: 0 };
   const sw = stencil.width;
@@ -701,7 +650,7 @@ export function layStencilObjectColor(
         position: at, rotation: 0,
         elevation: surfaceElevation(getCell(state.cells, at.x, at.y)?.terrain),
       };
-      if (executeCommand(objectPlacementCommand(obj)).success) placed++;
+      if (executeCommand(placeObjectCommand(obj)).success) placed++;
       else skipped++;
     }
   }
@@ -709,16 +658,16 @@ export function layStencilObjectColor(
 }
 
 /**
- * How much of a picture the BACKGROUND decoration may take, at most, whatever it is asked for.
+ * How much of a picture the background decoration may take, at most, whatever it is asked for.
  *
- * The decoration marks the picture's ANCHOR POINTS, so past a small share it stops marking anything
+ * The decoration marks the picture's anchor points, so past a small share it stops marking anything
  * and starts being a competing image — and every one of its cells is an object standing on the
  * result, which the load rules have to carry.
  *
- * In a SMALL box this pass is not what the decoration is for at all: it fades out across the box gate
+ * In a small box this pass is not what the decoration is for at all: it fades out across the box gate
  * and the features take over (`stencil-feature.ts`).
  */
-export const DECOR_MAX_SHARE = 0.15;
+const DECOR_MAX_SHARE = 0.15;
 const DECOR_DEFAULT_SHARE = 0.08;
 
 /**
@@ -734,45 +683,41 @@ const DECOR_MIN_SALIENCE = 8;
  * How strongly the picture changes at a cell: the luma gradient, Sobel over the eight around it.
  * Detail rather than brightness, so an accent lands on an eye or an outline, never on a flat wall.
  *
- * A neighbour off the stencil, or one the picture does not cover, reads as the CELL'S OWN colour
+ * A neighbour off the stencil, or one the picture does not cover, reads as the cell's own colour
  * rather than as black. Otherwise the picture's own rim is the strongest edge in it and a flat
  * colour would accent all the way round its border, which is a frame rather than a mark.
  */
 function detailAt(stencil: Stencil, x: number, y: number): number {
   const own = stencil.color[y * stencil.width + x] ?? 0;
-  const lumaOf = (rgb: number): number =>
-    0.299 * ((rgb >> 16) & 0xff) + 0.587 * ((rgb >> 8) & 0xff) + 0.114 * (rgb & 0xff);
-  const luma = (cx: number, cy: number): number =>
-    lumaOf(covered(stencil, cx, cy) ? (stencil.color[cy * stencil.width + cx] ?? 0) : own);
-  const gx = luma(x + 1, y - 1) + 2 * luma(x + 1, y) + luma(x + 1, y + 1)
-    - luma(x - 1, y - 1) - 2 * luma(x - 1, y) - luma(x - 1, y + 1);
-  const gy = luma(x - 1, y + 1) + 2 * luma(x, y + 1) + luma(x + 1, y + 1)
-    - luma(x - 1, y - 1) - 2 * luma(x, y - 1) - luma(x + 1, y - 1);
+  const at = (cx: number, cy: number): number =>
+    luma(covered(stencil, cx, cy) ? (stencil.color[cy * stencil.width + cx] ?? 0) : own);
+  const gx = at(x + 1, y - 1) + 2 * at(x + 1, y) + at(x + 1, y + 1)
+    - at(x - 1, y - 1) - 2 * at(x - 1, y) - at(x - 1, y + 1);
+  const gy = at(x - 1, y + 1) + 2 * at(x, y + 1) + at(x + 1, y + 1)
+    - at(x - 1, y - 1) - 2 * at(x, y - 1) - at(x + 1, y - 1);
   return Math.abs(gx) + Math.abs(gy);
 }
 
 /**
- * How far a cell's colour is from anything the primary palette can draw in.
- *
- * The second half of salience, and the half that says "this is what the material cannot tell you":
- * a red bow on a green ramp is one flat cell with no detail in it at all, and it is exactly the
- * thing worth marking. Measured in the same channel-weighted units as the gradient below, so the
- * two add without a conversion.
- *
- * ON THE SOURCE'S OWN COLOUR, not on the tone-fitted colour the primary is built from. Two reasons,
- * and the first is the one that decides it: the decoration picks its species off the source colour
- * too (`nearestByColor` below), so what makes a cell worth marking and what is planted there read
- * the same picture rather than two versions of it. The second is that the fit is a tone move with
- * the chroma carried along, so it shifts nearly the whole picture's miss by a constant — and the
- * constant is exactly what the floor subtraction in `layStencilDecor` takes back out.
+ * How far a cell's colour is from anything the primary palette can draw: the half of salience that
+ * marks what the material cannot say (a red bow on a green ramp), in the gradient's channel-weighted
+ * units so the two add. Read on the source colour, as `nearestByColor` picks the decoration's
+ * species, so marking and planting read one picture; the tone fit shifts the whole picture's miss by
+ * a constant that `layStencilDecor`'s floor subtraction removes.
  */
 function missAt(palette: readonly { rgb: number }[], rgb: number): number {
   const nearest = nearestByColor(palette, rgb);
   if (!nearest) return 0;
-  const dr = ((rgb >> 16) & 0xff) - ((nearest.rgb >> 16) & 0xff);
-  const dg = ((rgb >> 8) & 0xff) - ((nearest.rgb >> 8) & 0xff);
-  const db = (rgb & 0xff) - (nearest.rgb & 0xff);
-  return Math.sqrt(0.299 * dr * dr + 0.587 * dg * dg + 0.114 * db * db);
+  return colorDistance(rgb, nearest.rgb);
+}
+
+export interface StencilDecorOptions {
+  /** The objects this run laid, which a mark may replace. */
+  replaceable?: ReadonlySet<string>;
+  /** The palette the primary material was told in, which a mark is measured against. */
+  primary?: readonly { rgb: number }[];
+  /** Whether this run laid coatings a feature mark may replace. */
+  paved?: boolean;
 }
 
 /**
@@ -786,9 +731,7 @@ export function layStencilDecor(
   { origin, stencil, allow }: StencilPlacement,
   decor: { palette: readonly { catalogId: string; rgb: number }[]; density?: number },
   executeCommand: (cmd: Command) => ValidationResult,
-  replaceable?: ReadonlySet<string>,
-  primary: readonly { rgb: number }[] = [],
-  paved = false,
+  { replaceable, primary = [], paved = false }: StencilDecorOptions = {},
 ): StencilResult {
   const { palette } = decor;
   if (palette.length === 0) return { placed: 0, skipped: 0 };
@@ -834,7 +777,7 @@ export function layStencilDecor(
     }
     if (standing) {
       if (!replaceable?.has(standing.id)) return false;
-      if (!mayCoat && isCoating(standing.catalogId)) return false;
+      if (!mayCoat && isCoatingItem(getCatalogItem(standing.catalogId))) return false;
       if (!executeCommand(removeObjectCommand(standing)).success) return false;
     }
     const obj: PlacedObject = {
@@ -842,9 +785,9 @@ export function layStencilDecor(
       position: at, rotation: 0,
       elevation: surfaceElevation(getCell(state.cells, at.x, at.y)?.terrain),
     };
-    if (!executeCommand(objectPlacementCommand(obj)).success) {
+    if (!executeCommand(placeObjectCommand(obj)).success) {
       // The base object goes back under its own id, which the load rule credits with its own load.
-      if (standing) executeCommand(objectPlacementCommand(standing));
+      if (standing) executeCommand(placeObjectCommand(standing));
       return false;
     }
     taken.add(i);
@@ -858,7 +801,7 @@ export function layStencilDecor(
       && writable(state, origin.x + (i % sw), origin.y + ((i / sw) | 0), allow);
     const features = detectFeatures(stencil, inFigure, primary, palette);
     for (const plan of planFeatureMarks(features, palette, featureBudget(candidates.length))) {
-      // Down the feature's own cells until the budget's share of them STANDS: a cell at the feature's
+      // Down the feature's own cells until the budget's share of them stands: a cell at the feature's
       // edge is a cell against a step, which a flat placement is refused, and the plan cannot know which
       // ones those are (`FeatureMark.cells`).
       let stood = 0;
@@ -867,11 +810,10 @@ export function layStencilDecor(
         const at = mark(i, plan.catalogId, false, true);
         if (at === true) { stood++; placed++; continue; }
         if (at === null) continue;
-        // AND A MARK THE GROUND REFUSES STANDS BESIDE THE FEATURE, in the figure, which is the same
-        // answer the background pass gives for the same cause: a feature IS a colour boundary and so a
-        // tier boundary, and a flat placement is refused a cell away from a step. Measured on the seed
-        // picture at 24 cells, three of its four features are one cell each and every one of them was
-        // refused where it stood — a scarce instrument that says nothing is not scarce, it is absent.
+        // And a mark the ground refuses stands beside the feature, in the figure, which is the same
+        // answer the background pass gives for the same cause: a feature is a colour boundary and so a
+        // tier boundary, and a flat placement is refused a cell away from a step, so a one-cell feature
+        // is often refused where it stands.
         let beside = false;
         // A fixed neighbour order, so the pass is one function of the picture.
         for (const [dx, dy] of NEIGHBORS4_NESW) {
@@ -896,8 +838,8 @@ export function layStencilDecor(
     const at = mark(i, match.catalogId, true, paved);
     if (at === true) { placed++; continue; }
     if (at === null) continue;
-    // A MARK THAT CANNOT STAND ON THE LINE STANDS BESIDE IT. The salient cells of a picture built in
-    // terrain are its EDGES, and an edge in terrain is a step: flora wants flat ground, so exactly
+    // A mark that cannot stand on the line stands beside it. The salient cells of a picture built in
+    // terrain are its edges, and an edge in terrain is a step: flora wants flat ground, so exactly
     // the cells worth marking are the ones that refuse. The four edge neighbours in a fixed order
     // keep the mark against the feature it belongs to and keep the whole pass deterministic.
     let beside = false;
@@ -911,12 +853,6 @@ export function layStencilDecor(
   return { placed, skipped };
 }
 
-/** Whether an item COATS the surface it is placed on rather than standing on it — read from the item's
- *  own traits, so a catalog addition is classified on its own terms. */
-function isCoating(catalogId: string): boolean {
-  return getCatalogItem(catalogId)?.traits?.some((trait) => trait.type === 'surfaceCoating') ?? false;
-}
-
 function layStencilPlan(
   state: GridState,
   plan: StencilPlan,
@@ -927,29 +863,32 @@ function layStencilPlan(
   const placement = { origin: plan.origin, stencil: plan.stencil, ...(plan.allow ? { allow: plan.allow } : {}) };
   const before = plan.decor?.palette.length ? new Set(state.objects.keys()) : null;
   // What the picture is told in, which is also what the decoration is measured against: a cell is
-  // worth marking partly because THIS palette cannot say its colour.
+  // worth marking partly because this palette cannot say its colour.
   const primary = plan.objectPalette?.length
     ? plan.objectPalette
-    : terrainPalette(Math.max(1, maxElevation), (plan.water ?? 'none') === 'palette');
+    : terrainPalette(Math.max(1, maxElevation), plan.water === 'palette');
   const result = ((): StencilResult => {
     if (plan.read === 'color') {
-      // A palette of objects means the picture is BUILT from them; without one it is coloured in
+      // A palette of objects means the picture is built from them; without one it is coloured in
       // terrain, which is the same read against a much narrower set of hues. `maxElevation` is that
-      // ramp's DEPTH — how many greens the picture may be told in — and applies to this read alone.
+      // ramp's depth — how many greens the picture may be told in — and applies to this read alone.
       return plan.objectPalette?.length
-        ? layStencilObjectColor(state, placement, plan.objectPalette, executeCommand, plan.contrast ?? 1, true, matches)
-        : layStencilColor(state, placement, maxElevation, executeCommand, plan.contrast ?? 1, plan.water ?? 'none');
+        ? layStencilObjectColor(state, placement, plan.objectPalette, executeCommand, { contrast: plan.contrast ?? 1, matches })
+        : layStencilColor(state, placement, executeCommand, {
+          maxElevation, contrast: plan.contrast ?? 1, water: plan.water ?? 'none',
+        });
     }
+    if (plan.fill?.kind === 'stroke') return layStencilLines(state, placement, executeCommand);
     if (plan.fill?.kind === 'object') return layStencilObjects(state, placement, plan.fill.catalogId, executeCommand);
-    // No height argument: a glyph is ONE layer on the region's own surface, so there is nothing for a
+    // No height argument: a glyph is one layer on the region's own surface, so there is nothing for a
     // height to say.
     return layStencilTerrain(state, placement, plan.fill?.terrain ?? TerrainType.Mountain, executeCommand);
   })();
 
-  // The decoration goes on AFTER, over whatever the primary left standing — it marks the picture
+  // The decoration goes on after, over whatever the primary left standing — it marks the picture
   // rather than building it, and it is absent unless the material asks for one.
   if (plan.decor?.palette.length) {
-    // WHAT THIS RUN LAID IS THE DECORATION'S TO MOVE, and which marks may move a COATING is the decor
+    // What this run laid is the decoration's to move, and which marks may move a coating is the decor
     // pass's own decision (`layStencilDecor`): a mark can stand where the primary already tiled the
     // picture with an object, which for a picture built out of paths means taking the path's cell, since
     // nothing may stand on a coating (V-PLACE-COATED). Anything the run did not lay is left alone.
@@ -957,7 +896,7 @@ function layStencilPlan(
     const laid = new Set([...state.objects.values()]
       .filter((object) => !before?.has(object.id))
       .map((object) => object.id));
-    const extra = layStencilDecor(state, placement, plan.decor, executeCommand, laid, primary, paved);
+    const extra = layStencilDecor(state, placement, plan.decor, executeCommand, { replaceable: laid, primary, paved });
     return {
       ...result,
       placed: result.placed + extra.placed,

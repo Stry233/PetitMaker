@@ -1,0 +1,617 @@
+{
+  "reason": "Exports only tests or private tools use, each with why it stays exported. A hook that resets or seeds module state takes the __ prefix instead; test machinery moves to _support/; a dead export is deleted.",
+  "entries": [
+    {
+      "path": "src/agent/providers/model-catalog.ts:parseModelCatalog",
+      "reason": "The private `refresh-model-catalog` tool writes the bundled extract with the parser the live download uses, so the extract and a live answer read alike; `agent/providers/model-catalog.test.ts` pins it too."
+    },
+    {
+      "path": "src/agent/providers/openai.ts:toolCallInProse",
+      "reason": "The private `agent-eval` prose-tools adapter parses a tool call written as prose with the parser the OpenAI dialect uses, so bench and product read that wire shape alike; no public door parses prose."
+    },
+    {
+      "path": "src/agent/tools/quality.ts:overallScore",
+      "reason": "The private `agent-eval` tools rank runs by the overall mean the scorecard prints; `renderScorecard` gives it only as text, so the number has no other door."
+    },
+    {
+      "path": "src/assets/agent/provider-logos.tsx:ProviderLogo",
+      "reason": "Read by the private `media` tool."
+    },
+    {
+      "path": "src/assets/cursors/cursor-art.ts:BADGED_IDS",
+      "reason": "A fact `cursor-art.ts` declares and `assets/cursors/cursors.test.ts` reads rather than restating it."
+    },
+    {
+      "path": "src/assets/cursors/cursor-spec.ts:CURSOR_IDS",
+      "reason": "A fact `cursor-spec.ts` declares and `assets/cursors/cursors.test.ts`, `tools/pointer/runtime/tool-cursors.test.ts` and 2 more read rather than restating it."
+    },
+    {
+      "path": "src/config/annotation-tags.ts:TAG_IDS",
+      "reason": "Read by the private `app-checks` tool."
+    },
+    {
+      "path": "src/config/catalog/retired-ids.ts:RETIRED_CATALOG_IDS",
+      "reason": "A constant of `retired-ids.ts`; `config/catalog/retired-ids.test.ts`, `io/share/codec/catalog-order.test.ts` and 1 more derive their expectations from it."
+    },
+    {
+      "path": "src/core/model/grid-wire.ts:decodeCells",
+      "reason": "Read by the private `dumps` tool; `core/model/cell-fields.test.ts`, `core/model/grid-wire.test.ts` and 1 more pin it too."
+    },
+    {
+      "path": "src/core/model/grid-wire.ts:encodeCells",
+      "reason": "Read by the private `dumps` tool; `core/model/cell-fields.test.ts`, `core/model/grid-wire.test.ts` and 4 more pin it too."
+    },
+    {
+      "path": "src/core/model/template.ts:seedPlanetTerrain",
+      "reason": "Read by the private `agent-eval` tool and the private `generation-eval` tool; `core/model/planet.test.ts` pins it too."
+    },
+    {
+      "path": "src/editor/commands/actions.ts:ACTIONS",
+      "reason": "Kept: the action table itself; `editor/commands/actions.test.ts` checks its ids are unique, which the id map built from it would silently hide."
+    },
+    {
+      "path": "src/editor/dev/editor-api.ts:EditorAPI",
+      "reason": "Kept: the dev console API's class; its suites build it over a map and executor of their own, while its door, `installDevAPI`, publishes it on `window` over the store's, which the node-environment suites do not have."
+    },
+    {
+      "path": "src/editor/operations/planet-session.ts:sessionPlanet",
+      "reason": "Kept: the planet a state's ground cuts to; `finishPlanetSession` reads it only through an open session on a port, while the session and scan suites and the perf bench cut states of their own."
+    },
+    {
+      "path": "src/editor/review/background.ts:forgetTriedCustomTags",
+      "reason": "Kept: the private moderation suites' reset of which texts this page has tried, so a case can reuse one; a `__` hook needs a caller under `src/__tests__`, which those suites are not."
+    },
+    {
+      "path": "src/editor/review/background.ts:forgetTriedPlanetNames",
+      "reason": "Kept: the private moderation suites' reset of which texts this page has tried, so a case can reuse one; a `__` hook needs a caller under `src/__tests__`, which those suites are not."
+    },
+    {
+      "path": "src/editor/session/context.ts:installLoadedMap",
+      "reason": "Kept: a private research harness and the private panel-harness open a save through it by name; the app reaches it as `editorPort.installLoaded`."
+    },
+    {
+      "path": "src/i18n/context.tsx:RESOLVED_TOKENS",
+      "reason": "Kept: the token names the translator fills itself; the parity, agent-key and Help-table suites tell them apart from caller params in every locale's copy, which needs the name set."
+    },
+    {
+      "path": "src/io/export/paint.ts:paintCodeBand",
+      "reason": "The private README figure builder paints the share code band alone into its figure; the export painter draws the band only inside a whole composition."
+    },
+    {
+      "path": "src/io/import/file.ts:importFile",
+      "reason": "The whole file import the save tests and the private stylize window harness drive; the import window composes inspection and confirmation itself."
+    },
+    {
+      "path": "src/io/save/canonical.ts:signedCatalogItems",
+      "reason": "The items a share code may name, which `canonical.ts` owns for the catalog signature; `io/share/codec/catalog-order.test.ts` holds the frozen wire table to it, since the encoder reads the table rather than the list."
+    },
+    {
+      "path": "src/io/share/codec/catalog-order.ts:SHARE_CATALOG_LIMIT",
+      "reason": "How many entries the frozen share index can address; `catalog-order.test.ts` holds the catalog under it."
+    },
+    {
+      "path": "src/io/share/glyph/encode.ts:buildHeaderBytes",
+      "reason": "The header bytes the share tests forge for another version or damage on purpose, and the v2 writer in `_support/glyph-v2.ts` reuses; `encodeGlyph` writes only the current version's header."
+    },
+    {
+      "path": "src/io/share/glyph/geometry.ts:MIN_MODULE_BASE",
+      "reason": "Read by the private `petitglyph` tool."
+    },
+    {
+      "path": "src/io/share/import.ts:importFromBytes",
+      "reason": "The whole share import the released-export corpus and the share tests drive; the import window composes its parts itself."
+    },
+    {
+      "path": "src/io/share/raster/png-raster.ts:encodePng",
+      "reason": "Read by the private `petitglyph` tool and the private `planet-scan` tool; `io/share/custom-planet-share.test.ts`, `io/share/e2e.test.ts` and 2 more pin it too."
+    },
+    {
+      "path": "src/io/storage/autosave.ts:readAutosave",
+      "reason": "Read by the private `perf` tool; `io/storage/autosave-custom-planet.test.ts`, `io/storage/autosave-overlap.test.ts` and 3 more pin it too."
+    },
+    {
+      "path": "src/io/storage/local-reset.ts:wipeLocalData",
+      "reason": "The wipe step of `resetAllLocalData`, whose next step reloads the page, which no test environment can survive; `io/storage/local-reset.test.ts` drives the wipe alone."
+    },
+    {
+      "path": "src/legal/registry.ts:localizeZhSlug",
+      "reason": "Kept: `docNodes` applies it only to the links the shipped bodies happen to hold; its own cases (a fragment, an English-only slug, a link already localized) need inputs no document carries."
+    },
+    {
+      "path": "src/pipelines/moderation/map/evidence.ts:normalizedReading",
+      "reason": "The private moderation tests, withheld from the snapshot because their inputs are refused samples, pin the reading a map's text is matched in against its legacy oracle; no public door returns it."
+    },
+    {
+      "path": "src/pipelines/moderation/text/evidence.ts:decideEvidence",
+      "reason": "The private moderation tests, withheld from the snapshot because their inputs are refused samples, pin which category a set of matches decides, without the review worker `reviewText` runs it in."
+    },
+    {
+      "path": "src/pipelines/moderation/text/lexical.ts:chineseWordPattern",
+      "reason": "The private moderation tests, withheld from the snapshot because their inputs are refused samples, pin the pattern against its legacy oracle; the verdict cannot show which pattern matched."
+    },
+    {
+      "path": "src/pipelines/moderation/text/lexical.ts:lexicalCandidates",
+      "reason": "The private moderation tests, withheld from the snapshot because their inputs are refused samples, pin the candidate spans the lexical check reviews; the verdict cannot show them."
+    },
+    {
+      "path": "src/pipelines/moderation/text/lexical.ts:multilingualExists",
+      "reason": "The private moderation tests, withheld from the snapshot because their inputs are refused samples, pin it against the library it replaced; the verdict cannot show which list matched."
+    },
+    {
+      "path": "src/pipelines/moderation/text/review-windows.ts:reviewWindowRanges",
+      "reason": "The window ranges `reviewLongText` reviews; the reviewer is handed only the slices, which over the periodic texts `review-windows.test.ts` checks (bounds, overlap, surrogate edges) cannot be placed back."
+    },
+    {
+      "path": "src/pipelines/moderation/text/reviewer.ts:ReviewUnavailable",
+      "reason": "The private moderation tests, withheld from the snapshot because their inputs are refused samples, raise and expect the failure `reviewText` rejects with when no check can run."
+    },
+    {
+      "path": "src/pipelines/moderation/text/segmenter.ts:LEXICON_SCALE",
+      "reason": "The lexicon index's weight scale: the private `build-lexicon-index` tool writes the index with it and the segmenter reads it back, so it is the index format's one constant."
+    },
+    {
+      "path": "src/pipelines/moderation/text/segmenter.ts:installLexicon",
+      "reason": "The private moderation tests, withheld from the snapshot because their inputs are refused samples, install a hand-built lexicon to pin the segmenter's cuts; the product loads the shipped index itself."
+    },
+    {
+      "path": "src/pipelines/moderation/text/segmenter.ts:lexiconEntries",
+      "reason": "The private `build-political-index` tool reads the general lexicon's words through the decoder the segmenter uses."
+    },
+    {
+      "path": "src/pipelines/moderation/text/segmenter.ts:lexiconLoaded",
+      "reason": "The private moderation tests, withheld from the snapshot because their inputs are refused samples, check the segmenter before and after a lexicon is installed."
+    },
+    {
+      "path": "src/pipelines/moderation/text/segmenter.ts:tokenBoundaries",
+      "reason": "The private moderation tests, withheld from the snapshot because their inputs are refused samples, pin the segmenter's cuts; the verdict cannot show where a word was cut."
+    },
+    {
+      "path": "src/pipelines/moderation/text/variants.ts:joinSeparatedLetters",
+      "reason": "The private moderation tests, withheld from the snapshot because their inputs are refused samples, pin the variant against its legacy oracle; the verdict cannot show which variant matched."
+    },
+    {
+      "path": "src/pipelines/moderation/text/variants.ts:joinSpelledLetters",
+      "reason": "The private moderation tests, withheld from the snapshot because their inputs are refused samples, pin the variant against its legacy oracle; the verdict cannot show which variant matched."
+    },
+    {
+      "path": "src/pipelines/planet-scan/errors.ts:SCAN_FAILURES",
+      "reason": "A constant of `errors.ts`; `ui/chrome/modals/planet/planet-import-window.test.tsx` derives its expectations from it."
+    },
+    {
+      "path": "src/pipelines/planet-scan/frame/hud.ts:CALIBRATED_LAYOUT",
+      "reason": "A constant of `hud.ts`; `pipelines/planet-scan/frame/hud.test.ts` and `pipelines/planet-scan/synthetic.ts` derive their expectations from it."
+    },
+    {
+      "path": "src/pipelines/planet-scan/frame/hud.ts:barMatches",
+      "reason": "Read by the private `planet-scan` tool; `pipelines/planet-scan/frame/hud.test.ts` pins it too."
+    },
+    {
+      "path": "src/pipelines/planet-scan/frame/hud.ts:hudScale",
+      "reason": "An internal step of `hud.ts`; `pipelines/planet-scan/frame/hud.test.ts` pins it directly."
+    },
+    {
+      "path": "src/pipelines/planet-scan/frame/hud.ts:placeProbe",
+      "reason": "Read by the private `planet-scan` tool; `pipelines/planet-scan/frame/hud.test.ts` and `pipelines/planet-scan/synthetic.ts` pin it too."
+    },
+    {
+      "path": "src/pipelines/planet-scan/frame/hud.ts:windowLayout",
+      "reason": "An internal step of `hud.ts`; `pipelines/planet-scan/frame/hud.test.ts` pins it directly."
+    },
+    {
+      "path": "src/pipelines/planet-scan/frame/rectify.ts:groundToScreen",
+      "reason": "The closed-form calibration `rectify.test.ts` checks the sample map against: the plain reference beside the fast path."
+    },
+    {
+      "path": "src/pipelines/planet-scan/frame/rectify.ts:screenToGround",
+      "reason": "The inverse of the calibration, which `rectify.test.ts` round-trips `groundToScreen` through."
+    },
+    {
+      "path": "src/pipelines/planet-scan/frame/rectify.ts:tileToGround",
+      "reason": "The per-pixel ground point `rectify.test.ts` checks `buildSampleMap` against."
+    },
+    {
+      "path": "src/pipelines/planet-scan/ground/classify.ts:shoreBand",
+      "reason": "Read by the private `planet-scan` tool."
+    },
+    {
+      "path": "src/pipelines/planet-scan/ground/preview.ts:PREVIEW_MAX_UNITS",
+      "reason": "A constant of `preview.ts`; `pipelines/planet-scan/ground/preview.test.ts` derives its expectations from it."
+    },
+    {
+      "path": "src/pipelines/planet-scan/ground/preview.ts:PREVIEW_MS",
+      "reason": "A constant of `preview.ts`; `pipelines/planet-scan/ground/preview.test.ts` derives its expectations from it."
+    },
+    {
+      "path": "src/pipelines/planet-scan/ground/shore-model.ts:shoreFeatures",
+      "reason": "Read by the private `planet-scan` tool."
+    },
+    {
+      "path": "src/pipelines/planet-scan/ground/shore-model.ts:shoreModel",
+      "reason": "Read by the private `planet-scan` tool; `pipelines/planet-scan/ground/shore-model.test.ts` pins it too."
+    },
+    {
+      "path": "src/pipelines/planet-scan/import-video.ts:createScanVideo",
+      "reason": "An internal step of `import-video.ts`; `pipelines/planet-scan/import-video.test.ts` pins it directly."
+    },
+    {
+      "path": "src/pipelines/planet-scan/media/decode-browser.ts:FramePacer",
+      "reason": "An internal class of `decode-browser.ts`; `pipelines/planet-scan/media/decode-browser.test.ts` pins it directly."
+    },
+    {
+      "path": "src/pipelines/planet-scan/media/decode-browser.ts:OPEN_TIMEOUT_MS",
+      "reason": "A constant of `decode-browser.ts`; `pipelines/planet-scan/media/decode-browser.test.ts` derives its expectations from it."
+    },
+    {
+      "path": "src/pipelines/planet-scan/media/decode-browser.ts:playFrames",
+      "reason": "An internal step of `decode-browser.ts`; `pipelines/planet-scan/media/decode-browser.test.ts` pins it directly."
+    },
+    {
+      "path": "src/pipelines/planet-scan/media/decode-side.ts:surveySamples",
+      "reason": "An internal step of `decode-side.ts`; `pipelines/planet-scan/scan-file.test.ts` pins it directly."
+    },
+    {
+      "path": "src/pipelines/planet-scan/media/decode-webcodecs.ts:DECODE_QUEUE",
+      "reason": "A constant of `decode-webcodecs.ts`; `pipelines/planet-scan/scan-file.test.ts` derives its expectations from it."
+    },
+    {
+      "path": "src/pipelines/planet-scan/media/decode-webcodecs.ts:rangesFor",
+      "reason": "An internal step of `decode-webcodecs.ts`; `pipelines/planet-scan/media/decode-webcodecs.test.ts` pins it directly."
+    },
+    {
+      "path": "src/pipelines/planet-scan/media/mkv.ts:SCAN_WINDOW",
+      "reason": "A constant of `mkv.ts`; `pipelines/planet-scan/media/mkv.test.ts` derives its expectations from it."
+    },
+    {
+      "path": "src/pipelines/planet-scan/media/mkv.ts:vp9FrameProfile",
+      "reason": "An internal step of `mkv.ts`; `pipelines/planet-scan/media/mkv.test.ts` pins it directly."
+    },
+    {
+      "path": "src/pipelines/planet-scan/run.ts:firstPassFailure",
+      "reason": "An internal step of `run.ts`; `pipelines/planet-scan/run.test.ts` pins it directly."
+    },
+    {
+      "path": "src/pipelines/planet-scan/run.ts:latticeFailure",
+      "reason": "An internal step of `run.ts`; `pipelines/planet-scan/run.test.ts` pins it directly."
+    },
+    {
+      "path": "src/pipelines/planet-scan/run.ts:solveTracked",
+      "reason": "An internal step of `run.ts`; `pipelines/planet-scan/run.test.ts` pins it directly."
+    },
+    {
+      "path": "src/pipelines/planet-scan/track/fft.ts:Fft",
+      "reason": "The one-dimensional transform `fft.test.ts` checks `Fft2d` against: the plain reference beside the fast path."
+    },
+    {
+      "path": "src/pipelines/planet-scan/track/lattice.ts:fitComb",
+      "reason": "Read by the private `planet-scan` tool; `pipelines/planet-scan/track/lattice.test.ts` pins it too."
+    },
+    {
+      "path": "src/pipelines/planet-scan/track/lattice.ts:runLattice",
+      "reason": "An internal step of `lattice.ts`; `pipelines/planet-scan/track/lattice.test.ts` pins it directly."
+    },
+    {
+      "path": "src/pipelines/planet-scan/track/path-solve.ts:SCALE_MIN_PINS",
+      "reason": "A constant of `path-solve.ts`; `pipelines/planet-scan/track/path-solve.test.ts` derives its expectations from it."
+    },
+    {
+      "path": "src/pipelines/planet-scan/track/phase-correlate.ts:overlapNcc",
+      "reason": "Read by the private `planet-scan` tool; `pipelines/planet-scan/track/phase-correlate.test.ts` pins it too."
+    },
+    {
+      "path": "src/pipelines/planet-scan/track/still-runs.ts:meanAbsDiff",
+      "reason": "An internal step of `still-runs.ts`; `pipelines/planet-scan/track/still-runs.test.ts` pins it directly."
+    },
+    {
+      "path": "src/pipelines/planet-scan/track/thin.ts:MotionThinner",
+      "reason": "An internal class of `thin.ts`; `pipelines/planet-scan/track/thin.test.ts` pins it directly."
+    },
+    {
+      "path": "src/pipelines/planet-scan/track/track.ts:CropMatcher",
+      "reason": "An internal class of `track.ts`; `pipelines/planet-scan/track/track.test.ts` pins it directly."
+    },
+    {
+      "path": "src/pipelines/planet-scan/track/track.ts:TileStore",
+      "reason": "An internal class of `track.ts`; `pipelines/planet-scan/track/track.test.ts` pins it directly."
+    },
+    {
+      "path": "src/pipelines/planet-scan/track/track.ts:agreeingOffsets",
+      "reason": "An internal step of `track.ts`; `pipelines/planet-scan/track/track.test.ts` pins it directly."
+    },
+    {
+      "path": "src/pipelines/stylize/neural/session.ts:lastBackend",
+      "reason": "The backend of the page's last neural run, which the private `stylize` harness and private research read after a run; the product shows it nowhere."
+    },
+    {
+      "path": "src/pipelines/stylize/neural/session.ts:lastGpuError",
+      "reason": "Why the page's last neural run left WebGPU, which the private `stylize` harness and private research read after a run; the product shows it nowhere."
+    },
+    {
+      "path": "src/pipelines/stylize/proc/palette.ts:validatePalette",
+      "reason": "The palette checks a pack must pass; `proc-core.test.ts` and `proc-render.test.ts` run them over every shipped pack."
+    },
+    {
+      "path": "src/platform/device/device-quality.ts:setGlQualityOverride",
+      "reason": "Read by the private `generation-eval` tool and the private `perf` tool and the private `quality-tiles` tool; `platform/device/device-quality.test.ts`, `platform/device/lite-quality.test.ts` and 2 more pin it too."
+    },
+    {
+      "path": "src/platform/storage/prefs.ts:PREF_STORAGE_KEYS",
+      "reason": "Every persisted key; the storage and operations-document tests compare their lists against it."
+    },
+    {
+      "path": "src/rules/chunk-load.ts:chunkLoadViolations",
+      "reason": "Pins enforcement at exact loads (the limit, one over) that no catalog item carries, while the rule prices a candidate from the catalog. `rules/chunk-load.test.ts` and `rules/chunk-load-perf.test.ts` drive it."
+    },
+    {
+      "path": "src/state/keymap/resolve.ts:presetBinds",
+      "reason": "A preset's raw table before conflict resolution: the uniqueness check must read it, since the effective keymap nulls a duplicate combo away. `state/keymap/presets.test.ts` and `ui/help/context-help.test.tsx` read it."
+    },
+    {
+      "path": "src/state/notes-attribution.ts:imageChangeRatio",
+      "reason": "Its counting rules (a replacement counts once; ids, notes and annotations do not count) need exact ratios, and the only door reads the ratio against the 30% threshold. `state/notes-attribution.test.ts` pins it."
+    },
+    {
+      "path": "src/tools/generation/designer/composition/composition.ts:MASS_OFFSET_MIN",
+      "reason": "The design evaluation imports the thresholds the generator owns rather than restating them; `_support/design-eval/composition.ts` reads it."
+    },
+    {
+      "path": "src/tools/generation/designer/composition/composition.ts:PLATE_TOTAL_MAX",
+      "reason": "A fact `composition.ts` declares and `tools/generation/designer/composition/composition.test.ts` reads rather than restating it."
+    },
+    {
+      "path": "src/tools/generation/designer/pipeline.ts:planDesign",
+      "reason": "Read by the private `generation-eval` tool; `tools/generation/designer/_design-plan.ts`, `tools/generation/designer/composition/movement-line.test.ts` and 5 more pin it too."
+    },
+    {
+      "path": "src/tools/generation/designer/streets/settle.ts:ARRIVAL_REACH",
+      "reason": "The design evaluation imports the thresholds the generator owns rather than restating them; `_support/design-eval/streets.ts` reads it."
+    },
+    {
+      "path": "src/tools/generation/designer/terrain/landmark-glyphs.ts:GLYPHS",
+      "reason": "A constant of `landmark-glyphs.ts`; `tools/generation/designer/terrain/landmark.test.ts` derives its expectations from it."
+    },
+    {
+      "path": "src/tools/generation/designer/terrain/landmark.ts:SET_PIECE_BIG",
+      "reason": "A constant of `landmark.ts`; `tools/generation/designer/terrain/landmark.test.ts` derives its expectations from it."
+    },
+    {
+      "path": "src/tools/generation/designer/terrain/landmark.ts:SET_PIECE_MIN",
+      "reason": "A constant of `landmark.ts`; `tools/generation/designer/terrain/landmark.test.ts` derives its expectations from it."
+    },
+    {
+      "path": "src/tools/generation/designer/water/water-forms.ts:FIGURE_MIN",
+      "reason": "The design evaluation imports the thresholds the generator owns rather than restating them; `_support/design-eval/climb.ts` reads it."
+    },
+    {
+      "path": "src/tools/generation/recipe.ts:GENERATOR_VERSION",
+      "reason": "The version the golden generation digests are filed under; `generation-determinism.test.ts` reads it to pick the digest set."
+    },
+    {
+      "path": "src/tools/generation/run/candidate-pool.ts:PoolBroken",
+      "reason": "The class callers tell a broken pool from a job that threw by; `tools/generation/run/candidate-pool.test.ts` checks which rejection is which."
+    },
+    {
+      "path": "src/tools/generation/stencil/stencil-generator.ts:layStencilColor",
+      "reason": "Keep: `tools/generation/stencil/_stencil-image.ts`, the image harness the image tests and the private `stencil-image-eval` tool score with, lays the terrain colour reading with `fitTones: false`. That is the un-fitted baseline its comparisons need, and `runStencilPlan` never asks for it."
+    },
+    {
+      "path": "src/tools/generation/stencil/stencil-generator.ts:layStencilDecor",
+      "reason": "Keep: decoration over a primary the caller chose. `tools/generation/stencil/stencil-feature.test.ts`, `stencil-materials.test.ts` and `stencil-budget.test.ts` mark hand-made primaries, or none, with `replaceable`, `primary` and `paved` set per case, and the image harness marks its un-fitted primary. `runStencilPlan` always lays its own primary first."
+    },
+    {
+      "path": "src/tools/generation/stencil/stencil-generator.ts:layStencilObjectColor",
+      "reason": "Keep: `tools/generation/stencil/_stencil-image.ts`, the image harness the image tests and the private `stencil-image-eval` tool score with, tiles a picture in objects with `fitTones: false` and outside the load budget. That is the un-fitted, unbudgeted reading its comparisons need, and `runStencilPlan` never asks for it."
+    },
+    {
+      "path": "src/tools/generation/stencil/stencil-palette.ts:paletteItems",
+      "reason": "Read by the private `stencil` tool and the private `text-sweep` tool; `tools/generation/stencil/stencil-materials.test.ts` pins it too."
+    },
+    {
+      "path": "src/tools/generation/stencil/stencil-raster.ts:GLYPH_FONT_STACK",
+      "reason": "Read by the private `text-sweep` tool."
+    },
+    {
+      "path": "src/tools/generation/stencil/stencil-raster.ts:drawGlyph",
+      "reason": "Read by the private `text-sweep` tool."
+    },
+    {
+      "path": "src/tools/generation/stencil/stencil-raster.ts:drawTextReference",
+      "reason": "Read by the private `text-sweep` tool."
+    },
+    {
+      "path": "src/tools/generation/stencil/stencil-raster.ts:glyphFrame",
+      "reason": "Keep: the frame `drawGlyph` draws in, worked out before any canvas. The test environment has no 2D context, so `tools/generation/stencil/stencil-raster.test.ts` can only hold where each small-region letter lands through this step."
+    },
+    {
+      "path": "src/tools/generation/stencil/stencil-sample.ts:readSourceNature",
+      "reason": "Read by the private `stencil` tool; `tools/generation/stencil/stencil-image-reported.internal.test.ts` and `tools/generation/stencil/stencil-image.test.ts` pin it too."
+    },
+    {
+      "path": "src/tools/generation/stencil/stencil-sample.ts:sampleStencil",
+      "reason": "Keep: the trim rectangle it returns is the sampler's answer at source-pixel precision, and the stencil shows it only quantised to cells. `tools/generation/stencil/stencil-image.test.ts` pins it to the pixel, and `_stencil-image.ts` fits its reference readings to it."
+    },
+    {
+      "path": "src/tools/generation/stencil/stencil.ts:GLYPH_LEGIBLE",
+      "reason": "The legibility bars `_stencil-metrics.ts` judges glyphs by, so the evaluation and the engine cannot disagree about what is legible; `stencil-glyph.test.ts` holds the two equal."
+    },
+    {
+      "path": "src/tools/generation/terrain-plan/repair.ts:applyPlanToScratch",
+      "reason": "Keep: a plan as the rules read it. The designer water tests (`tools/generation/designer/water/*.test.ts`) and `tools/generation/terrain-plan/repair.test.ts` ask the rules about a plan without repair's decrease, and `repairPlan` reports no verdict. A test copy of the conversion could drift from what repair validates."
+    },
+    {
+      "path": "src/tools/macros/planting/delights.ts:delightIds",
+      "reason": "A fact `delights.ts` declares and `tools/macros/planting/delights.test.ts` reads rather than restating it."
+    },
+    {
+      "path": "src/tools/macros/planting/delights.ts:delightRoll",
+      "reason": "Read by the private `dumps` tool; `tools/macros/planting/delights.test.ts` pins it too."
+    },
+    {
+      "path": "src/tools/macros/roads/road-style.ts:bendDensity",
+      "reason": "The raw bend measure: `readRoadStyle` clamps it at 0.45, so a ramble's reading near one is invisible through the door. `tools/macros/roads/road-style.test.ts` pins it."
+    },
+    {
+      "path": "src/tools/macros/roads/route-offers.ts:sameRoute",
+      "reason": "The offer collapse threshold, pinned on a hand-made one-cell jog that no planner produces. `tools/macros/roads/route-offers.test.ts` pins it."
+    },
+    {
+      "path": "src/tools/macros/roads/route.ts:capEnter",
+      "reason": "Keep: `tools/macros/roads/route.test.ts` holds its floor for any discount, however negative, where `planRoute` reaches only today's bonuses (pinned through it by \"stacked with the scenic bonus\"); the floor guards `astar` against a bonus not yet written."
+    },
+    {
+      "path": "src/tools/macros/terrain/terrace.ts:FLAT_TOP",
+      "reason": "A constant of `terrace.ts`; `tools/macros/macros.test.ts`, `tools/macros/terrain/raise.test.ts` and 1 more derive their expectations from it."
+    },
+    {
+      "path": "src/tools/pointer/runtime/host.ts:HEADLESS_OVERLAY",
+      "reason": "The one no-op overlay the host falls back to without a view; the contexts tests build without a view use the same one (`_support/tool-ctx.ts` and nine tests)."
+    },
+    {
+      "path": "src/ui/agent/desk/Banner.tsx:BANNER_CLASSES",
+      "reason": "Kept: every class the banner can show, read off its exhaustive spec table; the panel suites and the error zoo render each one, and a list written in a test would miss a class the table gains."
+    },
+    {
+      "path": "src/ui/agent/desk/DreamOffice.tsx:DREAMS",
+      "reason": "Kept: the dream pool; the suites count its rows on the board and check its longest lines fit unwrapped in en and ru, which needs the pool's own keys."
+    },
+    {
+      "path": "src/ui/agent/desk/DreamOffice.tsx:boardHeight",
+      "reason": "Kept: the reserve rule the board applies to its measured pool; the suite checks the rendered board against it in three locales and pins the cyclic-window rule on a pool jsdom cannot lay out."
+    },
+    {
+      "path": "src/ui/chrome/modals/export/stylize/Hero.tsx:pointerLean",
+      "reason": "Kept: the deck reads the lean through two springs into each card's motion values, which jsdom never settles, so its viewport-space mapping is pinned at this step."
+    },
+    {
+      "path": "src/ui/chrome/modals/planet/VideoImportGuide.tsx:FAILURE_COPY",
+      "reason": "Kept: the refusal-to-copy table; the import window's suite rejects a scan with each failure and checks the guide comes back with that failure's own words, which needs the pairing."
+    },
+    {
+      "path": "src/ui/chrome/tour/use-tour.ts:TOUR_SEEN_KEY",
+      "reason": "Kept: the tour's storage key the tests seed to start with the tour already seen. It is the one production reader of `platform/storage/prefs.ts:PREFS`, so moving the tests onto `PREFS.tourSeen.key` would leave `PREFS` test-only instead."
+    },
+    {
+      "path": "src/ui/design/motion/choreography.ts:SCORES",
+      "reason": "Kept: the score table `ui/shell/mode-transition.test.tsx` walks to prove every declared beat is played by the shell; production reads one beat at a time through `beatOf`."
+    },
+    {
+      "path": "src/ui/design/styles.ts:SPACE",
+      "reason": "Kept: the spacing scale `foundation-guards.test.ts` holds every gap, padding and margin literal to; production writes lengths on it as literals, so the guard is its one reader."
+    },
+    {
+      "path": "src/ui/help/search-examples.ts:SEARCH_EXAMPLE_IDS",
+      "reason": "Kept: the catalog ids Help's search examples name; the suites check each id still exists in the catalog and that the examples and the share figure name those items, which needs the ids themselves."
+    },
+    {
+      "path": "src/ui/shell/frame.ts:ASSISTANT_INK",
+      "reason": "Kept: a frame-geometry fact `frame.ts` derives from the art and lays the frame against; the layout suites assert the frame's relations to it, where a literal would fork the arithmetic."
+    },
+    {
+      "path": "src/ui/shell/frame.ts:MODE_ROW_INK_BOTTOM",
+      "reason": "Kept: a frame-geometry fact `frame.ts` derives from the art and lays the frame against; the layout suites assert the frame's relations to it, where a literal would fork the arithmetic."
+    },
+    {
+      "path": "src/ui/shell/frame.ts:RAIL_FOLDS",
+      "reason": "Kept: the fold ladder `planRail` walks; `ui/shell/frame-margins.test.ts` checks each rung is shallower than the one before and that the plan takes the first that fits, which needs the ladder itself."
+    },
+    {
+      "path": "src/ui/shell/frame.ts:TOP_RIGHT_H",
+      "reason": "Kept: a frame-geometry fact `frame.ts` derives from the art and lays the frame against; the layout suites assert the frame's relations to it, where a literal would fork the arithmetic."
+    },
+    {
+      "path": "src/ui/shell/frame.ts:planRail",
+      "reason": "Kept: the rail plan `planFrame` builds on and then edits (`plateRight`, `plateMaxH`); the fold and lane suites pin the unadjusted plan, which the frame's output no longer shows."
+    },
+    {
+      "path": "src/ui/shell/frame.ts:railStack",
+      "reason": "Kept: the height of a stack of rail buttons, the unit `frame.ts` lays the rail in; the rail suites measure expected group heights with it rather than restating the formula."
+    },
+    {
+      "path": "src/ui/shell/panel-frame.ts:PANEL_TOP",
+      "reason": "Kept: the private `panel-harness` sizes its capture to the app's panel cap (`100vh / zoom - PANEL_TOP - footReserve`), whose door is a CSS expression it cannot evaluate; the panel suites pin it too."
+    },
+    {
+      "path": "src/ui/shell/panel-frame.ts:footReserve",
+      "reason": "Kept: the private `panel-harness` sizes its capture to the app's panel cap (`100vh / zoom - PANEL_TOP - footReserve`), whose door is a CSS expression it cannot evaluate; the panel suites pin it too."
+    },
+    {
+      "path": "src/view/map3d/geometry/object-meshes.ts:buildObjectInstances",
+      "reason": "A whole entry of `object-meshes.ts` that `perf/map3d.perf.test.ts`, `view/map3d/geometry/deck-model.test.ts` and 3 more drive; production calls its parts instead."
+    },
+    {
+      "path": "src/view/map3d/geometry/terrain-geometry.ts:buildTerrainMeshes",
+      "reason": "A whole entry of `terrain-geometry.ts` that `view/map3d/geometry/chunk-terrain.test.ts`, `view/map3d/geometry/drape-trims.test.ts` and 4 more drive; production calls its parts instead."
+    },
+    {
+      "path": "src/view/map3d/layers/object-layer.ts:makeInstancedMesh",
+      "reason": "An internal step of `object-layer.ts`; `view/map3d/draw/proximity-fade.test.ts` pins it directly."
+    },
+    {
+      "path": "src/view/map3d/layers/terrain-layer.ts:shadeFall",
+      "reason": "An internal step of `terrain-layer.ts`; `view/map3d/geometry/water-rest.test.ts` pins it directly."
+    },
+    {
+      "path": "src/view/map3d/models/build-model.ts:buildModel",
+      "reason": "An internal step of `build-model.ts`; `perf/map3d.perf.test.ts`, `view/map3d/draw/proximity-fade.test.ts` and 4 more pin it directly."
+    },
+    {
+      "path": "src/view/map3d/models/build-model.ts:modelGeometry",
+      "reason": "Read by the private `model-gallery` tool; `view/map3d/geometry/object-bounds.test.ts`, `view/map3d/layers/ghost-depth-prepass.test.ts` and 6 more pin it too."
+    },
+    {
+      "path": "src/view/map3d/models/object-archetypes.ts:ARCHETYPE_KEYS",
+      "reason": "A fact `object-archetypes.ts` declares and `view/map3d/models/object-archetypes.test.ts` and `view/map3d/models/vertical-scale.test.ts` read rather than restating it."
+    },
+    {
+      "path": "src/view/map3d/models/registry.ts:modeledIds",
+      "reason": "Read by the private `model-gallery` tool; `perf/map3d.perf.test.ts`, `view/map3d/models/build-model.test.ts` and 1 more pin it too."
+    },
+    {
+      "path": "src/view/shared/overlay/ghost-geometry.ts:filletOnly",
+      "reason": "An internal step of `ghost-geometry.ts`; `view/map3d/geometry/ghost-trim-3d.test.ts` and `view/shared/overlay/trim-boundary.test.ts` pin it directly."
+    },
+    {
+      "path": "src/view/shared/road/material.ts:roadMaterialPatches",
+      "reason": "A whole entry of `material.ts` that `view/shared/road/road-flight.test.ts` and `view/shared/road/road-material.test.ts` drive; production calls its parts instead."
+    },
+    {
+      "path": "src/view/shared/road/paving-texture.ts:insetStone",
+      "reason": "An internal step of `paving-texture.ts`; `view/shared/road/road-paving-texture.test.ts` pins it directly."
+    },
+    {
+      "path": "src/view/shared/road/paving-texture.ts:stoneInset",
+      "reason": "A table of `paving-texture.ts`; `view/shared/road/road-paving-texture.test.ts` derives its expectations from it."
+    },
+    {
+      "path": "src/view/shared/road/shape.ts:roadBodyPoints",
+      "reason": "A whole entry of `shape.ts` that `core/domain/edge-cut/road-materials.test.ts`, `perf/edge-cut.perf.test.ts` and 1 more drive; production calls its parts instead."
+    },
+    {
+      "path": "src/view/shared/road/shape.ts:roadBoundarySides",
+      "reason": "An internal step of `shape.ts`; `core/domain/edge-cut/road-materials.test.ts` pins it directly."
+    },
+    {
+      "path": "src/view/shared/road/shape.ts:roadCanonicalPoly",
+      "reason": "An internal step of `shape.ts`; `view/shared/road/shape.test.ts` pins it directly."
+    },
+    {
+      "path": "src/view/shared/road/shape.ts:roadTxPt",
+      "reason": "An internal step of `shape.ts`; `view/shared/road/shape.test.ts` pins it directly."
+    },
+    {
+      "path": "src/view/shared/road/surface-grain.ts:periodicGrain",
+      "reason": "An internal step of `surface-grain.ts`; `view/shared/road/road-surface-grain.test.ts` pins it directly."
+    },
+    {
+      "path": "src/view/shared/road/surface-image.ts:surfaceImageReady",
+      "reason": "Read by the private `canvas-checks` tool; `view/shared/road/surface-image.test.ts` pins it too."
+    },
+    {
+      "path": "src/view/shared/terrain/cut-backing.ts:cornerEdgeCoverTier",
+      "reason": "An internal step of `cut-backing.ts`; `view/shared/terrain/cut-backing-tiers.test.ts` pins it directly."
+    },
+    {
+      "path": "src/view/shared/terrain/cut-backing.ts:cornerRevealTier",
+      "reason": "An internal step of `cut-backing.ts`; `view/shared/terrain/cut-backing-tiers.test.ts` pins it directly."
+    }
+  ]
+}

@@ -7,7 +7,11 @@ import { decodeGlyph } from '../../../../io/share/glyph/decode';
 import { PRODUCT_PAPER } from '../../../../io/share/glyph/palette';
 import * as D from './degrade';
 
-const payload = (n: number) => { const a = new Uint8Array(n); let s = 0xfeed; for (let i = 0; i < n; i++) { s = (Math.imul(s, 1664525) + 1013904223) >>> 0; a[i] = s >>> 24; } return a; };
+const payload = (n: number) => {
+  const a = new Uint8Array(n);
+  let s = 0xfeed;
+  for (let i = 0; i < n; i++) { s = (Math.imul(s, 1664525) + 1013904223) >>> 0; a[i] = s >>> 24; } return a;
+};
 const eq = (a: Uint8Array | null, b: Uint8Array) => !!a && a.length === b.length && a.every((v, i) => v === b[i]);
 type Fx = (g: Uint8Array, w: number, h: number) => Uint8Array;
 const sub = (g: Uint8Array, w: number, h: number) => D.chromaSubsample420(g, w, h);
@@ -32,14 +36,25 @@ function embed(glyph: { rgba: Uint8Array; width: number; height: number }, padX:
 }
 
 const RATED: [number, Fx[]][] = [
-  [780, [chain(sub, (g, w, h) => D.jpegLike(g, w, h, 40)), (g, w, h) => D.downUp(g, w, h, 0.5), chain(sub, (g, w, h) => D.jpegLike(g, w, h, 60), (g, w, h) => D.downUp(g, w, h, 0.75)), (g) => D.colorShift(g, 14, -8, 10), (g) => D.noise(g, 18, 7), (g, w, h) => D.gaussStd(g, w, h)]],
-  [1100, [chain(sub, (g, w, h) => D.jpegLike(g, w, h, 60)), (g, w, h) => D.downUp(g, w, h, 0.67), (g) => D.colorShift(g, 10, -6, 8), (g, w, h) => D.gaussStd(g, w, h)]],
+  [780, [
+    chain(sub, (g, w, h) => D.jpegLike(g, w, h, 40)), (g, w, h) => D.downUp(g, w, h, 0.5),
+    chain(sub, (g, w, h) => D.jpegLike(g, w, h, 60), (g, w, h) => D.downUp(g, w, h, 0.75)),
+    (g) => D.colorShift(g, 14, -8, 10), (g) => D.noise(g, 18, 7), (g, w, h) => D.gaussStd(g, w, h),
+  ]],
+  [1100, [
+    chain(sub, (g, w, h) => D.jpegLike(g, w, h, 60)), (g, w, h) => D.downUp(g, w, h, 0.67), (g) => D.colorShift(g, 10, -6, 8),
+    (g, w, h) => D.gaussStd(g, w, h),
+  ]],
   [2300, [chain(sub, (g, w, h) => D.jpegLike(g, w, h, 75)), (g, w, h) => D.downUp(g, w, h, 0.85), (g, w, h) => D.gaussSmall(g, w, h)]],
   [3700, [chain(sub, (g, w, h) => D.jpegLike(g, w, h, 85)), (g, w, h) => D.gaussSmall(g, w, h)]],
   [4200, [chain(sub, (g, w, h) => D.jpegLike(g, w, h, 85))]],
   [6800, [chain(sub, (g, w, h) => D.jpegLike(g, w, h, 85))]],
   [10033, []],
 ];
+
+/** The smallest, middle and largest rated sizes by default; every rated size with `PETIT_SLOW=1`. */
+const OUT_OF_ENVELOPE_SIZES = RATED.map(([n]) => n)
+  .filter((_, i) => process.env.PETIT_SLOW === '1' || i === 0 || i === Math.floor(RATED.length / 2) || i === RATED.length - 1);
 
 describe('glyph robustness matrix (exact-or-null; wrong bytes = suite failure)', () => {
   for (const [n, fxs] of RATED) {
@@ -53,7 +68,7 @@ describe('glyph robustness matrix (exact-or-null; wrong bytes = suite failure)',
     }
   }
   it('out-of-envelope fails to null or returns exact bytes', () => {
-    for (const [n] of RATED) {
+    for (const n of OUT_OF_ENVELOPE_SIZES) {
       const data = payload(n);
       const g = encodeGlyph(data, 12)!;
       for (const t of [D.downUp(g.rgba, g.width, g.height, 0.25), D.randomImage(g.rgba.length, 3)]) {

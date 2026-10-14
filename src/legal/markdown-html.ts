@@ -4,13 +4,13 @@
  * build (`scripts/build-legal-pages.mts`) and directly tested here
  * for structural parity against the React emitter (`LegalMarkdown.tsx`).
  *
- * SECURITY: `parseLegalMarkdown` deliberately does NOT escape text or hrefs
+ * Security: `parseLegalMarkdown` deliberately does not escape text or hrefs
  * (see markdown.ts doc comment) — this is the one place that must. Every
  * text node and every attribute value flows through the single `escapeHtml()`
  * below; there is no other path that writes into the output string.
  */
 
-import { headingSlug, inlineText, type Inline, type MdNode } from './markdown';
+import { headingSlug, inlineText, type Inline, type MdNode } from './markdown.ts';
 
 /** The one HTML escaper for text content and attribute values, here and in the static page shell. */
 export function escapeHtml(s: string): string {

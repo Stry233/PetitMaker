@@ -3,14 +3,10 @@ import type { LegalConfig } from './config';
 /**
  * Pure, side-effect-free validation of a `LegalConfig`. Returns a list of
  * human-readable problems; an empty list means the config is launch-ready.
- *
- * `mode` does not change the CHECKS performed — release and dev builds must
- * agree on what is wrong — it only documents intent for the caller: a
- * release build fails on a non-empty list (prebuild assertion), a dev/test
- * build merely warns.
+ * Release and dev builds agree on what is wrong: a release build fails on a
+ * non-empty list (prebuild assertion), a dev or test build merely warns.
  */
-export function validateLegalConfig(cfg: LegalConfig, mode: 'release' | 'dev'): string[] {
-  void mode;
+export function validateLegalConfig(cfg: LegalConfig): string[] {
 
   const problems: string[] = [];
 
@@ -70,7 +66,7 @@ function validateOrigin(origin: string, problems: string[]): void {
 }
 
 // A filing pair (ICP/PSB) may be entirely null — the row simply doesn't
-// render — but a PARTIAL pair (number without URL or vice versa) would
+// render — but a partial pair (number without URL or vice versa) would
 // render a broken row, so it's always a build error.
 function validateFilingPair(
   label: 'icp' | 'psb',

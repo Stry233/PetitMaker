@@ -1,19 +1,15 @@
 /*
- * The logo beside the app name, shared by the About modal and the tour's welcome step.
- *
- * The arrangement comes from the README masthead (docs/media/banner-*.svg): the logo, then the name
- * one fifth of the logo's width further along, both centred on the same line. That file is a
- * rendering rather than a component (outlined paths for the wordmark, a base64 PNG for the logo),
- * so what carries over is the geometry, not the asset.
- *
- * The logo is served from public/ through BASE_URL, the same path the favicon resolves, so one file
- * backs both and it still loads under the dev site's /Apollonius/ prefix.
+ * The logo beside the app name, shared by About and the tour's welcome step, in the readme
+ * masthead's geometry (the name one fifth of the logo's width along, both on one line). The logo is
+ * served from public/ through BASE_URL, so it loads under the dev site's path prefix as the favicon does.
  */
+import { FRAME_INK, MUTED } from '../design/tokens';
 import type { CSSProperties } from 'react';
 import { useT } from '../../i18n/context';
-import { colors, font, radii } from '../design/styles';
+import { font, radii } from '../design/styles';
 import { useReadableWeight } from '../design/scale';
 import { BrandName } from './BrandName';
+import { BRAND_LOGO_URL } from './brand-logo';
 
 /** 32px of gap per 172px of logo, measured off the 796x228 masthead artboard. */
 const GAP_RATIO = 32 / 172;
@@ -51,7 +47,7 @@ export function BrandLockup({ size, tagline, logoOnly }: BrandLockupProps) {
     fontFamily: font.family,
     fontWeight: weightAt(900, Math.round(size * 0.42)),
     fontSize: Math.round(size * 0.42),
-    color: colors.frameDark,
+    color: FRAME_INK,
     lineHeight: 1.05,
   };
   // brownText, not textSecondary: the tagline is normal-size text, and textSecondary measures
@@ -60,15 +56,15 @@ export function BrandLockup({ size, tagline, logoOnly }: BrandLockupProps) {
     fontFamily: font.family,
     fontWeight: weightAt(700, Math.round(size * 0.2)),
     fontSize: Math.round(size * 0.2),
-    color: colors.brownText,
+    color: MUTED,
     lineHeight: 1.2,
   };
 
   return (
     <div style={row}>
       {logoOnly
-        ? <img src={`${import.meta.env.BASE_URL}logo-256.png`} alt={t('app.name')} style={logo} />
-        : <img src={`${import.meta.env.BASE_URL}logo-256.png`} alt="" role="presentation" style={logo} />}
+        ? <img src={BRAND_LOGO_URL} alt={t('app.name')} style={logo} />
+        : <img src={BRAND_LOGO_URL} alt="" role="presentation" style={logo} />}
       {!logoOnly && (
         <div style={names}>
           <div style={name}><BrandName /></div>

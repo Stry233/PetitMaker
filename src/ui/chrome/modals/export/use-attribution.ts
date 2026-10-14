@@ -1,14 +1,13 @@
-import { useMemo } from 'react';
 import { useEditorStore } from '../../../../state/store';
-import { protectedImageNotes } from '../../../../core/provenance/image-attribution';
-import { useMapRevision } from '../../../hooks/use-map-revision';
+import { protectedImageNotes } from '../../../../state/notes-attribution';
+import { useMapDerived } from '../../../session/use-map-derived';
 
 /** Re-evaluate the lock after map edits and undo, even while the export window stays mounted. */
 export function useAttribution(open: boolean) {
   const map = useEditorStore(s => s.gridState);
-  const notesEpoch = useEditorStore(s => s.notesEpoch);
-  const revision = useMapRevision(open);
-  return useMemo(() => {
+  const notes = useEditorStore(s => s.gridState?.notes);
+  // The notes say the map moved in place as well as its revision.
+  return useMapDerived(() => {
     const original = open && map ? protectedImageNotes(map) : undefined;
     return {
       notes: { ...map?.notes, ...original },
@@ -16,5 +15,5 @@ export function useAttribution(open: boolean) {
       descriptionLocked: !!original?.description,
       locked: !!original,
     };
-  }, [open, map, revision, notesEpoch]);
+  }, [open, map, notes], { listening: open });
 }

@@ -1,133 +1,57 @@
 /**
- * Dev-build signposting: a notice on arrival and a standing watermark.
+ * Dev-build signposting: a notice on arrival and a standing watermark, both shown only when
+ * `IS_DEV_BUILD`. That flag comes from the version (a build carries `-dev` unless the publish
+ * workflow stamped a release marker), so the dev site, local builds and checkouts all signpost
+ * themselves and a published snapshot never does.
  *
- * Both render only when `IS_DEV_BUILD`, which is derived from the version rather than from an
- * environment flag: a build carries `-dev` unless the publish workflow wrote a release marker
- * into its stamp, so the dev site, a local build and a source checkout all signpost themselves
- * while a published snapshot never does, with nothing to remember per environment.
+ * The notice shows on every page load and its dismissal is not persisted, so a returning visitor is
+ * told again. It dismisses itself (`TimedButton`); the countdown holds while the pointer is
+ * anywhere on the card, since reading happens over the sentence and the dismiss is at its far end.
  *
- * The notice shows on every page load (that is what "you are on the dev site" has to mean) and
- * can be dismissed for the rest of the visit. It is deliberately NOT persisted: a returning
- * visitor should be told again, and a dismissal is only about getting it out of the way now.
- *
- * DISMISSING IS THE DEFAULT, so the notice takes itself away (`TimedButton`). It has one sentence
- * to deliver and nothing to ask, and standing over the map until someone attends to it is the
- * notice charging for a fact it has already given. What keeps that from defeating the notice is
- * that the countdown holds while the pointer is anywhere on the CARD, not merely on its dismiss:
- * reading happens over the sentence, and the dismiss is at the far end of it.
- *
- * The watermark stays, and it stands ABOVE EVERYTHING (`z.unmissable`). Being unmissable is the
- * whole point of it: it is DOM rather than canvas, so it cannot reach an exported image (exports
- * render the Pixi scene, not the page), and it is `pointerEvents: none`, so it can never intercept
- * a click. A panel that could cover it would be a panel that hides which build this is.
+ * The watermark stands above everything (`z.unmissable`): it is DOM, so it never reaches an
+ * exported image (exports render the Pixi scene), and `pointerEvents: none`, so it never takes a
+ * click. A panel that could cover it would hide which build this is.
  */
 import { useState } from 'react';
 import type { CSSProperties } from 'react';
-import { AnimatePresence, motion } from 'framer-motion';
+import { AnimatePresence } from 'framer-motion';
 import { useT } from '../../../i18n/context';
-import { APP_VERSION, IS_DEV_BUILD } from '../../../version';
+import { timedHint } from '../../../i18n/timed-hint';
+import { APP_VERSION, IS_DEV_BUILD } from '../../../platform/build/build-info';
 import { LEGAL } from '../../../legal/config';
 import { TimedButton } from '../../primitives/TimedButton';
-import { colors, font, radii, springs, z, cursors } from '../../design/styles';
+import { font, z } from '../../design/styles';
 import { roleWeight, roleFont } from '../../design/text-weight';
-import { MAP_LABEL, PANEL_EDGE } from '../../design/tokens';
+import { NoticeBar, noticeActionStyle } from '../../primitives/NoticeBar';
+import { useChromeLayer } from '../../primitives/chrome-layer';
+import { MAP_LABEL, FRAME_INK } from '../../design/tokens';
 import { ARRIVAL_ROW, TOAST_BAND_ROW, TOAST_BAND_TOP, bandTop } from '../floating/toast-band';
-import { useChromeScale } from '../../design/scale';
 
 /**
  * How far down the notice hangs: the toast band's third row, below the refusal toasts and the
- * arrival greeting (both appear at the same boot moment this notice does, and all three stand
- * top-centre — the shared ledger in `floating/toast-band` is what keeps them stacked instead of
- * overlapped). Both corners are left to the frame.
- *
- * IN THE SAME SPACE AS THE OTHER TWO TENANTS, which is INSIDE the chrome zoom: what this number has
- * to clear is the toasts and the greeting, and those grow and shrink with that zoom. Divided back
- * out it would be a real-px constant chasing two scaled surfaces: at a 1440-tall viewport (zoom
- * ~1.33) the greeting's foot reaches real 249, where a 199 constant stands above it — covered
- * again, which is the arrangement the ledger exists to prevent. Riding the same zoom makes the ledger's
- * arithmetic exact at every scale: the greeting's foot is at 187 and this at 199, so the 12px of
- * air between them is 16 real px at 1.33 and 8 at 0.7, never nothing.
+ * arrival greeting, which appear at the same boot moment top-centre (`floating/toast-band` keeps
+ * the three stacked). In chrome-zoom px like the other two tenants, so the ledger's 12px of air
+ * between the greeting's foot (187) and this (199) scales with them and never closes.
  */
 const NOTICE_TOP = TOAST_BAND_TOP + TOAST_BAND_ROW + ARRIVAL_ROW;
 
-// Centring lives in framer's `x`, NOT in a `transform` here: motion writes the element's
-// transform to animate `y`, which silently drops a `translateX(-50%)` set in CSS and leaves the
-// card half its own width off centre at every viewport size. Both `initial` and `animate` carry
-// the same x so nothing slides sideways on entry.
-const noticeWrap: CSSProperties = {
-  position: 'fixed',
-  left: '50%',
-  zIndex: z.toast,
-  display: 'flex',
-  alignItems: 'center',
-  gap: 12,
-  maxWidth: 'min(92vw, 560px)',
-  padding: '10px 12px 10px 16px',
-  borderRadius: radii.lg,
-  border: PANEL_EDGE,
-  background: colors.panelCream,
-  color: colors.frameDark,
-  fontFamily: font.family,
-  ...roleFont('caption'),
-  lineHeight: 1.35,
-  boxShadow: 'none',
-};
-
-// The accent stripe carries "this is a warning" without colouring the text, which has to stay
-// legible at this size.
-const stripe: CSSProperties = {
-  flex: '0 0 auto',
-  width: 4,
-  alignSelf: 'stretch',
-  borderRadius: 2,
-  background: colors.accentPrimary,
-};
-
 const linkStyle: CSSProperties = {
-  color: colors.frameDark,
+  color: FRAME_INK,
   fontWeight: roleWeight('small'),
   textDecoration: 'underline',
   textUnderlineOffset: 2,
   whiteSpace: 'nowrap',
 };
 
-const dismissStyle: CSSProperties = {
-  flex: '0 0 auto',
-  border: 'none',
-  background: colors.surfaceSecondary,
-  color: colors.frameDark,
-  fontFamily: font.family,
-  ...roleFont('small'),
-  padding: '6px 10px',
-  // A stadium, so the countdown's outline runs round a pill rather than round a box with soft
-  // corners: `TimedButton` takes its own shape from whatever this says.
-  borderRadius: radii.pill,
-  cursor: cursors.clickable,
-};
-
-/**
- * How long the notice stands before it takes itself away, in seconds.
- *
- * Long enough to read the sentence and follow the link with the pointer, which is what the pause
- * is for: a visitor who is reading has their pointer on the card, and the clock is not running.
- * What this really bounds is the case nobody is looking.
- */
+/** Seconds the notice stands before it dismisses itself when nobody is pointing at it; a reader's
+ *  pointer on the card holds the clock. */
 const NOTICE_SECONDS = 10;
 
 /*
- * The standing watermark.
- *
- * IT STANDS ON THE TOP RUNG AND IT IS STILL NOT DONE. The rung (`z.unmissable`) settles what may
- * cover it, which is nothing; what it cannot settle is whether the word can be READ over what it
- * lands on, and the bottom of this window is exactly where the interface puts a full-width shelf in
- * `DARK_PLATE`. Dark ink at a third of its strength on that plate is a watermark that a panel hides
- * without covering, which is the same failure by another route (measured: it paints over the
- * generate shelf and is invisible there).
- *
- * So it wears the treatment every word standing on unknown ground in this interface wears
- * (`tokens.ts:MAP_LABEL`): pale ink with a dark edge round it, one of the two carrying the word
- * whichever it is over. Quiet is still the intent — the strength below is the least that reads on
- * both — but between quiet and legible, legible is the whole reason the mark exists.
+ * The standing watermark. Its rung means nothing covers it, but the window's bottom is where a
+ * full-width `DARK_PLATE` shelf sits, on which dark ink at a third of its strength is invisible.
+ * So it wears `MAP_LABEL`'s treatment, pale ink with a dark edge, at the least strength that reads
+ * on both map and plate.
  */
 const watermarkStyle: CSSProperties = {
   position: 'fixed',
@@ -147,30 +71,26 @@ const watermarkStyle: CSSProperties = {
 
 export function DevBuildNotice() {
   const t = useT();
-  const chromeScale = useChromeScale();
+  const layer = useChromeLayer();
   const [dismissed, setDismissed] = useState(false);
   const [reading, setReading] = useState(false);
 
   if (!IS_DEV_BUILD) return null;
 
-  // The chrome zoom goes on each FIXED element, never on a wrapper around them: an ancestor
-  // with `zoom` skews what `left: 50%` resolves against. Same shape as ToastContainer.
   return (
     <>
       <AnimatePresence>
         {!dismissed && (
-          <motion.div
+          <NoticeBar
             role="status"
             data-testid="dev-notice"
-            style={{ ...noticeWrap, top: bandTop(NOTICE_TOP), zoom: chromeScale }}
-            initial={{ opacity: 0, x: '-50%', y: -12 }}
-            animate={{ opacity: 1, x: '-50%', y: 0 }}
-            exit={{ opacity: 0, x: '-50%', y: -8 }}
-            transition={springs.stiff}
+            edge="top"
+            offset={bandTop(NOTICE_TOP)}
+            stripe
+            travel={12}
             onPointerEnter={() => setReading(true)}
             onPointerLeave={() => setReading(false)}
           >
-            <span style={stripe} aria-hidden />
             <span>
               {t('dev.notice')}{' '}
               <a style={linkStyle} href={LEGAL.canonicalOrigin} target="_blank" rel="noopener noreferrer">
@@ -179,18 +99,19 @@ export function DevBuildNotice() {
             </span>
             <TimedButton
               after={NOTICE_SECONDS}
+              hint={timedHint(t, NOTICE_SECONDS)}
               paused={reading}
-              style={dismissStyle}
+              style={noticeActionStyle}
               onPress={() => setDismissed(true)}
               aria-label={t('dev.notice_dismiss')}
               data-testid="dev-notice-dismiss"
             >
               {t('dev.notice_dismiss')}
             </TimedButton>
-          </motion.div>
+          </NoticeBar>
         )}
       </AnimatePresence>
-      <div style={{ ...watermarkStyle, zoom: chromeScale }} data-testid="dev-watermark" aria-hidden>
+      <div style={{ ...layer, ...watermarkStyle }} data-testid="dev-watermark" aria-hidden>
         {t('dev.watermark')} {APP_VERSION}
       </div>
     </>

@@ -5,18 +5,18 @@
  */
 import { describe, it, expect } from 'vitest';
 import { deleteGroup, moveGroup, groupMembers } from '../../../tools/objects/group-actions';
-import { PLAZA_ID } from '../../../core/model/constants';
-import { makeState, makeExecutor } from '../../rules/_helpers';
+import { makeState, makeExecutor } from '../../_support/map-state';
 import type { GridState, PlacedObject } from '../../../core/model/types';
+import { ANCHOR_LANDMARK } from '../../_support/anchor';
 
 const tree = (id: string, x: number, y: number): PlacedObject => ({
   id, catalogId: 'tree-apple', position: { x, y }, rotation: 0, elevation: 0,
 });
 
-// Locked, like the real central plaza (`createPlazaObject`) — `makeState`'s template plaza is
+// Locked, like the real central plaza (`templateLandmarkObjects`) — `makeState`'s template plaza is
 // zero-sized (no object of its own), so a test that needs a locked member seeds one explicitly.
 const plaza = (): PlacedObject => ({
-  id: PLAZA_ID, catalogId: PLAZA_ID, position: { x: 14, y: 14 }, width: 3, height: 3,
+  id: ANCHOR_LANDMARK.id, catalogId: ANCHOR_LANDMARK.id, position: { x: 14, y: 14 }, width: 3, height: 3,
   rotation: 0, elevation: 0, locked: true,
 });
 
@@ -36,10 +36,10 @@ describe('group actions', () => {
     const exec = makeExecutor(state);
     seed(state, tree('a', 4, 4), tree('b', 6, 6), plaza());
 
-    const result = deleteGroup(exec, state, ['a', 'b', PLAZA_ID]);
+    const result = deleteGroup(exec, state, ['a', 'b', ANCHOR_LANDMARK.id]);
     expect(result.deleted).toBe(2);
     expect(result.kept).toBe(1);
-    expect(state.objects.has(PLAZA_ID)).toBe(true);
+    expect(state.objects.has(ANCHOR_LANDMARK.id)).toBe(true);
   });
 
   it('reports the refusal rather than announcing it, when nothing could go', () => {
@@ -47,7 +47,7 @@ describe('group actions', () => {
     const exec = makeExecutor(state);
     seed(state, plaza());
 
-    const result = deleteGroup(exec, state, [PLAZA_ID]);
+    const result = deleteGroup(exec, state, [ANCHOR_LANDMARK.id]);
     expect(result.deleted).toBe(0);
     expect(result.refusal).not.toBeNull();
   });
@@ -56,10 +56,10 @@ describe('group actions', () => {
     const state = makeState();
     const exec = makeExecutor(state);
     seed(state, tree('a', 4, 4), tree('b', 6, 6));
-    const before = exec.getUndoStackSize();
+    const before = exec.historyDepth();
 
     deleteGroup(exec, state, ['a', 'b']);
-    expect(exec.getUndoStackSize()).toBe(before + 1);
+    expect(exec.historyDepth()).toBe(before + 1);
   });
 
   it('refuses a move whole when one member cannot land, naming the blocker', () => {
@@ -67,9 +67,9 @@ describe('group actions', () => {
     const exec = makeExecutor(state);
     seed(state, tree('a', 4, 4), plaza());
 
-    const result = moveGroup(exec, state, ['a', PLAZA_ID], 1, 0);
+    const result = moveGroup(exec, state, ['a', ANCHOR_LANDMARK.id], { dx: 1, dy: 0 });
     expect(result.moved).toBe(0);
-    expect(result.blockedBy).toBe(PLAZA_ID);
+    expect(result.blockedBy).toBe(ANCHOR_LANDMARK.id);
     expect(result.refusal).not.toBeNull();
     expect(state.objects.get('a')!.position).toEqual({ x: 4, y: 4 });
   });

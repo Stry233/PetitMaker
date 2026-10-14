@@ -1,25 +1,30 @@
 /* Style directions grouped into local and provider-backed rows. Each row shows its sample, name,
  * AI status and relative render cost; the list scrolls independently of `DirectionPane`. */
+import { ActionButton } from '../../../../primitives/ActionButton';
+import { STYLIZE_PAPER, ACTIVE, rgbaOf } from '../../../../design/tokens';
 import type { CSSProperties } from 'react';
 import { useEffect, useRef, useState } from 'react';
 import { motion, useReducedMotionConfig } from 'framer-motion';
-import { buttonMotion, cursors, radii } from '../../../../design/styles';
+import { cursors, radii } from '../../../../design/styles';
 import { skin } from '../../../../design/window-skin';
 import { roleFont } from '../../../../design/text-weight';
 import { useT } from '../../../../../i18n/context';
 import {
-  CUSTOM_DIRECTION_ID, PROC_PACK_META, STYLE_PACKS, neuralPacksUsable, neuralPacksUsableNow,
+  CUSTOM_DIRECTION_ID, PROC_PACK_META, STYLE_PACKS,
   type DirectionId, type ProcPackMeta, type StylePack, type StylizeDirection,
-} from '../../../../../io/stylize';
+} from '../../../../../pipelines/stylize/facts';
+import { neuralPacksUsable, neuralPacksUsableNow } from '../../../../../editor/export/stylize';
 import { packSampleUrl } from './sample-assets';
 import { useScrollFade } from '../../../../primitives/scroll-fade';
-import { SampleTile, entering } from './atoms';
+import { SampleTile, entering } from './stylize-parts';
 import { cssMotion } from '../../../../design/motion';
 import type { SampleArt } from './sample-art';
+import type { I18nKey } from '../../../../../i18n/keys';
+import { useEffectEvent } from '../../../../primitives/use-effect-event';
 
 interface DirectionRow {
   id: StylizeDirection;
-  nameKey: string;
+  nameKey: I18nKey;
   /** `model` rows use a connected provider; `proc` rows draw locally and may name a neural pack. */
   kind: 'model' | 'proc';
   /** Relative render cost from 1 to 5. */
@@ -36,7 +41,7 @@ interface DirectionRow {
 
 /** Palette placeholder for the custom direction, which has no fixed sample. */
 const CUSTOM_ART: SampleArt = {
-  paper: '#F7F4E9',
+  paper: STYLIZE_PAPER.custom,
   palette: STYLE_PACKS.map((p) => p.palette[0]!),
 };
 
@@ -106,13 +111,13 @@ export function DirectionBooklet({ value, onPick, enterIndex = 0 }: {
   const online = rows.filter((d) => d.kind === 'model');
 
   // Bring the persisted initial selection into view when the booklet opens.
-  useEffect(() => {
+  const showSelection = useEffectEvent(() => {
     const el = scrollRef.current?.querySelector<HTMLElement>(`[data-direction="${value}"]`);
     if (typeof el?.scrollIntoView === 'function') {
       el.scrollIntoView({ block: 'nearest', behavior: reduced ? 'auto' : 'smooth' });
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- use the opening selection only
-  }, []);
+  });
+  useEffect(() => { showSelection(); }, []);
 
   // This element must remain the animated flex child so `minHeight: 0` can constrain its scroller.
   return (
@@ -121,7 +126,7 @@ export function DirectionBooklet({ value, onPick, enterIndex = 0 }: {
       ref={scrollRef}
       data-testid="stylize-direction-scroll"
       style={{ ...scrollStyle, ...fade }}
-    >
+   >
       <GroupLabel textKey="stylize.group_local" count={local.length} />
       {local.map((row) => (
         <DirectionRowButton key={row.id} row={row} picked={row.id === value} onPick={onPick} />
@@ -134,10 +139,10 @@ export function DirectionBooklet({ value, onPick, enterIndex = 0 }: {
   );
 }
 
-function GroupLabel({ textKey, count }: { textKey: string; count: number }) {
+function GroupLabel({ textKey, count }: { textKey: I18nKey; count: number }) {
   const t = useT();
   return (
-    <div aria-hidden style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '3px 2px 1px', flex: 'none' }}>
+    <div aria-hidden style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '2px 2px 2px', flex: 'none' }}>
       <b style={{ ...roleFont('caption'), color: skin.muted, whiteSpace: 'nowrap' }}>{t(textKey)}</b>
       <i style={{ flex: 1, height: 1, background: skin.line }} />
       <em style={{ ...roleFont('caption'), fontStyle: 'normal', color: skin.muted, opacity: 0.55 }}>{count}</em>
@@ -149,11 +154,15 @@ function GroupLabel({ textKey, count }: { textKey: string; count: number }) {
 function AiChip({ picked }: { picked: boolean }) {
   const t = useT();
   return (
-    <span style={{ ...roleFont('caption'), flex: 'none', padding: '0 5px', borderRadius: radii.sm, color: picked ? skin.ink : skin.muted, boxShadow: `inset 0 0 0 1px ${picked ? skin.ink : skin.muted}`, opacity: 0.85 }}>
+    <span style={{ ...roleFont('caption'), flex: 'none', padding: '0 4px', borderRadius: radii.sm, color: picked ? skin.ink : skin.muted, boxShadow: `inset 0 0 0 1px ${picked ? skin.ink : skin.muted}`, opacity: 0.85 }}>
       {t('stylize.tag_ai')}
     </span>
   );
 }
+
+/** The cost meter's scale: `DirectionRow.cost` runs from 1 to this. */
+const COST_MAX = 5;
+const COST_PIPS = Array.from({ length: COST_MAX }, (_, i) => i + 1);
 
 /** Relative work meter; pips avoid presenting render time as a quality rating. */
 function CostPips({ cost, picked }: { cost: number; picked: boolean }) {
@@ -161,14 +170,14 @@ function CostPips({ cost, picked }: { cost: number; picked: boolean }) {
   return (
     <span
       role="img"
-      aria-label={t('stylize.cost_label', { n: cost })}
+      aria-label={t('stylize.cost_label', { n: cost, max: COST_MAX })}
       style={{ display: 'inline-flex', gap: 2, flex: 'none' }}
-    >
-      {[1, 2, 3, 4, 5].map((i) => (
+   >
+      {COST_PIPS.map((i) => (
         <i
           key={i}
           style={{
-            width: 5, height: 5, borderRadius: 1.5, display: 'block',
+            width: 5, height: 5, borderRadius: radii.hair, display: 'block',
             background: i <= cost ? (picked ? skin.ink : skin.muted) : skin.track,
             opacity: i <= cost ? 0.9 : 0.55,
           }}
@@ -185,17 +194,15 @@ function DirectionRowButton({ row, picked, onPick }: {
 }) {
   const t = useT();
   return (
-    <motion.button
-      type="button"
+    <ActionButton
       data-direction={row.id}
       onClick={() => onPick(row.id)}
-      {...buttonMotion}
       style={{
         ...rowStyle,
-        background: picked ? PICKED_PAPER : skin.inset,
+        background: picked ? STYLIZE_PAPER.picked : skin.inset,
         boxShadow: picked ? `0 0 0 2.5px ${skin.active}` : `0 0 0 0 ${TRANSPARENT_ACTIVE}`,
       }}
-    >
+   >
       <SampleTile
         url={packSampleUrl(row.id)}
         art={row.art}
@@ -206,20 +213,19 @@ function DirectionRowButton({ row, picked, onPick }: {
       </b>
       {(row.kind === 'model' || row.proc?.neural) && <AiChip picked={picked} />}
       <CostPips cost={row.cost} picked={picked} />
-    </motion.button>
+    </ActionButton>
   );
 }
 
-const PICKED_PAPER = '#FFF7DD';
 
 /** Transparent shadow keeps the selection-ring transition interpolable. */
-const TRANSPARENT_ACTIVE = 'rgba(255,218,126,0)';
+const TRANSPARENT_ACTIVE = rgbaOf(ACTIVE, 0);
 
 const rowStyle: CSSProperties = {
   display: 'flex',
   alignItems: 'center',
-  gap: 9,
-  padding: '4px 9px 4px 4px',
+  gap: 8,
+  padding: '4px 8px 4px 4px',
   border: 'none',
   borderRadius: radii.md,
   cursor: cursors.clickable,

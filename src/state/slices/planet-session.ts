@@ -6,17 +6,18 @@
  * dependency.
  */
 import type { StateCreator } from 'zustand';
-import type { BlockRef, GridState, MacroCoord } from '../../core/model/types';
+import type { GridState, MacroCoord } from '../../core/model/types';
+import type { BlockRef } from '../selection';
 import type { CommandExecutor } from '../../core/commands/command-executor';
-import type { EditModeInputs } from '../../core/model/edit-mode';
-import type { ViewMode } from '../../core/runtime/prefs';
-import type { PersistedCamera } from '../../io/save-format/types';
-import { PLANET_PROFILE } from '../../core/model/game-profile';
+import type { BuildMode, EditModeInputs } from '../editing/edit-mode';
+import type { ViewMode } from '../../platform/storage/prefs';
+import type { CameraAngle, View2dCamera } from '../view-camera';
 import type { EditSlice } from './edit';
 import type { AnnotationsSlice } from './annotations';
 
-/** The live editor fields a parked map carries and gets back: its layer choices and annotation lanes. */
-export const PARKED_FIELDS = ['activeLayer', 'layerPinned', 'layerVisibility', 'layerLocked', 'annotationUndoLane', 'annotationRedoLane'] as const;
+/** The live editor fields a parked map carries and gets back: its layer choices and annotation lanes.
+ *  Its layer locks stay on its own `GridState`. */
+const PARKED_FIELDS = ['activeLayer', 'layerPinned', 'layerVisibility', 'annotationUndoLane', 'annotationRedoLane'] as const;
 type ParkedFields = Pick<EditSlice & AnnotationsSlice, typeof PARKED_FIELDS[number]>;
 
 /** `PARKED_FIELDS` read off `source`. */
@@ -33,8 +34,8 @@ export interface ParkedEditor extends ParkedFields {
   region: MacroCoord[];
   editMode: EditModeInputs;
   /** Null when that view had no camera to read. */
-  camera2d: NonNullable<PersistedCamera['view2d']> | null;
-  camera3d: NonNullable<PersistedCamera['view3d']> | null;
+  camera2d: View2dCamera | null;
+  camera3d: CameraAngle | null;
   viewMode: ViewMode;
 }
 
@@ -55,18 +56,17 @@ export interface PlanetSession {
 export interface PlanetReview {
   readonly cells: readonly MacroCoord[];
   readonly landmark: boolean;
+  /** Ids of the landmarks left for the person to place. */
+  readonly unplaced?: readonly string[];
 }
 
 /** What the mountain brush lays in the planet session: grass ground, stacking up to
  *  `PLANET_PROFILE.maxLayer`, or flat sand. */
 export const PLANET_MATERIALS = ['mountain', 'sand'] as const;
-export type PlanetMaterial = typeof PLANET_MATERIALS[number];
 
-/** Whether the map shows its layer numbers: as toggled, except in a planet session whose ground
- *  stays flat (`PLANET_PROFILE.maxLayer` 0), where there are no layers to number. */
-export function layerNumbersShown(s: { showLayerNumbers: boolean; planetSession: PlanetSession | null }): boolean {
-  return s.showLayerNumbers && !(s.planetSession && PLANET_PROFILE.maxLayer === 0);
-}
+/** The build modes a planet session offers, ground first; every other mode waits until it ends. */
+export const SESSION_BUILD_MODES = ['mountain', 'water', 'object'] as const satisfies readonly BuildMode[];
+export type PlanetMaterial = typeof PLANET_MATERIALS[number];
 
 export interface PlanetSessionSlice {
   /** Null outside the planet session. */
@@ -74,12 +74,6 @@ export interface PlanetSessionSlice {
   setPlanetSession: (session: PlanetSession | null) => void;
   planetMaterial: PlanetMaterial;
   setPlanetMaterial: (material: PlanetMaterial) => void;
-  /**
-   * Set as a session ends: the planet to show selected when the Change Planet window reopens, the
-   * saved or edited entry, or null for a new planet left unsaved. Whoever reopens the window clears it.
-   */
-  planetReturn: { chosen: string | null } | null;
-  setPlanetReturn: (planetReturn: { chosen: string | null } | null) => void;
   /** Whether the session's review cells are drawn on the map; each session with a review starts with them shown. */
   planetReviewShown: boolean;
   setPlanetReviewShown: (shown: boolean) => void;
@@ -90,8 +84,6 @@ export const createPlanetSessionSlice: StateCreator<PlanetSessionSlice, [], [], 
   setPlanetSession: (planetSession) => set(planetSession?.review ? { planetSession, planetReviewShown: true } : { planetSession }),
   planetMaterial: 'mountain',
   setPlanetMaterial: (planetMaterial) => set({ planetMaterial }),
-  planetReturn: null,
-  setPlanetReturn: (planetReturn) => set({ planetReturn }),
   planetReviewShown: true,
   setPlanetReviewShown: (planetReviewShown) => set({ planetReviewShown }),
 });

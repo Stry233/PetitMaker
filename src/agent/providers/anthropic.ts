@@ -7,9 +7,10 @@
 import Anthropic from '@anthropic-ai/sdk';
 import type { ProviderMessage } from '../core/project-messages';
 import type { FinalToolCall, StopReason, StreamEvent, Usage } from '../core/types';
+import { parseDataUrl } from '../../platform/remote/data-url';
 import { streamFailureEvent } from './http-failure';
 import { reasoningBody } from './reasoning';
-import type { Adapter, AdapterRequest } from './types';
+import type { Adapter, AdapterRequest } from '../core/adapter';
 
 /** Adaptive thinking and the answer share this budget. */
 const DEFAULT_MAX_TOKENS = 32000;
@@ -17,15 +18,10 @@ const DEFAULT_MAX_TOKENS = 32000;
 /** Anthropic permits `cache_control` on these content block types. */
 const MARKABLE = new Set(['text', 'tool_result', 'tool_use', 'image']);
 
-/** Splits a data URL; an unrecognized value is treated as bare PNG base64. */
-function parseDataUrl(dataUrl: string): { mediaType: string; data: string } {
-  const match = /^data:([^;]+);base64,([\s\S]*)$/.exec(dataUrl);
-  return match ? { mediaType: match[1] ?? 'image/png', data: match[2] ?? '' } : { mediaType: 'image/png', data: dataUrl };
-}
-
+/** An unrecognized value is treated as bare PNG base64. */
 function imageBlock(dataUrl: string): Anthropic.ImageBlockParam {
-  const { mediaType, data } = parseDataUrl(dataUrl);
-  return { type: 'image', source: { type: 'base64', media_type: mediaType as Anthropic.Base64ImageSource['media_type'], data } };
+  const { mime, base64 } = parseDataUrl(dataUrl) ?? { mime: 'image/png', base64: dataUrl };
+  return { type: 'image', source: { type: 'base64', media_type: mime as Anthropic.Base64ImageSource['media_type'], data: base64 } };
 }
 
 function userContent(text: string, images: string[] | undefined): Anthropic.MessageParam['content'] {
@@ -43,7 +39,7 @@ function assistantContent(
   return blocks.length > 0 ? blocks : '(no text)';
 }
 
-export function toAnthropicMessages(messages: ProviderMessage[], sameModel: boolean): Anthropic.MessageParam[] {
+function toAnthropicMessages(messages: ProviderMessage[], sameModel: boolean): Anthropic.MessageParam[] {
   return messages.map((m): Anthropic.MessageParam => {
     if (m.role === 'user') return { role: 'user', content: userContent(m.text, m.images) };
     if (m.role === 'assistant') {
@@ -66,7 +62,7 @@ export function toAnthropicMessages(messages: ProviderMessage[], sameModel: bool
  * Places the conversation's cache breakpoint on its last eligible block. The system prefix owns
  * the other breakpoint. Raw echo blocks may be shared with the log, so marking is copy-on-write.
  */
-export function withConversationBreakpoint(messages: Anthropic.MessageParam[]): Anthropic.MessageParam[] {
+function withConversationBreakpoint(messages: Anthropic.MessageParam[]): Anthropic.MessageParam[] {
   for (let i = messages.length - 1; i >= 0; i--) {
     const m = messages[i];
     if (!m) continue;
@@ -103,8 +99,8 @@ function usageOf(u: Anthropic.Message['usage']): Usage {
   };
 }
 
-export function createAnthropicAdapter(opts: { apiKey: string }): Adapter {
-  const client = new Anthropic({ apiKey: opts.apiKey, maxRetries: 0, dangerouslyAllowBrowser: true });
+export function createAnthropicAdapter(opts: { apiKey: string; baseUrl?: string }): Adapter {
+  const client = new Anthropic({ apiKey: opts.apiKey, baseURL: opts.baseUrl, maxRetries: 0, dangerouslyAllowBrowser: true });
 
   return {
     async *stream(req: AdapterRequest, signal: AbortSignal): AsyncGenerator<StreamEvent> {
@@ -114,7 +110,7 @@ export function createAnthropicAdapter(opts: { apiKey: string }): Adapter {
             model: req.model,
             max_tokens: req.maxOutputTokens ?? DEFAULT_MAX_TOKENS,
             ...(req.capabilities?.reasoning && !req.capabilities.budget ? { thinking: { type: 'adaptive' as const } } : {}),
-            ...reasoningBody('claude', req.thinking, req.capabilities),
+            ...reasoningBody('anthropic', req.thinking, req.capabilities),
             system: [{ type: 'text', text: req.system, cache_control: { type: 'ephemeral' } }],
             tools: req.tools.map((t) => ({
               name: t.name,

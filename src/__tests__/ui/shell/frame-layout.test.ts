@@ -1,17 +1,21 @@
 import { describe, expect, it } from 'vitest';
-import { FIT_FLOOR_TOUCH, fittedUiScale, MIN_UI_ROOM } from '../../../ui/design/scale';
+import { fittedUiScale } from '../../../ui/design/scale';
 import { KIT_BUTTONS, MODE_ROW_INK_BOTTOM, MODES, cornerArt, cornerWidth, sessionModes, modeRowRight, planFrame, railClearanceFor, railStack, TOP_RIGHT, TOP_RIGHT_H, TOP_RIGHT_TOP, viewKitCell } from '../../../ui/shell/frame';
 import { EDGE_LEFT, EDGE_RIGHT, RAIL, ZOOM } from '../../../ui/shell/units';
 import { PINNED_DOCK_REF_W, frameZoomAt } from '../../../ui/shell/panel-frame';
-import { PLATE_MIN_WIDTH, plateDepth, plateMinDepth } from '../../../ui/shell/windows/LayerPanel';
+import { PLATE_MIN_WIDTH, plateDepth, plateMinDepth } from '../../../ui/shell/controls/layer-plate';
 import type { PlanetSession } from '../../../state/slices/planet-session';
+
+/** The touch-primary fit floor, and the least workspace the interface keeps, in chrome px. */
+const TOUCH_FLOOR = 0.5;
+const MIN_ROOM = { w: 700, h: 525 };
 
 const options = { open: false, plateDepth: plateDepth('grid'), plateMinDepth: plateMinDepth('grid'), plateMinWidth: PLATE_MIN_WIDTH };
 
 describe('the shell shares the available workspace', () => {
   it('keeps the view kit within two files on a landscape phone at the touch floor', () => {
     for (const [vw, vh] of [[844, 390], [780, 360]] as const) {
-      const chrome = fittedUiScale(vw, vh, 1, 0, FIT_FLOOR_TOUCH);
+      const chrome = fittedUiScale(vw, vh, 1, 0, TOUCH_FLOOR);
       const p = planFrame(vw / (chrome * ZOOM), vh / (chrome * ZOOM), options);
       expect(p.rail.kitFiles, `${vw}x${vh}`).toBeLessThanOrEqual(2);
     }
@@ -19,7 +23,7 @@ describe('the shell shares the available workspace', () => {
 
   it('keeps top actions beside the modes when they fit and below their captions when they do not', () => {
     const wide = planFrame(1200, 800, options);
-    const narrow = planFrame(MIN_UI_ROOM.w / ZOOM, 500, options);
+    const narrow = planFrame(MIN_ROOM.w / ZOOM, 500, options);
     expect(wide.cornerTop).toBe(TOP_RIGHT_TOP);
     expect(narrow.cornerTop).toBeGreaterThan(MODE_ROW_INK_BOTTOM);
     expect(narrow.railTop).toBeGreaterThanOrEqual(narrow.cornerTop + TOP_RIGHT_H + RAIL.gap);
@@ -124,7 +128,7 @@ describe('the shell shares the available workspace', () => {
     expect(fittedUiScale(2560, 1440, 1.8)).toBe(1.8);
     expect(fittedUiScale(1280, 800, 1)).toBe(1);
     const constrained = fittedUiScale(640, 360, 1.8);
-    expect(640 / constrained).toBeGreaterThanOrEqual(MIN_UI_ROOM.w);
-    expect(360 / constrained).toBeGreaterThanOrEqual(MIN_UI_ROOM.h);
+    expect(640 / constrained).toBeGreaterThanOrEqual(MIN_ROOM.w);
+    expect(360 / constrained).toBeGreaterThanOrEqual(MIN_ROOM.h);
   });
 });

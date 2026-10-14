@@ -1,7 +1,7 @@
 import { createContext, useContext, type CSSProperties, type ReactNode } from 'react';
 import { motion, useIsPresent, useReducedMotionConfig } from 'framer-motion';
 import { framerMotion } from '../design/motion';
-import type { MotionId } from '../shell/motion/registry';
+import type { MotionId } from '../design/motion/registry';
 
 interface DisclosureProps {
   children: ReactNode;

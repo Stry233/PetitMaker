@@ -1,30 +1,23 @@
+// @vitest-environment jsdom
 /**
- * What separates a PANEL from the map.
+ * What separates a panel from the map. `frame-margins.test.ts` bans shadows under `ui/shell`; this
+ * extends the rule to the panels in `ui/chrome` that stand over the map (the five windows and the
+ * dev-build notice), since the design source has no shadow, gradient or stroke.
  *
- * `frame-margins.test.ts` bans a shadow anywhere under `ui/shell`, and the panels the frame opens were
- * outside its reach: the five windows, the dropdown inside two of them and the dev-build notice
- * stand over the map but live in `ui/chrome`. The design source this frame is drawn from has no
- * gradient, no pattern, no layer effect and not one stroke, so a shadow was never in it. This is
- * that rule reaching the chrome panels.
- *
- * The edge itself is the third member of a family, not a new idea. A word standing on the map wears
- * a stroke (`MAP_LABEL`), a drawing wears a dilation (`SHAPE_EDGE_FILTER`), and both are the ink at
- * `MAP_EDGE_ALPHA`. A panel is a rectangle, so it wears the one thing a rectangle can: a border.
- * What has to hold is that the three read as one treatment, which is ink, alpha and weight.
+ * The edge is the third of a family: a word on the map wears a stroke (`MAP_LABEL`), a drawing a
+ * dilation (`SHAPE_EDGE_FILTER`), a panel a border, all in the same ink, `MAP_EDGE_ALPHA` and weight.
  */
 import { describe, it, expect, afterEach } from 'vitest';
 import { render, screen, cleanup } from '@testing-library/react';
-// @ts-ignore - node:fs is untyped here (no @types/node)
-import { readFileSync } from 'node:fs';
 import { I18nProvider } from '../../../i18n/context';
-import { MenuSheet } from '../../../ui/shell/windows/MenuSheet';
-import { cozyPanel, windowMenu } from '../../../ui/design/window-skin';
+import { MenuSheet } from '../../../ui/shell/controls/MenuSheet';
+import { NoticeBar } from '../../../ui/primitives/NoticeBar';
+import { cozyPanel } from '../../../ui/design/window-skin';
 import {
-  INK, MAP_EDGE_ALPHA, MAP_LABEL, PANEL_EDGE, PANEL_EDGE_WIDTH, PLATE, SHAPE_EDGE,
+  INK, MAP_EDGE_ALPHA, MAP_LABEL, PANEL_EDGE, PANEL_EDGE_WIDTH, PLATE,
 } from '../../../ui/design/tokens';
-import { ZONE_COLORS } from '../../../core/model/constants';
+import { ZONE_COLORS } from '../../../core/model/palette';
 
-const notice = readFileSync('src/ui/chrome/guards/DevBuildNotice.tsx', 'utf8');
 
 /** WCAG relative luminance and the contrast ratio over it, for two opaque `rgb` triples. */
 function luminance([r, g, b]: readonly [number, number, number]): number {
@@ -71,7 +64,8 @@ describe('the edge a panel wears', () => {
    */
   it('is thin: one drawn pixel, where the dilation reaches half of one', () => {
     expect(PANEL_EDGE_WIDTH).toBe(1);
-    expect(PANEL_EDGE_WIDTH).toBeGreaterThanOrEqual(2 * SHAPE_EDGE);
+    // The map edge filter grows a drawing by half a css px.
+    expect(PANEL_EDGE_WIDTH).toBeGreaterThanOrEqual(2 * 0.5);
     expect(PANEL_EDGE_WIDTH).toBeLessThan(2);
   });
 
@@ -88,7 +82,6 @@ describe('the edge a panel wears', () => {
 describe('a chrome panel standing on the map wears it too', () => {
   const SHARED: readonly [name: string, style: { border?: unknown; boxShadow?: unknown }][] = [
     ['the modal card', cozyPanel],
-    ['the dropdown', windowMenu],
   ];
 
   it.each(SHARED)('%s takes the edge and casts nothing', (_name, style) => {
@@ -97,8 +90,14 @@ describe('a chrome panel standing on the map wears it too', () => {
   });
 
   it('and so does the dev-build notice, which is not a window but stands on the map like one', () => {
-    expect(notice).toContain('border: PANEL_EDGE');
-    expect(notice).toContain("boxShadow: 'none'");
+    // The dev-build notice is drawn on the shared notice card.
+    render(<NoticeBar data-testid="notice" edge="bottom" offset={16}><span>words</span></NoticeBar>);
+    const card = screen.getByTestId('notice');
+    const edge = document.createElement('div');
+    edge.style.border = PANEL_EDGE;
+    expect(edge.style.border, 'the edge parses as a border').not.toBe('');
+    expect(card.style.border).toBe(edge.style.border);
+    expect(card.style.boxShadow).toBe('none');
   });
 });
 
@@ -109,7 +108,7 @@ describe('the panels that belong to the game frame alone wear the edge outright'
   const asRendered = `${PANEL_EDGE_WIDTH}px solid rgba(${r}, ${g}, ${b}, ${MAP_EDGE_ALPHA})`;
 
   it('the menu sheet', () => {
-    render(<I18nProvider><MenuSheet open onDismiss={() => {}} /></I18nProvider>);
+    render(<I18nProvider><MenuSheet open onDismiss={() => {}} trigger={{ current: document.body.appendChild(document.createElement('button')) }} /></I18nProvider>);
     expect(screen.getByRole('menu').style.border).toBe(asRendered);
   });
 });

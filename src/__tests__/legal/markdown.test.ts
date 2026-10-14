@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { parseLegalMarkdown, sanitizeHref, headingSlug, inlineText } from '../../legal/markdown';
+import { parseLegalMarkdown, headingSlug, inlineText } from '../../legal/markdown';
+import { renderedLink } from '../_support/legal-links';
 import type { Inline } from '../../legal/markdown';
 
 // Shorthand builders keep the expected-tree literals in the assertions below
@@ -197,7 +198,7 @@ describe('parseLegalMarkdown — inline spans', () => {
     ]);
   });
 
-  it('renders link text as plain text (no link) when sanitizeHref rejects the href', () => {
+  it('renders link text as plain text (no link) when its href is refused', () => {
     const src = '[x](javascript:alert(1))';
     expect(parseLegalMarkdown(src)).toEqual([{ t: 'p', children: [txt('x')] }]);
   });
@@ -215,24 +216,24 @@ describe('parseLegalMarkdown — inline spans', () => {
   });
 });
 
-describe('sanitizeHref — allowed', () => {
+describe('a link href — allowed', () => {
   it('allows https: and marks external', () => {
-    expect(sanitizeHref('https://a.b')).toEqual({ href: 'https://a.b', external: true });
+    expect(renderedLink('https://a.b')).toEqual({ href: 'https://a.b', external: true });
   });
 
   it('allows mailto: and marks external', () => {
-    expect(sanitizeHref('mailto:x@example.com')).toEqual({
+    expect(renderedLink('mailto:x@example.com')).toEqual({
       href: 'mailto:x@example.com',
       external: true,
     });
   });
 
   it('allows a root-relative path and marks internal', () => {
-    expect(sanitizeHref('/privacy')).toEqual({ href: '/privacy', external: false });
+    expect(renderedLink('/privacy')).toEqual({ href: '/privacy', external: false });
   });
 
   it('allows a fragment and marks internal', () => {
-    expect(sanitizeHref('#s1')).toEqual({ href: '#s1', external: false });
+    expect(renderedLink('#s1')).toEqual({ href: '#s1', external: false });
   });
 });
 
@@ -274,7 +275,7 @@ describe('inlineText', () => {
   });
 });
 
-describe('sanitizeHref — rejected', () => {
+describe('a link href — rejected', () => {
   it.each([
     ['javascript:alert(1)', 'literal javascript: scheme'],
     ['JaVaScRiPt:1', 'mixed-case javascript: scheme'],
@@ -288,16 +289,16 @@ describe('sanitizeHref — rejected', () => {
     ['\\/evil.com', 'leading backslash-slash (browser-normalizes to /evil.com or worse)'],
     ['jAvAsCrIpT&#58;alert(1)', 'mixed-case scheme with HTML entity-encoded colon'],
   ])('rejects %j (%s)', (raw) => {
-    expect(sanitizeHref(raw)).toBeNull();
+    expect(renderedLink(raw)).toBeNull();
   });
 
   it('rejects an unknown absolute scheme', () => {
-    expect(sanitizeHref('ftp://x')).toBeNull();
+    expect(renderedLink('ftp://x')).toBeNull();
   });
 
   it('still allows a plain relative path and a fragment as internal', () => {
-    expect(sanitizeHref('/privacy')).toEqual({ href: '/privacy', external: false });
-    expect(sanitizeHref('#section')).toEqual({ href: '#section', external: false });
+    expect(renderedLink('/privacy')).toEqual({ href: '/privacy', external: false });
+    expect(renderedLink('#section')).toEqual({ href: '#section', external: false });
   });
 });
 

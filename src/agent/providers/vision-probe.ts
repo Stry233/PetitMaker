@@ -1,22 +1,19 @@
 /**
- * THE VISION PROBE: one tiny solid-color image and the question "what color is it", through any
- * adapter. The answer is the seat's vision capability as a FACT rather than a guess from the model
- * id — a gateway can front a renamed multimodal model, and it can just as well strip image parts
- * from a model whose name promises them; either way only the endpoint's own answer is evidence.
- * A refusal OR an answer that never names the color reads as text-only (a gateway that silently
- * drops image parts is, to the harness, the same blindness as refusing them); a failure that is
- * not about the image (auth, rate, network) throws, so a transient fault never files a verdict.
+ * The vision probe: one small solid-color image and the question "what color is it", through any
+ * adapter, because a gateway can front a renamed multimodal model or strip image parts from one
+ * whose name promises them. A refusal or an answer that never names the color reads as text-only;
+ * a failure unrelated to the image (auth, rate, network) throws, so it files no verdict.
  *
- * Shared by the offline bench (via `eval/live-bench`) and the app's own capability check, so the
- * two can never disagree about what "has vision" means.
+ * Shared by the offline bench and the app's own capability check, so the two can never disagree
+ * about what "has vision" means.
  */
-import type { Adapter, AdapterRequest } from './types';
+import type { Adapter, AdapterRequest } from '../core/adapter';
 
 export interface VisionProbe { vision: boolean; detail: string }
 
 /** A 16x16 solid pure-red PNG (89 bytes): large enough that a resizing gateway cannot lose it,
  *  small enough to cost nothing. */
-export const PROBE_IMAGE = 'data:image/png;base64,'
+const PROBE_IMAGE = 'data:image/png;base64,'
   + 'iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAIAAACQkWg2AAAAIElEQVR4nGP8z0AaYCJRPcOoBmIAE1GqkMCoBmIAyRoAQC4BH1m1rqAAAAAASUVORK5CYII=';
 
 /** A failure the image cannot explain: these throw rather than reading as text-only. */

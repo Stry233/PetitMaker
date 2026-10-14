@@ -1,48 +1,33 @@
 import { describe, expect, it } from 'vitest';
+import { TOOL_FACTS } from '../../../agent/tools';
 import { append, createLog } from '../../../agent/core/log';
 import {
   BUDGET_WARN_AT,
-  budgetWarning,
-  callSignature,
-  capMessage,
   consecutiveLengthStops,
-  deliveryNudge,
-  emptyTurnNudge,
   hasLandedWrite,
   hasRecentVerification,
-  retainedWrite,
   landedWriteCount,
-  lengthStopNudge,
   planProgress,
-  reasoningOnlyNudge,
   repeatedFailure,
+  REVIEW_MIN_TURNS_LEFT,
+  revertCount,
+  verbatimFailures,
+} from '../../../agent/core/governor';
+import {
+  budgetWarning,
+  capMessage,
+  deliveryNudge,
+  emptyTurnNudge,
+  lengthStopNudge,
+  reasoningOnlyNudge,
   repeatRefusal,
   revertNudge,
   reviewNudge,
-  REVIEW_MIN_TURNS_LEFT,
   unfinishedPlanNudge,
   verbatimRetryNudge,
-} from '../../../agent/core/governor';
+} from '../../../agent/core/nudges';
 
-describe('callSignature', () => {
-  it('is key-order independent', () => {
-    const a = callSignature('paint_terrain', { x: 1, y: 2 });
-    const b = callSignature('paint_terrain', { y: 2, x: 1 });
-    expect(a).toBe(b);
-  });
-
-  it('is value-sensitive', () => {
-    const a = callSignature('paint_terrain', { x: 1, y: 2 });
-    const b = callSignature('paint_terrain', { x: 1, y: 3 });
-    expect(a).not.toBe(b);
-  });
-
-  it('is sensitive to the tool name too', () => {
-    const a = callSignature('paint_terrain', { x: 1 });
-    const b = callSignature('place_object', { x: 1 });
-    expect(a).not.toBe(b);
-  });
-});
+const GUIDES = TOOL_FACTS.guides;
 
 function seedOrder(log: ReturnType<typeof createLog>) {
   append(log, { kind: 'order', text: 'build a town', mapContext: '{}' });
@@ -82,6 +67,29 @@ function seedResult(
   });
 }
 
+/** Whether a call counts as the same call as one that already failed in the job. */
+function sameCallAs(failed: { name: string; args: Record<string, unknown> }, call: { name: string; args: Record<string, unknown> }): boolean {
+  const log = createLog();
+  seedOrder(log);
+  seedCall(log, 'c1', failed.name, failed.args);
+  seedResult(log, 'c1', failed.name, { isError: true });
+  return verbatimFailures(log, call) === 1;
+}
+
+describe('the identity of a call', () => {
+  it('is key-order independent', () => {
+    expect(sameCallAs({ name: 'paint_terrain', args: { x: 1, y: 2 } }, { name: 'paint_terrain', args: { y: 2, x: 1 } })).toBe(true);
+  });
+
+  it('is value-sensitive', () => {
+    expect(sameCallAs({ name: 'paint_terrain', args: { x: 1, y: 2 } }, { name: 'paint_terrain', args: { x: 1, y: 3 } })).toBe(false);
+  });
+
+  it('is sensitive to the tool name too', () => {
+    expect(sameCallAs({ name: 'paint_terrain', args: { x: 1 } }, { name: 'place_object', args: { x: 1 } })).toBe(false);
+  });
+});
+
 describe('verbatimRetryNudge', () => {
   const call = { name: 'paint_terrain', args: { x: 1, y: 2 } };
 
@@ -89,7 +97,7 @@ describe('verbatimRetryNudge', () => {
     const log = createLog();
     seedOrder(log);
     // No prior failure logged at all: this call has not failed yet, so there is nothing to escalate.
-    expect(verbatimRetryNudge(log, call)).toBeUndefined();
+    expect(verbatimRetryNudge(GUIDES, verbatimFailures(log, call))).toBeUndefined();
   });
 
   it('returns an escalation naming a way out when the same signature already failed once', () => {
@@ -97,7 +105,7 @@ describe('verbatimRetryNudge', () => {
     seedOrder(log);
     seedCall(log, 'call-1', call.name, call.args);
     seedResult(log, 'call-1', call.name, { isError: true });
-    const nudge = verbatimRetryNudge(log, call);
+    const nudge = verbatimRetryNudge(GUIDES, verbatimFailures(log, call));
     expect(nudge).toBeDefined();
     expect(nudge).toMatch(/^\(system\)/);
     expect(nudge).toMatch(/find_|load_skill|ask the user/);
@@ -110,7 +118,7 @@ describe('verbatimRetryNudge', () => {
     seedResult(log, 'call-1', call.name, { reverted: true });
     seedCall(log, 'call-2', call.name, call.args);
     seedResult(log, 'call-2', call.name, { reverted: true });
-    expect(verbatimRetryNudge(log, call)).toBeDefined();
+    expect(verbatimRetryNudge(GUIDES, verbatimFailures(log, call))).toBeDefined();
   });
 
   it('a success in between resets nothing: two failures anywhere in the job still escalate', () => {
@@ -122,7 +130,7 @@ describe('verbatimRetryNudge', () => {
     seedResult(log, 'call-2', call.name, {}); // success
     seedCall(log, 'call-3', call.name, call.args);
     seedResult(log, 'call-3', call.name, { isError: true });
-    expect(verbatimRetryNudge(log, call)).toBeDefined();
+    expect(verbatimRetryNudge(GUIDES, verbatimFailures(log, call))).toBeDefined();
   });
 
   it('a reused callId across turns never corrupts the lookup: the new occurrence\'s first attempt reads clean while the earlier occurrence\'s real failure still counts', () => {
@@ -131,15 +139,15 @@ describe('verbatimRetryNudge', () => {
     // Turn 1: call id "c" fails with {x:1}.
     seedCall(log, 'c', call.name, { x: 1 });
     seedResult(log, 'c', call.name, { isError: true });
-    // Turn 2 REUSES id "c" with different args {x:2}: a raw-callId-keyed map (last write wins)
+    // Turn 2 reuses id "c" with different args {x:2}: a raw-callId-keyed map (last write wins)
     // would overwrite {x:1}'s signature with {x:2}'s and misattribute turn 1's failure to it,
     // false-firing on this occurrence's very first attempt.
     seedCall(log, 'c', call.name, { x: 2 });
 
     // {x:2} has never failed: no false fire from the stale {x:1} mapping.
-    expect(verbatimRetryNudge(log, { name: call.name, args: { x: 2 } })).toBeUndefined();
+    expect(verbatimRetryNudge(GUIDES, verbatimFailures(log, { name: call.name, args: { x: 2 } }))).toBeUndefined();
     // {x:1} genuinely failed once already: a second attempt at it still correctly escalates.
-    expect(verbatimRetryNudge(log, { name: call.name, args: { x: 1 } })).toBeDefined();
+    expect(verbatimRetryNudge(GUIDES, verbatimFailures(log, { name: call.name, args: { x: 1 } }))).toBeDefined();
   });
 
   it('a different signature never contributes to the count', () => {
@@ -151,7 +159,7 @@ describe('verbatimRetryNudge', () => {
     // tell contamination apart from a legitimate count.
     seedCall(log, 'call-1', call.name, { x: 9, y: 9 });
     seedResult(log, 'call-1', call.name, { isError: true });
-    expect(verbatimRetryNudge(log, call)).toBeUndefined();
+    expect(verbatimRetryNudge(GUIDES, verbatimFailures(log, call))).toBeUndefined();
   });
 });
 
@@ -172,15 +180,15 @@ describe('plan nudges', () => {
   it('unfinishedPlanNudge stops after all stages are explicitly complete', () => {
     const log = createLog();
     seedOrder(log);
-    expect(unfinishedPlanNudge(log)).toBeUndefined();
+    expect(unfinishedPlanNudge(GUIDES, planProgress(log))).toBeUndefined();
     seedPlan(log, 3);
-    expect(unfinishedPlanNudge(log)).toMatch(/3 of 3 stages as unfinished/);
+    expect(unfinishedPlanNudge(GUIDES, planProgress(log))).toMatch(/3 of 3 stages as unfinished/);
     append(log, { kind: 'stage', index: 1 });
-    expect(unfinishedPlanNudge(log)).toMatch(/2 of 3 stages as unfinished \(current: "stage 2"\)/);
+    expect(unfinishedPlanNudge(GUIDES, planProgress(log))).toMatch(/2 of 3 stages as unfinished \(current: "stage 2"\)/);
     append(log, { kind: 'stage', index: 2 });
-    expect(unfinishedPlanNudge(log)).toContain('1 of 3 stages as unfinished');
+    expect(unfinishedPlanNudge(GUIDES, planProgress(log))).toContain('1 of 3 stages as unfinished');
     append(log, { kind: 'stage', index: 3 });
-    expect(unfinishedPlanNudge(log)).toBeUndefined();
+    expect(unfinishedPlanNudge(GUIDES, planProgress(log))).toBeUndefined();
   });
 });
 
@@ -189,7 +197,7 @@ describe('revertNudge', () => {
     const log = createLog();
     seedOrder(log);
     // No revert logged yet for this tool: nothing has reverted once, so there is nothing to escalate.
-    expect(revertNudge(log, 'paint_terrain')).toBeUndefined();
+    expect(revertNudge(GUIDES, 'paint_terrain', revertCount(log, 'paint_terrain'))).toBeUndefined();
   });
 
   it('returns the change-strategy text at the 2nd revert of one tool', () => {
@@ -199,7 +207,7 @@ describe('revertNudge', () => {
     seedResult(log, 'call-1', 'paint_terrain', { reverted: true });
     seedCall(log, 'call-2', 'paint_terrain', { x: 2 });
     seedResult(log, 'call-2', 'paint_terrain', { reverted: true });
-    const nudge = revertNudge(log, 'paint_terrain');
+    const nudge = revertNudge(GUIDES, 'paint_terrain', revertCount(log, 'paint_terrain'));
     expect(nudge).toBeDefined();
     expect(nudge).toMatch(/^\(system\)/);
     expect(nudge).toMatch(/strategy/);
@@ -213,7 +221,7 @@ describe('revertNudge', () => {
       seedCall(log, `call-${i}`, 'place_object', { x: i });
       seedResult(log, `call-${i}`, 'place_object', { reverted: true });
     }
-    const nudge = revertNudge(log, 'place_object');
+    const nudge = revertNudge(GUIDES, 'place_object', revertCount(log, 'place_object'));
     expect(nudge).toMatch(/STOP: 4 place_object/);
     expect(nudge).toMatch(/inspect_region or view_map/);
   });
@@ -225,7 +233,7 @@ describe('revertNudge', () => {
     seedResult(log, 'call-1', 'paint_terrain', { isError: true });
     seedCall(log, 'call-2', 'paint_terrain', { x: 2 });
     seedResult(log, 'call-2', 'paint_terrain', { isError: true });
-    expect(revertNudge(log, 'paint_terrain')).toBeUndefined();
+    expect(revertNudge(GUIDES, 'paint_terrain', revertCount(log, 'paint_terrain'))).toBeUndefined();
   });
 
   it('reverts on a different tool name do not count toward this one', () => {
@@ -235,7 +243,7 @@ describe('revertNudge', () => {
     seedResult(log, 'call-1', 'place_object', { reverted: true });
     seedCall(log, 'call-2', 'place_object', { x: 2 });
     seedResult(log, 'call-2', 'place_object', { reverted: true });
-    expect(revertNudge(log, 'paint_terrain')).toBeUndefined();
+    expect(revertNudge(GUIDES, 'paint_terrain', revertCount(log, 'paint_terrain'))).toBeUndefined();
   });
 });
 
@@ -342,7 +350,7 @@ describe('repeatedFailure', () => {
 
 describe('repeatRefusal', () => {
   it('echoes the error and says an unchanged resend will not run', () => {
-    const text = repeatRefusal({ error: 'Arguments: no cells given.', repeats: 1 });
+    const text = repeatRefusal(GUIDES, { error: 'Arguments: no cells given.', repeats: 1 });
     expect(text).toMatch(/^\(system\)/);
     expect(text).toMatch(/just failed/);
     expect(text).toContain('Arguments: no cells given.');
@@ -350,15 +358,26 @@ describe('repeatRefusal', () => {
   });
 
   it('first repeat carries no look-around pointer; further repeats point at inspect_region or load_skill', () => {
-    expect(repeatRefusal({ error: 'boom', repeats: 1 })).not.toMatch(/inspect_region|load_skill/);
-    const escalated = repeatRefusal({ error: 'boom', repeats: 2 });
+    expect(repeatRefusal(GUIDES, { error: 'boom', repeats: 1 })).not.toMatch(/inspect_region|load_skill/);
+    const escalated = repeatRefusal(GUIDES, { error: 'boom', repeats: 2 });
     expect(escalated).toMatch(/inspect_region/);
     expect(escalated).toMatch(/load_skill/);
-    expect(repeatRefusal({ error: 'boom', repeats: 5 })).toBe(escalated);
+    expect(repeatRefusal(GUIDES, { error: 'boom', repeats: 5 })).toBe(escalated);
   });
+});
 
-  it('contains no em dash', () => {
-    expect(repeatRefusal({ error: 'boom', repeats: 2 })).not.toMatch(/—/);
+describe('the notes the loop writes to the model', () => {
+  it.each<[string, () => string | undefined]>([
+    ['repeatRefusal', () => repeatRefusal(GUIDES, { error: 'boom', repeats: 2 })],
+    ['reasoningOnlyNudge', () => reasoningOnlyNudge(1)],
+    ['lengthStopNudge', () => lengthStopNudge(1)],
+    ['capMessage', () => capMessage()],
+    ['deliveryNudge', () => deliveryNudge()],
+    ['reviewNudge', () => reviewNudge(GUIDES)],
+  ])('%s contains no em dash', (_name, note) => {
+    const text = note();
+    expect(text).toBeTruthy();
+    expect(text).not.toMatch(/—/);
   });
 });
 
@@ -369,11 +388,11 @@ describe('job scoping', () => {
     seedOrder(log);
     seedCall(log, 'call-1', call.name, call.args);
     seedResult(log, 'call-1', call.name, { isError: true });
-    // A new job starts with none of its OWN matching failures: at the new threshold (fires on 1
+    // A new job starts with none of its own matching failures: at the new threshold (fires on 1
     // logged prior), the prior job's failure alone would be enough to wrongly escalate here if it
     // leaked across the order boundary, so this needs no second failure of its own to prove it.
     seedOrder(log);
-    expect(verbatimRetryNudge(log, call)).toBeUndefined();
+    expect(verbatimRetryNudge(GUIDES, verbatimFailures(log, call))).toBeUndefined();
   });
 
   it('events before the last order are ignored by the revert damper', () => {
@@ -383,7 +402,7 @@ describe('job scoping', () => {
     seedResult(log, 'call-1', 'paint_terrain', { reverted: true });
     // A new job starts with no revert of its own: same reasoning as the verbatim-retry case above.
     seedOrder(log);
-    expect(revertNudge(log, 'paint_terrain')).toBeUndefined();
+    expect(revertNudge(GUIDES, 'paint_terrain', revertCount(log, 'paint_terrain'))).toBeUndefined();
   });
 });
 
@@ -442,10 +461,6 @@ describe('reasoningOnlyNudge', () => {
 
   it('returns nothing past 2, exactly as the empty nudge does: the loop ends the job rather than nudging again', () => {
     expect(reasoningOnlyNudge(3)).toBeUndefined();
-  });
-
-  it('contains no em dash', () => {
-    expect(reasoningOnlyNudge(1)).not.toMatch(/—/);
   });
 });
 
@@ -518,10 +533,6 @@ describe('lengthStopNudge', () => {
   it('returns nothing past 2: the loop ends the job rather than nudging a fourth time', () => {
     expect(lengthStopNudge(3)).toBeUndefined();
   });
-
-  it('contains no em dash', () => {
-    expect(lengthStopNudge(1)).not.toMatch(/—/);
-  });
 });
 
 describe('capMessage', () => {
@@ -529,10 +540,6 @@ describe('capMessage', () => {
     const msg = capMessage();
     expect(msg).toMatch(/^\(system\)/);
     expect(msg.toLowerCase()).toMatch(/user/);
-  });
-
-  it('contains no em dash', () => {
-    expect(capMessage()).not.toMatch(/—/);
   });
 });
 
@@ -567,10 +574,6 @@ describe('deliveryNudge', () => {
     expect(msg.toLowerCase()).toContain('cannot be done');
     expect(msg.toLowerCase()).toContain('final');
   });
-
-  it('contains no em dash', () => {
-    expect(deliveryNudge()).not.toMatch(/—/);
-  });
 });
 
 describe('landedWriteCount', () => {
@@ -597,16 +600,12 @@ describe('landedWriteCount', () => {
 
 describe('reviewNudge', () => {
   it('accepts a verified result without demanding more edits or whole-map scoring', () => {
-    const msg = reviewNudge();
+    const msg = reviewNudge(GUIDES);
     expect(msg).toContain('If all requested outcomes are satisfied, close now');
     expect(msg).toContain('smallest necessary correction');
     expect(msg).toContain('Intentional planting is not an error');
     expect(msg).not.toContain('find_speckle');
     expect(msg).not.toContain('evaluate_map');
-  });
-
-  it('contains no em dash', () => {
-    expect(reviewNudge()).not.toMatch(/—/);
   });
 
   it('needs more headroom than the budget warning leaves, so a job never holds both notes\' instructions at once', () => {
@@ -616,29 +615,21 @@ describe('reviewNudge', () => {
 
 
 describe('retained progress and verification', () => {
-  it('counts retained parts of rejected strokes and ignores explicit no-ops', () => {
-    expect(retainedWrite({ write: true, isError: true, detail: { cells: 3 } })).toBe(true);
-    expect(retainedWrite({ write: true, isError: true, detail: { reverted: true, partialRevert: true, cells: 2 } })).toBe(true);
-    expect(retainedWrite({ write: true, isError: true, detail: { reverted: true, cells: 2 } })).toBe(false);
-    expect(retainedWrite({ write: true, isError: false, detail: { cells: 0, objects: 0 } })).toBe(false);
-    expect(retainedWrite({ write: false, isError: false, detail: { objects: 3 } })).toBe(false);
-  });
-
   it('requires a successful map read after the last retained write, scoped to the current order', () => {
     const log = createLog();
     seedOrder(log);
     seedResult(log, 'w1', 'paint_terrain', { write: true });
     seedResult(log, 'bad-read', 'view_map', { isError: true });
-    expect(hasRecentVerification(log)).toBe(false);
+    expect(hasRecentVerification(log, TOOL_FACTS)).toBe(false);
     seedResult(log, 'read', 'view_map');
-    expect(hasRecentVerification(log)).toBe(true);
+    expect(hasRecentVerification(log, TOOL_FACTS)).toBe(true);
     seedResult(log, 'skill', 'load_skill');
-    expect(hasRecentVerification(log)).toBe(true);
+    expect(hasRecentVerification(log, TOOL_FACTS)).toBe(true);
     append(log, { kind: 'toolResult', name: 'paint_terrain', callId: 'partial', isError: true, write: true, content: 'Partially applied', detail: { cells: 1 } });
-    expect(hasRecentVerification(log)).toBe(false);
+    expect(hasRecentVerification(log, TOOL_FACTS)).toBe(false);
     seedResult(log, 'read-2', 'get_objects');
-    expect(hasRecentVerification(log)).toBe(true);
+    expect(hasRecentVerification(log, TOOL_FACTS)).toBe(true);
     seedOrder(log);
-    expect(hasRecentVerification(log)).toBe(false);
+    expect(hasRecentVerification(log, TOOL_FACTS)).toBe(false);
   });
 });

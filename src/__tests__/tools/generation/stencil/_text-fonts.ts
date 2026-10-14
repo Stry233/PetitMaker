@@ -1,4 +1,4 @@
-import fixtures from '../../../fixtures/stencil-text-fonts.json';
+import fixtures from '../../../fixtures/stencil/stencil-text-fonts.json';
 import { analyzeTextGrid, type TextGridModel } from '../../../../tools/generation/stencil/stencil-text-grid';
 
 const models = new Map<string, TextGridModel>();

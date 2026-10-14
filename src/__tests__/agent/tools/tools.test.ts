@@ -1,23 +1,34 @@
 import { describe, it, expect } from 'vitest';
-import { CommandExecutor } from '../../../core/commands/command-executor';
 import { EventBus } from '../../../core/commands/event-bus';
 import { createDefaultRegistry } from '../../../rules';
-import { TerrainType, ItemCategory, type EditorEvents } from '../../../core/model/types';
-import { getCatalogByCategory } from '../../../state/catalog';
-import { makeState, setTerrain } from '../../rules/_helpers';
-import { executeToolCall, TOOL_SCHEMAS, SUBAGENT_TOOL_SCHEMAS, type AgentToolDeps } from '../../../agent/tools';
+import { CommandType, TerrainType } from '../../../core/model/types';
+import { type EditorEvents } from '../../../state/editing/events';
+import { edgeCutGeneratedTerrain } from '../../../tools/trim';
+import { surfaceElevationAt } from '../../../state/object-geometry';
+import { getCatalogByCategory, getCatalogItem, catalogLoadValue } from '../../../state/catalog';
+import { makeState, setTerrain } from '../../_support/map-state';
+import { executeToolCall, wireSchemas, type AgentToolDeps } from '../../../agent/tools';
 import { SKILLS } from '../../../agent/skills';
-import { roadLookup } from '../../../state/object-index';
-import { CHUNK_LOAD_LIMIT } from '../../../core/model/game-profile';
+import { CHUNK_LOAD_LIMIT } from '../../../core/game/profile';
 import { getMapStats } from '../../../state/map-stats';
-import { catalogLoadValue } from '../../../state/catalog';
-import { mapSummary } from '../../../agent/serialize';
+import { mapSummary } from '../../../agent/tools/serialize';
 import { translations } from '../../../i18n/translations';
+import { evidenceOn } from '../../../core/grid/grids';
+import { createGridState } from '../../../core/model/template';
+import { getMapTemplate } from '../../../config/maps';
+import { createExecutor } from '../../../state/executor';
+import { lockedNote } from '../../../agent/tools/game-terms';
+import { applyMacro } from '../../../tools/macros';
+import { detectWaterfalls } from '../../../core/domain/terrain/waterfall-geometry';
+import { ItemCategory } from '../../../config/catalog/categories';
+import { isCoatingItem } from '../../../core/model/traits';
+import { placeObjectCommand } from '../../../core/model/command-build';
+import { coatingStripFor } from '../../../tools/placement';
 
 function setup(w = 20, h = 20) {
   const state = makeState(w, h);
   const bus = new EventBus<EditorEvents>();
-  const exec = new CommandExecutor(state, bus, createDefaultRegistry(), roadLookup(state));
+  const exec = createExecutor(state, createDefaultRegistry(), bus);
   let toastFired = 0;
   bus.on('validation-failed', () => {
     toastFired++;
@@ -60,9 +71,9 @@ describe('agent tools', () => {
     expect(r.content).toMatch(/^PARTIALLY REVERTED:/);
     expect(r.content).toContain('Retained changes: 1 cell(s), 0 object(s).');
     expect(r.content).not.toContain('map is unchanged');
-    expect(r.detail).toMatchObject({ reverted: true, partialRevert: true, cells: 1 });
+    expect(r.detail).toMatchObject({ reverted: true, partialRevert: true, banner: true, cells: 1 });
     expect(state.cells[5]![5]!.terrain).toMatchObject({ type: TerrainType.Mountain, elevation: 3 });
-    expect(exec.getUndoStackSize()).toBe(1);
+    expect(exec.historyDepth()).toBe(1);
     expect(exec.canRedo()).toBe(false);
     expect(toasts()).toBe(0);
     exec.undo();
@@ -76,7 +87,7 @@ describe('agent tools', () => {
     const result = await executeToolCall(call('paint_terrain', { shape: 'circle', cx: 8, cy: 8, r: 4, terrain: 'mountain', elevation }), deps);
     expect(result.isError).toBe(true);
     expect(result.content).toContain('Nothing was changed');
-    expect(exec.getUndoStackSize()).toBe(0);
+    expect(exec.historyDepth()).toBe(0);
     expect(state.cells.flat().every((cell) => cell.terrain === null)).toBe(true);
   });
 
@@ -86,7 +97,7 @@ describe('agent tools', () => {
     const result = await executeToolCall(call('paint_terrain', { shape: 'rect', x1: 4, y1: 4, x2: 8, y2: 8, terrain: 'water', elevation: 0 }), deps);
     expect(result.content).toMatch(/^PARTIAL RESULT:/);
     expect(result.content).toContain('Those objects remain unchanged');
-    expect(result.content).toContain('plaza cannot be removed');
+    expect(result.content).toContain(lockedNote());
     expect(state.objects.has('plaza')).toBe(true);
   });
 
@@ -120,17 +131,29 @@ describe('agent tools', () => {
     expect(toasts()).toBe(0); // silent mode suppressed the toast event
   });
 
-  it('placing an object over a road auto-clears the covered road and says so (non-silent, like the editor)', async () => {
+  it('preserves a plantable road when the assistant places flora over it', async () => {
     const { state, deps } = setup();
     const roadId = getCatalogByCategory(ItemCategory.Road)[0]!.id;
     const floraId = getCatalogByCategory(ItemCategory.Flora)[0]!.id;
     state.objects.set('road-1', { id: 'road-1', catalogId: roadId, position: { x: 5, y: 5 }, rotation: 0, elevation: 0 });
     const r = await executeToolCall(call('place_object', { catalogId: floraId, x: 5, y: 5 }), deps);
     expect(r.isError).toBe(false);
-    expect(r.content).toMatch(/[Cc]leared \d+ road/); // warns the agent it removed the road
+    expect(r.content).not.toMatch(/[Cc]leared \d+ road/);
     const ids = [...state.objects.values()].map((o) => o.catalogId);
-    expect(ids).not.toContain(roadId); // road stripped
+    expect(ids).toContain(roadId);
     expect(ids).toContain(floraId);    // object placed
+  });
+
+  it('places and removes a print independently above pavement through assistant tools', async () => {
+    const { state, deps } = setup();
+    for (const catalogId of ['path-simple-brick', 'print-field-junction']) {
+      const result = await executeToolCall(call('place_object', { catalogId, x: 5, y: 5, rotation: 90 }), deps);
+      expect(result.isError).toBe(false);
+    }
+    const print = [...state.objects.values()].find(o => o.catalogId === 'print-field-junction')!;
+    expect(print.rotation).toBe(90);
+    expect((await executeToolCall(call('remove_object', { objectId: print.id }), deps)).isError).toBe(false);
+    expect([...state.objects.values()].map(o => o.catalogId)).toEqual(['path-simple-brick']);
   });
 
   it('exposes undo/redo that revert and reapply the last change', async () => {
@@ -149,6 +172,7 @@ describe('agent tools', () => {
     expect(r.isError).toBe(true);
     expect(r.content).toContain('REVERTED');
     expect(r.content).toContain('V-WTR-02');
+    expect(r.detail).toMatchObject({ reverted: true, banner: true });
     expect(state.cells[5]![5]!.terrain).toBeNull(); // actually rolled back
   });
 
@@ -187,14 +211,79 @@ describe('agent tools', () => {
     else expect(obj.rotation).toBe(90);
   });
 
+  it.each([45, 30, -90, 360, 'east'])('place_object and rotate_object refuse rotation %s and leave the map unchanged', async (rotation) => {
+    const { state, exec, deps } = setup();
+    const placed = await executeToolCall(call('place_object', { catalogId: 'building-myhouse', x: 3, y: 3, rotation }), deps);
+    expect(placed.isError).toBe(true);
+    expect(placed.content).toMatch(/^Arguments: rotation must be one of 0, 90, 180, 270, got /);
+    expect(state.objects.size).toBe(0);
+    await executeToolCall(call('place_object', { catalogId: 'building-myhouse', x: 10, y: 10 }), deps);
+    const id = [...state.objects.keys()][0]!;
+    const undoDepth = exec.historyDepth();
+    const turned = await executeToolCall(call('rotate_object', { objectId: id, rotation }), deps);
+    expect(turned.isError).toBe(true);
+    expect(turned.content).toMatch(/^Arguments: rotation must be one of 0, 90, 180, 270, got /);
+    expect(state.objects.get(id)!.rotation).toBe(0);
+    expect(exec.historyDepth()).toBe(undoDepth);
+  });
+
+  it('placement and rotation on a cosmetic fillet store the standable surface elevation', async () => {
+    const { state, exec, deps } = setup(30, 30);
+    const hill: { x: number; y: number }[] = [];
+    for (let y = 5; y < 15; y++) for (let x = 5; x < 15; x++) if (x < 10 || y < 10) hill.push({ x, y });
+    exec.transaction({}, (tx) => {
+      exec.execute({ type: CommandType.PaintTerrain, cells: hill, terrainType: TerrainType.Mountain, elevation: 1 });
+      edgeCutGeneratedTerrain({ state: state, execute: (c) => exec.execute(c) }, hill, 'round');
+      tx.commit();
+    });
+    const fillet = state.cells.flatMap((row, y) => row.map((c, x) => ({ x, y, c }))).find(({ c }) => c.terrain?.patchOnly)!;
+    expect(fillet.c.terrain!.elevation).toBe(1);
+    const surface = surfaceElevationAt(state, fillet.x, fillet.y);
+    expect(surface).toBe(0);
+    const r = await executeToolCall(call('place_object', { catalogId: 'building-stall', x: fillet.x, y: fillet.y }), deps);
+    expect(r.isError).toBe(false);
+    const placed = [...state.objects.values()][0]!;
+    expect(placed.elevation).toBe(surface);
+    const turned = await executeToolCall(call('rotate_object', { objectId: placed.id, rotation: 90 }), deps);
+    expect(turned.isError).toBe(false);
+    expect(state.objects.get(placed.id)).toMatchObject({ rotation: 90, elevation: surface });
+  });
+
   /** A misnamed corner argument must refuse with the fields named, never read an empty grid as a
    *  successful blank answer. */
   it('inspect_region refuses missing corners instead of reading blank', async () => {
     const { deps } = setup();
     const r = await executeToolCall(call('inspect_region', { x: 0, y: 0, width: 5, height: 5 }), deps);
     expect(r.isError).toBe(true);
-    expect(r.content).toMatch(/x1 y1 x2 y2/);
+    expect(r.content).toMatch(/x1 is required/);
     expect(r.content).toMatch(/"x1":40/);
+  });
+
+  it.each([
+    ['a numeric string', { catalogId: 'building-myhouse', x: '3', y: 3 }, /x must be an integer, got "3"/],
+    ['a fraction', { catalogId: 'building-myhouse', x: 3.5, y: 3 }, /x must be a whole number, got 3\.5/],
+    ['a null coordinate', { catalogId: 'building-myhouse', x: null, y: 3 }, /x is required/],
+  ])('place_object refuses %s and places nothing', async (_what, input, message) => {
+    const { state, deps } = setup();
+    const r = await executeToolCall(call('place_object', input), deps);
+    expect(r.isError).toBe(true);
+    expect(r.content).toMatch(message);
+    expect(state.objects.size).toBe(0);
+  });
+
+  it('an optional argument sent as null reads as absent', async () => {
+    const { state, deps } = setup();
+    const r = await executeToolCall(call('place_object', { catalogId: 'building-myhouse', x: 3, y: 3, rotation: null }), deps);
+    expect(r.isError, r.content).toBe(false);
+    expect([...state.objects.values()][0]!.rotation).toBe(0);
+  });
+
+  it('sculpt_wall with neither corners nor edge refuses and changes nothing', async () => {
+    const { state, deps } = setup(30, 30);
+    const r = await executeToolCall(call('sculpt_wall', { x1: 5, y1: 5, crest: 4 }), deps);
+    expect(r.isError).toBe(true);
+    expect(r.content).toMatch(/needs the band rect corners/);
+    expect(state.cells.flat().some((c) => c.terrain)).toBe(false);
   });
 
   it('inspect_region returns the token grid', async () => {
@@ -211,20 +300,20 @@ describe('agent tools', () => {
   });
 
   it('every schema is a valid object schema', async () => {
-    for (const s of TOOL_SCHEMAS) {
+    for (const s of wireSchemas()) {
       expect(s.name).toMatch(/^[a-z_]+$/);
-      expect((s.inputSchema as { type: string }).type).toBe('object');
+      expect((s.parameters as { type: string }).type).toBe('object');
     }
   });
 
   it('evaluate_map returns a scorecard without mutating the map', async () => {
     const { state, deps, exec } = setup();
-    const before = exec.getUndoStackSize();
+    const before = exec.historyDepth();
     const r = await executeToolCall(call('evaluate_map', {}), deps);
     expect(r.isError).toBe(false);
     expect(r.content).toContain('MAP QUALITY SCORECARD');
     expect(r.content).toContain('connectivity: 10/10');
-    expect(exec.getUndoStackSize()).toBe(before);
+    expect(exec.historyDepth()).toBe(before);
     expect(state.objects.size).toBe(0);
   });
 
@@ -302,6 +391,34 @@ describe('agent tools', () => {
     expect(state.objects.size).toBe(0); // whole scatter is one step
   });
 
+});
+
+describe('place_object strips coatings by the placer\'s plan', () => {
+  const coatingIds = (state: ReturnType<typeof setup>['state']) =>
+    [...state.objects.values()].filter(o => isCoatingItem(getCatalogItem(o.catalogId))).map(o => o.id);
+
+  it('clears the road a solid cannot stand on, in the placement\'s own undo step', async () => {
+    const { state, exec, deps } = setup(12, 12);
+    expect((await executeToolCall(call('place_object', { catalogId: 'path-overgrown-dirt', x: 5, y: 5 }), deps)).isError).toBe(false);
+    const road = coatingIds(state);
+    const tree = placeObjectCommand({ id: 'probe', catalogId: 'tree-apple', position: { x: 5, y: 5 }, rotation: 0, elevation: 0 });
+    expect(coatingStripFor(state, tree.object).map(o => o.id)).toEqual(road);
+    const placed = await executeToolCall(call('place_object', { catalogId: 'tree-apple', x: 5, y: 5 }), deps);
+    expect(placed.isError).toBe(false);
+    expect(placed.content).toContain('Cleared 1 road tile(s)');
+    expect(coatingIds(state)).toEqual([]);
+    exec.undo();
+    expect(coatingIds(state)).toEqual(road);
+  });
+
+  it('strips nothing when the placement itself is refused', async () => {
+    const { state, deps } = setup(12, 12);
+    expect((await executeToolCall(call('place_object', { catalogId: 'path-overgrown-dirt', x: 5, y: 5 }), deps)).isError).toBe(false);
+    const road = coatingIds(state);
+    const refused = await executeToolCall(call('place_object', { catalogId: 'path-garden-stone', x: 5, y: 5 }), deps);
+    expect(refused.isError).toBe(true);
+    expect(coatingIds(state)).toEqual(road);
+  });
 });
 
 describe('bridge sites + roads', () => {
@@ -557,6 +674,21 @@ describe('clear_area, skills, delegation stub', () => {
     expect(pool).toBeGreaterThan(10);
   });
 
+  describe.each(['hexia', 'tafa'])('sculpt_wall against an edge of %s', (mapId) => {
+    it.each(['N', 'S', 'E', 'W'].flatMap((edge) => [[edge, false], [edge, true]] as const))('raises the %s wall (flood %s)', async (edge, flood) => {
+      const state = createGridState(getMapTemplate(mapId));
+      const exec = createExecutor(state, createDefaultRegistry());
+      const deps: AgentToolDeps = { getState: () => state, getExecutor: () => exec, getRegion: () => [] };
+      const r = await executeToolCall(call('sculpt_wall', { edge, depth: 14, crest: 8, flood }), deps);
+      expect(r.isError, r.content).toBe(false);
+      expect(state.cells.flat().some((c) => c.terrain?.type === TerrainType.Mountain)).toBe(true);
+      // A pool needs a crest at least 3 cells across; where the coast narrows the crest the wall stands dry and says so.
+      const pool = Number(/crest pool (\d+) cells/.exec(r.content)?.[1] ?? 0);
+      expect(state.cells.flat().filter((c) => c.terrain?.type === TerrainType.Water).length).toBe(pool);
+      if (!flood) expect(pool).toBe(0);
+    });
+  });
+
   it('sculpt_wall lowers a crest the rect cannot hold instead of failing', async () => {
     const s = setup(30, 30);
     const r = await executeToolCall(call('sculpt_wall', { x1: 5, y1: 5, x2: 14, y2: 12, crest: 8 }), s.deps);
@@ -602,7 +734,7 @@ describe('clear_area, skills, delegation stub', () => {
     expect(ring.length).toBeGreaterThanOrEqual(6);
     expect(new Set(ring.map((o) => o.catalogId))).toEqual(new Set(['tree-peach']));
 
-    // A FLOWER ring is edging and traces the shore continuously: markedly denser than a tree ring.
+    // A flower ring is edging and traces the shore continuously: markedly denser than a tree ring.
     const f = setup(40, 40);
     const flowerId = getCatalogByCategory(ItemCategory.Flora)[0]!.id;
     const fr = await executeToolCall(call('draw_figure', { shape: 'ring', cx: 20, cy: 20, size: 12, ringId: flowerId }), f.deps);
@@ -710,22 +842,40 @@ describe('rejection diagnostics', () => {
     expect(r.content).toContain('__plaza__');
   });
 
+  it('failed placement lists the objects inside the rotated footprint only', async () => {
+    const s = setup(30, 30);
+    const pavilion = getCatalogItem('facility-pavilion')!;
+    expect(pavilion.width).not.toBe(pavilion.height);
+    // Turned 90 degrees the footprint at (10,10) spans width x height swapped.
+    const inRotated = { x: 10 + pavilion.height - 2, y: 10 + pavilion.width - 1 };
+    const inUnrotatedOnly = { x: 10 + pavilion.width - 1, y: 10 };
+    for (const at of [inRotated, inUnrotatedOnly]) {
+      const r = await executeToolCall(call('place_object', { catalogId: 'building-stall', ...at }), s.deps);
+      expect(r.isError).toBe(false);
+    }
+    const [inside, outside] = [...s.state.objects.values()];
+    const r = await executeToolCall(call('place_object', { catalogId: 'facility-pavilion', x: 10, y: 10, rotation: 90 }), s.deps);
+    expect(r.isError).toBe(true);
+    const listed = r.content.split('In the way:')[1] ?? '';
+    expect(listed).toContain(inside!.id);
+    expect(listed).not.toContain(outside!.id);
+  });
+
   it('map summary lists immovable structures generically', async () => {
     const s = setup();
     s.state.objects.set('plaza', { id: 'plaza', catalogId: '__plaza__', position: { x: 5, y: 5 }, rotation: 0, elevation: 1, width: 6, height: 6, locked: true });
     const ctx = (await executeToolCall(call('get_selection', {}), s.deps)).content; // not summary, but exercise the path
     expect(typeof ctx).toBe('string');
-    const { mapSummary } = await import('../../../agent/serialize');
+    const { mapSummary } = await import('../../../agent/tools/serialize');
     expect(mapSummary(s.state)).toContain('IMMOVABLE');
   });
 
   it('a region-sized refusal stays a few lines, not one per cell', async () => {
-    const { formatErrors, capLines } = await import('../../../agent/tools/tools-common');
+    const { formatErrors, capLines } = await import('../../../agent/tools/feedback');
     const perCell = Array.from({ length: 6000 }, (_, i) => ({
       ruleId: 'V-ZONE-01',
       message: 'errors.zoneNotBuildable',
-      cells: [{ x: 13 + (i % 142), y: 6 + Math.floor(i / 142) }],
-      severity: 'error' as const,
+      ...evidenceOn('object', [{ x: 13 + (i % 142), y: 6 + Math.floor(i / 142) }]),
     }));
     const out = formatErrors(perCell);
     expect(out.split('\n')).toHaveLength(1);
@@ -738,7 +888,7 @@ describe('rejection diagnostics', () => {
 
 describe('subagent schema set', () => {
   it('the surface carries no procedural generator: composing is the agent\'s job', () => {
-    expect(TOOL_SCHEMAS.map((s) => s.name)).not.toContain('run_generator');
+    expect(wireSchemas().map((s) => s.name)).not.toContain('run_generator');
   });
 
   it('scatter replays: the same call over the same ground lands identically', async () => {
@@ -753,8 +903,8 @@ describe('subagent schema set', () => {
     expect(await positions()).toEqual(await positions());
   });
 
-  it('SUBAGENT_TOOL_SCHEMAS excludes both delegate_task and update_plan', () => {
-    const names = SUBAGENT_TOOL_SCHEMAS.map((s) => s.name);
+  it('the helper surface excludes both delegate_task and update_plan', () => {
+    const names = wireSchemas({ subagent: true }).map((s) => s.name);
     expect(names).not.toContain('delegate_task');
     expect(names).not.toContain('update_plan');
   });
@@ -840,39 +990,60 @@ describe('pro terraforming tools', () => {
     }
   });
 
-  it('carve_river paints a connected meandering channel through waypoints', async () => {
+  it('carve_river lays the Smart Build river through its waypoints', async () => {
     const s = setup(40, 40);
-    const r = await executeToolCall(
-      call('carve_river', { points: [{ x: 2, y: 5 }, { x: 15, y: 12 }, { x: 25, y: 6 }, { x: 37, y: 14 }], width: 4 }),
-      s.deps,
-    );
-    expect(r.isError).toBe(false);
+    const points = [{ x: 4, y: 5 }, { x: 15, y: 12 }, { x: 25, y: 6 }, { x: 35, y: 14 }];
+    const r = await executeToolCall(call('carve_river', { points, width: 4 }), s.deps);
+    expect(r.isError, r.content).toBe(false);
     let water = 0;
     for (let y = 0; y < 40; y++) for (let x = 0; x < 40; x++) {
       if (s.state.cells[y]![x]!.terrain?.type === TerrainType.Water) water++;
     }
     expect(water).toBeGreaterThan(80); // a real channel, not a puddle
-    expect(s.state.cells[5]![2]!.terrain?.type).toBe(TerrainType.Water);  // source
-    expect(s.state.cells[14]![37]!.terrain?.type).toBe(TerrainType.Water); // mouth
+    expect(s.state.cells[5]![4]!.terrain?.type).toBe(TerrainType.Water);  // source
+    expect(s.state.cells[14]![35]!.terrain?.type).toBe(TerrainType.Water); // mouth
+    const shelf = setup(40, 40);
+    applyMacro({ state: shelf.state, executor: shelf.exec, registry: shelf.exec.getRegistry() }, 'stream',
+      { seed: 1, from: points[0]!, at: points[3]!, anchors: points, width: 4, trim: 'round' });
+    expect(JSON.stringify(s.state.cells)).toBe(JSON.stringify(shelf.state.cells));
+    s.exec.undo();
+    expect(s.state.cells.every((row) => row.every((c) => c.terrain === null))).toBe(true);
   });
 
-  it('sculpt_terrace and carve_river clip their organic spread to an armed region', async () => {
+  it('carve_river drops off a terrace in a waterfall', async () => {
+    const s = setup(40, 40);
+    for (let y = 2; y < 38; y++) for (let x = 2; x < 18; x++) setTerrain(s.state, x, y, TerrainType.Mountain, 3);
+    const r = await executeToolCall(call('carve_river', { points: [{ x: 8, y: 20 }, { x: 30, y: 20 }], width: 3 }), s.deps);
+    expect(r.isError, r.content).toBe(false);
+    expect(r.content).toContain('waterfall step');
+    expect(detectWaterfalls(s.state).length).toBeGreaterThan(0);
+  });
+
+  it('carve_river beside an object routes around it', async () => {
+    const s = setup(40, 40);
+    await executeToolCall(call('place_object', { catalogId: 'building-stall', x: 20, y: 20 }), s.deps);
+    const r = await executeToolCall(call('carve_river', { points: [{ x: 5, y: 20 }, { x: 35, y: 20 }], width: 3 }), s.deps);
+    expect(r.isError, r.content).toBe(false);
+    expect(r.content).not.toContain('selected region');
+  });
+
+  it('sculpt_terrace clips its organic spread to an armed region and carve_river stays inside it', async () => {
     const region: { x: number; y: number }[] = [];
     for (let y = 5; y <= 14; y++) for (let x = 5; x <= 14; x++) region.push({ x, y });
     const s = setup(30, 30);
     const deps: AgentToolDeps = { ...s.deps, getRegion: () => region };
 
-    // A terrace centered ON the region edge grows half its blob outside; the tool keeps the
-    // inside half instead of earning a whole-call OUT OF REGION refusal for its own spread.
+    // A terrace centered on the region edge grows half its blob outside; the tool keeps the
+    // inside half instead of earning a whole-call out of region refusal for its own spread.
     const t = await executeToolCall(call('sculpt_terrace', { cx: 14, cy: 10, baseRadius: 6, tiers: 2, seed: 3 }), deps);
     expect(t.isError).toBe(false);
     expect(t.content).toContain('clipped to the selected region');
 
-    const rv = await executeToolCall(
-      call('carve_river', { points: [{ x: 6, y: 7 }, { x: 20, y: 10 }], width: 3 }), deps,
-    );
-    expect(rv.isError).toBe(false);
-    expect(rv.content).toContain('clipped to the selected region');
+    const outside = await executeToolCall(call('carve_river', { points: [{ x: 7, y: 7 }, { x: 20, y: 10 }], width: 2 }), deps);
+    expect(outside.isError).toBe(true);
+    expect(outside.content).toContain('inside the selected region');
+    const inside = await executeToolCall(call('carve_river', { points: [{ x: 7, y: 7 }, { x: 7, y: 13 }], width: 2 }), deps);
+    expect(inside.isError, inside.content).toBe(false);
 
     for (let y = 0; y < 30; y++) for (let x = 0; x < 30; x++) {
       if (s.state.cells[y]![x]!.terrain !== null) {
@@ -911,14 +1082,14 @@ describe('find_ramp_sites', () => {
     const { state, deps, exec } = setup(24, 24);
     // a 1-tier plateau with a straight cliff: ramps with heightDrop 1 should fit along its edge
     for (let y = 4; y < 12; y++) for (let x = 4; x < 12; x++) setTerrain(state, x, y, TerrainType.Mountain, 1);
-    const before = exec.getUndoStackSize();
+    const before = exec.historyDepth();
     const r = await executeToolCall(call('find_ramp_sites', {}), deps);
     expect(r.isError).toBe(false);
     expect(r.content).toMatch(/\(\d+,\s*\d+\)/);      // at least one anchor coordinate
     expect(r.content).toMatch(/ramp-/);               // names the catalog ramp item that fits
     expect(r.content).toMatch(/elev 1 .* elev 0|1 -> 0|tier/i); // says which tiers it connects
-    // read tool must NOT mutate state
-    expect(exec.getUndoStackSize()).toBe(before);
+    // read tool must not mutate state
+    expect(exec.historyDepth()).toBe(before);
     expect(state.objects.size).toBe(0);
   });
 
@@ -983,8 +1154,8 @@ describe('closed-loop measurement hooks', () => {
 
 describe('resolveCells bounds (freeze guard)', () => {
   it('a huge or off-map rect is clamped to the map instead of enumerating billions of cells', async () => {
-    const { resolveCells } = await import('../../../agent/tools/tools-common');
-    const { makeState: mk } = await import('../../rules/_helpers');
+    const { resolveCells } = await import('../../../agent/tools/cells');
+    const { makeState: mk } = await import('../../_support/map-state');
     const state = mk(20, 20);
     const t0 = Date.now();
     const cells = resolveCells({ rect: { x1: 0, y1: 0, x2: 1_000_000, y2: 1_000_000 } }, state);
@@ -993,8 +1164,8 @@ describe('resolveCells bounds (freeze guard)', () => {
   });
 
   it('an absurd circle radius yields only the in-bounds disc, fast', async () => {
-    const { resolveCells } = await import('../../../agent/tools/tools-common');
-    const { makeState: mk } = await import('../../rules/_helpers');
+    const { resolveCells } = await import('../../../agent/tools/cells');
+    const { makeState: mk } = await import('../../_support/map-state');
     const state = mk(20, 20);
     const t0 = Date.now();
     const cells = resolveCells({ circle: { cx: 10, cy: 10, r: 5_000_000 } }, state);
@@ -1003,8 +1174,8 @@ describe('resolveCells bounds (freeze guard)', () => {
   });
 
   it('a wildly off-map line is rejected rather than walked; NaN yields nothing', async () => {
-    const { resolveCells } = await import('../../../agent/tools/tools-common');
-    const { makeState: mk } = await import('../../rules/_helpers');
+    const { resolveCells } = await import('../../../agent/tools/cells');
+    const { makeState: mk } = await import('../../_support/map-state');
     const state = mk(20, 20);
     expect(resolveCells({ line: { x1: 0, y1: 0, x2: 9_999_999, y2: 0 } }, state)).toEqual([]);
     expect(resolveCells({ rect: { x1: NaN, y1: 0, x2: 5, y2: 5 } }, state)).toEqual([]);
@@ -1034,10 +1205,10 @@ describe('result detail (structured extras for the view)', () => {
   });
 
   /**
-   * A REFUSAL TRAVELS TWICE: as the model's English sentence in `content`, and as the RULE in
+   * A refusal travels twice: as the model's English sentence in `content`, and as the rule in
    * `detail.violations` for whoever has to say it to a person. A panel that lifted the rule out of
    * the model's copy and showed it as-is would put three lines of English inside a Russian card for
-   * a message that ships keyed in all seven locales. The carrier is ADDITIVE — the model's own
+   * a message that ships keyed in all seven locales. The carrier is additive — the model's own
    * bytes are unchanged, which is what keeps model-visible and logged the same thing.
    */
   it('a post-stroke revert also carries the rule ITSELF, keyed, with the model s copy untouched', async () => {
@@ -1046,7 +1217,7 @@ describe('result detail (structured extras for the view)', () => {
     expect(r.detail?.violations?.length).toBeGreaterThan(0);
     const first = r.detail!.violations![0]!;
     expect(first.ruleId).toMatch(/^V-/);
-    // A KEY, not a sentence: it must resolve in the locale table, and the model's line is the same
+    // A key, not a sentence: it must resolve in the locale table, and the model's line is the same
     // rule said in English.
     expect(translations.en[first.message], first.message).toBeTruthy();
     expect(r.content).toContain(first.ruleId);
@@ -1082,7 +1253,7 @@ describe('result detail (structured extras for the view)', () => {
   });
 
   it('regionBounds: null for an empty region, exact count and min/max bounds for a scatter, and regionGuard\'s quoted string is built from the same numbers', async () => {
-    const { regionBounds } = await import('../../../state/region-bounds');
+    const { regionBounds } = await import('../../../core/grid/rect');
     expect(regionBounds([])).toBeNull();
 
     const scatter = [{ x: 5, y: 9 }, { x: 2, y: 3 }, { x: 8, y: 1 }, { x: 2, y: 3 }];
@@ -1130,7 +1301,7 @@ describe('placement failure guidance', () => {
 });
 
 /**
- * AN ARGUMENT REFUSAL TEACHES: it names the missing or invalid parameter and shows one minimal
+ * An argument refusal teaches: it names the missing or invalid parameter and shows one minimal
  * valid example in the tool's own schema shape, so the retry it earns can differ from the call
  * that earned it. All of these are model-facing English in the "Arguments: reason" register.
  */

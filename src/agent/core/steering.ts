@@ -7,7 +7,7 @@ export function queueSteer(log: SessionLog, text: string): number {
 
 /** Appends `steerRecalled` for `steerSeq` and returns true, unless it is already delivered,
  *  already recalled, or not a `steer` event at all, in which case it returns false and appends
- *  nothing: a recall answers a REAL pending steer or does not touch the log. */
+ *  nothing: a recall answers a real pending steer or does not touch the log. */
 export function recallSteer(log: SessionLog, steerSeq: number): boolean {
   const events = eventsOf(log);
   const isSteer = events.some((ev) => ev.kind === 'steer' && ev.seq === steerSeq);
@@ -21,16 +21,35 @@ export function recallSteer(log: SessionLog, steerSeq: number): boolean {
   return true;
 }
 
-/** Every queued steer with neither a `steerRecalled` nor a `steerDelivered` yet, in queue order. */
+/** Every queued steer not yet recalled, delivered or refused, in queue order. */
 export function undeliveredSteers(log: SessionLog): { seq: number; text: string }[] {
   const events = eventsOf(log);
   const settled = new Set<number>();
   for (const ev of events) {
     if (ev.kind === 'steerRecalled' || ev.kind === 'steerDelivered') settled.add(ev.steerSeq);
+    else if (ev.kind === 'noteRefused' && ev.steerSeq !== undefined) settled.add(ev.steerSeq);
   }
   return events
     .filter((ev) => ev.kind === 'steer' && !settled.has(ev.seq))
     .map((ev) => ({ seq: ev.seq, text: (ev as { text: string }).text }));
+}
+
+/**
+ * Delivers each pending steer the content check lets through and refuses the rest, in queue order,
+ * including notes queued while an earlier one was being checked. `screen` answers the refusal line
+ * or null; an unavailable check answers null. Returns early once `signal` aborts.
+ */
+export async function deliverScreenedSteers(
+  log: SessionLog, screen: (text: string) => Promise<string | null>, signal: AbortSignal,
+): Promise<void> {
+  for (let next = undeliveredSteers(log)[0]; next; next = undeliveredSteers(log)[0]) {
+    const steer = next;
+    const reply = await screen(steer.text);
+    if (signal.aborted) return;
+    // A note recalled while it was checked stays recalled.
+    if (!undeliveredSteers(log).some((s) => s.seq === steer.seq)) continue;
+    append(log, reply === null ? { kind: 'steerDelivered', steerSeq: steer.seq } : { kind: 'noteRefused', steerSeq: steer.seq, reply });
+  }
 }
 
 /** Appends `steerDelivered` for every currently pending steer, in queue order, and returns the

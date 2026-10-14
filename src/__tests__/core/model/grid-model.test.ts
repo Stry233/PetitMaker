@@ -1,16 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import {
-  createGrid,
-  getCell,
-  setCell,
-  isInBounds,
-  macroToChunk,
-  macroToMicro,
-  cloneCell,
-  createDefaultTerrainCell,
-  cellOverlapsRect,
-} from '../../../core/model/grid-model';
-import { CellZone, TerrainType, type MacroCell, type MapTemplate } from '../../../core/model/types';
+import { createGrid, getCell, setCell, cloneCell, createDefaultTerrainCell, sameTerrain, clearsTerrain, CLEARING_ELEVATION } from '../../../core/model/grid-model';
+import { eraseTerrainCommand, paintTerrainCommand } from '../../../core/model/command-build';
+import { isInBounds, cellOverlapsRect } from '../../../core/grid/rect';
+import { bucketOf } from '../../../core/grid/buckets';
+import { TerrainType, type MacroCell, type MapTemplate, type TerrainCell } from '../../../core/model/types';
+import { CellZone } from '../../../core/game/zones';
+import { ANCHOR_LANDMARK } from '../../_support/anchor';
 
 function makeTestTemplate(width = 4, height = 4): MapTemplate {
   const zones: CellZone[][] = [];
@@ -28,7 +23,7 @@ function makeTestTemplate(width = 4, height = 4): MapTemplate {
     width,
     height,
     zones,
-    plaza: { x: 1, y: 1, width: 2, height: 2, elevation: 2 },
+    landmarks: [{ id: ANCHOR_LANDMARK.id, x: 1, y: 1, width: 2, height: 2 }],
   };
 }
 
@@ -83,17 +78,12 @@ describe('getCell / setCell', () => {
 });
 
 describe('coordinate conversion', () => {
-  it('macroToChunk converts correctly', () => {
-    expect(macroToChunk(0, 0)).toEqual({ cx: 0, cy: 0 });
-    expect(macroToChunk(15, 15)).toEqual({ cx: 0, cy: 0 });
-    expect(macroToChunk(16, 0)).toEqual({ cx: 1, cy: 0 });
-    expect(macroToChunk(31, 31)).toEqual({ cx: 1, cy: 1 });
-    expect(macroToChunk(32, 48)).toEqual({ cx: 2, cy: 3 });
-  });
-
-  it('macroToMicro maps macro coords to micro coords', () => {
-    const micro = macroToMicro(5, 10);
-    expect(micro).toEqual({ x: 10, y: 20 });
+  it('bucketOf converts correctly', () => {
+    expect(bucketOf(0, 0)).toEqual({ cx: 0, cy: 0 });
+    expect(bucketOf(15, 15)).toEqual({ cx: 0, cy: 0 });
+    expect(bucketOf(16, 0)).toEqual({ cx: 1, cy: 0 });
+    expect(bucketOf(31, 31)).toEqual({ cx: 1, cy: 1 });
+    expect(bucketOf(32, 48)).toEqual({ cx: 2, cy: 3 });
   });
 });
 
@@ -143,19 +133,57 @@ describe('cloneCell', () => {
 });
 
 describe('cellOverlapsRect', () => {
-  // A footprint with half-cell edges, as the plaza has: world x from LEFT to RIGHT.
+  // A footprint with half-cell edges, as the plaza has: world x from `LEFT` to `RIGHT`.
   const LEFT = 10.5, RIGHT = 30.5, ROW = 24;
   const rect = { x: LEFT, y: 10.5, w: RIGHT - LEFT, h: 27 };
 
   it('reads a terrain cell (shift -0.5) as touching just outside each edge and overlapping just inside', () => {
-    expect(cellOverlapsRect(rect, LEFT - 0.5, ROW, -0.5)).toBe(false);
-    expect(cellOverlapsRect(rect, LEFT + 0.5, ROW, -0.5)).toBe(true);
-    expect(cellOverlapsRect(rect, RIGHT - 0.5, ROW, -0.5)).toBe(true);
-    expect(cellOverlapsRect(rect, RIGHT + 0.5, ROW, -0.5)).toBe(false);
+    expect(cellOverlapsRect(rect, LEFT - 0.5, ROW, 'terrain')).toBe(false);
+    expect(cellOverlapsRect(rect, LEFT + 0.5, ROW, 'terrain')).toBe(true);
+    expect(cellOverlapsRect(rect, RIGHT - 0.5, ROW, 'terrain')).toBe(true);
+    expect(cellOverlapsRect(rect, RIGHT + 0.5, ROW, 'terrain')).toBe(false);
   });
 
   it('reads an object cell (shift 0) as overlapping from half a cell before the edge', () => {
-    expect(cellOverlapsRect(rect, LEFT - 0.5, ROW, 0)).toBe(true);
-    expect(cellOverlapsRect(rect, LEFT - 1.5, ROW, 0)).toBe(false);
+    expect(cellOverlapsRect(rect, LEFT - 0.5, ROW, 'object')).toBe(true);
+    expect(cellOverlapsRect(rect, LEFT - 1.5, ROW, 'object')).toBe(false);
+  });
+});
+
+describe('sameTerrain', () => {
+  const m = (patch: Partial<TerrainCell> = {}): TerrainCell => ({ type: TerrainType.Mountain, elevation: 2, ...patch });
+  const exact = { patchOnly: 'exact' } as const, flag = { patchOnly: 'flag' } as const;
+
+  it('compares type, elevation, patch base and corners', () => {
+    expect(sameTerrain(m(), m(), exact)).toBe(true);
+    expect(sameTerrain(m(), m({ elevation: 3 }), exact)).toBe(false);
+    expect(sameTerrain(m(), { type: TerrainType.Water, elevation: 2 }, exact)).toBe(false);
+    expect(sameTerrain(m({ patchBase: 1 }), m(), flag)).toBe(false);
+    expect(sameTerrain(m({ corners: ['fan', 'square', 'square', 'square'] }), m({ corners: ['fan', 'square', 'square', 'square'] }), exact)).toBe(true);
+    expect(sameTerrain(m({ corners: ['fan', 'square', 'square', 'square'] }), m({ corners: ['square', 'square', 'square', 'square'] }), exact)).toBe(false);
+    expect(sameTerrain(m({ corners: ['square', 'square', 'square', 'square'] }), m(), exact)).toBe(false);
+  });
+
+  it('reads an absent patch flag apart from false only when exact', () => {
+    expect(sameTerrain(m({ patchOnly: false }), m(), exact)).toBe(false);
+    expect(sameTerrain(m({ patchOnly: false }), m(), flag)).toBe(true);
+    expect(sameTerrain(m({ patchOnly: true }), m(), flag)).toBe(false);
+  });
+
+  it('matches empty cells only to the same emptiness', () => {
+    expect(sameTerrain(null, null, flag)).toBe(true);
+    expect(sameTerrain(undefined, undefined, exact)).toBe(true);
+    expect(sameTerrain(null, undefined, exact)).toBe(false);
+    expect(sameTerrain(null, m(), flag)).toBe(false);
+  });
+});
+
+describe('clearsTerrain', () => {
+  const at = [{ x: 1, y: 1 }];
+  it('holds for an erase and a mountain paint at the clearing elevation, and nothing else', () => {
+    expect(clearsTerrain(eraseTerrainCommand(at))).toBe(true);
+    expect(clearsTerrain(paintTerrainCommand(at, TerrainType.Mountain, CLEARING_ELEVATION))).toBe(true);
+    expect(clearsTerrain(paintTerrainCommand(at, TerrainType.Mountain, CLEARING_ELEVATION + 1))).toBe(false);
+    expect(clearsTerrain(paintTerrainCommand(at, TerrainType.Water, CLEARING_ELEVATION))).toBe(false);
   });
 });

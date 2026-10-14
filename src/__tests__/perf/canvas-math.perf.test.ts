@@ -1,5 +1,5 @@
 /*
- * The canvas layer's pure math, no Pixi/GL: chunk culling, the marquee's
+ * The view layer's pure math, no Pixi/GL: chunk culling, the marquee's
  * band collection, the selection-hover decision, wheel-intent classification, and the plan-notes
  * route/zone geometry. Every one of these runs on the main thread once per frame or per pointer
  * event, so their cost is the renderer's own headroom rather than a generator's. See `_harness.ts`
@@ -8,17 +8,17 @@
 import { describe, it } from 'vitest';
 import { PERF, perfSuite } from './_harness';
 import { denseIsland } from './_fixtures';
-import { TILE_SIZE } from '../../core/model/constants';
-import { chunkVisible, cullRect } from '../../canvas/map2d/layers/chunk-cull';
-import { objectsInBand, type MacroRect } from '../../canvas/interaction/marquee';
-import { selectionHoverBox } from '../../canvas/interaction/selection-hover';
-import { WheelClassifier, type WheelLike } from '../../canvas/interaction/gestures';
-import { roundedZoneLoops, routeSamples } from '../../core/model/annotations';
+import { TILE_SIZE } from '../../view/map2d/geometry/world';
+import { chunkVisible, cullRect } from '../../view/map2d/geometry/chunk-cull';
+import { objectsInBand, type MacroRect } from '../../view/interaction/marquee';
+import { pointerTarget, selectionHoverBox } from '../../view/interaction/selection-hover';
+import { WheelClassifier, type WheelLike } from '../../view/interaction/gestures';
+import { roundedZoneLoops, routeSamples } from '../../core/model/annotation/geometry';
 import type { RouteNote, ZoneNote } from '../../core/model/annotations';
-import type { CurveAnchor } from '../../core/model/spline';
-import { ToolType } from '../../core/model/types';
+import type { CurveAnchor } from '../../core/base/spline';
 import type { MacroCoord } from '../../core/model/types';
-import { CHUNK_SIZE } from '../../core/model/game-profile';
+import { CHUNK_SIZE } from '../../core/game/profile';
+import { mapPoint } from '../../core/grid/grids';
 
 const s = perfSuite('canvas-math');
 
@@ -65,11 +65,11 @@ describe.runIf(PERF)('perf: canvas-math', () => {
   it('selection-hover decision x1000 over scattered positions', async () => {
     const { state } = denseIsland();
     const { width, height } = state.template;
-    const positions: MacroCoord[] = Array.from({ length: 1000 }, (_, i) => ({
-      x: (i * 7) % width, y: (i * 11) % height,
+    const positions = Array.from({ length: 1000 }, (_, i) => mapPoint({
+      x: ((i * 7) % width) + 0.3, y: ((i * 11) % height) + 0.6,
     }));
     await s.bench('hover/selection-decision', () => {
-      for (const p of positions) selectionHoverBox(state, p, ToolType.Hand, null, false);
+      for (const p of positions) selectionHoverBox(state, pointerTarget(state, p), true, false);
     }, { meta: { positions: positions.length } });
   });
 

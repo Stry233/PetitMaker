@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { TIERS, tierFor, moduleBaseFor, bandSize, currentBandSize, dataModuleRect, nBlocks, GRID_COLS, GRID_ROWS, RS_K } from '../../../../io/share/glyph/geometry';
-import { GLYPH_PROFILES, choosePlan, parityPolicyFor, planFor } from '../../../../io/share/glyph/profiles';
+import { TIERS, moduleBaseFor, currentBandSize, nBlocks, GRID_COLS, RS_K } from '../../../../io/share/glyph/geometry';
+import { GRID_ROWS, bandSize, dataModuleRect, tierFor } from '../../../_support/glyph-v2';
+import { GLYPH_PROFILES, choosePlan, planFor } from '../../../../io/share/glyph/profiles';
 
 describe('glyph geometry', () => {
   it('tier capacities match the RS block formula', () => {
@@ -26,7 +27,8 @@ describe('glyph geometry', () => {
       expect(plan, `payload ${length}`).not.toBeNull();
       expect(plan.symbolCount).toBeLessThanOrEqual(plan.moduleCount);
       expect(plan.codewordBytes).toBeLessThanOrEqual(255);
-      expect(plan.parityBytes / plan.codewordBytes).toBeGreaterThanOrEqual(parityPolicyFor(plan.profile).minimum);
+      // An eighth of every codeword is parity: the released layout, which the decoder replans.
+      expect(plan.parityBytes / plan.codewordBytes).toBeGreaterThanOrEqual(1 / 8);
     }
     for (const length of [-1, 0, 0.5, 12_001, Infinity, NaN]) expect(choosePlan(length)).toBeNull();
   });

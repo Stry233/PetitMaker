@@ -1,19 +1,28 @@
 import { describe, it, expect } from 'vitest';
-import { badgesFor, badgeScale } from '../../../io/export/render';
+import { badgeScale, exportComposition } from '../../../io/export/render';
 import type { MapProvenanceSummary } from '../../../core/provenance/types';
+import type { ExportOptions } from '../../../io/export/types';
+import { makeState } from '../../_support/map-state';
+
+const OPTIONS: ExportOptions = {
+  title: 'Bay', description: '', preset: 'plain', showBadge: true, layerPreview: false, card3d: false,
+  grid: false, footer: false, annotations: false, footerTemplate: '', resolution: 'compact',
+};
+/** The badges an export with the badge option on wears for `summary`. */
+const badgesFor = (summary: MapProvenanceSummary | null) => exportComposition(OPTIONS, makeState(), summary, { aspect: 1, px: { w: 100, h: 100 } }).badges;
 
 const base: MapProvenanceSummary = {
-  exportDisclosure: 'human_created', dominant: 'human_created', containsAi: false, containsProcedural: false,
-  aiEverUsed: false, aiUsedNoRemaining: false, aiTerrainPct: 0, aiObjectCount: 0, aiAreaPct: 0, proceduralAreaPct: 0,
-  humanAfterAi: false, aiAfterHuman: false, counts: { aiWrites: 0, aiAccepted: 0, proceduralRuns: 0, analysisOnlyCalls: 0 },
+  exportDisclosure: 'human_created', containsAi: false, containsProcedural: false,
+  aiEverUsed: false, aiUsedNoRemaining: false, aiTerrainPct: 0, aiObjectCount: 0, proceduralAreaPct: 0,
+  humanAfterAi: false, aiAfterHuman: false,
 };
 const s = (o: Partial<MapProvenanceSummary>) => ({ ...base, ...o });
 
-describe('badgesFor (presence-based)', () => {
+describe('export badges (presence-based)', () => {
   it('human-only → no badges', () => expect(badgesFor(s({}))).toEqual([]));
-  it('AI only → AI badge', () => expect(badgesFor(s({ containsAi: true })).map(b => b.label)).toEqual(['prov.badge_ai']));
-  it('procedural only → procedural badge', () => expect(badgesFor(s({ containsProcedural: true })).map(b => b.label)).toEqual(['prov.badge_proc']));
-  it('both → AI then procedural', () => expect(badgesFor(s({ containsAi: true, containsProcedural: true })).map(b => b.label)).toEqual(['prov.badge_ai', 'prov.badge_proc']));
+  it('AI only → AI badge', () => expect(badgesFor(s({ containsAi: true })).map(b => b.label)).toEqual(['export.badge_ai']));
+  it('procedural only → procedural badge', () => expect(badgesFor(s({ containsProcedural: true })).map(b => b.label)).toEqual(['export.badge_proc']));
+  it('both → AI then procedural', () => expect(badgesFor(s({ containsAi: true, containsProcedural: true })).map(b => b.label)).toEqual(['export.badge_ai', 'export.badge_proc']));
   it('AI used but edited away → no AI badge', () => expect(badgesFor(s({ aiEverUsed: true, aiUsedNoRemaining: true }))).toEqual([]));
   it('null summary → []', () => expect(badgesFor(null)).toEqual([]));
 });

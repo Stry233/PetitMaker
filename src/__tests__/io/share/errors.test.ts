@@ -1,12 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { ShareError, DEFAULT_LIMITS } from '../../../io/share/errors';
+import { DEFAULT_LIMITS, ShareTooLargeError } from '../../../io/share/errors';
 
-describe('ShareError', () => {
-  it('carries a code and message', () => {
-    const e = new ShareError('future-version', 'Saved by a newer version.');
+describe('ShareTooLargeError', () => {
+  it('is an error named for the share code it could not hold', () => {
+    const e = new ShareTooLargeError('Map payload exceeds the densest PetitGlyph profile.');
     expect(e).toBeInstanceOf(Error);
-    expect(e.code).toBe('future-version');
-    expect(e.name).toBe('ShareError');
+    expect(e.name).toBe('ShareTooLargeError');
   });
 });
 

@@ -1,7 +1,7 @@
 /**
- * THE DECKS AND THE FLIGHTS: the objects that carry the walk over a gap or up a step.
+ * The decks and the flights: the objects that carry the walk over a gap or up a step.
  *
- * A crossing is ANCHORED, never positioned. The `heightDrop` and `waterSpan` traits read the cliff
+ * A crossing is anchored, never positioned. The `heightDrop` and `waterSpan` traits read the cliff
  * or the gap beside the anchor and snap the object's own position, rotation and span, so every
  * function here names a cell, lets the rules answer with the crossing that fits it, and reads back
  * what landed (`placeAndRead`) rather than assuming the plan's footprint.
@@ -9,16 +9,19 @@
  * Where a deck's bank is bare it is paved out to the network first (`paving.ts`), because a bridge
  * the streets do not reach is an ornament standing over the water.
  */
-import { flatIndex } from '../../../../core/model/grid-model';
-import type { Rng } from '../../../../core/model/rng';
+import { flatIndex } from '../../../../core/grid/rect';
+import { surfaceElevation } from '../../../../core/domain/terrain/terrain-surface';
+import type { Rng } from '../../../../core/base/rng';
 import {
-  ItemCategory, TerrainType, type GridState, type MacroCoord, type PlacedObject,
+  TerrainType, type GridState, type MacroCoord, type PlacedObject,
 } from '../../../../core/model/types';
-import { getPlaceableByCategory } from '../../../../state/catalog';
+import { rampOrientation } from '../../../../core/domain/terrain/ramp-span';
+import { findTrait } from '../../../../core/model/traits';
 import { crossingRunsAlongX, objectRect } from '../../../../state/object-geometry';
+import { crossingPool } from '../../../placement/crossings';
 import { removePlaced, tryPlace, type PlaceCtx } from '../../../placement/object';
-import type { RampSpec, StreetPlan } from '../streets/streets';
-import { connector } from './paving';
+import type { RampSpec, StreetPlan } from '../streets/model';
+import { connector, type PaveGround, type Paving } from './paving';
 import { spanInScope, type Scope } from './scope';
 
 /**
@@ -37,13 +40,13 @@ export function layFlights(
   for (const ramp of streets.ramps) {
     if (!scope.rect(ramp.footprint.x, ramp.footprint.y, ramp.footprint.w, ramp.footprint.h)) continue;
     let landed: PlacedObject | null = null;
-    // BOTH ends of the step are offered, because the trait takes the first cliff it meets around the
+    // Both ends of the step are offered, because the trait takes the first cliff it meets around the
     // anchor and a flight's own high cell has two: the step it is descending and the step it just
     // came down. The plan's footprint is the arbiter — a ramp that resolved to another cliff is taken
     // back rather than left standing, since its corridor is somewhere else and it would be a
     // staircase across a terrace nobody cleared.
     for (const anchor of anchorsOf(ramp)) {
-      const at = placeAndRead(place, scope, ramp.catalogId, anchor.x, anchor.y);
+      const at = placeAndRead(place, scope, ramp.catalogId, { x: anchor.x, y: anchor.y });
       if (!at) continue;
       const r = objectRect(at);
       if (r.x === ramp.footprint.x && r.y === ramp.footprint.y
@@ -57,28 +60,27 @@ export function layFlights(
 }
 
 /**
- * The two cells a ramp may be ANCHORED at: the high cell of the step it climbs, and the first cell of
+ * The two cells a ramp may be anchored at: the high cell of the step it climbs, and the first cell of
  * the run below it.
  *
  * The `heightDrop` trait resolves the ramp from a cliff beside the anchor and then stores the
- * footprint at one of two offsets — a ramp facing +y or +x stores it FROM the high cell, one facing
+ * footprint at one of two offsets — a ramp facing +y or +x stores it from the high cell, one facing
  * -y or -x stores it one footprint length back. So the stored position is not itself an anchor the trait can
  * resolve from: at the far end of the run there is no cliff to read. The high cell is where the
  * footprint says it is in both facings, and the run's first cell is the same step read from below.
  */
 function anchorsOf(ramp: RampSpec): MacroCoord[] {
   const f = ramp.footprint;
-  switch (ramp.rotation) {
-    case 180: return [{ x: f.x, y: f.y + f.h }, { x: f.x, y: f.y + f.h - 1 }];
-    case 270: return [{ x: f.x + f.w, y: f.y }, { x: f.x + f.w - 1, y: f.y }];
-    case 90: return [{ x: f.x, y: f.y }, { x: f.x + 1, y: f.y }];
-    default: return [{ x: f.x, y: f.y }, { x: f.x, y: f.y + 1 }];
-  }
+  const { spanAxis, highAtStart } = rampOrientation(ramp.rotation);
+  const [dx, dy] = spanAxis === 'y' ? [0, 1] : [1, 0];
+  const len = spanAxis === 'y' ? f.h : f.w;
+  const at = (k: number): MacroCoord => ({ x: f.x + dx * k, y: f.y + dy * k });
+  return highAtStart ? [at(0), at(1)] : [at(len), at(len - 1)];
 }
 
 /** How far apart two scanned bridges stand, so a channel is not decked twice at the same crossing. */
 const BRIDGE_GAP = 10;
-/** How many bridges one map carries at richness 0 and 1. The target planet has five. */
+/** How many bridges one map carries at richness 0 and 1. */
 export const BRIDGE_COUNT = { min: 1, max: 5 } as const;
 
 /**
@@ -91,7 +93,7 @@ export const BRIDGE_COUNT = { min: 1, max: 5 } as const;
  * and reads as a road crossing, a plank deck as a garden path.
  */
 export function layLineDecks(place: PlaceCtx, streets: StreetPlan, scope: Scope): number {
-  const pool = getPlaceableByCategory(ItemCategory.Bridge);
+  const pool = crossingPool('bridge');
   if (!pool.length) return 0;
   const styles = [...pool].sort((a, b) => b.width * b.height - a.width * a.height);
   let placed = 0;
@@ -103,14 +105,14 @@ export function layLineDecks(place: PlaceCtx, streets: StreetPlan, scope: Scope)
     // street it is carrying.
     const cx = r.x + r.w / 2, cy = r.y + r.h / 2;
     cells.sort((a, b) => Math.hypot(a.x - cx, a.y - cy) - Math.hypot(b.x - cx, b.y - cy));
-    // THE CROSSING NAMES ITS OWN AXIS, and the rect does not: the gap lies ACROSS the street, so its
+    // The crossing names its own axis, and the rect does not: the gap lies across the street, so its
     // long side is perpendicular to the walk the deck has to carry, and an axis derived from the rect
     // turns a line deck across the trunk it was planned into.
     const axis: readonly [number, number] = crossing.axis === 'x' ? [1, 0] : [0, 1];
     let landed = false;
     for (const style of styles) {
       for (const at of cells) {
-        if (placeAndRead(place, scope, style.id, at.x, at.y, axis)) { landed = true; break; }
+        if (placeAndRead(place, scope, style.id, { x: at.x, y: at.y }, axis)) { landed = true; break; }
       }
       if (landed) break;
     }
@@ -128,18 +130,20 @@ export function layLineDecks(place: PlaceCtx, streets: StreetPlan, scope: Scope)
  * paved as well, so the deck is part of the network instead of an ornament over the water.
  */
 export function layBridges(
-  place: PlaceCtx, pavable: Uint8Array, surface: Int8Array, rng: Rng, material: string, budget: number,
-  refused: { crossings: number }, scope: Scope,
+  paving: Paving, { rng, budget, refused }: { rng: Rng; budget: number; refused: { crossings: number } },
 ): number {
-  const pool = getPlaceableByCategory(ItemCategory.Bridge);
+  const { place, material, scope } = paving;
+  const pool = crossingPool('bridge');
   if (!pool.length || budget <= 0) return 0;
   const { state } = place;
   const W = state.template.width, H = state.template.height;
+  // The widest water any offered deck spans.
+  const span = Math.max(0, ...pool.map((item) => findTrait(item, 'waterSpan')?.max ?? 0));
   const sites: { at: MacroCoord; cost: number }[] = [];
   for (let y = 0; y < H; y++) {
     for (let x = 0; x < W; x++) {
       if (!isGroundWater(state, x, y)) continue;
-      const crossing = crossingAt(place, pavable, surface, x, y);
+      const crossing = crossingAt(paving, x, y, span);
       if (crossing) sites.push({ at: { x, y }, cost: crossing.connect.length });
     }
   }
@@ -152,23 +156,23 @@ export function layBridges(
   for (const site of sites) {
     if (placed >= budget) break;
     if (taken.some((t) => Math.abs(t.x - site.at.x) + Math.abs(t.y - site.at.y) < BRIDGE_GAP)) continue;
-    // THE WAY TO THE CROSSING IS PAVED BEFORE THE DECK LANDS, and the course is routed again here
+    // The way to the crossing is paved before the deck lands, and the course is routed again here
     // rather than taken from the scan: every site was ranked against the same network, and an
     // earlier crossing's approach has since taken ground this one was planned over. A site that no
     // longer reaches the streets is passed over — a deck laid first and found unreachable after is a
     // bridge standing in the water as an ornament, which the scan cannot take back. Laying the
     // pavement first cannot strand anything: the course joins the network at its far end, and a deck
     // is a coating's legal neighbour, so it may land on the bank cells the course just paved.
-    const crossing = crossingAt(place, pavable, surface, site.at.x, site.at.y);
+    const crossing = crossingAt(paving, site.at.x, site.at.y, span);
     if (!crossing) continue;
-    // A DECK IS ONE OBJECT SPANNING TWO BANKS, so the whole span is what a scope has to hold: a
+    // A deck is one object spanning two banks, so the whole span is what a scope has to hold: a
     // bridge whose far end lands outside the painted region is a stray however well it reads.
     if (!spanInScope(scope, crossing.banks)) continue;
     for (const c of crossing.connect) {
       if (!scope.cell(c.x, c.y)) continue;
       if (!tryPlace(place, material, c.x, c.y)) refused.crossings++;
     }
-    // A DECK IS A LINK OR IT IS NOTHING, and the course alone does not make it one: it is routed in
+    // A deck is a link or it is nothing, and the course alone does not make it one: it is routed in
     // 2x2 stamps, so it stops wherever a whole stamp last fitted, which on a bank narrowed by the
     // channel can be two cells short of the water. The landing fills that gap a cell at a time, and
     // a deck whose banks are still not reached is passed over. The paving already laid stays either
@@ -176,7 +180,7 @@ export function layBridges(
     for (const b of crossing.banks) landBank(place, material, b, scope);
     if (!crossing.banks.every((b) => pavementNear(place, b.x, b.y, 1))) continue;
     const id = pool[rng.int(pool.length)]!.id;
-    if (!placeAndRead(place, scope, id, site.at.x, site.at.y, crossing.axis)) continue;
+    if (!placeAndRead(place, scope, id, { x: site.at.x, y: site.at.y }, crossing.axis)) continue;
     taken.push(site.at);
     placed++;
   }
@@ -187,18 +191,19 @@ export function layBridges(
  *  when neither axis offers two banks the network reaches. An empty `connect` means both banks are
  *  paved already. */
 function crossingAt(
-  place: PlaceCtx, pavable: Uint8Array, surface: Int8Array, x: number, y: number,
+  ground: PaveGround, x: number, y: number, span: number,
 ): { connect: MacroCoord[]; banks: MacroCoord[]; axis: readonly [number, number] } | null {
+  const { place } = ground;
   const axes: readonly (readonly [number, number])[] = [[1, 0], [0, 1]];
   for (const [dx, dy] of axes) {
-    const a = bank(place.state, x, y, -dx, -dy);
-    const b = bank(place.state, x, y, dx, dy);
+    const a = bank(place.state, x, y, { dx: -dx, dy: -dy }, span);
+    const b = bank(place.state, x, y, { dx, dy }, span);
     if (!a || !b) continue;
     // One bank at a time: the search is pure, and most sites fail on their first bank, so the
     // second course is only routed for a crossing that still can exist.
-    const connectA = connector(place, pavable, surface, a, -dx, -dy);
+    const connectA = connector(ground, a, -dx, -dy);
     if (!connectA) continue;
-    const connectB = connector(place, pavable, surface, b, dx, dy);
+    const connectB = connector(ground, b, dx, dy);
     if (!connectB) continue;
     // The two banks are searched independently and against the same network, so a course that loops
     // round the water's end can name a cell the other already named; each cell is asked for once.
@@ -218,10 +223,11 @@ function crossingAt(
 }
 
 /** The first dry cell walking (dx, dy) off the water, or null where the run leaves the map or the
- *  water goes on further than a deck could. */
-function bank(state: GridState, x: number, y: number, dx: number, dy: number): MacroCoord | null {
+ *  water goes on further than `span`, the widest deck, could cross. */
+function bank(state: GridState, x: number, y: number, step: { dx: number; dy: number }, span: number): MacroCoord | null {
+  const { dx, dy } = step;
   const W = state.template.width, H = state.template.height;
-  for (let k = 1; k <= 6; k++) {
+  for (let k = 1; k <= span; k++) {
     const nx = x + dx * k, ny = y + dy * k;
     if (nx < 0 || ny < 0 || nx >= W || ny >= H) return null;
     if (isGroundWater(state, nx, ny)) continue;
@@ -230,14 +236,13 @@ function bank(state: GridState, x: number, y: number, dx: number, dy: number): M
   return null;
 }
 
-/** Surface elevation of a cell for the crossing scans: -1 for water and for anything off the map, so
- *  a caller testing for level ground can ask one question. */
+/** The standable surface of a cell (`surfaceElevation`, the tier placement reads, so a corner patch
+ *  reads as its base) for the crossing scans: -1 for water and for anything off the map, so a caller
+ *  testing for level ground can ask one question. */
 function surfaceAt(state: GridState, x: number, y: number): number {
   const cell = state.cells[y]?.[x];
   if (!cell) return -1;
-  const t = cell.terrain;
-  if (!t || t.type === TerrainType.None) return 0;
-  return t.type === TerrainType.Water ? -1 : t.elevation;
+  return cell.terrain?.type === TerrainType.Water ? -1 : surfaceElevation(cell.terrain);
 }
 
 const isGroundWater = (state: GridState, x: number, y: number): boolean => {
@@ -255,40 +260,21 @@ function landBank(place: PlaceCtx, material: string, bank: MacroCoord, scope: Sc
 }
 
 /**
- * Place a CROSSING, keep it only where the whole of it landed in scope, and hand back what landed.
+ * Place a crossing, keep it only where all of it landed in scope on the axis asked for, and hand
+ * back what landed. The `heightDrop` and `waterSpan` traits snap position, rotation and span, so
+ * where a crossing stands is known only afterwards (a snapped ramp can cover the row above its
+ * anchor); the check reads the footprint the map holds, as the agent's region lock does.
  *
- * The `heightDrop` and `waterSpan` traits SNAP a ramp's or a deck's position, rotation and span
- * themselves — that is the whole reason the pipeline names a cell and lets the rules answer with the
- * crossing that fits it, so where one finally stands is only knowable once it has run: a snapped ramp
- * can cover the row above its anchor, and no box drawn around the anchor beforehand can be both tight
- * enough to be useful and wide enough to be right.
- * So the check is made afterwards, on the footprint the map actually holds, and a crossing that
- * strayed is taken back. The same reading the agent's own region lock makes, for the same reason.
- */
-/**
- * Place a deck at a cell and read back what the engine actually stored, taking it away again where
- * that is not what was asked for.
- *
- * THE AXIS IS PART OF THE ASK: a deck carries the street it was sited for, never lies across it. The
- * `waterSpan` trait resolves position, rotation and span from a gap it DETECTS beside the anchor
- * cell, and a gap is any below-deck run — water, off-map void, or merely lower terrain. So a deck
- * sited on a channel running north-south can come back spanning an unrelated dip east-west, two
- * cells off the water it was asked about and at right angles to the street it was meant to carry.
- * MEASURED as a controlled swap, twenty maps at full richness: with the check the batch stands 45 of its
- * 48 decks carrying a street on at both ends and NONE lying across one; without it,
- * 6 of 48 and thirteen crossways. The deck COUNT is identical either way — the trait can resolve the
- * axis the walk asked for almost everywhere, it simply had no reason to prefer it.
- *
- * The caller knows which axis the walk needs carried, so the landing is measured against it and a
- * deck that came back turned is removed rather than left standing. It costs bridges on the seeds
- * where the trait cannot resolve the axis asked for, and a bridge nobody crosses is worth less than
- * the count.
+ * `waterSpan` resolves from any below-deck gap beside the anchor, so a deck sited on a north-south
+ * channel can come back spanning an unrelated dip east-west. A deck that came back turned against
+ * the axis the walk needs is removed: it costs bridges where the trait cannot resolve that axis,
+ * and a bridge nobody crosses is worth less than the count.
  */
 function placeAndRead(
-  place: PlaceCtx, scope: Scope, catalogId: string, x: number, y: number,
+  place: PlaceCtx, scope: Scope, catalogId: string, at: MacroCoord,
   axis?: readonly [number, number],
 ): PlacedObject | null {
-  const landed = tryPlace(place, catalogId, x, y);
+  const landed = tryPlace(place, catalogId, at.x, at.y);
   if (!landed) return null;
   const r = objectRect(landed);
   if (axis && (axis[0] !== 0) !== crossingRunsAlongX(landed)) { removePlaced(place, landed); return null; }

@@ -4,9 +4,11 @@
  * diffusion. Flat drawings avoid diffusion and use majority colour except in compact boxes, where
  * area averages retain subcell detail. The module is pure arithmetic after decoded pixels arrive.
  */
-import type { Stencil, StencilSourceNature } from '../../../core/model/types';
+import type { Stencil, StencilSourceNature } from '../recipe';
 import { COMPACT_IMAGE_LIMIT, COVERAGE_ON } from './stencil';
-import { NEIGHBORS4_NESW } from '../../../core/model/grid-model';
+import { colorBucket } from './color';
+import { backgroundMask } from './stencil-backdrop';
+import { cropPixels, salientCrop, CROP_MAX_SIDE, type SourceRect } from './stencil-crop';
 
 export type { StencilSourceNature };
 
@@ -17,9 +19,6 @@ export interface SourcePixels {
   height: number;
 }
 
-/** A rectangle of a source picture, in its own pixels. */
-interface SourceRect { x: number; y: number; width: number; height: number }
-
 /** The cell box a picture is fitted into. */
 interface SampleBox { width: number; height: number }
 
@@ -29,42 +28,30 @@ export interface SampleOptions {
   nature?: StencilSourceNature;
   /** Whether a flat backdrop is dropped from the picture. Default true. */
   background?: boolean;
-  /** Whether the picture is fitted by what it BUILDS rather than by its file's own frame.
+  /** Whether the picture is fitted by what it builds rather than by its file's own frame.
    *  Default true; off is the untrimmed reading a comparison is scored against. */
   trim?: boolean;
   /**
-   * EXPERIMENT, DEFAULT OFF: build the most identifying PART of the subject rather than the whole of it
+   * Experiment, default off: build the most identifying part of the subject rather than the whole of it
    * shrunk past legibility (`salientCrop`). Below about twenty cells a character's head carries the
    * subject and its body carries nothing, and a box that small cannot hold both — so the wise depiction
-   * may be a crop. Nothing in the app sets this: it exists so an offline evaluation can rule on whether
-   * a picture the visitor did not frame is a picture they asked for.
+   * may be a crop. Nothing in the app sets this: a picture the visitor did not frame may not be the
+   * picture they asked for.
    */
   crop?: boolean;
 }
-
-/** A colour reduced to five bits a channel: near-identical shades share a bucket, which is what
- *  makes a count of "how many colours is this drawn in" survive a JPEG's noise or a scaler's
- *  blending. */
-const bucketOf = (r: number, g: number, b: number): number =>
-  (((r >> 3) << 10) | ((g >> 3) << 5) | (b >> 3)) >>> 0;
 
 /** How many of the commonest colours are asked to account for the picture. Sixteen is well past any
  *  sprite's palette and well short of what a photograph needs. */
 const FLAT_TOP_COLORS = 16;
 
 /**
- * The share of a picture its sixteen commonest colours have to cover for it to be read as a DRAWING.
+ * The share of a picture its sixteen commonest colours have to cover for it to be read as a drawing.
  *
- * Measured on real pasted sources and on counter-examples: a pixel-art sticker sits at 0.82, a JPEG
- * of one at 0.87, a shipped catalog sprite at 0.89; a photograph (blurred noise) at 0.23, a gradient
- * with grain at 0.04, an in-game screenshot at 0.35. The gap is wide enough that ONE statistic is
- * more honest than a compound score, and the threshold sits in the middle of it.
- *
- * WHAT THAT EVIDENCE IS, exactly: four pasted pictures, our own drawn fixtures, and synthetic
- * continuous tone. No borderline photograph has been measured — a heavily posterised one, a flat
- * studio shot, a screenshot of a photograph — so the boundary is validated at its two ENDS rather
- * than at the middle. Both readings produce a legal map and the mistake costs reproduction quality
- * rather than correctness, which is why one number is allowed to decide it at all.
+ * Drawings sit well above the threshold and photographs, gradients and screenshots well below it,
+ * so one statistic decides, with the threshold in the middle of the gap. The boundary is validated
+ * at its two ends rather than on borderline photographs; both readings produce a legal map and a
+ * mistake costs reproduction quality rather than correctness.
  */
 const FLAT_COLOR_SHARE = 0.6;
 
@@ -83,7 +70,7 @@ export function readSourceNature(src: SourcePixels): { nature: StencilSourceNatu
   let total = 0;
   for (let i = 0; i + 3 < src.data.length; i += 4) {
     if (src.data[i + 3]! < 128) continue;
-    const key = bucketOf(src.data[i]!, src.data[i + 1]!, src.data[i + 2]!);
+    const key = colorBucket(src.data[i]!, src.data[i + 1]!, src.data[i + 2]!);
     counts[key] = counts[key]! + 1;
     total++;
   }
@@ -109,10 +96,33 @@ export function readSourceNature(src: SourcePixels): { nature: StencilSourceNatu
  * cropped and sampled again unless `trim` is disabled.
  */
 export function stencilFromPixels(src: SourcePixels, box: SampleBox, opts: SampleOptions = {}): Stencil | null {
+  return sampleStencil(src, box, opts)?.stencil ?? null;
+}
+
+/** A sampled picture: its stencil and the build trim it was sampled from. */
+interface SampledStencil {
+  stencil: Stencil;
+  /**
+   * The source rectangle everything the picture builds sits inside, in the pixels of the picture the
+   * trim read (after the salient crop, when one was taken), or null where nothing was trimmed:
+   * nothing builds at all, what does already reaches the frame, or `trim` is off.
+   *
+   * Measured on the same reading the build uses, so what is dropped is exactly what would have laid
+   * nothing. That is one question in every material rather than several: a cell reaches the map only
+   * if it is covered (`stencil.ts:covered`), and every palette a picture can be told in — the green
+   * ramp, the ramp with the blue in it, the item catalogue — answers a covered cell with something to
+   * lay. What "builds nothing" therefore means is transparent, keyed out as backdrop, or under the
+   * coverage a cell is claimed at.
+   */
+  trim: SourceRect | null;
+}
+
+/** `stencilFromPixels` with the trim it took. */
+export function sampleStencil(src: SourcePixels, box: SampleBox, opts: SampleOptions = {}): SampledStencil | null {
   if (box.width < 1 || box.height < 1 || src.width < 1 || src.height < 1) return null;
   const nature = opts.nature ?? readSourceNature(src).nature;
   let backdrop = opts.background === false ? null : backgroundMask(src);
-  // The experiment (`SampleOptions.crop`), and it happens FIRST because everything below is a reading of
+  // The experiment (`SampleOptions.crop`), and it happens first because everything below is a reading of
   // whatever picture it is handed: the crop keys the backdrop into its own alpha, so the pipeline after
   // it sees a smaller picture and asks nothing new.
   if (opts.crop && Math.min(box.width, box.height) <= CROP_MAX_SIDE) {
@@ -120,47 +130,29 @@ export function stencilFromPixels(src: SourcePixels, box: SampleBox, opts: Sampl
     if (window) { src = cropPixels(src, window, backdrop); backdrop = null; }
   }
   const first = samplePixels(src, box, nature, backdrop);
-  if (opts.trim === false) return first;
+  if (opts.trim === false) return { stencil: first, trim: null };
   const rect = buildingRect(first, src, box);
-  if (!rect) return first;
-  // The SECOND pass carries the first's answers rather than asking again: the keyed backdrop is
+  if (!rect) return { stencil: first, trim: null };
+  // The second pass carries the first's answers rather than asking again: the keyed backdrop is
   // baked into the crop's alpha and the nature is passed in. Re-keying the crop would be a
   // different question with the evidence removed — the gates in `backgroundMask` want a border that
   // is mostly backdrop and a flooded region with an inside, and a crop crushed against the subject
   // has neither, so the wall of white would come back as ink and pave the region again.
-  return samplePixels(cropPixels(src, rect, backdrop), box, nature, null);
-}
-
-/**
- * The source rectangle everything the picture BUILDS sits inside, or null where there is nothing to
- * trim: nothing builds at all, or what does already reaches the frame.
- *
- * Measured on the SAME reading the build uses, so what is dropped is exactly what would have laid
- * nothing. That is one question in every material rather than several: a cell reaches the map only
- * if it is covered (`stencil.ts:covered`), and every palette a picture can be told in — the green
- * ramp, the ramp with the blue in it, the item catalogue — answers a covered cell with something to
- * lay. What "builds nothing" therefore means is transparent, keyed out as backdrop, or under the
- * coverage a cell is claimed at.
- */
-export function buildingCrop(src: SourcePixels, box: SampleBox, opts: SampleOptions = {}): SourceRect | null {
-  if (box.width < 1 || box.height < 1 || src.width < 1 || src.height < 1) return null;
-  const nature = opts.nature ?? readSourceNature(src).nature;
-  const backdrop = opts.background === false ? null : backgroundMask(src);
-  return buildingRect(samplePixels(src, box, nature, backdrop), src, box);
+  return { stencil: samplePixels(cropPixels(src, rect, backdrop), box, nature, null), trim: rect };
 }
 
 /**
  * How much bigger the subject has to come out for a trim to be worth taking: a tenth.
  *
- * A TRIM IS NOT FREE. Re-fitting the crop moves every cell's phase against the picture, and on a
+ * A trim is not free. Re-fitting the crop moves every cell's phase against the picture, and on a
  * fine pattern that is not a smaller change than the one it is buying: a comb of one-cell stripes
  * whose last column happens to be empty gains 40 cells where it had 39, and lands with every cell
  * half covered, which reads as a solid block rather than as stripes. Below a tenth nobody can see
  * the subject grow, so the rim goes unclaimed and the picture is left where the file put it.
  */
-export const TRIM_MIN_GAIN = 1.1;
+const TRIM_MIN_GAIN = 1.1;
 
-/** Where a picture lands inside its cell box: `object-fit: contain` in QUADRANT units, which is what
+/** Where a picture lands inside its cell box: `object-fit: contain` in quadrant units, which is what
  *  the sampler works in. The one mapping between source pixels and cells. */
 function containFit(src: { width: number; height: number }, box: SampleBox): { scale: number; offX: number; offY: number } {
   const qw = box.width * 2, qh = box.height * 2;
@@ -169,7 +161,7 @@ function containFit(src: { width: number; height: number }, box: SampleBox): { s
 }
 
 /** The bounding box of the covered cells, mapped back through the fit into the source's own pixels
- *  and rounded OUTWARD, so a trim can never cut into ink that was going to be built. */
+ *  and rounded outward, so a trim can never cut into ink that was going to be built. */
 function buildingRect(stencil: Stencil, src: SourcePixels, box: SampleBox): SourceRect | null {
   const { width, height } = box;
   let x0 = width, y0 = height, x1 = -1, y1 = -1;
@@ -197,121 +189,6 @@ function buildingRect(stencil: Stencil, src: SourcePixels, box: SampleBox): Sour
   return gain >= TRIM_MIN_GAIN ? rect : null;
 }
 
-/**
- * THE EXPERIMENT: the sub-rectangle of a picture that most identifies its subject, or null where the
- * picture has no such part.
- *
- * WHY A CROP COULD BE THE WISER DEPICTION. Below about twenty cells a whole figure is a silhouette with
- * no room for what a viewer recognises it BY — measured over the benchmark, a sixteen-cell box lets a
- * picture say a seventh of what it has to say. A character's head holds the eyes, the ears and the
- * markings; its body holds a colour. Given a box that can carry one of the two, building the head is a
- * depiction and building both is a smudge.
- *
- * WHAT "IDENTIFYING" IS TAKEN TO BE: local CONTRAST over the subject's own ink. An eye, a marking or a
- * mouth is where the picture changes fastest, and a flat coat or a plain background is where it changes
- * least. Read on a coarse grid (`CROP_GRID`) so a single hard pixel edge cannot name the window, and
- * asked as a window of the BOX'S OWN SHAPE, since a crop that does not match the box gives its gain
- * straight back to the letterboxing.
- *
- * IT DECLINES RATHER THAN GUESSES. A picture whose detail is spread evenly — a pattern, a texture, a
- * tile — has no part that identifies it better than the whole, and the window has to beat the whole
- * subject's own density by `CROP_MIN_GAIN` before it is taken.
- */
-export const CROP_MAX_SIDE = 20;
-const CROP_WINDOW = 0.6;
-const CROP_GRID = 24;
-const CROP_MIN_GAIN = 1.4;
-
-export function salientCrop(
-  src: SourcePixels, box: SampleBox, keyed: Uint8Array | null = null,
-): SourceRect | null {
-  const lumaAt = (x: number, y: number): number => {
-    if (x < 0 || y < 0 || x >= src.width || y >= src.height) return 0;
-    const i = (y * src.width + x) * 4;
-    if (keyed?.[y * src.width + x] || (src.data[i + 3] ?? 0) < 128) return 0;
-    return 0.299 * src.data[i]! + 0.587 * src.data[i + 1]! + 0.114 * src.data[i + 2]!;
-  };
-  const inked = (x: number, y: number): boolean => {
-    const i = (y * src.width + x) * 4;
-    return !keyed?.[y * src.width + x] && (src.data[i + 3] ?? 0) >= 128;
-  };
-
-  // The subject's own frame: a crop is a choice inside it, never a way of finding it.
-  let x0 = src.width, y0 = src.height, x1 = -1, y1 = -1;
-  for (let y = 0; y < src.height; y++) {
-    for (let x = 0; x < src.width; x++) {
-      if (!inked(x, y)) continue;
-      if (x < x0) x0 = x;
-      if (x > x1) x1 = x;
-      if (y < y0) y0 = y;
-      if (y > y1) y1 = y;
-    }
-  }
-  if (x1 < x0 || y1 < y0) return null;
-  const w = x1 - x0 + 1, h = y1 - y0 + 1;
-
-  const cols = Math.min(CROP_GRID, w), rows = Math.min(CROP_GRID, h);
-  const cw = w / cols, ch = h / rows;
-  const detail = new Float64Array(cols * rows);
-  const ink = new Float64Array(cols * rows);
-  for (let y = y0; y <= y1; y++) {
-    for (let x = x0; x <= x1; x++) {
-      if (!inked(x, y)) continue;
-      const at = Math.min(rows - 1, Math.floor((y - y0) / ch)) * cols + Math.min(cols - 1, Math.floor((x - x0) / cw));
-      detail[at] = detail[at]! + Math.abs(lumaAt(x + 1, y) - lumaAt(x - 1, y)) + Math.abs(lumaAt(x, y + 1) - lumaAt(x, y - 1));
-      ink[at] = ink[at]! + 1;
-    }
-  }
-  let whole = 0, wholeInk = 0;
-  for (let i = 0; i < detail.length; i++) { whole += detail[i]!; wholeInk += ink[i]!; }
-  if (wholeInk === 0 || whole <= 0) return null;
-
-  // A window of the box's shape, six tenths of the subject's shorter side, slid over the grid.
-  const aspect = box.width / box.height;
-  const side = CROP_WINDOW * Math.min(w, h);
-  const ww = Math.min(w, aspect >= 1 ? side * aspect : side);
-  const wh = Math.min(h, aspect >= 1 ? side : side / aspect);
-  const bw = Math.max(1, Math.round(ww / cw)), bh = Math.max(1, Math.round(wh / ch));
-  if (bw >= cols && bh >= rows) return null;
-
-  let best = -1, bestAt: [number, number] = [0, 0];
-  for (let r = 0; r + bh <= rows; r++) {
-    for (let c = 0; c + bw <= cols; c++) {
-      let sum = 0;
-      for (let dr = 0; dr < bh; dr++) for (let dc = 0; dc < bw; dc++) sum += detail[(r + dr) * cols + c + dc]!;
-      if (sum > best) { best = sum; bestAt = [c, r]; }
-    }
-  }
-  if (best <= 0) return null;
-  // Against the whole subject read at the same density: a picture whose detail is spread evenly has no
-  // part that says more than all of it.
-  const share = (bw * bh) / (cols * rows);
-  if (best / whole < CROP_MIN_GAIN * share) return null;
-
-  const [c, r] = bestAt;
-  const left = Math.max(0, Math.round(x0 + c * cw)), top = Math.max(0, Math.round(y0 + r * ch));
-  const right = Math.min(src.width, Math.round(x0 + (c + bw) * cw));
-  const bottom = Math.min(src.height, Math.round(y0 + (r + bh) * ch));
-  if (right <= left || bottom <= top) return null;
-  return { x: left, y: top, width: right - left, height: bottom - top };
-}
-
-/** A rectangle of a picture as a picture of its own. `keyed` pixels come out transparent, which is
- *  how a backdrop decision made on the whole source survives into a reading of part of it. */
-export function cropPixels(src: SourcePixels, rect: SourceRect, keyed: Uint8Array | null = null): SourcePixels {
-  const data = new Uint8Array(rect.width * rect.height * 4);
-  for (let y = 0; y < rect.height; y++) {
-    for (let x = 0; x < rect.width; x++) {
-      const from = ((y + rect.y) * src.width + x + rect.x) * 4, to = (y * rect.width + x) * 4;
-      data[to] = src.data[from]!;
-      data[to + 1] = src.data[from + 1]!;
-      data[to + 2] = src.data[from + 2]!;
-      data[to + 3] = keyed?.[(y + rect.y) * src.width + x + rect.x] ? 0 : src.data[from + 3]!;
-    }
-  }
-  return { data, width: rect.width, height: rect.height };
-}
-
 /** One reading of a picture into a cell box: the area integral itself, with the two decisions above
  *  it (what kind of picture this is, and which pixels are backdrop) already made. */
 function samplePixels(
@@ -324,11 +201,11 @@ function samplePixels(
   const coverage = new Uint8Array(width * height);
   const color = new Uint32Array(width * height);
   const quad = new Uint8Array(width * height * 4);
-  // Quadrant order [TL, TR, BL, BR], the corner-index convention the trim reads.
+  // Quadrant order [TL, TR, BL, BR], the `core/model/corners.ts` convention the trim reads.
   const QUAD = [[0, 0], [1, 0], [0, 1], [1, 1]] as const;
 
   // The colours a whole cell covers, kept per five-bit bucket so the majority reading can ask which
-  // one MOST of the cell is. Weight is area times alpha: a pixel the picture barely draws does not
+  // one most of the cell is. Weight is area times alpha: a pixel the picture barely draws does not
   // get to name the cell. Reused across cells rather than reallocated per cell.
   const buckets = new Map<number, { w: number; r: number; g: number; b: number }>();
 
@@ -355,7 +232,7 @@ function samplePixels(
         g += w * pa * pg;
         b += w * pa * pb;
         if (useMajority && pa > 0) {
-          const key = bucketOf(pr, pg, pb);
+          const key = colorBucket(pr, pg, pb);
           const bucket = buckets.get(key);
           if (bucket) { bucket.w += w * pa; bucket.r += w * pa * pr; bucket.g += w * pa * pg; bucket.b += w * pa * pb; }
           else buckets.set(key, { w: w * pa, r: w * pa * pr, g: w * pa * pg, b: w * pa * pb });
@@ -402,176 +279,10 @@ function samplePixels(
   return { width, height, coverage, color, quad, nature };
 }
 
-/** Distance between two packed colours, weighted the way the eye weighs the channels — the same
- *  metric every palette match in this system uses. */
-function colorDistance(a: number, b: number): number {
-  const dr = ((a >> 16) & 0xff) - ((b >> 16) & 0xff);
-  const dg = ((a >> 8) & 0xff) - ((b >> 8) & 0xff);
-  const db = (a & 0xff) - (b & 0xff);
-  return Math.sqrt(0.299 * dr * dr + 0.587 * dg * dg + 0.114 * db * db);
-}
-
-/** How close a pixel has to be to the backdrop's colour to be part of it. Wide enough for a JPEG's
- *  noise and a watermark's faint pattern over a white field, narrow enough that a subject drawn in a
- *  neighbouring shade is not swallowed. */
-const BACKGROUND_TOLERANCE = 30;
-/** How much of the picture's own border the backdrop has to hold before there is one at all. */
-const BACKGROUND_BORDER_SHARE = 0.6;
-/** And how much of the whole picture. */
-const BACKGROUND_MIN_SHARE = 0.15;
-/**
- * How DEEP it has to be, as a share of the picture's shorter side.
- *
- * A backdrop is a field the subject sits in; a drawn OUTLINE around a sticker is also one colour,
- * also touches every edge and can also be a sixth of the picture, and it is part of the drawing.
- * What tells them apart is thickness: erode the flooded region by this much and a backdrop still has
- * an inside while a rim is gone. A share of the side rather than a count of pixels, so it means the
- * same thing at any resolution.
- */
-export const BACKGROUND_MIN_DEPTH = 0.05;
-/**
- * And how much has to survive on the OTHER side of it: the subject the flood leaves must be more than
- * a hairline, measured as erosions it survives.
- *
- * A backdrop is a field a subject sits IN, and the three gates above all measure the field. A flat
- * path tile is one colour edge to edge, so the flood covers the whole picture and passes every one of
- * them: the border is that colour, the flood reaches all of it, and it has any depth asked for. The
- * mask then keys the picture out of existence, and a region asked for that picture builds nothing at
- * all at any size in any material. What the flood leaves has to be a subject, and the same erosion the
- * field is held to says whether it is. TWO rather than the field's own depth, because a subject can
- * legitimately be thin where a field cannot: the stones of a stone path survive two erosions and not
- * six, and a picture of stones in mortar is a picture.
- */
-export const BACKGROUND_MIN_SUBJECT_DEPTH = 2;
-
-/**
- * Which SOURCE PIXELS are a flat backdrop rather than the picture — null when there is no backdrop.
- *
- * A cut-out PNG says this with its alpha and needs nothing here. A photograph of a sticker, a JPEG,
- * a screenshot of one — the formats people actually paste — say it with a wall of white, and matching
- * that wall to a palette paves the whole region in the nearest colour: a region filled edge to edge with
- * one tier and the subject reduced to a few specks inside it. What
- * carries a picture at twenty cells a side is its SILHOUETTE, and a backdrop is precisely what hides
- * one.
- *
- * READ AT THE SOURCE'S OWN RESOLUTION, which is the whole reason it works. The same walk over the
- * CELL grid leaks: a drawn outline is about one cell wide there, the cells it half fills read as the
- * white behind it, and the flood pours through the gaps and takes the subject's own white face with
- * it. At source resolution that outline is several pixels of solid ink and seals.
- *
- * THE BACKDROP IS FOUND FROM THE BORDER AND ONLY REACHED FROM IT, and three gates keep it from firing
- * on a picture that has none: the border must genuinely be one colour, the flood must reach a real
- * share of the picture, and a pixel joins by its distance to the BACKDROP rather than to its
- * neighbour, so a gradient cannot be walked across one small step at a time. A fourth asks what the
- * flood LEFT (`BACKGROUND_MIN_SUBJECT_DEPTH`): a field with no subject in it is not a field.
- */
-export function backgroundMask(src: SourcePixels): Uint8Array | null {
-  const { width: w, height: h } = src;
-  if (w < 2 || h < 2) return null;
-  const rgbAt = (i: number): number =>
-    ((src.data[i * 4]! << 16) | (src.data[i * 4 + 1]! << 8) | src.data[i * 4 + 2]!) >>> 0;
-  const opaque = (i: number): boolean => src.data[i * 4 + 3]! >= 128;
-
-  const border: number[] = [];
-  for (let x = 0; x < w; x++) { border.push(x); border.push((h - 1) * w + x); }
-  for (let y = 1; y < h - 1; y++) { border.push(y * w); border.push(y * w + w - 1); }
-  const onBorder = border.filter(opaque);
-  if (onBorder.length === 0) return null;
-
-  // The border's commonest colour, as the mean of the pixels that voted for it — the bucket's own
-  // centre would be up to four levels off in every channel.
-  const buckets = new Map<number, { n: number; r: number; g: number; b: number }>();
-  for (const i of onBorder) {
-    const rgb = rgbAt(i);
-    const key = bucketOf((rgb >> 16) & 0xff, (rgb >> 8) & 0xff, rgb & 0xff);
-    const bucket = buckets.get(key);
-    if (bucket) { bucket.n++; bucket.r += (rgb >> 16) & 0xff; bucket.g += (rgb >> 8) & 0xff; bucket.b += rgb & 0xff; }
-    else buckets.set(key, { n: 1, r: (rgb >> 16) & 0xff, g: (rgb >> 8) & 0xff, b: rgb & 0xff });
-  }
-  let best: { n: number; r: number; g: number; b: number } | null = null;
-  let bestKey = Infinity;
-  for (const [key, bucket] of buckets) {
-    if (!best || bucket.n > best.n || (bucket.n === best.n && key < bestKey)) { best = bucket; bestKey = key; }
-  }
-  if (!best) return null;
-  const backdrop = ((Math.round(best.r / best.n) << 16) | (Math.round(best.g / best.n) << 8) | Math.round(best.b / best.n)) >>> 0;
-
-  // WHICH PIXELS COULD BELONG TO THE BACKDROP, answered once for the whole picture. The flood asks
-  // this of every pixel it reaches from each of its four sides, so a per-call test measured the same
-  // colour distance about four times over.
-  const near = new Uint8Array(w * h);
-  for (let i = 0; i < w * h; i++) {
-    if (opaque(i) && colorDistance(rgbAt(i), backdrop) <= BACKGROUND_TOLERANCE) near[i] = 1;
-  }
-  const seeds = onBorder.filter((i) => near[i] === 1);
-  if (seeds.length / onBorder.length < BACKGROUND_BORDER_SHARE) return null;
-
-  const mask = new Uint8Array(w * h);
-  const stack = [...seeds];
-  for (const i of seeds) mask[i] = 1;
-  let found = 0;
-  while (stack.length) {
-    const i = stack.pop()!;
-    found++;
-    const x = i % w, y = (i / w) | 0;
-    for (const [dx, dy] of NEIGHBORS4_NESW) {
-      const nx = x + dx, ny = y + dy;
-      if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
-      const n = ny * w + nx;
-      if (mask[n] || !near[n]) continue;
-      mask[n] = 1;
-      stack.push(n);
-    }
-  }
-  let drawn = 0;
-  for (let i = 0; i < w * h; i++) if (opaque(i)) drawn++;
-  if (drawn === 0 || found / drawn < BACKGROUND_MIN_SHARE) return null;
-  if (!hasDepth(mask, w, h, Math.max(2, Math.round(BACKGROUND_MIN_DEPTH * Math.min(w, h))))) return null;
-  const subject = new Uint8Array(w * h);
-  for (let i = 0; i < w * h; i++) subject[i] = opaque(i) && !mask[i] ? 1 : 0;
-  return hasDepth(subject, w, h, BACKGROUND_MIN_SUBJECT_DEPTH) ? mask : null;
-}
-
-/**
- * Whether anything of `mask` survives being eroded `depth` times — a region with an inside, as
- * opposed to a band that is all edge.
- *
- * ASKED AS A DISTANCE, not as `depth` erosions. What an erosion counts down is how far a pixel sits
- * from the nearest one the mask does not hold (the picture's own edge counting as one of those), so a
- * pixel survives k erosions exactly while that distance exceeds k. Two chamfer passes give every
- * pixel its distance at once, where eroding the whole mask a step at a time re-walked the source
- * `depth` times over — and depth is a share of the source's own side, so a 500-pixel picture asked
- * for twenty-five walks of itself.
- */
-function hasDepth(mask: Uint8Array, w: number, h: number, depth: number): boolean {
-  const dist = new Int32Array(w * h);
-  for (let y = 0; y < h; y++) {
-    for (let x = 0; x < w; x++) {
-      const i = y * w + x;
-      if (!mask[i]) continue;
-      const up = y > 0 ? dist[i - w]! : 0;
-      const left = x > 0 ? dist[i - 1]! : 0;
-      dist[i] = Math.min(up, left) + 1;
-    }
-  }
-  for (let y = h - 1; y >= 0; y--) {
-    for (let x = w - 1; x >= 0; x--) {
-      const i = y * w + x;
-      if (!mask[i]) continue;
-      const down = y < h - 1 ? dist[i + w]! : 0;
-      const right = x < w - 1 ? dist[i + 1]! : 0;
-      const own = Math.min(dist[i]!, Math.min(down, right) + 1);
-      if (own > depth) return true;
-      dist[i] = own;
-    }
-  }
-  return false;
-}
-
 /**
  * How much of a cell's quantisation error is passed on to its neighbours.
  *
- * NOT ALL OF IT, which is what the textbook does. A region is small and its palette is coarse, so an
+ * Not all of it, which is what the textbook does. A region is small and its palette is coarse, so an
  * undamped diffusion carries a big error a long way and lays the worms and streaks that reads as
  * noise rather than as shading; three quarters spends most of the error where it belongs and lets the
  * rest go.
@@ -579,7 +290,7 @@ function hasDepth(mask: Uint8Array, w: number, h: number, depth: number): boolea
 export const DIFFUSION = 0.75;
 
 /**
- * The same, for the TERRAIN ramp — gentler, because that palette is one hue.
+ * The same, for the terrain ramp — gentler, because that palette is one hue.
  *
  * An error the ramp cannot spend is a hue error: a blue cell matched against eight greens leaves a
  * mistake no neighbour can make good, and carrying three quarters of it across the picture only lays
@@ -604,7 +315,7 @@ const SPREAD: readonly (readonly [number, number, number])[] = [
  * is measured against. A cell the caller declines (`null`) carries its own error no further: nothing
  * was drawn there, so there is no mistake to pass on.
  *
- * DETERMINISTIC: one walk, fixed weights, no randomness anywhere.
+ * Deterministic: one walk, fixed weights, no randomness anywhere.
  */
 export function matchWithDiffusion<T>(
   stencil: Stencil,

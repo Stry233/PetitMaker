@@ -1,12 +1,13 @@
+// @vitest-environment jsdom
 import { StrictMode } from 'react';
 import { MotionConfig } from 'framer-motion';
 import { act, cleanup, render, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { I18nProvider } from '../../../i18n/context';
+import { I18nProvider, translateFor } from '../../../i18n/context';
 import { useEditorStore } from '../../../state/store';
-import { HelpModal } from '../../../ui/chrome/modals/help/HelpModal';
-import { makeState } from '../../rules/_helpers';
-import { setStoreState } from '../../_store';
+import { HelpModal } from '../../../ui/help/HelpModal';
+import { makeState } from '../../_support/map-state';
+import { setStoreState } from '../../_support/store';
 
 const scrollDescriptor = Object.getOwnPropertyDescriptor(Element.prototype, 'scrollIntoView');
 const scrolled: string[] = [];
@@ -36,7 +37,7 @@ function Help({ open }: { open: boolean }) {
 
 describe('Help section navigation', () => {
   it('waits for the destination article and preserves its anchor through development effect replay', async () => {
-    const { container, rerender } = render(<Help open />);
+    const { baseElement: container, rerender } = render(<Help open />);
     await waitFor(() => expect(container.querySelector('article h2')?.textContent).toContain('interface'));
     rerender(<Help open={false} />);
     await waitFor(() => expect(container.querySelector('article')).toBeNull());
@@ -49,7 +50,7 @@ describe('Help section navigation', () => {
     scrolled.length = 0;
     act(() => useEditorStore.getState().setHelpTarget({ page: 'welcome', anchor: 'welcome-help' }));
     await waitFor(() => expect(scrolled).toContain('help-welcome-help'));
-    await waitFor(() => expect(container.querySelector('#help-welcome-help')?.closest('section')?.textContent).toContain('What’s this?'));
+    await waitFor(() => expect(container.querySelector('#help-welcome-help')?.closest('section')?.textContent).toContain(translateFor('en', 'shortcut.whats_this')));
     expect(article.parentElement?.parentElement?.scrollTop).toBe(123);
   });
 });

@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 /**
  * The display's pixel multiplier is re-read on the one media change that moves it. Safari before 16
  * has no `resolution` media feature, so the exact query there never matches and the prefixed pair

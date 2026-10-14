@@ -1,8 +1,7 @@
 // @vitest-environment node
 import { describe, it, expect, vi } from 'vitest';
-// @ts-ignore - node builtins are untyped in this tree
 import { inflateSync } from 'node:zlib';
-import { BAND_ROWS_MAX, needsBanding, planTiles, renderBanded, type BandSurface, type BandWindow } from '../../../io/export/banded';
+import { needsBanding, renderBanded, type BandSurface, type BandWindow } from '../../../io/export/banded';
 import { CANVAS_LIMITS } from '../../../io/export/sizing';
 
 const WEBKIT = { maxDim: 4096, maxArea: 4096 * 4096 };
@@ -15,24 +14,6 @@ describe('deciding to band', () => {
   });
 });
 
-describe('planning tiles', () => {
-  it('cuts columns at the longest side allowed and bands at the area the columns leave', () => {
-    const plan = planTiles(10848, 9838, WEBKIT);
-    expect(plan.cols.map((c) => c.w)).toEqual([4096, 4096, 2656]);
-    expect(plan.cols.map((c) => c.x)).toEqual([0, 4096, 8192]);
-    expect(plan.rows[0]!.h).toBe(BAND_ROWS_MAX);
-    expect(plan.rows.reduce((n, r) => n + r.h, 0)).toBe(9838);
-    expect(plan.rows.every((r, i) => i === 0 || r.y === plan.rows[i - 1]!.y + plan.rows[i - 1]!.h)).toBe(true);
-  });
-
-  it('keeps one column where the width fits, and shortens bands to the area', () => {
-    const plan = planTiles(3000, 5000, { maxDim: 16384, maxArea: 3000 * 300 });
-    expect(plan.cols).toEqual([{ x: 0, w: 3000 }]);
-    expect(plan.rows[0]!.h).toBe(300);
-    expect(plan.rows.length).toBe(Math.ceil(5000 / 300));
-  });
-});
-
 /** A surface whose pixels name the composition coordinates they stand at, so the assembled file
  *  proves every tile landed where its transform said. */
 function namingSurface(): { make: (w: number, h: number) => BandSurface; windows: BandWindow[] } {
@@ -40,7 +21,7 @@ function namingSurface(): { make: (w: number, h: number) => BandSurface; windows
   const make = (_w: number, _h: number): BandSurface => {
     let dx = 0, dy = 0;
     const ctx = {
-      setTransform: (_a: number, _b: number, _c: number, _d: number, e: number, f: number) => { dx = e; dy = f; },
+      setTransform: (...matrix: number[]) => { dx = matrix[4]!; dy = matrix[5]!; },
       clearRect() {}, save() {}, restore() {}, beginPath() {}, rect() {}, clip() {},
     } as unknown as CanvasRenderingContext2D;
     return {
@@ -90,7 +71,10 @@ async function decodeRgba(blob: Blob, w: number, h: number): Promise<Uint8Array>
       const a = i >= 4 ? out[y * stride + i - 4]! : 0, b = y > 0 ? out[(y - 1) * stride + i]! : 0, c = y > 0 && i >= 4 ? out[(y - 1) * stride + i - 4]! : 0;
       let p = 0;
       if (f === 1) p = a; else if (f === 2) p = b; else if (f === 3) p = (a + b) >> 1;
-      else if (f === 4) { const q = a + b - c, pa = Math.abs(q - a), pb = Math.abs(q - b), pc = Math.abs(q - c); p = pa <= pb && pa <= pc ? a : pb <= pc ? b : c; }
+      else if (f === 4) {
+        const q = a + b - c, pa = Math.abs(q - a), pb = Math.abs(q - b), pc = Math.abs(q - c);
+        p = pa <= pb && pa <= pc ? a : pb <= pc ? b : c;
+      }
       out[y * stride + i] = (v + p) & 255;
     }
   }
@@ -124,5 +108,53 @@ describe('rendering in bands', () => {
     await expect(renderBanded({ width: 40, height: 40, limits: { maxDim: 40, maxArea: 40 * 10 }, surface: make, paint, signal: controller.signal }))
       .rejects.toHaveProperty('name', 'AbortError');
     expect(paint).toHaveBeenCalledTimes(1);
+  });
+
+  it('paints nothing when cancelled before it starts, and frees its tile', async () => {
+    const { make } = namingSurface();
+    const destroy = vi.fn();
+    const controller = new AbortController();
+    controller.abort();
+    const paint = vi.fn();
+    await expect(renderBanded({
+      width: 40, height: 40, limits: { maxDim: 40, maxArea: 40 * 10 }, signal: controller.signal, paint,
+      surface: (w, h) => ({ ...make(w, h), destroy }),
+    })).rejects.toHaveProperty('name', 'AbortError');
+    expect(paint).not.toHaveBeenCalled();
+    expect(destroy).toHaveBeenCalledTimes(1);
+  });
+
+  it('reads no pixels of a tile cancelled while it painted', async () => {
+    const { make } = namingSurface();
+    const controller = new AbortController();
+    const read = vi.fn();
+    await expect(renderBanded({
+      width: 40, height: 40, limits: { maxDim: 40, maxArea: 40 * 10 }, signal: controller.signal,
+      paint: async () => { await Promise.resolve(); controller.abort(); },
+      surface: (w, h) => ({ ...make(w, h), read }),
+    })).rejects.toHaveProperty('name', 'AbortError');
+    expect(read).not.toHaveBeenCalled();
+  });
+
+  it('passes a painter failure through and frees its tile', async () => {
+    const { make } = namingSurface();
+    const destroy = vi.fn();
+    await expect(renderBanded({
+      width: 40, height: 40, limits: { maxDim: 40, maxArea: 40 * 10 },
+      paint: () => { throw new Error('capture failed'); },
+      surface: (w, h) => ({ ...make(w, h), destroy }),
+    })).rejects.toThrow('capture failed');
+    expect(destroy).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    ['one pixel', 1, 1, { maxDim: 300, maxArea: 300 * 300 }],
+    ['an exact multiple of the tile', 600, 240, { maxDim: 300, maxArea: 300 * 120 }],
+    ['one pixel past a tile', 301, 121, { maxDim: 300, maxArea: 300 * 120 }],
+    ['a ceiling narrower than one row', 7, 5, { maxDim: 3, maxArea: 2 }],
+  ])('assembles %s exactly', async (_name, w, h, limits) => {
+    const { make } = namingSurface();
+    const blob = await renderBanded({ width: w, height: h, limits, surface: make, paint: () => {} });
+    expect(Array.from(await decodeRgba(blob, w, h))).toEqual(Array.from(expectedPicture(w, h)));
   });
 });

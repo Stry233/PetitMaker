@@ -1,0 +1,7 @@
+{
+  "landmark-ground": "Saves written before 2026-10-09 never stored the terrain a template lays under a landmark. Every load lays it back (the layer-1 mountain under the built-in Neighbor Center plaza), so a built-in map gains those cells.",
+  "landmark-layout-v3": "Save format 3 lays the landmarks at the game's layout sheet: the Neighbor Center moved and grew and the station joined. Every load takes off the objects and terrain a landmark now stands over, then whatever that leaves breaking a post-stroke rule (unsupported blocks, uncontained water), and reports it as landmark-cleared.",
+  "history-before-v3": "The v2-to-v3 migration drops undo history recorded against the earlier landmark layout, in JSON files and autosave records alike, because undo replays entries without the rules.",
+  "ramp-v1-reanchor": "Version 1 ramps were four cells long. The v1-to-v2 migration keeps their cliff end, so a ramp rotated 180 or 270 degrees moves its anchor two cells along its run.",
+  "share-identity-drift": "A share code records the fingerprints of the template and catalog it was made with. A code from a release with another landmark layout or catalog imports with the template-drift and catalog-drift notices."
+}

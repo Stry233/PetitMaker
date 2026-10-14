@@ -4,6 +4,7 @@ import type {
   GridState,
   PreCommandRule,
   PostStrokeRule,
+  StrokeScope,
   ValidationError,
 } from '../core/model/types';
 import type { RuleDispatcher } from '../core/model/rule-dispatcher';
@@ -18,16 +19,17 @@ import type { RuleDispatcher } from '../core/model/rule-dispatcher';
  * earlier ones produced errors — errors are accumulated, not short-circuited.
  *
  * Guarantees:
- * - Never mutates STATE. One documented exception on commands: the waterSpan and
- *   heightDrop traits SNAP cmd.object (position/rotation/spanLength/elevation)
- *   during validation so later rules judge the real footprint (rules/index.ts
- *   documents the ordering). A command REJECTED by a later rule keeps the snap —
- *   callers must not reuse a failed command object for a fresh attempt.
+ * - Never mutates state or a command. Resolution (`resolve`) runs before any rule judges a
+ *   command, so every rule sees the footprint the command lands with, whatever the order.
  * - Returns [] when no rules are registered or none apply.
  */
 export class RuleRegistry implements RuleDispatcher {
   private preCommandRules: PreCommandRule[] = [];
   private postStrokeRules: PostStrokeRule[] = [];
+
+  /** The named set this registry was built as (`index.ts:createRuleRegistry`), so another thread can
+   *  build the same one; null for a registry assembled by hand. */
+  constructor(readonly ruleSet: RuleSetName | null = null) {}
 
   register(rule: AnyRule): void {
     if (rule.phase === 'pre-command') {
@@ -42,11 +44,21 @@ export class RuleRegistry implements RuleDispatcher {
     return [...this.preCommandRules, ...this.postStrokeRules].map((r) => ({ id: r.id, phase: r.phase }));
   }
 
-  validatePreCommand(cmd: Command, state: GridState): ValidationError[] {
+  resolve<C extends Command>(cmd: C, state: GridState): C {
+    let landed: Command = cmd;
+    for (const rule of this.preCommandRules) {
+      if (rule.resolve && rule.appliesTo.includes(landed.type)) landed = rule.resolve(landed, state);
+    }
+    // A resolve step keeps the command's type (`definePreRule` narrows it to the rule's own).
+    return landed as C;
+  }
+
+  validatePreCommand(cmd: Command, state: GridState, scope?: StrokeScope): ValidationError[] {
+    const landed = this.resolve(cmd, state);
     const errors: ValidationError[] = [];
     for (const rule of this.preCommandRules) {
-      if (rule.appliesTo.includes(cmd.type)) {
-        errors.push(...rule.validate(cmd, state));
+      if (rule.appliesTo.includes(landed.type)) {
+        errors.push(...rule.validate(landed, state, scope));
       }
     }
     return errors;
@@ -61,3 +73,6 @@ export class RuleRegistry implements RuleDispatcher {
     return errors;
   }
 }
+
+/** The rule sets a live map runs under: the ordinary editor's, and the planet session's. */
+export type RuleSetName = 'default' | 'planet';

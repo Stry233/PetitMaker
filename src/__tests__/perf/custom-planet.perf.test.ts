@@ -1,5 +1,5 @@
 /*
- * What the largest custom planet costs against the README map.
+ * What the largest custom planet costs against the readme map.
  *
  * The baseline is the hand-built share map (`docs/media/share-map.png`, 169 × 140 hexia). Two
  * 256 × 256 planets carry that build copied over them and then settled by the rules: the
@@ -10,36 +10,37 @@
  * the gate and methodology.
  */
 import { describe, expect, it, vi } from 'vitest';
-// @ts-ignore - node:fs is untyped here (no @types/node)
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { PERF, perfSuite } from './_harness';
 import { islandConfig, makeWorld, type World } from './_fixtures';
-import { generateTerrain } from '../../tools/generation/terrain-generator';
-import { worstCasePlanet } from '../fixtures/planet';
+import { landmarkAt, worstCasePlanet } from '../_support/planet';
 import { importFromBytes } from '../../io/share/import';
-import { buildSaveFile, serialize } from '../../io/json-codec';
+import { buildSaveFile, serialize } from '../../io/save/json-codec';
 import { encodeMapPayload, type ShareCodeMeta } from '../../io/share/codec/payload';
-import { evaluateMap } from '../../tools/generation/designer/eval';
-import { previewTransfer } from '../../kit/operations/planet-preview';
-import { reviveTransferPreview, wireGrid, type WireTransferPreview } from '../../kit/operations/candidate-pool';
+import { evaluateMap } from '../_support/design-eval';
+import { transferPreviewOf } from '../../tools/generation/run/planet-preview';
+import { reviveTransferPreview, wireGrid, type WireTransferPreview } from '../../tools/generation/run/candidate-wire';
 import { encodeCells } from '../../core/model/grid-wire';
-import { buildTransfer } from '../../kit/operations/transfer';
-import { sessionTemplate } from '../../kit/operations/planet-session';
-import type { KitContext } from '../../kit/context';
+import { buildTransfer } from '../../tools/generation/transfer';
+import { sessionPlanet } from '../../editor/operations/planet-session';
 import { getMapTemplate } from '../../config/maps';
-import { createGridState, deriveBoundary, PLANET_CANVAS_ID_PREFIX, planetTemplateId, refreshBoundary, PLANET_MAX_CELLS } from '../../core/model/planet';
-import { PLANET_PROFILE, CHUNK_SIZE } from '../../core/model/game-profile';
+import { planetTemplateId, PLANET_MAX_CELLS } from '../../core/model/planet';
+import { createGridState } from '../../core/model/template';
+import { deriveBoundary, refreshBoundary } from '../../core/model/shore';
+import { PLANET_CANVAS_ID_PREFIX } from '../../tools/generation/run/planet-canvas';
+import { PLANET_PROFILE, CHUNK_SIZE } from '../../core/game/profile';
+import { ANCHOR_LANDMARK } from '../_support/anchor';
 import { validatePlanetTemplate } from '../../core/model/planet-validate';
-import { footprintCells, getPlacedObjectSize } from '../../state/object-geometry';
-import { CellZone, CommandType, TerrainType, type EditorEvents, type GridState, type MacroCell, type MacroCoord, type MapTemplate, type PaintTerrainCommand } from '../../core/model/types';
+import { getPlacedObjectSize } from '../../state/object-geometry';
+import { footprintCells } from '../../core/grid/footprint';
+import { CommandType, TerrainType, type GridState, type MacroCell, type MacroCoord, type MapTemplate, type PaintTerrainCommand } from '../../core/model/types';
+import { CellZone } from '../../core/game/zones';
 import { CommandExecutor } from '../../core/commands/command-executor';
-import { EventBus } from '../../core/commands/event-bus';
 import { createPlanetRegistry } from '../../rules/index';
-import { roadLookup } from '../../state/object-index';
+import { createExecutor } from '../../state/executor';
+import { generateWith } from '../_support/generation';
 
 vi.setConfig({ testTimeout: 120_000 });
-
-declare const process: { env: Record<string, string | undefined> };
 
 const s = perfSuite('custom-planet');
 const META: ShareCodeMeta = { appVersion: 'perf', saveVersion: 1 };
@@ -62,8 +63,11 @@ function fullGroundPlanet(): MapTemplate {
   const n = PLANET_MAX_CELLS, m = 3;
   const zones = deriveBoundary(Array.from({ length: n }, (_, y) => Array.from({ length: n }, (_, x): CellZone =>
     (x >= m && y >= m && x < n - m && y < n - m ? CellZone.Grass : CellZone.Void))));
-  const plaza = { x: n / 2 - PLANET_PROFILE.landmark.width / 2 + 0.5, y: n / 2 - PLANET_PROFILE.landmark.height / 2, ...PLANET_PROFILE.landmark };
-  const body = { width: n, height: n, zones, plaza, chunkGrid: { origin: { x: 0, y: 0 }, columns: PLANET_PROFILE.maxChunks, rows: PLANET_PROFILE.maxChunks } };
+  const plaza = landmarkAt(n / 2 - ANCHOR_LANDMARK.width / 2 + 0.5, n / 2 - ANCHOR_LANDMARK.height / 2);
+  const body = {
+    width: n, height: n, zones, landmarks: [plaza],
+    chunkGrid: { origin: { x: 0, y: 0 }, columns: PLANET_PROFILE.maxChunks, rows: PLANET_PROFILE.maxChunks },
+  };
   const t: MapTemplate = { id: planetTemplateId(body), name: { en: 'Full' }, ...body };
   if (validatePlanetTemplate(t) !== null) throw new Error('fullGroundPlanet: invalid fixture');
   return t;
@@ -137,8 +141,6 @@ function census(state: GridState): { grass: number; terrain: number; objects: nu
   return { grass, terrain, objects: state.objects.size };
 }
 
-const kitOf = (state: GridState) => ({ state }) as KitContext;
-
 /**
  * Times `op` on the share map, the filled worst-case planet and the filled full-ground planet, and
  * holds the worst-case planet to four times the share map. The full-ground planet carries about
@@ -192,9 +194,9 @@ describe.runIf(PERF)('perf: custom planet', () => {
     console.warn(`[measure] payload bytes: ${JSON.stringify(report)} (glyph limit ${GLYPH_MAX_PAYLOAD})`);
   });
 
-  it('previewTransfer of the share map onto each planet and onto tafa', async () => {
+  it('the carry preview of the share map onto each planet and onto tafa', async () => {
     const src = await readShareMap();
-    const onto = (from: GridState, t: MapTemplate) => () => previewTransfer(kitOf(from), t);
+    const onto = (from: GridState, t: MapTemplate) => () => transferPreviewOf(from, t);
     const hexia = getMapTemplate('hexia'), tafa = getMapTemplate('tafa');
     const worst = worstCasePlanet(), full = fullGroundPlanet();
     const a = await s.bench('preview-transfer/share-map-to-hexia', onto(src, hexia), { maxSamples: 10 });
@@ -205,7 +207,7 @@ describe.runIf(PERF)('perf: custom planet', () => {
     const f = await s.bench('preview-transfer/full-ground-to-full-ground', onto(fullPlanet(src), full), { maxSamples: 5 });
     console.warn(`[measure] preview-transfer p50/p95: onto hexia ${a.p50.toFixed(0)}/${a.p95.toFixed(0)} ms, worst-case ${b.p50.toFixed(0)}/${b.p95.toFixed(0)} ms, full ground ${c.p50.toFixed(0)}/${c.p95.toFixed(0)} ms, tafa ${d.p50.toFixed(0)}/${d.p95.toFixed(0)} ms; full ground onto tafa ${e.p50.toFixed(0)}/${e.p95.toFixed(0)} ms, onto itself ${f.p50.toFixed(0)}/${f.p95.toFixed(0)} ms`);
     expect(b.p50 / a.p50, 'preview-transfer onto the worst-case planet against hexia').toBeLessThanOrEqual(BOUND);
-    const p = previewTransfer(kitOf(src), worst);
+    const p = transferPreviewOf(src, worst);
     console.warn(`[measure] share map onto the worst-case planet: moved ${JSON.stringify(p.moved)}, dropped ${JSON.stringify(p.droppedCounts)}`);
   });
 
@@ -216,10 +218,13 @@ describe.runIf(PERF)('perf: custom planet', () => {
     // message, and the answer cloned back and revived. The replay itself runs in the worker.
     const post = (st: GridState) => () => { const g = wireGrid(st, false); structuredClone(g, { transfer: [g.wire.buffer] }); };
     const answer = (st: GridState, t: MapTemplate) => {
-      const p = previewTransfer(kitOf(st), t);
+      const p = transferPreviewOf(st, t);
       return () => {
         const wire: WireTransferPreview = {
-          grid: { wire: encodeCells(p.state.cells, t.width, t.height), objects: [...p.state.objects.values()], lockedLayers: [], cellsVersion: 0, objectsVersion: 0 },
+          grid: {
+            wire: encodeCells(p.state.cells, t.width, t.height), objects: [...p.state.objects.values()], lockedLayers: [], cellsVersion: 0,
+            objectsVersion: 0,
+          },
           dropped: p.dropped, moved: p.moved, droppedCounts: p.droppedCounts,
         };
         reviveTransferPreview(structuredClone(wire, { transfer: [wire.grid.wire.buffer] }), t);
@@ -236,9 +241,9 @@ describe.runIf(PERF)('perf: custom planet', () => {
     console.warn(`[measure] preview-transfer wire p50 ms: ${rows.join('; ')}`);
   });
 
-  it('sessionTemplate', async () => {
+  it('the session planet cut', async () => {
     const src = await readShareMap();
-    await trio('session-template', (st) => sessionTemplate(st), src, { maxSamples: 30 });
+    await trio('session-template', (st) => sessionPlanet(st)?.template ?? null, src, { maxSamples: 30 });
   });
 
   it('refreshBoundary per change at the largest brush and shape sizes', async () => {
@@ -270,20 +275,22 @@ describe.runIf(PERF)('perf: custom planet', () => {
   it('a whole-canvas ground rectangle through the planet rules', async () => {
     const n = PLANET_MAX_CELLS;
     const zones = Array.from({ length: n }, () => Array.from({ length: n }, (): CellZone => CellZone.Void));
-    const canvas: MapTemplate = { id: `${PLANET_CANVAS_ID_PREFIX}1`, name: { en: '' }, width: n, height: n, zones, plaza: { x: 0, y: 0, width: 0, height: 0, elevation: 1 } };
+    const canvas: MapTemplate = { id: `${PLANET_CANVAS_ID_PREFIX}1`, name: { en: '' }, width: n, height: n, zones, landmarks: [] };
     const cells: MacroCoord[] = [];
     for (let y = 3; y < n - 3; y++) for (let x = 3; x < n - 3; x++) cells.push({ x, y });
     let executor: CommandExecutor;
     let state: GridState;
     const stroke = () => {
-      const start = executor.getUndoStackSize();
-      executor.execute({ type: CommandType.PaintTerrain, timestamp: 0, cells, terrainType: TerrainType.Mountain, elevation: 0, ground: CellZone.Grass } as PaintTerrainCommand);
+      const start = executor.beginStroke();
+      executor.execute(
+        { type: CommandType.PaintTerrain, cells, terrainType: TerrainType.Mountain, elevation: 0, ground: CellZone.Grass } as PaintTerrainCommand,
+      );
       refreshBoundary(state.cells, cells);
-      return executor.commitStroke(start);
+      return start.commit();
     };
     const setup = () => {
       state = createGridState(canvas);
-      executor = new CommandExecutor(state, new EventBus<EditorEvents>(), createPlanetRegistry(), roadLookup(state));
+      executor = createExecutor(state, createPlanetRegistry());
     };
     setup();
     const violations = stroke();
@@ -294,9 +301,9 @@ describe.runIf(PERF)('perf: custom planet', () => {
   it('a designed generation run on each planet', async () => {
     const world = (t: MapTemplate) => makeWorld(createGridState(t));
     const run = (w: World) => {
-      const start = w.executor.getUndoStackSize();
-      generateTerrain(islandConfig(), w.state, (c) => w.executor.execute(c), w.executor.getRegistry());
-      w.executor.commitStroke(start);
+      const start = w.executor.beginStroke();
+      generateWith(w.state, w.executor, islandConfig());
+      start.commit();
     };
     const hexia = getMapTemplate('hexia'), worst = worstCasePlanet(), full = fullGroundPlanet();
     let w = world(hexia);

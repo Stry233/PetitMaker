@@ -1,13 +1,17 @@
 type Handler<T> = (data: T) => void;
 
+/** A bus over a wider event map passes where a narrower one is asked for: the kernel takes a bus of
+ *  its own events and the editor hands it the bus of every editor event. */
 export class EventBus<EventMap> {
-  private listeners = new Map<keyof EventMap, Set<Handler<never>>>();
+  private listeners = new Map<PropertyKey, Set<Handler<never>>>();
 
-  on<K extends keyof EventMap>(event: K, handler: Handler<EventMap[K]>): void {
+  /** Returns the unsubscribe, the same as `off(event, handler)`. */
+  on<K extends keyof EventMap>(event: K, handler: Handler<EventMap[K]>): () => void {
     if (!this.listeners.has(event)) {
       this.listeners.set(event, new Set());
     }
     this.listeners.get(event)!.add(handler as Handler<never>);
+    return () => this.off(event, handler);
   }
 
   off<K extends keyof EventMap>(event: K, handler: Handler<EventMap[K]>): void {
@@ -17,10 +21,8 @@ export class EventBus<EventMap> {
   emit<K extends keyof EventMap>(event: K, data: EventMap[K]): void {
     const handlers = this.listeners.get(event);
     if (!handlers) return;
-    // Snapshot + per-handler isolation: the toast and the map flash ride the same
-    // event, so one faulty listener silencing the rest turns every rule violation
-    // into invisible feedback — and a throw here would also escape into the
-    // EMITTER (the command executor), failing the user's action itself.
+    // Unlike `base/signal.ts:createSignal`, a listener's throw is logged and the rest still run: the
+    // toast and the map flash ride one event, and a throw would otherwise reach the executor.
     for (const handler of [...handlers]) {
       try {
         (handler as Handler<EventMap[K]>)(data);

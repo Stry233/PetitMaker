@@ -5,32 +5,15 @@
  */
 import { canvasFitScale, type CanvasLimits } from './sizing';
 import { PngStream } from './png-stream';
+import { planTiles } from './tile-plan';
+import { nextMacrotask, throwIfAborted } from '../../platform/async/abort';
 
 /** The part of the composition a tile shows, in composition pixels. */
 export interface BandWindow { left: number; top: number; right: number; bottom: number }
 
-export interface TilePlan {
-  cols: Array<{ x: number; w: number }>;
-  rows: Array<{ y: number; h: number }>;
-}
-
-/** Rows per band at most: a 10848 px wide band this tall reads back as 44 MB of pixels. */
-export const BAND_ROWS_MAX = 1024;
-
 /** Whether a composition of this size outgrows what one canvas may hold here. */
 export function needsBanding(size: { width: number; height: number }, limits: CanvasLimits): boolean {
   return canvasFitScale(size.width, size.height, limits) < 1;
-}
-
-/** Columns as wide as the longest side allows, bands as tall as the area then leaves. */
-export function planTiles(width: number, height: number, limits: CanvasLimits, maxRows = BAND_ROWS_MAX): TilePlan {
-  const tileW = Math.max(1, Math.min(width, Math.floor(limits.maxDim)));
-  const tileH = Math.max(1, Math.min(height, maxRows, Math.floor(limits.maxDim), Math.floor(limits.maxArea / tileW)));
-  const cols: TilePlan['cols'] = [];
-  for (let x = 0; x < width; x += tileW) cols.push({ x, w: Math.min(tileW, width - x) });
-  const rows: TilePlan['rows'] = [];
-  for (let y = 0; y < height; y += tileH) rows.push({ y, h: Math.min(tileH, height - y) });
-  return { cols, rows };
 }
 
 /** A drawing surface of one tile's size, read back as RGBA rows. */
@@ -67,9 +50,6 @@ export interface RenderBandedArgs {
   level?: number;
 }
 
-const cancelled = () => new DOMException('Cancelled', 'AbortError');
-/** A macrotask between bands, so progress paints and a cancel is heard. */
-const breathe = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
 
 export async function renderBanded(args: RenderBandedArgs): Promise<Blob> {
   const { width, height, limits, paint, signal } = args;
@@ -83,7 +63,7 @@ export async function renderBanded(args: RenderBandedArgs): Promise<Blob> {
   try {
     for (const [ri, row] of plan.rows.entries()) {
       for (const col of plan.cols) {
-        if (signal?.aborted) throw cancelled();
+        throwIfAborted(signal);
         const window: BandWindow = { left: col.x, top: row.y, right: col.x + col.w, bottom: row.y + row.h };
         const { ctx } = surface;
         ctx.setTransform(1, 0, 0, 1, -col.x, -row.y);
@@ -94,7 +74,7 @@ export async function renderBanded(args: RenderBandedArgs): Promise<Blob> {
         ctx.clip();
         await paint(ctx, window);
         ctx.restore();
-        if (signal?.aborted) throw cancelled();
+        throwIfAborted(signal);
         const pixels = surface.read(col.w, row.h);
         if (!rowBuffer) {
           png.addRows(pixels, row.h);
@@ -106,7 +86,7 @@ export async function renderBanded(args: RenderBandedArgs): Promise<Blob> {
       }
       if (rowBuffer) png.addRows(rowBuffer.subarray(0, row.h * width * 4), row.h);
       args.onProgress?.((ri + 1) / plan.rows.length);
-      await breathe();
+      await nextMacrotask(); // a macrotask between bands, so progress paints and a cancel is heard
     }
     return png.finish();
   } finally {

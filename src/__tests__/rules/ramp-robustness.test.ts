@@ -1,10 +1,10 @@
 import { describe, it, expect } from 'vitest';
 import { createDefaultRegistry } from '../../rules';
 import { CommandType, TerrainType, type GridState, type PlaceObjectCommand } from '../../core/model/types';
-import { makeState, setTerrain } from './_helpers';
+import { makeState, setTerrain } from '../_support/map-state';
 
 /**
- * Ramp (heightDrop) robustness audit: the support sweep must validate the REAL
+ * Ramp (heightDrop) robustness audit: the support sweep must validate the real
  * surface — not just elevation numbers. Water at the right elevation is not
  * support; Γ fillets are cosmetic; corner trims on full blocks are cosmetic.
  */
@@ -17,15 +17,15 @@ describe('ramp policy robustness', () => {
   }
   function placeRamp(x: number, y: number): PlaceObjectCommand {
     return {
-      type: CommandType.PlaceObject, timestamp: 0,
-      object: { id: 'r1', catalogId: 'ramp-park-steps', position: { x, y }, rotation: 0, elevation: 0 },
+      type: CommandType.PlaceObject,       object: { id: 'r1', catalogId: 'ramp-park-steps', position: { x, y }, rotation: 0, elevation: 0 },
     };
   }
 
   it('baseline: clean south cliff accepts and snaps the ramp', () => {
     const state = plateau();
-    const cmd = placeRamp(8, 14);
-    expect(createDefaultRegistry().validatePreCommand(cmd, state)).toHaveLength(0);
+    const registry = createDefaultRegistry();
+    const cmd = registry.resolve(placeRamp(8, 14), state);
+    expect(registry.validatePreCommand(cmd, state)).toHaveLength(0);
     expect(cmd.object.rotation).toBe(0);
   });
 
@@ -87,12 +87,12 @@ describe('ramp placement is symmetric across the four cliff faces', () => {
     return state;
   }
   function tryRamp(x: number, y: number): PlaceObjectCommand & { ok: boolean } {
-    const cmd = {
-      type: CommandType.PlaceObject as const, timestamp: 0,
-      object: { id: 'r1', catalogId: 'ramp-park-steps', position: { x, y }, rotation: 0 as const, elevation: 0 },
-      loadValue: 80,
-    };
-    const ok = createDefaultRegistry().validatePreCommand(cmd, block()).length === 0;
+    const registry = createDefaultRegistry();
+    const state = block();
+    const cmd = registry.resolve<PlaceObjectCommand>({
+      type: CommandType.PlaceObject,       object: { id: 'r1', catalogId: 'ramp-park-steps', position: { x, y }, rotation: 0, elevation: 0 },
+    }, state);
+    const ok = registry.validatePreCommand(cmd, state).length === 0;
     return { ...cmd, ok };
   }
 

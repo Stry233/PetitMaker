@@ -10,12 +10,14 @@
 import { describe, it } from 'vitest';
 import { PERF, perfSuite } from './_harness';
 import { denseIsland, islandConfig, templateWorld } from './_fixtures';
-import { serialize, deserialize } from '../../io/json-codec';
+import { serialize } from '../../io/save/json-codec';
+import { deserialize } from '../_support/save-file';
 import { encodeMapPayload, decodeMapPayload } from '../../io/share/codec/payload';
-import { encodeHistory, decodeHistory, type HistoryBounds } from '../../io/history-codec';
-import { serializeWithSections } from '../../io/export-json';
-import { generateTerrain } from '../../tools/generation/terrain-generator';
+import { encodeHistory, decodeHistory } from '../../io/save/history-codec';
+import { carrying, serializeWithSections } from '../../io/save/sections';
 import type { ShareCodeMeta } from '../../io/share/codec/payload';
+import { exportable } from '../_support/exportable';
+import { generateWith } from '../_support/generation';
 
 const s = perfSuite('io');
 const enc = new TextEncoder();
@@ -49,33 +51,25 @@ describe.runIf(PERF)('perf: io', () => {
 
   it('history codec: encode and decode a ~100-entry undo stack', async () => {
     // A real editing session's undo stack, not a synthetic one: run the designed generator over
-    // a fresh template WITHOUT collapsing the stroke, so every PaintTerrain/TrimCorners/PlaceObject
+    // a fresh template without collapsing the stroke, so every PaintTerrain/TrimCorners/PlaceObject
     // it issues keeps its own entry, then take the tail — the shape an editor actually accumulates.
     const world = templateWorld();
-    generateTerrain(islandConfig(4242), world.state, (c) => world.executor.execute(c), world.executor.getRegistry());
+    generateWith(world.state, world.executor, islandConfig(4242));
     const entries = world.executor.getUndoEntries().slice(-100);
-    const bounds: HistoryBounds = { width: world.state.template.width, height: world.state.template.height };
+    const template = world.state.template;
 
     let section = encodeHistory(entries, 'all');
     await s.bench('history/encode', () => { section = encodeHistory(entries, 'all'); }, {
       meta: { entries: entries.length },
     });
-    await s.bench('history/decode', () => { decodeHistory(section, bounds); });
+    await s.bench('history/decode', () => { decodeHistory(section, template); });
   });
 
   it('sectioned JSON export: pure assembly over the dense map', async () => {
     const { state } = denseIsland();
-    const opts = {
-      includeGeneration: true,
-      includeProvenance: true,
-      history: null,
-      session: null,
-      includeStats: true,
-      includeCatalogInfo: true,
-      pretty: false,
-    };
-    const out = serializeWithSections(state, opts);
-    await s.bench('export/sections-pure', () => { serializeWithSections(state, opts); }, {
+    const opts = { carry: carrying('annotations', 'notes', 'generation', 'provenance', 'stats', 'catalog'), pretty: false };
+    const out = serializeWithSections(exportable(state), opts);
+    await s.bench('export/sections-pure', () => { serializeWithSections(exportable(state), opts); }, {
       meta: { bytes: byteLen(out) },
     });
   });

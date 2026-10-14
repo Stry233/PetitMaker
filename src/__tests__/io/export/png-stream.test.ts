@@ -1,6 +1,5 @@
 // @vitest-environment node
 import { describe, it, expect } from 'vitest';
-// @ts-ignore - node builtins are untyped in this tree
 import { inflateSync } from 'node:zlib';
 import { PngStream } from '../../../io/export/png-stream';
 
@@ -51,7 +50,10 @@ function unfilter(raw: Uint8Array, w: number, h: number): Uint8Array {
       const c = y > 0 && i >= bpp ? out[(y - 1) * stride + i - bpp]! : 0;
       let pred = 0;
       if (f === 1) pred = a; else if (f === 2) pred = b; else if (f === 3) pred = (a + b) >> 1;
-      else if (f === 4) { const p = a + b - c, pa = Math.abs(p - a), pb = Math.abs(p - b), pc = Math.abs(p - c); pred = pa <= pb && pa <= pc ? a : pb <= pc ? b : c; }
+      else if (f === 4) {
+        const p = a + b - c, pa = Math.abs(p - a), pb = Math.abs(p - b), pc = Math.abs(p - c);
+        pred = pa <= pb && pa <= pc ? a : pb <= pc ? b : c;
+      }
       else if (f !== 0) throw new Error(`filter ${f}`);
       out[y * stride + i] = (row[i]! + pred) & 255;
     }
@@ -99,5 +101,58 @@ describe('the streaming PNG encoder', () => {
     const whole = new PngStream(w, h); whole.addRows(px, h);
     const parts = new PngStream(w, h); parts.addRows(px.subarray(0, w * 4 * 7), 7); parts.addRows(px.subarray(w * 4 * 7), 5);
     expect(Array.from(await decode(whole.finish(), w, h))).toEqual(Array.from(await decode(parts.finish(), w, h)));
+  });
+});
+
+describe('the streaming PNG encoder at its limits', () => {
+  it.each([[0, 4], [4, 0], [-1, 4], [Number.NaN, 4], [4, Number.NaN]])('refuses a %s by %s picture', (w, h) => {
+    expect(() => new PngStream(w, h)).toThrow(RangeError);
+  });
+
+  it('writes a single pixel', async () => {
+    const png = new PngStream(1, 1);
+    png.addRows(new Uint8Array([10, 20, 30, 255]), 1);
+    expect(Array.from(await decode(png.finish(), 1, 1))).toEqual([10, 20, 30, 255]);
+  });
+
+  it('refuses more rows than announced, fewer bytes than rows, and rows after the end', () => {
+    const png = new PngStream(2, 2);
+    expect(() => png.addRows(new Uint8Array(2 * 4 * 3), 3)).toThrow(RangeError);
+    expect(() => png.addRows(new Uint8Array(2 * 4 - 1), 1)).toThrow(RangeError);
+    png.addRows(new Uint8Array(2 * 4 * 2), 2);
+    png.finish();
+    expect(() => png.addRows(new Uint8Array(8), 1)).toThrow('the PNG is finished');
+  });
+
+  it('accepts an empty band between bands without changing the picture', async () => {
+    const w = 9, h = 6;
+    const px = picture(w, h);
+    const png = new PngStream(w, h);
+    png.addRows(px.subarray(0, w * 4 * 3), 3);
+    png.addRows(new Uint8Array(0), 0);
+    png.addRows(px.subarray(w * 4 * 3), 3);
+    expect(Array.from(await decode(png.finish(), w, h))).toEqual(Array.from(px));
+  });
+
+  it('reads clamped rows through a view that starts inside a larger buffer', async () => {
+    const w = 5, h = 3;
+    const px = picture(w, h);
+    const backing = new Uint8ClampedArray(px.length + 12);
+    backing.set(px, 12);
+    const png = new PngStream(w, h);
+    png.addRows(backing.subarray(12), h);
+    expect(Array.from(await decode(png.finish(), w, h))).toEqual(Array.from(px));
+  });
+
+  it('keeps its rows when the caller reuses the buffer for the next band', async () => {
+    const w = 6, h = 4;
+    const px = picture(w, h);
+    const band = new Uint8Array(w * 4 * 2);
+    const png = new PngStream(w, h);
+    band.set(px.subarray(0, band.length));
+    png.addRows(band, 2);
+    band.set(px.subarray(band.length));
+    png.addRows(band, 2);
+    expect(Array.from(await decode(png.finish(), w, h))).toEqual(Array.from(px));
   });
 });

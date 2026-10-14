@@ -1,5 +1,6 @@
+// @vitest-environment jsdom
 /**
- * The Help Center's assistant figures mount the REAL `PanelShell` with fixture projections, so this
+ * The Help Center's assistant figures mount the real `PanelShell` with fixture projections, so this
  * pins the mounts themselves plus the one way a figure can break the app: reaching outside its
  * frame. `PreviewFrame` marks its whole subtree `aria-hidden`, which only the `*ByRole` queries
  * filter on by default; the test-id and text queries here see the subtree either way.
@@ -12,13 +13,13 @@ import { render, screen, cleanup, fireEvent } from '@testing-library/react';
 import { MotionConfig } from 'framer-motion';
 import { I18nProvider } from '../../../i18n/context';
 import { en } from '../../../i18n/locales/en';
-import { ensureHelpStrings, HELP_TABLES } from '../../../i18n/locales/help';
-import { setStoreState } from '../../_store';
+import { HELP_TABLES, installHelpTables } from '../../_support/locale-tables';
+import { setStoreState } from '../../_support/store';
 import {
   AgentOversightPreview, AgentPlanPreview, AgentRegionPreview, AgentSetupDetectPreview, AgentSetupPreview, AgentSteerPreview,
   AgentUndoPreview,
-} from '../../../ui/chrome/modals/help/figures/previews/assistant';
-import { TourPreview } from '../../../ui/chrome/modals/help/figures/previews/tour';
+} from '../../../ui/help/figures/previews/assistant';
+import { TourPreview } from '../../../ui/help/figures/previews/tour';
 
 const merged: Record<string, string | undefined> = { ...en, ...HELP_TABLES.en };
 
@@ -46,7 +47,7 @@ function bodyClickCatchers(): HTMLElement[] {
 // the help chunk loads; a preview rendered outside that chunk needs the same registration a test
 // gives it explicitly.
 beforeAll(() => {
-  ensureHelpStrings();
+  installHelpTables();
 });
 
 afterEach(() => {
@@ -72,16 +73,16 @@ describe('assistant previews', () => {
     const face = screen.getByTestId('setup-prov-face');
     expect(face.getAttribute('data-provider')).toBe('claude');
     expect(screen.getByText('Anthropic')).toBeTruthy();
-    expect(screen.getByTestId('setup-prov-sub').textContent).toBe(label('agent3.setup_row_sofar'));
+    expect(screen.getByTestId('setup-prov-sub').textContent).toBe(label('agent.setup_row_sofar'));
   });
 
   it('mounts AgentOversightPreview as the manage card\'s own three-level control with its caption', () => {
     setStoreState({ locale: 'en' });
     mount(<AgentOversightPreview />);
-    for (const key of ['agent3.oversight_strict', 'agent3.oversight_checkpoint', 'agent3.oversight_yolo']) {
+    for (const key of ['agent.oversight_strict', 'agent.oversight_checkpoint', 'agent.oversight_yolo']) {
       expect(screen.getByText(label(key))).toBeTruthy();
     }
-    expect(screen.getByText(label('agent3.oversight_checkpoint_caption'))).toBeTruthy();
+    expect(screen.getByText(label('agent.oversight_checkpoint_caption'))).toBeTruthy();
   });
 
   it('mounts AgentSteerPreview as the panel mid-run: two op rows and the queued note inside it', () => {
@@ -119,7 +120,7 @@ describe('assistant previews', () => {
     const panel = screen.getByTestId('panel-shell');
     const rows = screen.getAllByTestId('history-item');
     expect(rows).toHaveLength(2);
-    // The open list stands INSIDE the pictured panel, never portalled past its frame.
+    // The open list stands inside the pictured panel, never portalled past its frame.
     for (const row of rows) expect(panel.contains(row)).toBe(true);
     expect(rows.some((row) => row.getAttribute('data-rolled-back') === 'true')).toBe(true);
   });

@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { OPENAI_DEFAULT_BASE, PROVIDER_IDS, PROVIDER_META, QUIRKS, baseUrlFor } from '../../../agent/providers/defaults';
+import {
+  OPENAI_BASE_URL, PROVIDER_IDS, PROVIDER_META, QUIRKS, baseUrlFor, isRegionSplit, providerForEndpoint,
+} from '../../../agent/providers/defaults';
 
 describe('providers/defaults', () => {
   it('carries meta and quirks for every declared provider id', () => {
@@ -14,7 +16,7 @@ describe('providers/defaults', () => {
       expect(meta.name.length).toBeGreaterThan(0);
       expect(typeof meta.keyUrl).toBe('string');
       expect(typeof meta.accent).toBe('string');
-      expect(typeof meta.vision).toBe('function');
+      expect(typeof quirks.vision.guess).toBe('function');
     }
   });
 
@@ -36,9 +38,10 @@ describe('providers/defaults', () => {
     expect(baseUrlFor('qwen', { region: 0 })).toBe('https://dashscope-intl.aliyuncs.com/compatible-mode/v1');
   });
 
-  it('leaves claude and openai without a base URL: their SDKs carry their own default', () => {
-    expect(baseUrlFor('claude', {})).toBeUndefined();
-    expect(baseUrlFor('openai', {})).toBeUndefined();
+  it('names a host for every built-in provider, so no SDK falls back to a default of its own', () => {
+    expect(baseUrlFor('claude', {})).toBe('https://api.anthropic.com');
+    expect(baseUrlFor('openai', {})).toBe('https://api.openai.com/v1');
+    for (const id of PROVIDER_IDS) if (id !== 'custom') expect(baseUrlFor(id, {}), id).toMatch(/^https:\/\//);
   });
 
   it('gives claude the anthropic dialect with images allowed inside a tool result', () => {
@@ -78,8 +81,8 @@ describe('providers/defaults', () => {
     }
   });
 
-  it('exports the OpenAI SDK default base URL as the one shared literal', () => {
-    expect(OPENAI_DEFAULT_BASE).toBe('https://api.openai.com/v1');
+  it('reaches OpenAI at its own API host', () => {
+    expect(QUIRKS.openai.baseUrls).toEqual([OPENAI_BASE_URL]);
   });
 
   it('never allows an image inside a tool result on any OpenAI-dialect provider', () => {
@@ -92,14 +95,35 @@ describe('providers/defaults', () => {
 
   it('gives every provider a working vision heuristic that never throws', () => {
     for (const id of PROVIDER_IDS) {
-      expect(() => PROVIDER_META[id].vision('some-model-1')).not.toThrow();
+      expect(() => QUIRKS[id].vision.guess('some-model-1')).not.toThrow();
     }
-    expect(PROVIDER_META.claude.vision('claude-opus-4-8')).toBe(true);
-    expect(PROVIDER_META.gemini.vision('gemini-2.5-pro')).toBe(true);
-    expect(PROVIDER_META.openai.vision('gpt-5.5')).toBe(true);
-    expect(PROVIDER_META.openai.vision('gpt-4o-realtime')).toBe(false);
-    expect(PROVIDER_META.qwen.vision('qwen-vl-max')).toBe(true);
-    expect(PROVIDER_META.qwen.vision('qwen-max')).toBe(false);
-    expect(PROVIDER_META.deepseek.vision('deepseek-v4-pro')).toBe(false);
+    expect(QUIRKS.claude.vision.guess('claude-opus-4-8')).toBe(true);
+    expect(QUIRKS.gemini.vision.guess('gemini-2.5-pro')).toBe(true);
+    expect(QUIRKS.openai.vision.guess('gpt-5.5')).toBe(true);
+    expect(QUIRKS.openai.vision.guess('gpt-4o-realtime')).toBe(false);
+    expect(QUIRKS.qwen.vision.guess('qwen-vl-max')).toBe(true);
+    expect(QUIRKS.qwen.vision.guess('qwen-max')).toBe(false);
+    expect(QUIRKS.deepseek.vision.guess('deepseek-v4-pro')).toBe(false);
+  });
+});
+
+describe('provider facts read from the quirks', () => {
+  it('names the region-split platforms by their two hosts', () => {
+    expect(PROVIDER_IDS.filter(isRegionSplit)).toEqual(['zhipu', 'qwen', 'moonshot']);
+  });
+
+  it('finds the platform a custom endpoint points at by its exact host, slash or not', () => {
+    expect(providerForEndpoint('https://ark.cn-beijing.volces.com/api/v3/')).toBe('doubao');
+    expect(providerForEndpoint('https://open.bigmodel.cn/api/paas/v4')).toBe('zhipu');
+    expect(providerForEndpoint(OPENAI_BASE_URL)).toBe('openai');
+    expect(providerForEndpoint('https://gateway.example/v1')).toBeUndefined();
+  });
+
+  it('leaves only Ark without a browser-readable model list', () => {
+    expect(PROVIDER_IDS.filter((id) => QUIRKS[id].listsModels === false)).toEqual(['doubao']);
+  });
+
+  it('probes vision only where the model id is no authority', () => {
+    expect(PROVIDER_IDS.filter((id) => QUIRKS[id].vision.probe)).toEqual(['openrouter', 'doubao', 'perplexity', 'custom']);
   });
 });

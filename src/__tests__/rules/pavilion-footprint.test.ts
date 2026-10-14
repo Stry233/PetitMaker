@@ -4,7 +4,7 @@ import { getPlacedObjectSize } from '../../state/object-geometry';
 import { getCatalogItem } from '../../state/catalog';
 import { placementOverlapRule } from '../../rules/placement-overlap';
 import { traitPlacementRule } from '../../rules/placement';
-import { makeObject, makeState, placeCmd, setTerrain } from './_helpers';
+import { makeObject, makeState, placeCmd, setTerrain } from '../_support/map-state';
 
 describe('Omni-Gallery exclusion footprint', () => {
   it.each([0, 90, 180, 270] as const)('reserves the full game footprint at %s degrees', rotation => {

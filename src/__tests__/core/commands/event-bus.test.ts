@@ -30,4 +30,14 @@ describe('EventBus.emit', () => {
     bus.emit('ping', { n: 1 });
     expect(seen).toEqual([1, 2]);
   });
+
+  it('returns an unsubscribe from on', () => {
+    const bus = new EventBus<Events>();
+    const seen: number[] = [];
+    const off = bus.on('ping', ({ n }) => seen.push(n));
+    bus.emit('ping', { n: 1 });
+    off();
+    bus.emit('ping', { n: 2 });
+    expect(seen).toEqual([1]);
+  });
 });

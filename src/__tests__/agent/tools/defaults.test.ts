@@ -1,26 +1,23 @@
 import { describe, it, expect } from 'vitest';
-import { CommandExecutor } from '../../../core/commands/command-executor';
-import { EventBus } from '../../../core/commands/event-bus';
-import { createDefaultRegistry } from '../../../rules';
-import { TerrainType, type EditorEvents } from '../../../core/model/types';
-import { makeState } from '../../rules/_helpers';
-import { executeToolCall, TOOL_SCHEMAS, type AgentToolDeps } from '../../../agent/tools';
+import { TerrainType } from '../../../core/model/types';
+import { makeState, makeExecutor } from '../../_support/map-state';
+import { executeToolCall, wireSchemas, type AgentToolDeps } from '../../../agent/tools';
 import { TOOL_DEFAULTS, defaultRoadId } from '../../../agent/tools/defaults';
-import { describeToolArgs } from '../../../agent/describe-call';
-import { roadLookup } from '../../../state/object-index';
+import { describeToolArgs } from '../../../agent/tools/describe';
 import { translateFor } from '../../../i18n/context';
+import type { TextKey } from '../../../i18n/keys';
 
 function setup(w = 30, h = 30) {
   const state = makeState(w, h);
-  const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
+  const exec = makeExecutor(state);
   const deps: AgentToolDeps = { getState: () => state, getExecutor: () => exec, getRegion: () => [] };
   return { state, exec, deps };
 }
-const en = (k: string, p?: Record<string, string | number>) => translateFor('en', k, p);
+const en = (k: TextKey, p?: Record<string, string | number>) => translateFor('en', k, p);
 const idNames = { catalog: (id: string) => `<${id}>`, object: () => undefined };
 const call = (name: string, input: Record<string, unknown>) => ({ id: 't1', name, input });
 const schemaText = (tool: string, prop: string): string =>
-  String((TOOL_SCHEMAS.find((s) => s.name === tool)!.inputSchema.properties as Record<string, { description?: string }>)[prop]!.description);
+  String((wireSchemas().find((s) => s.name === tool)!.parameters.properties as Record<string, { description?: string }>)[prop]!.description);
 
 describe('tool defaults', () => {
   it('describes an omitted road id as the road build_road lays', async () => {
@@ -60,6 +57,6 @@ describe('tool defaults', () => {
     expect(schemaText('sculpt_wall', 'depth')).toContain(`default ${TOOL_DEFAULTS.wallDepth}`);
     expect(schemaText('sink_pool', 'elevation')).toContain(`default ${TOOL_DEFAULTS.poolElevation}`);
     expect(schemaText('carve_river', 'width')).toContain(`default ${TOOL_DEFAULTS.riverWidth}`);
-    expect(TOOL_SCHEMAS.find((s) => s.name === 'undo')!.description).toContain(`default ${TOOL_DEFAULTS.historySteps}`);
+    expect(wireSchemas().find((s) => s.name === 'undo')!.description).toContain(`default ${TOOL_DEFAULTS.historySteps}`);
   });
 });

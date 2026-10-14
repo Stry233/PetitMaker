@@ -1,29 +1,21 @@
-// The colour vocabulary and the unity operator. Two claims are worth a test: the authored table is
-// COMPLETE over the live catalog (an item missing from it silently falls back to the model-derived
-// reading the table exists to correct), and a region's palette is a DOMINANT family rather than a
-// pair, since the unity score asks for one family over 60% of a region's decor.
+// The colour vocabulary and the unity operator: a plant's family is its catalog item's own, and a
+// region's palette is a dominant family rather than a pair, since the unity score asks for one family
+// over 60% of a region's decor.
 import { describe, it, expect } from 'vitest';
 import { MAP_TEMPLATES } from '../../../../../config/maps';
-import { ItemCategory } from '../../../../../core/model/types';
+import { ItemCategory } from '../../../../../config/catalog/categories';
 import { getPlaceableByCategory } from '../../../../../state/catalog';
+import { COLOR_FAMILIES } from '../../../../../core/model/types';
 import { planDesignFor } from '../_design-plan';
 import {
-  PLANT_FAMILIES, familyOf, flowerFamilies, planPalettes, speciesOf,
+  familyOf, planPalettes, speciesOf,
 } from '../../../../../tools/generation/designer/dressing/palette';
 
 const HEXIA = MAP_TEMPLATES['hexia']!;
 const ROLES = ['mass', 'edge', 'accent', 'grove', 'grove-accent'] as const;
 
-describe('the authored colour table', () => {
-  it('names every placeable tree and flower', () => {
-    for (const category of [ItemCategory.Tree, ItemCategory.Flora]) {
-      for (const item of getPlaceableByCategory(category)) {
-        expect(PLANT_FAMILIES[item.id], `${item.id} is missing from PLANT_FAMILIES`).toBeDefined();
-      }
-    }
-  });
-
-  it('falls back to the model-derived reading for an id it does not carry', () => {
+describe('the colour families', () => {
+  it('answers unknown for an id it does not carry', () => {
     expect(familyOf('not-a-catalog-item')).toBe('unknown');
   });
 
@@ -35,10 +27,17 @@ describe('the authored colour table', () => {
   });
 
   it('offers a flower in every family a region may draw', () => {
-    for (const family of flowerFamilies()) {
-      expect(speciesOf(ItemCategory.Flora, family).length, family).toBeGreaterThan(0);
+    const drawn = new Set<string>();
+    for (const seed of [1, 2, 3, 4, 5, 6, 7, 8]) {
+      for (const palette of planPalettes(planDesignFor(seed, HEXIA, 0.7), seed).values()) {
+        drawn.add(palette.primary);
+        drawn.add(palette.accent);
+      }
     }
-    expect(flowerFamilies().length).toBeGreaterThan(4);
+    for (const family of drawn) {
+      expect(speciesOf('groundcover', family).length, family).toBeGreaterThan(0);
+    }
+    expect(drawn.size).toBeGreaterThan(4);
   });
 });
 
@@ -88,8 +87,9 @@ describe('the unity operator', () => {
       }
     }
     expect(pairs).toBeGreaterThan(20);
-    // Chance alone would separate about 1 - 1/families of the pairs; the operator must beat it.
-    const chance = 1 - 1 / flowerFamilies().length;
+    // Chance alone would separate about 1 - 1/families of the pairs, over the families that carry a
+    // flower; the operator must beat it.
+    const chance = 1 - 1 / COLOR_FAMILIES.filter((f) => speciesOf('groundcover', f).length > 0).length;
     expect(differ / pairs).toBeGreaterThan(chance);
   });
 });

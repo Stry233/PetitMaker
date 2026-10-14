@@ -1,10 +1,12 @@
 // Adding a catalog item should reach every subsystem that consumes the catalog, with no code
 // change beyond registering the item. These are the consumers where that could silently fail.
 import { describe, it, expect } from 'vitest';
+import { LOCALES } from '../../core/model/locale';
 import { createDefaultRegistry } from '../../rules';
-import { buildSystemPrompt } from '../../agent/system-prompt';
+import { buildSystemPrompt } from '../../agent/prompts';
 import { getAllItems, getPlaceableByCategory } from '../../state/catalog';
-import { ItemCategory } from '../../core/model/types';
+import { CATALOG_MODELS } from '../../config/catalog/models';
+import { ItemCategory } from '../../config/catalog/categories';
 import { SHARE_CATALOG_ORDER } from '../../io/share/codec/catalog-order';
 
 const NEW = [
@@ -14,7 +16,6 @@ const NEW = [
   'flower-violet-pink', 'flower-violet-cyan', 'flower-lily-yellow', 'flower-lily-cyan',
   'flower-agapanthus-white', 'flower-agapanthus-blue', 'flower-rose-cyan', 'flower-rose-blue',
 ];
-const LOCALES = ['en', 'zh', 'ja', 'ru', 'th', 'id', 'fr'] as const;
 
 describe('flower colourways', () => {
   const byId = new Map(getAllItems().map((i) => [i.id, i]));
@@ -47,7 +48,7 @@ describe('flower colourways', () => {
         expect((item.name as Record<string, string>)[loc], `${id}.${loc}`).toBeTruthy();
       }
       expect(item.icon, id).toBe(id);
-      expect(item.model3d?.parts.length ?? 0, `${id} has no model`).toBeGreaterThan(0);
+      expect(CATALOG_MODELS[id]?.model3d?.parts.length ?? 0, `${id} has no model`).toBeGreaterThan(0);
     }
   });
 

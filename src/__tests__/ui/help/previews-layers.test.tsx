@@ -1,5 +1,6 @@
+// @vitest-environment jsdom
 /**
- * The layers figure drives ONE pictured shell through the layer control's own press targets, so
+ * The layers figure drives one pictured shell through the layer control's own press targets, so
  * the reader watches the control's real motion rather than a slideshow of poses. These pin the two
  * facts the walk stands on: a single shell mounts, booted collapsed like the live app, and a
  * beat's scripted press really moves the control's mode — the dispatched events reach Rail's own
@@ -8,8 +9,8 @@
 import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
 import { render, cleanup, act } from '@testing-library/react';
 import { I18nProvider } from '../../../i18n/context';
-import { setStoreState } from '../../_store';
-import { LayersTour } from '../../../ui/chrome/modals/help/figures/previews/frame-overview';
+import { setStoreState } from '../../_support/store';
+import { LayersTour } from '../../../ui/help/figures/previews/frame-tours';
 
 // The mount pays for transforming the whole shell graph, which the default budget has to cover on
 // top of the walk itself.
@@ -47,7 +48,7 @@ describe('LayersTour', () => {
     // Past the first beat's press (down at 1150ms, up and click at 1300ms).
     await act(async () => { vi.advanceTimersByTime(1400); });
     expect(count('[data-testid="shell-layer-panel"]')).toBe(1);
-    // Open, the panel IS the control: the collapsed readout leaves with the pill.
+    // Open, the panel is the control: the collapsed readout leaves with the pill.
     expect(count('[data-testid="shell-layer-readout"]')).toBe(0);
   });
 

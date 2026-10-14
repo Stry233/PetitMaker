@@ -1,10 +1,10 @@
-import { cellKey } from '../model/grid-model';
-import type { MacroCoord } from '../model/types';
-import { applyMoveToTaint, applyOpToTaint, deriveSummary, dominantAuthor, type OpKind, sourceClass } from './policy';
-import { APP_VERSION } from '../../version';
+import { cellKey, regionBounds } from '../grid/rect';
+import type { MacroCoord } from '../base/coords';
+import { wallClock } from '../base/clock';
+import { SOURCE_ROLES, applyMoveToTaint, applyOpToTaint, deriveSummary, dominantAuthor, type OpKind } from './policy';
 import {
-  ProvSource, type SourceContext, type UnitTaint, type ProvenanceOperation,
-  type ProvenanceState, type MapProvenanceSummary, type OperationScope, type ActorType, type DisclosureClass, type AuthorClass,
+  ProvSource, UNSTAMPED_APP_VERSION, type SourceContext, type UnitTaint, type ProvenanceOperation,
+  type ProvenanceState, type MapProvenanceSummary, type OperationScope, type DisclosureClass, type AuthorClass,
 } from './types';
 
 /** Whose work a unit is — see `dominantAuthor`. */
@@ -19,13 +19,6 @@ export interface TaintDelta {
 interface ScopeMeta { layers: number[]; zones: number[]; derived?: boolean }
 
 const DEFAULT_SOURCE: SourceContext = { source: ProvSource.Human };
-
-function actorFor(s: ProvSource): ActorType {
-  if (s === ProvSource.AiWrite || s === ProvSource.AiAccepted || s === ProvSource.AiAnalysis) return 'ai';
-  if (s === ProvSource.Procedural || s === ProvSource.AutoRepair || s === ProvSource.AutoTrim) return 'system';
-  if (s === ProvSource.Imported || s === ProvSource.Unknown) return 'imported';
-  return 'user';
-}
 
 function clone(t: UnitTaint | null): UnitTaint | null {
   return t ? { ...t, contribution: { ...t.contribution } } : null;
@@ -43,10 +36,10 @@ export class ProvenanceTracker {
   private schemaVersion: number;
 
   constructor(width: number, height: number, opts: { now?: () => number; appVersion?: string; schemaVersion?: number; adopt?: ProvenanceState } = {}) {
-    this.now = opts.now ?? Date.now;
-    // APP_VERSION, never a literal: a hardcoded default silently stamps every later build's
-    // provenance records with a version that build is not.
-    this.appVersion = opts.appVersion ?? APP_VERSION;
+    this.now = opts.now ?? wallClock;
+    // The caller passes the running build's version: a literal stamped here would mark every later
+    // build's provenance records with a version that build is not.
+    this.appVersion = opts.appVersion ?? UNSTAMPED_APP_VERSION;
     this.schemaVersion = opts.schemaVersion ?? 1;
     if (opts.adopt) {
       this.state = opts.adopt;
@@ -54,7 +47,10 @@ export class ProvenanceTracker {
     } else {
       this.state = {
         ledger: [], cellTaint: emptyGrid(width, height), objectTaint: new Map(),
-        session: { aiAnalysisUsed: false, aiWritesUsed: false, aiAcceptedCount: 0, proceduralRuns: 0, analysisOnlyCalls: 0, humanAfterAi: false, aiAfterHuman: false },
+        session: {
+          aiAnalysisUsed: false, aiWritesUsed: false, aiAcceptedCount: 0, proceduralRuns: 0, analysisOnlyCalls: 0, humanAfterAi: false,
+          aiAfterHuman: false,
+        },
         summary: null,
       };
     }
@@ -64,12 +60,6 @@ export class ProvenanceTracker {
   popSource(): void { this.stack.pop(); }
   currentSource(): SourceContext { return this.stack[this.stack.length - 1] ?? DEFAULT_SOURCE; }
   withSource<T>(ctx: SourceContext, fn: () => T): T { this.pushSource(ctx); try { return fn(); } finally { this.popSource(); } }
-
-  noteAnalysisOnly(): void {
-    this.state.session.aiAnalysisUsed = true;
-    this.state.session.analysisOnlyCalls++;
-    this.state.summary = null;
-  }
 
   record(kind: OpKind, cells: MacroCoord[], objects: { id: string; kind: OpKind }[], scope: ScopeMeta): TaintDelta {
     const ctx = this.currentSource();
@@ -90,19 +80,11 @@ export class ProvenanceTracker {
     }
 
     this.updateSession(ctx.source);
-    this.state.ledger.push(this.makeOp(id, ctx, kind, cells, objects, scope));
-    // The ledger grows one op per COMMAND (a brush stroke is dozens) and rides in
-    // every autosave; unbounded it eventually trips the localStorage quota and
-    // takes the autosave with it. The per-cell taint stays exact — dropping the
-    // oldest ops only coarsens the operation history, never the area accounting.
-    if (this.state.ledger.length > LEDGER_MAX) {
-      this.state.ledger.splice(0, this.state.ledger.length - LEDGER_MAX);
-    }
-    this.state.summary = null;
+    this.appendOp(this.makeOp(id, ctx, { kind, cells, objects }, scope));
     return delta;
   }
 
-  /** Re-seat an object that was removed and immediately re-placed under the SAME id — a move or a
+  /** Re-seat an object that was removed and immediately re-placed under the same id — a move or a
    *  rotation. `taint` is what it carried before the remove; it keeps it (see `applyMoveToTaint`),
    *  and the op enters the ledger as cosmetic under the mover's source. */
   restoreObjectTaint(objectId: string, taint: UnitTaint, scope: ScopeMeta): TaintDelta {
@@ -112,26 +94,16 @@ export class ProvenanceTracker {
     const after = applyMoveToTaint(clone(taint)!, ctx.source, id);
     this.state.objectTaint.set(objectId, after);
     this.updateSession(ctx.source);
-    this.state.ledger.push(this.makeOp(id, ctx, 'cosmetic', [], [{ id: objectId, kind: 'cosmetic' }], scope));
-    if (this.state.ledger.length > LEDGER_MAX) {
-      this.state.ledger.splice(0, this.state.ledger.length - LEDGER_MAX);
-    }
-    this.state.summary = null;
+    this.appendOp(this.makeOp(id, ctx, { kind: 'cosmetic', cells: [], objects: [{ id: objectId, kind: 'cosmetic' }] }, scope));
     return { cells: [], objects: [{ id: objectId, before, after: clone(after) }], opIds: [id] };
   }
 
   /**
-   * Adopt a prior map's provenance across a TRANSFER: the same build re-seated on another planet.
-   * Cell taint arrives shifted by `offset` wherever the replay actually landed content, object
-   * taint follows the ids that survived (a transfer keeps every object's id), and the source's
-   * ledger and session flags ride along — the work's history is the work's, whichever template it
-   * stands on. Runs AFTER the replay recorded its own ops: the replay's taint is a placeholder for
-   * cells whose true author is known, and this overwrites it with that truth.
-   *
-   * Carried ledger ops are re-keyed (`xfer-` prefix) so they cannot collide with this tracker's
-   * own `op-N` sequence, and the carried taint's op references are remapped with them; a reference
-   * to an op the source ledger had already capped away stays as it was, which is the same
-   * coarseness it had at home.
+   * Adopt a prior map's provenance across a transfer, after the replay recorded its own placeholder
+   * ops: cell taint shifts by `offset` where the replay landed content, object taint follows the
+   * surviving ids, and the ledger and session flags carry over. Carried ops are re-keyed (`xfer-`)
+   * away from this tracker's `op-N` sequence and taint references are remapped with them; a reference
+   * to an op the source had already capped away stays as it was.
    */
   adoptTransplant(
     prev: ProvenanceState,
@@ -164,10 +136,8 @@ export class ProvenanceTracker {
     for (const [id, t] of prev.objectTaint) {
       if (keepObject(id)) this.state.objectTaint.set(id, reref(t)!);
     }
-    this.state.ledger = [
-      ...prev.ledger.map((op) => ({ ...op, id: remap.get(op.id)! })),
-      ...this.state.ledger,
-    ].slice(-LEDGER_MAX);
+    this.state.ledger = [...prev.ledger.map((op) => ({ ...op, id: remap.get(op.id)! })), ...this.state.ledger];
+    this.capLedger();
     const a = this.state.session, b = prev.session;
     a.aiAnalysisUsed ||= b.aiAnalysisUsed;
     a.aiWritesUsed ||= b.aiWritesUsed;
@@ -199,7 +169,9 @@ export class ProvenanceTracker {
       for (const c of d.cells) { const k = cellKey(c.x, c.y); if (!firstBefore.has(k)) firstBefore.set(k, c); lastAfter.set(k, c); }
       for (const o of d.objects) { if (!objFirst.has(o.id)) objFirst.set(o.id, o); objLast.set(o.id, o); }
     }
-    const cells = [...firstBefore.keys()].map((k) => ({ x: firstBefore.get(k)!.x, y: firstBefore.get(k)!.y, before: clone(firstBefore.get(k)!.before), after: clone(lastAfter.get(k)!.after) }));
+    const cells = [...firstBefore.keys()].map(
+      (k) => ({ x: firstBefore.get(k)!.x, y: firstBefore.get(k)!.y, before: clone(firstBefore.get(k)!.before), after: clone(lastAfter.get(k)!.after) }),
+    );
     const objects = [...objFirst.keys()].map((id) => ({ id, before: clone(objFirst.get(id)!.before), after: clone(objLast.get(id)!.after) }));
     return { cells, objects, opIds };
   }
@@ -210,23 +182,6 @@ export class ProvenanceTracker {
     const set = new Set(opIds);
     for (const op of this.state.ledger) if (set.has(op.id)) op.status = status;
     this.state.summary = null;
-  }
-
-  /** During collapse: when one stroke removed and re-added the SAME object id
-   *  (a move / rotate / replace), re-derive its taint as a cosmetic modify of the
-   *  original so prior contribution (e.g. AI) is preserved — a move/rotate must never launder taint — instead of the
-   *  remove→delete + add→create that the individual ops produced. Mutates live state
-   *  and the merged delta's `after` to match. */
-  finalizeObjectModifies(merged: TaintDelta): TaintDelta {
-    for (const o of merged.objects) {
-      if (o.before && o.after && o.before.createdByOp !== o.after.createdByOp) {
-        const re = applyOpToTaint(o.before, o.after.origin, 'cosmetic', o.after.lastModifiedByOp);
-        o.after = clone(re);
-        if (re) this.state.objectTaint.set(o.id, clone(re)!); else this.state.objectTaint.delete(o.id);
-      }
-    }
-    this.state.summary = null;
-    return merged;
   }
 
   /** Whose work this cell is (see `dominantAuthor`); null if nothing has touched it. */
@@ -244,6 +199,19 @@ export class ProvenanceTracker {
     return this.state.summary;
   }
 
+  /** One op onto the ledger, which then keeps its newest `LEDGER_MAX`. */
+  private appendOp(op: ProvenanceOperation): void {
+    this.state.ledger.push(op);
+    this.capLedger();
+    this.state.summary = null;
+  }
+
+  /** The ledger grows one op per command and rides in every autosave; unbounded it would trip the
+   *  storage quota. Taint stays exact, so dropping the oldest ops coarsens only the history. */
+  private capLedger(): void {
+    if (this.state.ledger.length > LEDGER_MAX) this.state.ledger.splice(0, this.state.ledger.length - LEDGER_MAX);
+  }
+
   private setCellTaint(x: number, y: number, t: UnitTaint | null): void {
     const row = this.state.cellTaint[y]; if (row) row[x] = t;
   }
@@ -255,12 +223,15 @@ export class ProvenanceTracker {
     if (source === ProvSource.Procedural) s.proceduralRuns++;
   }
 
-  private makeOp(id: string, ctx: SourceContext, kind: OpKind, cells: MacroCoord[], objects: { id: string; kind: OpKind }[], scope: ScopeMeta): ProvenanceOperation {
-    const cls = sourceClass(ctx.source);
+  private makeOp(
+    id: string, ctx: SourceContext, change: { kind: OpKind; cells: MacroCoord[]; objects: { id: string; kind: OpKind }[] }, scope: ScopeMeta,
+  ): ProvenanceOperation {
+    const { kind, cells, objects } = change;
+    const cls = SOURCE_ROLES[ctx.source].author;
     const disclosure: DisclosureClass = cls === 'ai' ? 'contains_ai_assisted' : cls === 'procedural' ? 'procedural' : 'human_created';
     return {
       id, parents: [], timestamp: this.now(), appVersion: this.appVersion, schemaVersion: this.schemaVersion,
-      source: ctx.source, actor: actorFor(ctx.source), disclosure,
+      source: ctx.source, actor: SOURCE_ROLES[ctx.source].actor, disclosure,
       tool: ctx.tool, status: 'applied', derived: scope.derived,
       scope: makeScope(cells, objects, kind, scope),
       ai: ctx.ai, procedural: ctx.procedural,
@@ -273,9 +244,8 @@ function emptyGrid(w: number, h: number): (UnitTaint | null)[][] {
 }
 
 function makeScope(cells: MacroCoord[], objects: { id: string; kind: OpKind }[], kind: OpKind, meta: ScopeMeta): OperationScope {
-  let x1 = Infinity, y1 = Infinity, x2 = -Infinity, y2 = -Infinity;
-  for (const c of cells) { x1 = Math.min(x1, c.x); y1 = Math.min(y1, c.y); x2 = Math.max(x2, c.x); y2 = Math.max(y2, c.y); }
-  const bbox = cells.length ? { x1, y1, x2, y2 } : null;
+  const box = regionBounds(cells);
+  const bbox = box && { x1: box.x1, y1: box.y1, x2: box.x2, y2: box.y2 };
   let objAdded = 0, objModified = 0, objDeleted = 0;
   for (const o of objects) { if (o.kind === 'delete') objDeleted++; else if (o.kind === 'create') objAdded++; else objModified++; }
   return {

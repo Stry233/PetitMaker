@@ -4,7 +4,7 @@
   "icon": "path-square-brick",
   "name": {
     "en": "Square Brick Path",
-    "zh": "方砖路",
+    "zh": "四方砖路",
     "ja": "四角レンガの道",
     "ru": "Квадратная кирпичная дорожка",
     "th": "ทางอิฐสี่เหลี่ยม",
@@ -24,5 +24,17 @@
     {
       "type": "surfaceCoating"
     }
-  ]
+  ],
+  "roadMaterial": {
+    "feather": 0.035,
+    "edge": {
+      "color": "#ffffff",
+      "pattern": {
+        "kind": "image",
+        "image": "path-square-brick",
+        "repeat": 2.5
+      }
+    },
+    "layers": []
+  }
 }

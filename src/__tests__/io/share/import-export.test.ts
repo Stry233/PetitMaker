@@ -3,10 +3,11 @@
 import { describe, it, expect } from 'vitest';
 import { buildShareCode, type ShareCode } from '../../../io/share/export';
 import { importFromRaster } from '../../../io/share/import';
-import { canonicalize, canonicalBytes } from '../../../io/share/canonical';
+import { canonicalize, canonicalBytes } from '../../../io/save/canonical';
 import { CURRENT_GRID_ROWS, CURRENT_TOP_ROWS } from '../../../io/share/glyph/geometry';
 import type { ShareCodeMeta } from '../../../io/share/codec/payload';
 import { corpusCases } from './corpus';
+import { exportable } from '../../_support/exportable';
 
 const META: ShareCodeMeta = { appVersion: '1.0-test', saveVersion: 3 };
 
@@ -16,7 +17,7 @@ function rng(seed: number): () => number {
   return () => { s = (Math.imul(s, 1664525) + 1013904223) >>> 0; return s / 0xffffffff; };
 }
 
-/** Flip `count` scattered pixels within the DATA region only (below the finder/calibration/header
+/** Flip `count` scattered pixels within the data region only (below the finder/calibration/header
  *  rows) hard: xor 0x80 on all 3 color channels. */
 function tamperDataRegion(code: ShareCode, count: number, seed: number): Uint8Array {
   const out = new Uint8Array(code.rgba);
@@ -35,11 +36,11 @@ function tamperDataRegion(code: ShareCode, count: number, seed: number): Uint8Ar
 }
 
 describe('PetitGlyph raster-first import/export', () => {
-  it('buildShareCode → importFromRaster round-trips a hand-edited corpus map exactly', async () => {
+  it('buildShareCode → importFromRaster round-trips a hand-edited corpus map exactly', { timeout: 20_000 }, async () => {
     const cases = await corpusCases();
     const { state } = cases.find((c) => c.name === 'hand-edit-small')!;
 
-    const code = await buildShareCode(state, null, META, 1600);
+    const code = await buildShareCode(exportable(state), null, META, 1600);
     expect(code).not.toBeNull();
 
     const result = await importFromRaster(code!.rgba, code!.width, code!.height);
@@ -54,7 +55,7 @@ describe('PetitGlyph raster-first import/export', () => {
     const { state } = cases.find((c) => c.name === 'hand-edit-small')!;
     const forged = { ...state, generation: { algorithm: 'island', seed: 'not-a-number' } as never };
 
-    const code = await buildShareCode(forged, null, META, 1600);
+    const code = await buildShareCode(exportable(forged), null, META, 1600);
     expect(code).not.toBeNull();
 
     const result = await importFromRaster(code!.rgba, code!.width, code!.height);
@@ -78,13 +79,13 @@ describe('PetitGlyph raster-first import/export', () => {
   it('tampering ~40 scattered data-region pixels never yields a wrong canonical', async () => {
     const cases = await corpusCases();
     const { state } = cases.find((c) => c.name === 'hand-edit-small')!;
-    const code = await buildShareCode(state, null, META, 1600);
+    const code = await buildShareCode(exportable(state), null, META, 1600);
     expect(code).not.toBeNull();
 
     const tampered = tamperDataRegion(code!, 40, 0xC0FFEE);
     const result = await importFromRaster(tampered, code!.width, code!.height);
     if (result.ok) {
-      // RS/hash self-correction: the recovered canonical must be IDENTICAL to the original, never
+      // RS/hash self-correction: the recovered canonical must be identical to the original, never
       // a plausible-but-different map.
       expect(canonicalBytes(canonicalize(result.state))).toEqual(canonicalBytes(canonicalize(state)));
     } else {

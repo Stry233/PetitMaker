@@ -1,0 +1,22 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "types": ["node", "vitest/globals"],
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "target": "ES2022",
+    // Tests import public .mjs and .js helpers; they resolve with their inferred types but are not checked.
+    "allowJs": true,
+    "checkJs": false,
+    "tsBuildInfoFile": "../../.tsbuild/test.tsbuildinfo"
+  },
+  "include": [
+    ".",
+    "../../scripts/**/*.test.mts",
+    "../../scripts/**/*.test.ts",
+    "../../scripts/**/*.test.tsx",
+    "../../vitest.config.ts",
+    "../../scripts/*.d.ts",
+    "../**/*.d.ts"
+  ],
+  "exclude": []
+}

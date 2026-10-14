@@ -2,17 +2,20 @@
  * The movement line (the methodology's direction-and-circulation step): the walk every other stage composes around.
  *
  * What is pinned here is what the later stages depend on and what makes a walk legible: a walk that
- * EXISTS with a readable sequence, legs that join end to end so a street can be laid
+ * Exists with a readable sequence, legs that join end to end so a street can be laid
  * along them, a theme pair the kit library can answer, and the same walk from the same seed.
  */
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+
+// Synchronous generation batch; seconds per case under a loaded or instrumented run.
+vi.setConfig({ testTimeout: 60_000 });
 import { MAP_TEMPLATES } from '../../../../../config/maps';
-import { makeRng } from '../../../../../core/model/rng';
-import { flatIndex } from '../../../../../core/model/grid-model';
+import { makeRng } from '../../../../../core/base/rng';
+import { flatIndex } from '../../../../../core/grid/rect';
 import { MASSIF_PEAK_FROM, planComposition } from '../../../../../tools/generation/designer/composition/composition';
-import { planStreets } from '../../../../../tools/generation/designer/streets/streets';
+import { planDesign } from '../../../../../tools/generation/designer/pipeline';
 import { planMovementLine } from '../../../../../tools/generation/designer/composition/movement-line';
-import { styleOf } from '../../../../../tools/generation/designer/dressing';
+import { styleOf } from '../../../../../tools/generation/designer/dressing/kits';
 import type { RegionPlan } from '../../../../../tools/generation/designer/types';
 
 const SEEDS = [12345, 777, 42, 2026, 7, 31337, 90210, 1024];
@@ -20,7 +23,7 @@ const hexia = MAP_TEMPLATES['hexia']!;
 const tafa = MAP_TEMPLATES['tafa']!;
 
 const lineFor = (seed: number, template = hexia, richness = 1): ReturnType<typeof planMovementLine> =>
-  planMovementLine(seed, template, planComposition(seed, template, richness, 8), richness);
+  planMovementLine({ seed, template, composition: planComposition({ seed, template, richness, maxElevation: 8 }), richness });
 
 describe('the movement line', () => {
   it('is the same walk from the same seed', () => {
@@ -32,9 +35,7 @@ describe('the movement line', () => {
   it('leaves the plaza through a market and finishes at a look-out', () => {
     for (const template of [hexia, tafa]) {
       for (const seed of SEEDS) {
-        const line = planMovementLine(
-          seed, template, planComposition(seed, template, 1, 8), 1,
-        );
+        const line = planMovementLine({ seed, template, composition: planComposition({ seed, template, richness: 1, maxElevation: 8 }), richness: 1 });
         expect(line.stops.length).toBeGreaterThanOrEqual(2);
         expect(line.stops[0]!.role).toBe('market');
         expect(line.stops[line.stops.length - 1]!.role).toBe('lookout');
@@ -45,15 +46,15 @@ describe('the movement line', () => {
   });
 
   /**
-   * THE LOOK-OUT STANDS ON THE MASS, which is what makes the role a fact rather than a label.
+   * The look-out stands on the mass, which is what makes the role a fact rather than a label.
    *
    * A walk grown greedily with a seen-set and no way back strands in a pocket of the plate graph and
    * leaves the summit unvisited: read that way over twenty seeds, three ended on tier 1, 2 and 6 of an
-   * planet planned to 8, all three of them called a look-out. The route BACKTRACKS, and its destination
-   * is the highest ground the plaza can reach AND stand on, so every seed of twenty on both templates
+   * planet planned to 8, all three of them called a look-out. The route backtracks, and its destination
+   * is the highest ground the plaza can reach and stand on, so every seed of twenty on both templates
    * ends on the composition's own peak.
    *
-   * Read against the PLAN's peak rather than the built map's, because that is the promise this planner
+   * Read against the plan's peak rather than the built map's, because that is the promise this planner
    * makes; `gen-eval.mts` carries the same reading against the built one.
    */
   it('ends on the composition own highest ground, wherever there is a massif', () => {
@@ -62,8 +63,8 @@ describe('the movement line', () => {
     for (const template of [hexia, tafa]) {
       for (const richness of [0.5, 1]) {
         for (const seed of wide) {
-          const composition = planComposition(seed, template, richness, 8);
-          const line = planMovementLine(seed, template, composition, richness);
+          const composition = planComposition({ seed, template, richness, maxElevation: 8 });
+          const line = planMovementLine({ seed, template, composition, richness });
           // A map asked for less than a massif has no summit to arrive at, and the walk is bounded by
           // its stop count instead: the same test the composition itself gates the skirt and the
           // crowns on. It is the low-relief archetype at middle richness that lands here.
@@ -124,7 +125,7 @@ describe('the movement line', () => {
   });
 
   /**
-   * THE WALK IS PAVED, which is the only thing that makes it a walk rather than a plan.
+   * The walk is paved, which is the only thing that makes it a walk rather than a plan.
    *
    * Not all of it: a leg's stretch is dropped where the ground cannot carry a street at all (a coast
    * eating a corner, a terrace step across the line), and where the plates leave a piece shorter than
@@ -136,20 +137,18 @@ describe('the movement line', () => {
       for (const richness of [0.2, 1]) {
         const shares: number[] = [];
         for (const seed of SEEDS) {
-          const composition = planComposition(seed, template, richness, 8);
-          const line = planMovementLine(seed, template, composition, richness);
-          const streets = planStreets(seed, template, composition, richness, line);
+          const { line, streets } = planDesign({ seed, template, richness, maxElevation: 8 });
           const paved = new Set(streets.cells.map((c) => flatIndex(c.x, c.y, template.width)));
           const on = line.trace.filter((c) => paved.has(flatIndex(c.x, c.y, template.width))).length;
           const share = line.trace.length ? on / line.trace.length : 0;
           shares.push(share);
         }
-        // THE BATCH IS THE CLAIM AND THE COUNT STANDS BESIDE IT. The planet is terraced all the way to
-        // its summit, so the walk CLIMBS: every step it crosses costs it the cell no
+        // The batch is the claim and the count stands beside it. The planet is terraced all the way to
+        // its summit, so the walk climbs: every step it crosses costs it the cell no
         // coating may be laid on before a step and the corridor the flight stands in, and a leg the
         // flights cannot carry at all is pruned rather than left unreachable. Measured over both
         // templates at both ends of the axis, these eight seeds: 21% to 96% per seed, batch means 62%
-        // to 88%. What the batch reading is for is a walk that is mostly PAVEMENT rather than a line
+        // to 88%. What the batch reading is for is a walk that is mostly pavement rather than a line
         // drawn over whatever the map happened to build, and the per-seed floor beside it is what
         // catches a walk that was never laid at all.
         const batch = shares.reduce((a, b) => a + b, 0) / shares.length;
@@ -165,7 +164,8 @@ describe('the movement line', () => {
   it('walks further at full richness than at the quiet end', () => {
     let longer = 0;
     for (const seed of SEEDS) {
-      const quiet = planMovementLine(seed, hexia, planComposition(seed, hexia, 0.2, 8), 0.2);
+      const composition = planComposition({ seed, template: hexia, richness: 0.2, maxElevation: 8 });
+      const quiet = planMovementLine({ seed, template: hexia, composition, richness: 0.2 });
       const rich = lineFor(seed);
       if (rich.stops.length >= quiet.stops.length) longer++;
     }

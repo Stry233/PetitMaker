@@ -1,32 +1,25 @@
 import type { CSSProperties } from 'react';
 import { useEffect } from 'react';
-import { AnimatePresence, motion } from 'framer-motion';
 import { useT } from '../../../i18n/context';
-import { useOverlayLock } from '../../hooks/useOverlayLock';
 import { usePortraitGuard } from './portrait-guard';
 import { useEditorStore } from '../../../state/store';
 import { Icon } from '../../primitives/icons';
-import { colors, cozyOverlay, font, springs, exitTransition, z } from '../../design/styles';
+import { font, z } from '../../design/styles';
 import { roleFont } from '../../design/text-weight';
-import { cozyPanel } from '../../design/window-skin';
+import { ModalShell } from '../../primitives/ModalShell';
+import { FRAME_INK, TEXT_SECONDARY } from '../../design/tokens';
 
 /**
  * Full-screen "please rotate" cover for a phone/tablet held in portrait (see `portrait-guard.ts`
- * for why this can never fire on a desktop). NOT a `ModalShell`: that shell wires click-outside and
- * Escape to dismiss, and the only way through here is the `portrait.continue` button.
- *
- * Sits at `z.guard`, above every other layer including the context menu, and `useOverlayLock`
- * suppresses the map's global keyboard shortcuts while it is shown, so the editor underneath is
- * inert to both pointer and keyboard.
+ * for why this can never fire on a desktop). A `ModalShell` that nothing but its own
+ * `portrait.continue` button dismisses: no backdrop press and no Escape. It stands on `z.guard`,
+ * above every other layer including the context menu, and the shell's overlay lock suppresses the
+ * map's keyboard shortcuts while it is shown, so the editor underneath is inert to both pointer
+ * and keyboard.
  */
-const overlay: CSSProperties = {
-  ...cozyOverlay,
-  zIndex: z.guard,
-};
+const backdrop: CSSProperties = { zIndex: z.guard };
 
 const panel: CSSProperties = {
-  ...cozyPanel,
-  width: '88vw', maxWidth: 380,
   padding: '32px 28px',
   display: 'flex',
   flexDirection: 'column',
@@ -37,12 +30,12 @@ const panel: CSSProperties = {
 
 const title: CSSProperties = {
   ...font.h1,
-  color: colors.frameDark,
+  color: FRAME_INK,
 };
 
 const body: CSSProperties = {
   ...font.body,
-  color: colors.textSecondary,
+  color: TEXT_SECONDARY,
 };
 
 const continueBtn: CSSProperties = {
@@ -52,7 +45,7 @@ const continueBtn: CSSProperties = {
   marginTop: 4,
   fontFamily: font.family,
   ...roleFont('caption'),
-  color: colors.textSecondary,
+  color: TEXT_SECONDARY,
   opacity: 0.75,
 };
 
@@ -62,7 +55,6 @@ const ICON_SIZE = 76;
 export function PortraitGuard() {
   const t = useT();
   const { blocked, dismiss } = usePortraitGuard();
-  useOverlayLock(blocked);
 
   // The one writer of the store's mirror: this is the only component holding the live
   // media-query + dismiss state, so anything elsewhere that needs to know (the tour's gate)
@@ -71,36 +63,14 @@ export function PortraitGuard() {
   useEffect(() => { setPortraitBlocked(blocked); }, [blocked, setPortraitBlocked]);
 
   return (
-    <AnimatePresence>
-      {blocked && (
-        <motion.div
-          style={overlay}
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0, transition: exitTransition }}
-          transition={springs.stiff}
-        >
-          <motion.div
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="portrait-guard-title"
-            aria-describedby="portrait-guard-body"
-            data-testid="portrait-guard"
-            style={panel}
-            initial={{ scale: 0.92, y: 10 }}
-            animate={{ scale: 1, y: 0 }}
-            exit={{ scale: 0.92, y: 10, transition: exitTransition }}
-            transition={springs.stiff}
-          >
-            <Icon name="portrait-rotate" size={ICON_SIZE} />
-            <div id="portrait-guard-title" style={title}>{t('portrait.title')}</div>
-            <div id="portrait-guard-body" style={body}>{t('portrait.body')}</div>
-            <button type="button" style={continueBtn} onClick={dismiss}>
-              {t('portrait.continue')}
-            </button>
-          </motion.div>
-        </motion.div>
-      )}
-    </AnimatePresence>
+    <ModalShell helpTarget={{ page: 'frame' }} open={blocked} onClose={dismiss} dismissible={false} unzoomed size="confirm" width={380} cap={{ w: 88 }}
+      backdropStyle={backdrop} cardStyle={panel} ariaLabelledBy="portrait-guard-title" ariaDescribedBy="portrait-guard-body" testId="portrait-guard">
+      <Icon name="portrait-rotate" size={ICON_SIZE} />
+      <div id="portrait-guard-title" style={title}>{t('portrait.title')}</div>
+      <div id="portrait-guard-body" style={body}>{t('portrait.body')}</div>
+      <button type="button" style={continueBtn} onClick={dismiss}>
+        {t('portrait.continue')}
+      </button>
+    </ModalShell>
   );
 }

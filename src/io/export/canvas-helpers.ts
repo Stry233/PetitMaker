@@ -1,36 +1,35 @@
-// Shared Canvas-2D helpers for the export painters (composition painter + per-layer thumbnails).
-// Kept separate so both can reuse the same rounded-rect path and text-ellipsis logic.
-
-/** Trace a rounded-rectangle path (caller fills/strokes/clips). Radius is clamped to half the box. */
-export function rrPath(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number): void {
-  r = Math.min(r, w / 2, h / 2);
-  ctx.beginPath();
-  ctx.moveTo(x + r, y);
-  ctx.arcTo(x + w, y, x + w, y + h, r);
-  ctx.arcTo(x + w, y + h, x, y + h, r);
-  ctx.arcTo(x, y + h, x, y, r);
-  ctx.arcTo(x, y, x + w, y, r);
-  ctx.closePath();
-}
-
-/** Load an image URL (data URL or object URL) into an HTMLImageElement. Browser-only. */
-export function loadImage(url: string): Promise<HTMLImageElement> {
-  return new Promise((res, rej) => {
-    const img = new Image();
-    img.onload = () => res(img);
-    img.onerror = rej;
-    img.src = url;
-  });
-}
+// Canvas 2D text fitting for the export painters: ellipsis and line wrapping in the current font.
 
 /** Trim `text` in the current font to `maxW`. `force` adds the ellipsis that marks line-clamped text. */
 export function ellipsize(ctx: CanvasRenderingContext2D, text: string, maxW: number, force = false): string {
   if (!force && ctx.measureText(text).width <= maxW) return text;
   const E = '…';
-  let lo = 0, hi = text.length;
+  // Cut between code points, so a character outside the basic plane is never split in half.
+  const chars = Array.from(text);
+  let lo = 0, hi = chars.length;
   while (lo < hi) {
     const mid = (lo + hi + 1) >> 1;
-    if (ctx.measureText(text.slice(0, mid) + E).width <= maxW) lo = mid; else hi = mid - 1;
+    if (ctx.measureText(chars.slice(0, mid).join('') + E).width <= maxW) lo = mid; else hi = mid - 1;
   }
-  return (text.slice(0, lo).trimEnd() || text.slice(0, 1)) + E;
+  return (chars.slice(0, lo).join('').trimEnd() || (chars[0] ?? '')) + E;
+}
+
+/** Break `text` into lines no wider than `maxW` in the current font: at spaces where it has them,
+ *  and between code points inside a run too wide for one line (Chinese and Japanese use no spaces). */
+export function wrapLines(ctx: CanvasRenderingContext2D, text: string, maxW: number): string[] {
+  const fits = (s: string) => ctx.measureText(s).width <= maxW;
+  const lines: string[] = [];
+  let cur = '';
+  for (const word of text.split(/\s+/)) {
+    if (!word) continue;
+    const joined = cur ? `${cur} ${word}` : word;
+    if (fits(joined)) { cur = joined; continue; }
+    if (cur) lines.push(cur);
+    cur = '';
+    for (const ch of Array.from(word)) {
+      if (cur && !fits(cur + ch)) { lines.push(cur); cur = ch; } else { cur += ch; }
+    }
+  }
+  if (cur) lines.push(cur);
+  return lines;
 }

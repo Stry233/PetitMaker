@@ -8,27 +8,25 @@
  * site (command-apply and the placer's temporary self-removal). The size check
  * is a backstop for a missed bump on an add/remove path.
  *
- * Incremental: a rebuild costs one catalog lookup + rect + chunk bucketing PER
- * OBJECT, so rebuilding after each of a stroke's placements is quadratic in the
- * map's object count. When the mutation left an `objectsDelta` describing exactly what
- * changed and this cache is one version behind it, the changed entries are
- * patched in instead. Anything unexpected — no delta, a skipped version, an
- * entry the delta claims to remove that is not indexed, a post-patch count that
- * disagrees with `state.objects` — falls back to a full rebuild, so the index
- * can be slow but never stale.
+ * Incremental: when the mutation left an `objectsDelta` and this cache is one version behind it,
+ * the changed entries are patched in. Anything unexpected (no delta, a skipped version, an
+ * unindexed removal, a post-patch count that disagrees with `state.objects`) falls back to a full
+ * rebuild, so the index can be slow but never stale.
  *
  * Determinism: entries carry their insertion order (`ord`); every query returns
  * candidates in that order, so consumers see the same object order a full insertion-
  * order scan produced.
  */
-import { cellOverlapsRect, chunkKey, cellKey, rectsOverlap, type Rect } from '../core/model/grid-model';
-import type { GridState, MacroCoord, PlacedObject } from '../core/model/types';
+import { cellOverlapsRect, chunkKey, cellKey, rectsOverlap, type Rect } from '../core/grid/rect';
+import { bucketOf } from '../core/grid/buckets';
+import { TERRAIN_GRID_OFFSET } from '../core/grid/grid-convert';
+import { PLACEMENT_GRID } from '../core/game/profile';
+import type { GridState, MacroCoord, PlacedObject, CatalogItem } from '../core/model/types';
 import type { RoadLookup } from '../core/model/road-lookup';
+import type { MapPoint } from '../core/grid/grids';
 import { getCatalogItem } from './catalog';
-import { isCoating } from '../core/model/traits';
+import { isCoating, isCoatingItem, isSurfacePrint, coatingLayer } from '../core/model/traits';
 import { objectRect } from './object-geometry';
-import type { CatalogItem } from '../core/model/types';
-import { CHUNK_SIZE } from '../core/model/game-profile';
 
 export interface ObjectIndexEntry {
   obj: PlacedObject;
@@ -48,9 +46,9 @@ export interface ObjectIndex {
   /** Entries bucketed by every chunk their rect (padded by the −0.5 terrain
    *  shift) overlaps — the spatial query surface. */
   byChunk: Map<string, ObjectIndexEntry[]>;
-  /** Entries bucketed by every macro CELL their rect touches — the same surface
+  /** Entries bucketed by every macro cell their rect touches — the same surface
    *  one step finer, for the questions that name a footprint rather than a
-   *  neighbourhood (`entriesCovering`). A chunk bucket holds CHUNK_SIZE² entries
+   *  neighbourhood (`entriesCovering`). A chunk bucket holds BUCKET_SIZE² entries
    *  on a paved map, so answering "what is under this one cell" out of one makes
    *  a road fill quadratic in its own density. */
   byCell: Map<string, ObjectIndexEntry[]>;
@@ -62,23 +60,23 @@ export interface ObjectIndex {
 interface Cached { version: number; size: number; index: ObjectIndex; nextOrd: number }
 const cache = new WeakMap<GridState, Cached>();
 
-/** Every chunk key an object's rect touches, padded by 0.5 so a terrain cell's
- *  −HALF_TILE-shifted overlap query never needs to look past its own chunk range. */
+/** Every chunk key an object's rect touches, padded by the terrain grid's offset so a terrain
+ *  cell's overlap query never needs to look past its own chunk range. */
 function forEachChunk(rect: Rect, fn: (key: string) => void): void {
-  const cx0 = Math.floor((rect.x - 0.5) / CHUNK_SIZE), cx1 = Math.floor((rect.x + rect.w + 0.5) / CHUNK_SIZE);
-  const cy0 = Math.floor((rect.y - 0.5) / CHUNK_SIZE), cy1 = Math.floor((rect.y + rect.h + 0.5) / CHUNK_SIZE);
-  for (let cy = cy0; cy <= cy1; cy++) {
-    for (let cx = cx0; cx <= cx1; cx++) fn(chunkKey(cx, cy));
+  const lo = bucketOf(rect.x + TERRAIN_GRID_OFFSET.x, rect.y + TERRAIN_GRID_OFFSET.y);
+  const hi = bucketOf(rect.x + rect.w - TERRAIN_GRID_OFFSET.x, rect.y + rect.h - TERRAIN_GRID_OFFSET.y);
+  for (let cy = lo.cy; cy <= hi.cy; cy++) {
+    for (let cx = lo.cx; cx <= hi.cx; cx++) fn(chunkKey(cx, cy));
   }
 }
 
 /**
- * Every macro cell a rect TOUCHES — the whole cells its area intersects, so a half-anchored
+ * Every macro cell a rect touches — the whole cells its area intersects, so a half-anchored
  * footprint counts both of the cells it straddles.
  *
  * That definition is what makes a cell bucket exact for overlap: two rects that overlap at all share
  * a point, and the cell holding that point is touched by both. A cell-share test can therefore
- * REPLACE a chunk scan without changing an answer.
+ * replace a chunk scan without changing an answer.
  */
 function forEachCell(rect: Rect, fn: (key: string) => void): void {
   const x0 = Math.floor(rect.x), x1 = Math.ceil(rect.x + rect.w) - 1;
@@ -105,31 +103,28 @@ function lowerBound(entries: ObjectIndexEntry[], ord: number): number {
   return lo;
 }
 
-/** Insert `entry` into every derived structure. `entries` stays ord-ascending
- *  (an in-place replacement reuses its old ord, so it can land mid-array). */
+/** Inserts `entry` keeping `list` ord-ascending: a re-add (a rotate, a corner edit) reuses its old
+ *  ord, so it can land mid-list. */
+function insertByOrd(list: ObjectIndexEntry[], entry: ObjectIndexEntry): void {
+  const last = list[list.length - 1];
+  if (!last || last.ord < entry.ord) list.push(entry);
+  else list.splice(lowerBound(list, entry.ord), 0, entry);
+}
+
+/** Insert `entry` into every derived structure. */
 function insertEntry(index: ObjectIndex, entry: ObjectIndexEntry): void {
-  const { entries } = index;
-  const last = entries[entries.length - 1];
-  if (!last || last.ord < entry.ord) {
-    entries.push(entry);
-  } else {
-    entries.splice(lowerBound(entries, entry.ord), 0, entry);
-  }
+  insertByOrd(index.entries, entry);
   index.byId.set(entry.obj.id, entry);
   const id = entry.obj.catalogId;
   index.countByCatalog.set(id, (index.countByCatalog.get(id) ?? 0) + 1);
-  if (entry.coating && !entry.obj.patchOnly) {
+  if (entry.coating && !isSurfacePrint(entry.item) && !entry.obj.patchOnly) {
     index.roadByCell.set(cellKey(entry.obj.position.x, entry.obj.position.y), entry.obj);
   }
   forEachChunk(entry.rect, k => {
     const bucket = index.byChunk.get(k);
-    if (!bucket) { index.byChunk.set(k, [entry]); return; }
-    // ORD-ASCENDING, exactly like `entries`, so a query can MERGE its buckets instead of sorting
-    // what it collected. A re-add reuses its old ord (a rotate, a corner edit), so appending is not
-    // always in order.
-    const last = bucket[bucket.length - 1];
-    if (!last || last.ord < entry.ord) bucket.push(entry);
-    else bucket.splice(lowerBound(bucket, entry.ord), 0, entry);
+    // Ord-ascending like `entries`, so a query can merge its buckets instead of sorting them.
+    if (!bucket) index.byChunk.set(k, [entry]);
+    else insertByOrd(bucket, entry);
   });
   forEachCell(entry.rect, k => {
     const bucket = index.byCell.get(k);
@@ -202,7 +197,7 @@ function patchCached(state: GridState, cached: Cached, version: number): boolean
 }
 
 export function getObjectIndex(state: GridState): ObjectIndex {
-  const version = state.objectsVersion ?? 0;
+  const version = state.objectsVersion;
   const hit = cache.get(state);
   if (hit) {
     if (hit.version === version && hit.size === state.objects.size) return hit.index;
@@ -217,49 +212,76 @@ export function getObjectIndex(state: GridState): ObjectIndex {
  * The `RoadLookup` over `state` that `core`'s edge-cut geometry is handed. Bind it
  * once per operation, never per cell.
  *
- * It resolves the index per call rather than closing over one, for two reasons.
- * A delta the index cannot trust replaces the whole `ObjectIndex` object, so a
- * captured handle stops tracking the state it was built from. And binding must
- * stay free: the auto-trim preview builds a scratch grid per pointer move and
- * binds a lookup over it, where resolving eagerly would cost a full `buildIndex`
- * per frame for a terrain-only stroke that never asks a road question. The
- * resolve is a WeakMap hit plus two comparisons on the settled path, which is
- * what keeps the per-call price at O(1).
+ * It resolves the index per call: an untrusted delta replaces the whole `ObjectIndex`, so a
+ * captured handle would go stale, and binding must stay free for the auto-trim preview, which
+ * binds a lookup over a scratch grid per pointer move. The settled-path resolve is a WeakMap hit
+ * plus two comparisons.
  */
 export function roadLookup(state: GridState): RoadLookup {
-  return (x, y) => getObjectIndex(state).roadByCell.get(cellKey(x, y)) ?? null;
+  const lookup: RoadLookup = (x, y) => getObjectIndex(state).roadByCell.get(cellKey(x, y)) ?? null;
+  lookup.coatingsAt = (x, y) => (getObjectIndex(state).byCell.get(cellKey(x, y)) ?? [])
+    .filter(e => e.coating && !e.obj.patchOnly && e.obj.position.x === x && e.obj.position.y === y)
+    .map(e => e.obj);
+  return lookup;
+}
+
+/** Whether `e` outranks `picked` at one spot: a solid over any coating, a higher coating layer over a lower one. */
+function outranks(e: ObjectIndexEntry, picked: ObjectIndexEntry | undefined): boolean {
+  return !picked || (picked.coating && (!e.coating || coatingLayer(e.item) > coatingLayer(picked.item)));
 }
 
 /**
- * The object whose footprint covers `coord`, or null. Tests CELL OVERLAP (the macro cell at
+ * The object whose footprint covers `coord`, or null. Tests cell overlap (the macro cell at
  * `coord` intersects the footprint rect), not whether the rect's origin lies inside the cell: a
  * half-anchored footprint (a halfStep ramp/bridge) has no integer origin, so an origin test reads
  * "nothing here" on the cell its own left half is drawn over, while the 3D view's mesh raycast
  * (which hit-tests the mesh itself, not a stored rect) reads that same click as a hit — one click
  * must not get two answers across the views. The two tests agree exactly for a whole-integer
- * footprint. Insertion order decides when two footprints overlap (a coating under a solid object,
- * or a cell straddled by two half-anchored decks), matching a full scan of `state.objects`.
+ * footprint. Solids take priority over prints and pavement. Insertion order breaks ties within a layer.
  *
- * Reports what is THERE, locked or not: whether a found object may change is V-LOCK-02's
+ * Reports what is there, locked or not: whether a found object may change is V-LOCK-02's
  * question. An object whose catalogId is unknown has no footprint to test, so it is skipped.
  */
 export function objectAt(index: ObjectIndex, coord: MacroCoord): PlacedObject | null {
+  let picked: ObjectIndexEntry | undefined;
   for (const e of entriesCovering(index, { x: coord.x, y: coord.y, w: 1, h: 1 })) {
-    if (!e.item) continue;
-    if (cellOverlapsRect(e.rect, coord.x, coord.y, 0)) return e.obj;
+    if (!e.item || !cellOverlapsRect(e.rect, coord.x, coord.y, PLACEMENT_GRID)) continue;
+    if (outranks(e, picked)) picked = e;
   }
-  return null;
+  return picked?.obj ?? null;
 }
 
 /**
- * Entries whose own footprint TOUCHES `rect`, deduped, in insertion order — the question a
+ * The object whose footprint holds map point `point`, or null: the point test the pointer needs,
+ * where `objectAt`'s cell test also answers for a half-anchored footprint over the half of the cell
+ * it does not cover. Footprints are half-open, [x, x + w) on each axis, and the priority is
+ * `objectAt`'s.
+ */
+export function objectAtPoint(index: ObjectIndex, point: MapPoint): PlacedObject | null {
+  let picked: ObjectIndexEntry | undefined;
+  for (const e of entriesCovering(index, { x: Math.floor(point.x), y: Math.floor(point.y), w: 1, h: 1 })) {
+    const r = e.rect;
+    if (!e.item || point.x < r.x || point.x >= r.x + r.w || point.y < r.y || point.y >= r.y + r.h) continue;
+    if (outranks(e, picked)) picked = e;
+  }
+  return picked?.obj ?? null;
+}
+
+/** The pavement a walker can step on at (x, y): the cell's road, unless a solid stands over it. */
+export function exposedRoadAt(index: ObjectIndex, x: number, y: number): PlacedObject | null {
+  const road = index.roadByCell.get(cellKey(x, y));
+  if (!road) return null;
+  const top = objectAt(index, { x, y });
+  return !top || isCoatingItem(getCatalogItem(top.catalogId)) ? road : null;
+}
+
+/**
+ * Entries whose own footprint touches `rect`, deduped, in insertion order — the question a
  * placement asks, as against `entriesNear`'s "what is in this neighbourhood".
  *
- * The two are not interchangeable. A caller looking for the nearest house, or for anything within a
- * radius, means the loose one and expands its rect to say so; a caller testing a footprint against
- * the footprints already standing means this one, and asking it out of a chunk bucket costs the
- * whole chunk's population per question. On a picture paved cell by cell that is the difference
- * between linear and quadratic.
+ * A caller looking for anything within a radius means the loose one; a caller testing a footprint
+ * against the footprints already standing means this one, which reads cell buckets rather than a
+ * whole chunk's population per question.
  *
  * Sorted rather than merged: a footprint touches a handful of cells and each cell holds a couple of
  * entries, so the list is short by construction.
@@ -281,7 +303,7 @@ export function entriesCovering(index: ObjectIndex, rect: Rect): ObjectIndexEntr
 }
 
 /** Surface-coating objects (roads/paths) whose footprint overlaps `rect`. The
- *  overlap rule exempts coatings so an object CAN be placed over a road; the
+ *  overlap rule exempts coatings so an object can be placed over a road; the
  *  intended editor behavior is to strip the covered road and place. Interactive
  *  placement (manual placer, agent place_object) uses this to remove the roads it
  *  covers (and to tell the user/agent it happened). Returns [] when clear. */
@@ -296,9 +318,9 @@ export function coatingsUnder(state: GridState, rect: Rect): PlacedObject[] {
 /**
  * Entries whose padded chunk range overlaps `rect`, deduped, in insertion order.
  *
- * THE BUCKETS ARE ALREADY IN ORDER, so this MERGES them rather than sorting what it collected. The
+ * The buckets are already in order, so this merges them rather than sorting what it collected. The
  * distinction is the whole cost of the query on a dense map: a chunk of a fully paved region holds
- * CHUNK_SIZE² entries, a 1x1 rect touches up to four chunks through the half-cell padding, and
+ * BUCKET_SIZE² entries, a 1x1 rect touches up to four chunks through the half-cell padding, and
  * sorting a thousand candidates per cell makes a picture paved in roads quadratic in its own density.
  * A merge over at most four already-sorted runs is linear in what it returns.
  *

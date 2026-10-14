@@ -5,13 +5,13 @@
  * invokes the element's normal `click()` path. Reduced motion updates the indicator once per second.
  * External mode interpolates a caller-owned process countdown; it neither pauses nor auto-clicks.
  */
-import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import type { CSSProperties, ReactNode, RefObject } from 'react';
 import { motion, useReducedMotionConfig } from 'framer-motion';
-import { useUiPreview } from './ui-preview';
-import { useT } from '../../i18n/context';
-import { buttonMotion, colors } from '../design/styles';
-import { ACTIVE } from '../design/tokens';
+import { useUiPreview } from '../design/preview';
+import { buttonMotion, visuallyHidden } from '../design/styles';
+import { ACTIVE, ACCENT } from '../design/tokens';
+import { useObservedSize } from './use-observed-size';
 
 /** Ring thickness and inset gap, in CSS pixels. */
 const RING = 2;
@@ -27,22 +27,15 @@ const STEP_MS = 1000;
 
 /** Announced but not seen: the sentence a screen reader is given about a button that presses
  *  itself. Off the button rather than inside it — a node inside a button is part of its accessible
- *  NAME, so a description written there would be read out as though it were the label. */
-const spoken: CSSProperties = {
-  position: 'absolute',
-  width: 1,
-  height: 1,
-  padding: 0,
-  margin: -1,
-  overflow: 'hidden',
-  clip: 'rect(0 0 0 0)',
-  whiteSpace: 'nowrap',
-  border: 0,
-};
+ *  Name, so a description written there would be read out as though it were the label. */
+const spoken = visuallyHidden;
 
 interface TimedButtonProps {
   /** Seconds until the button presses itself. */
   after: number;
+  /** What a screen reader hears about the self-press while the clock runs, and once focus has
+   *  stopped it (`i18n/timed-hint.ts:timedHint`). */
+  hint: { running: string; stopped: string };
   /** What the press does. Reached through a real click, never called directly. `byClock` is true
    *  for the press this button makes when its time runs out, false for one a hand or a keyboard
    *  made — the distinction the event itself cannot carry. */
@@ -56,16 +49,16 @@ interface TimedButtonProps {
   disabled?: boolean;
   /** The ring's colour. The accent by default, which is what an interface uses to say "this one". */
   ring?: string;
-  /** How the countdown is drawn: the outline ring the button already is, or the yellow STADIUM
+  /** How the countdown is drawn: the outline ring the button already is, or the yellow `STADIUM`
    *  under it — the mark a shelf's row of names puts under the chosen one, spent rather than
    *  filled. One control, two drawings; everything about the clock's behaviour is shared. */
   clock?: 'ring' | 'stadium';
   /**
-   * The clock belongs to the CALLER, and `fraction` is how much of it is spent (0 = whole, 1 =
-   * empty, which means FIRED). Either drawing takes it. Present, this button keeps no clock of its
+   * The clock belongs to the caller, and `fraction` is how much of it is spent (0 = whole, 1 =
+   * empty, which means fired). Either drawing takes it. Present, this button keeps no clock of its
    * own and none of the interruptions apply — see the header.
    *
-   * `spanMs` is the whole length of that clock, which is what lets the fuse GLIDE between the
+   * `spanMs` is the whole length of that clock, which is what lets the fuse glide between the
    * caller's samples instead of stepping with them (see the header). Omitted, the ring is drawn at
    * the handed fraction and nothing interpolates — the right answer for a caller whose clock is
    * already sampled per frame.
@@ -81,11 +74,10 @@ interface TimedButtonProps {
 }
 
 export function TimedButton({
-  after, onPress, paused: pausedProp = false, disabled = false, ring = colors.accentPrimary, clock = 'ring', external,
+  after, hint, onPress, paused: pausedProp = false, disabled = false, ring = ACCENT, clock = 'ring', external,
   pressMotion = true, style, 'aria-label': ariaLabel, 'data-testid': testId, children,
 }: TimedButtonProps) {
-  const t = useT();
-  // A pictured button keeps its face and loses its clock (`ui-preview.tsx`). Read BEFORE the `||`:
+  // A pictured button keeps its face and loses its clock (`ui-preview.tsx`). Read before the `||`:
   // a short-circuit would skip the context hook whenever the prop is true, and a hook that comes
   // and goes between renders breaks every hook after it.
   const pictured = useUiPreview();
@@ -103,22 +95,13 @@ export function TimedButton({
    *  feedback scales the element, and a measured rect would then describe the button mid-press. */
   const [box, setBox] = useState({ w: 0, h: 0, r: 0 });
 
-  useLayoutEffect(() => {
-    const el = btn.current;
-    if (!el) return undefined;
-    const read = () => {
-      const r = Number.parseFloat(getComputedStyle(el).borderTopLeftRadius) || 0;
-      const w = el.offsetWidth;
-      const h = el.offsetHeight;
-      // Same object unless something actually moved: a fresh one every pass is a render loop, since
-      // the effect runs on the render its own state change caused.
-      setBox((was) => (was.w === w && was.h === h && was.r === r ? was : { w, h, r }));
-    };
-    read();
-    if (typeof ResizeObserver === 'undefined') return undefined;
-    const ro = new ResizeObserver(read);
-    ro.observe(el);
-    return () => ro.disconnect();
+  useObservedSize(() => btn.current, ([el]) => {
+    const r = Number.parseFloat(getComputedStyle(el!).borderTopLeftRadius) || 0;
+    const w = el!.offsetWidth;
+    const h = el!.offsetHeight;
+    // Same object unless something actually moved: a fresh one every pass is a render loop, since
+    // the effect runs on the render its own state change caused.
+    setBox((was) => (was.w === w && was.h === h && was.r === r ? was : { w, h, r }));
   }, []);
 
   /** Whether the clock is the caller's, and how much of it is spent. */
@@ -128,11 +111,11 @@ export function TimedButton({
   /** How long the caller's whole clock lasts, which is what makes the handed fraction a rate. */
   const lentSpan = external?.spanMs ?? 0;
 
-  // THE LENT FUSE, GLIDING between the caller's samples. It walks the drawn outline on from the
+  // The lent fuse, gliding between the caller's samples. It walks the drawn outline on from the
   // fraction just handed in and stops at empty, re-seated at every sample: an inline style beats
-  // the rendered attribute, so this effect is the ONE writer while the clock is lent — a walk that
+  // the rendered attribute, so this effect is the one writer while the clock is lent — a walk that
   // ran fast or slow is corrected by the caller's next sample rather than accumulating, and a
-  // sample that says FIRED is drawn as fired rather than leaving the last walked frame standing.
+  // sample that says fired is drawn as fired rather than leaving the last walked frame standing.
   // Reduced motion keeps the ring and drops the walk: the caller's sample rate becomes the step
   // rate, which is the fact without the movement.
   useEffect(() => {
@@ -157,7 +140,7 @@ export function TimedButton({
     draw(lent);
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-    // `box.w` is a dependency because the ring is not RENDERED until the button has been measured:
+    // `box.w` is a dependency because the ring is not rendered until the button has been measured:
     // without it the first laid-out frame would carry no writer at all.
   }, [lentClock, reduced, lentSpan, lent, box.w]);
 
@@ -199,7 +182,7 @@ export function TimedButton({
   }, [running, after, reduced]);
 
   // Focus declines an offer this button is making. It has no offer to decline while the clock is
-  // the caller's, and cancelling would only stop the DRAWING of something still running.
+  // the caller's, and cancelling would only stop the drawing of something still running.
   const stop = useCallback(() => { if (!lentClock) setCancelled(true); }, [lentClock]);
 
   // The ring stands just outside the button's edge, so its corner is the button's plus that offset:
@@ -225,11 +208,11 @@ export function TimedButton({
         onPointerLeave={() => setHovered(false)}
         // `relative` is the default a caller gets for free (it makes the button its own
         // containing block, which is what anchors the ring/stadium svg below); a caller naming its
-        // OWN position — the band's `absolute`, spanning the window edge to edge — must win, or
+        // Own position — the band's `absolute`, spanning the window edge to edge — must win, or
         // the button collapses to zero width with nothing in flow to give it one.
-        // EMPTY MEANS FIRED, said as the pill lighting: at the last frame of the caller's clock the
+        // Empty means fired, said as the pill lighting: at the last frame of the caller's clock the
         // ring stands spent and the fill goes lit for the beat before the next attempt relights it.
-        // It stands AFTER the caller's own style, and is the one thing here that does: a caller that
+        // It stands after the caller's own style, and is the one thing here that does: a caller that
         // dresses the pill with a fill of its own (every one on a coloured paper does) would
         // otherwise paint over the lighting and the fired beat would never be seen.
         style={{ position: 'relative', ...style, ...(fired ? { backgroundColor: ACTIVE } : null) }}
@@ -266,7 +249,7 @@ export function TimedButton({
               style={{ position: 'absolute', left: -out, top: -out, pointerEvents: 'none', overflow: 'visible' }}
             >
               {/* `pathLength` normalises the outline to 1, so nothing has to know how long a pill of
-                  this size actually is. It is drawn WHOLE and spent from there. */}
+                  this size actually is. It is drawn whole and spent from there. */}
               <rect
                 ref={arc as RefObject<SVGRectElement>}
                 x={RING / 2} y={RING / 2} width={w - RING} height={h - RING} rx={r} ry={r}
@@ -278,11 +261,11 @@ export function TimedButton({
         ) : null}
       </motion.button>
       {after > 0 ? (
-        // A live region, because the cancellation is caused BY the focus that would have read a
+        // A live region, because the cancellation is caused by the focus that would have read a
         // description: by the time the description is spoken it is already the wrong one. It changes
         // at most once, so it is not chatty.
         <span id={hintId} role="status" style={spoken}>
-          {cancelled ? t('timed.stopped') : t('timed.self_press', { seconds: after })}
+          {cancelled ? hint.stopped : hint.running}
         </span>
       ) : null}
     </>

@@ -1,16 +1,17 @@
+// @vitest-environment jsdom
 /**
  * Chromium before 128 reports a zoomed subtree's rects in that subtree's own CSS pixels, while
  * standardized engines report screen pixels. The helper probes once and converts legacy readings so
  * every measurement site sees screen pixels.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { __resetVisualRectProbe, effectiveZoom, visualRect } from '../../../ui/design/visual-rect';
+import { __resetVisualRectProbe, visualRect } from '../../../ui/design/visual-rect';
 
 const rect = (left: number, top: number, width: number, height: number): DOMRect => ({
   left, top, width, height, right: left + width, bottom: top + height, x: left, y: top, toJSON: () => ({}),
 }) as DOMRect;
 
-/** Per-element zoom the mocked `getComputedStyle` answers with; jsdom's CSSOM drops `zoom`. */
+/** Per-element zoom the mocked `getComputedStyle` answers with; jsdom's cssom drops `zoom`. */
 const zooms = new WeakMap<Element, string>();
 /** Per-element transform the mocked `getComputedStyle` answers with; 'none' unless posed. */
 const transforms = new WeakMap<Element, string>();
@@ -127,19 +128,19 @@ describe('visualRect', () => {
   });
 });
 
-describe('effectiveZoom', () => {
+describe('the zoom a legacy reading is scaled by', () => {
   it('multiplies every ancestor zoom and ignores unreadable values', () => {
     engine(200);
     const outer = document.createElement('div');
     zooms.set(outer, '0.5');
-    const middle = document.createElement('div');
+    const middle = measured(document.createElement('div'), rect(0, 0, 10, 10));
     zooms.set(middle, 'normal');
-    const child = document.createElement('div');
+    const child = measured(document.createElement('div'), rect(0, 0, 10, 10));
     zooms.set(child, '2');
     middle.append(child);
     outer.append(middle);
     document.body.append(outer);
-    expect(effectiveZoom(child)).toBe(1);
-    expect(effectiveZoom(middle)).toBe(0.5);
+    expect(visualRect(child).width).toBe(10);
+    expect(visualRect(middle).width).toBe(5);
   });
 });

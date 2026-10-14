@@ -4,7 +4,7 @@
   "icon": "path-park-stone",
   "name": {
     "en": "Park Stone Path",
-    "zh": "公园石路",
+    "zh": "公园石板路",
     "ja": "公園の石の道",
     "ru": "Парковая каменная дорожка",
     "th": "ทางหินสวนสาธารณะ",
@@ -27,5 +27,17 @@
     {
       "type": "plantable"
     }
-  ]
+  ],
+  "roadMaterial": {
+    "feather": 0.065,
+    "edge": {
+      "color": "#ffffff",
+      "pattern": {
+        "kind": "image",
+        "image": "path-park-stone",
+        "repeat": 2.5
+      }
+    },
+    "layers": []
+  }
 }

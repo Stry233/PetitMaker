@@ -1,6 +1,7 @@
-import type { Adapter, AdapterRequest } from '../providers/types';
+import type { Adapter, AdapterRequest } from './adapter';
 import type { Usage } from './types';
 import { withIdleTimeout } from './stream-idle';
+import { withDeadline } from '../../platform/async/abort';
 import REPLY_SYSTEM from '../prompts/11-reply-suggestion.md?raw';
 
 /** Optional composer assistance has a total deadline, including streamed reasoning. */
@@ -21,10 +22,7 @@ export async function requestReplySuggestion(
   signal: AbortSignal,
 ): Promise<{ reply: string; usage?: Usage } | null> {
   if (signal.aborted) return null;
-  const controller = new AbortController();
-  const abort = () => controller.abort();
-  signal.addEventListener('abort', abort, { once: true });
-  const timer = setTimeout(abort, REPLY_DEADLINE_MS);
+  const controller = withDeadline(REPLY_DEADLINE_MS, signal);
   try {
     const stream = adapter.stream({
       ...connection,
@@ -49,8 +47,7 @@ export async function requestReplySuggestion(
   } catch {
     return null;
   } finally {
-    clearTimeout(timer);
-    signal.removeEventListener('abort', abort);
+    controller.dispose();
     controller.abort();
   }
 }

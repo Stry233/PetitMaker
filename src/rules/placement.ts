@@ -1,316 +1,218 @@
 /**
  * V-PLACE-TRAIT: Trait-based object placement validation (pre-command).
  *
- * Iterates the catalog item's PlacementTrait list and runs each trait's
- * validator. New traits can be added by extending the switch in validateTrait.
+ * Its resolve step snaps an item whose trait decides its own footprint (`TRAIT_RESOLVERS`: the
+ * bridge's span, the ramp's cliff) onto a copy of the command. Validation then runs each trait's
+ * validator from `TRAIT_VALIDATORS`, which names every trait type, against the command as it lands.
  */
 import {
-  CellZone,
   CommandType,
   TerrainType,
-  type Command,
   type GridState,
   type MacroCoord,
   type CatalogItem,
+  type PlaceObjectCommand,
+  type PlacedObject,
   type PlacementTrait,
-  type PreCommandRule,
-  type ValidationError, type Rotation,
+  type ValidationError,
 } from '../core/model/types';
-import { getCell, getFootprint, onHalfGrid, straddledCells } from '../core/model/grid-model';
-import { realSurface, surfaceElevation } from '../core/edge-cut/terrain-silhouette';
+import { getCell } from '../core/model/grid-model';
+import { coveredCells, footprintCells } from '../core/grid/footprint';
+import { realSurface, surfaceElevation } from '../core/domain/terrain/terrain-surface';
 import { getCatalogItem } from '../state/catalog';
-import { coveredCells, footprintCells, getPlacedObjectSize, hasHalfStep, terrainSpan, rampOrientation } from '../state/object-geometry';
+import { getPlacedObjectSize, onItemGrid, placedFootprint } from '../state/object-geometry';
 import { entriesNear, getObjectIndex } from '../state/object-index';
-import { detectBridgeSpan } from '../core/model/bridge-span';
+import { bridgeSpanHolds, detectBridgeSpan } from '../core/domain/terrain/bridge-span';
+import { detectRampSpan, rampSpanHolds } from '../core/domain/terrain/ramp-span';
+import { PLACEMENT_GRID, TERRAIN_GRID } from '../core/game/profile';
+import { evidenceOn } from '../core/grid/grids';
+import { isSelfSnappingTrait, type SelfSnappingTrait } from '../core/model/traits';
+import { definePreRule, type Fail } from './define';
 
-const CARDINAL_OFFSETS: readonly MacroCoord[] = [
-  { x: 0, y: -1 }, { x: 0, y: 1 }, { x: -1, y: 0 }, { x: 1, y: 0 },
-];
-
-/** Where a heightDrop looks for its cliff: each cardinal direction in turn, nearest step first.
- *  A half anchor sits ON a cell boundary, so the half step is what reads the two cells it
- *  divides. From a whole anchor that same step straddles the anchor's own cell, so its min read
- *  can only match when the neighbour is the LOWER one, and then it reports the very numbers the
- *  whole step reports: the whole grid resolves identically either way. */
-const RAMP_PROBES: readonly { dx: number; dy: number; dist: number }[] =
-  CARDINAL_OFFSETS.flatMap((off) => [0.5, 1].map((dist) => ({ dx: off.x, dy: off.y, dist })));
-
-/** Min-support surface elevation over the ramp's ACROSS span at the cells `along` straddles, or
- *  null when any of them is off the map: a probe that reaches the void has no cliff to report,
- *  and support counts only where EVERY read cell holds it.
- *
- *  The across extent is the RAMP'S OWN (`terrainSpan` of the anchor's perpendicular coordinate),
- *  not the anchor point's half-cell straddle: those two read different columns for a half anchor,
- *  whose footprint starts half a cell PAST it. Read at the point, a ramp hugging a cliff's
- *  left/top end straddles the ground beside the plateau, the min goes low, and no cliff is ever
- *  detected there — while the right/bottom end, straddling two plateau cells, works. Reading the
- *  cells the support sweep itself will read is what makes the four ends agree. */
-function spanElevation(
-  state: GridState, vertical: boolean, along: number, across: { lo: number; hi: number },
-): number | null {
-  const alongCells = straddledCells(along);
-  let elev = Infinity;
-  for (let a = alongCells.lo; a <= alongCells.hi; a++) {
-    for (let p = across.lo; p <= across.hi; p++) {
-      const cell = getCell(state.cells, vertical ? p : a, vertical ? a : p);
-      if (!cell) return null;
-      elev = Math.min(elev, surfaceElevation(cell.terrain));
-    }
-  }
-  return elev;
+/** What every trait validator reads: the placement being judged and the cells it covers. */
+interface TraitCheck {
+  item: CatalogItem;
+  cmd: PlaceObjectCommand;
+  state: GridState;
+  footprint: MacroCoord[];
+  pos: MacroCoord;
+  fail: Fail;
 }
 
-function validateTrait(
-  trait: PlacementTrait,
-  item: CatalogItem,
-  cmd: Extract<Command, { type: CommandType.PlaceObject }>,
-  state: GridState,
-  footprint: MacroCoord[],
-): ValidationError[] {
-  const pos = cmd.object.position;
+type TraitValidator<K extends PlacementTrait['type']> =
+  (trait: Extract<PlacementTrait, { type: K }>, at: TraitCheck) => ValidationError[];
 
-  switch (trait.type) {
-    case 'flat': {
-      const first = footprint[0];
-      if (!first) return [];
-      const firstCell = getCell(state.cells, first.x, first.y);
-      const baseElev = surfaceElevation(firstCell?.terrain);
-      // Use the ROTATED footprint so the flat check covers the cells the object
-      // actually occupies (matching V-ZONE-01 / V-PLACE-OVERLAP). A raw item.width/
-      // height read tests a transposed region for a rotated non-square item, letting
-      // part of the real footprint sit off a flat surface.
-      const { w, h } = getPlacedObjectSize(cmd.object);
+/** The fields a trait that decides its own footprint snaps; null when `object` already stands as
+ *  the trait resolves it, or when nothing near it resolves (validation then refuses it). */
+type TraitResolver<K extends PlacementTrait['type']> = (
+  trait: Extract<PlacementTrait, { type: K }>, item: CatalogItem, object: PlacedObject, state: GridState,
+) => Partial<PlacedObject> | null;
 
-      // Sweep the covered footprint plus one extra cell past the last on each axis (the
-      // dual-grid margin) — covered cells, not pos + integer offset, so a half-integer
-      // anchor never probes a fractional cell key.
-      const xs = coveredCells(pos.x, w);
-      const ys = coveredCells(pos.y, h);
-      const sweepXs = [...xs, xs[xs.length - 1]! + 1];
-      const sweepYs = [...ys, ys[ys.length - 1]! + 1];
+/** The traits that resolve a placement before it is judged, one per `SELF_SNAPPING_TRAITS` entry. A resolved object already stands, so
+ *  resolving the command a placement landed as lands it again unchanged. */
+const TRAIT_RESOLVERS: { [K in SelfSnappingTrait]: TraitResolver<K> } = {
+  // A bridge spans two flat ends of equal height across a gap within [min, max]; detection reads
+  // the gap cell it is handed and snaps position, rotation, span length and deck elevation.
+  waterSpan(trait, item, object, state) {
+    if (bridgeSpanHolds(state, object, item.width, trait.min, trait.max)) return null;
+    const span = detectBridgeSpan(state, object.position, item.width, trait.min, trait.max);
+    return span && { rotation: span.rotation, position: span.position, spanLength: span.spanLength, elevation: span.elevation };
+  },
+  // A ramp climbs a cliff exactly `layers` high beside the anchor; detection snaps position,
+  // rotation and the high end's elevation.
+  heightDrop(trait, item, object, state) {
+    if (rampSpanHolds(state, object, item.width, item.height, trait.layers)) return null;
+    const span = detectRampSpan(state, object.position, item.width, item.height, trait.layers);
+    return span && { rotation: span.rotation, position: span.position, elevation: span.elevation };
+  },
+};
 
-      // Evidence = every cell in the extended sweep whose surface is water or off the
-      // anchor's level (the offenders may sit OUTSIDE the footprint — the +1 sweep).
-      const offenders: MacroCoord[] = [];
-      for (const cy of sweepYs) {
-        for (const cx of sweepXs) {
-          const cell = getCell(state.cells, cx, cy);
-          if (!cell) continue;
-          // The plaza is a raised no-build platform, not a cliff the object can
-          // float off — skip it so items can sit flush against the plaza. Actual
-          // footprint overlap with the plaza object is rejected by V-PLACE-OVERLAP
-          // (and terrain over it by V-PLACE-BLOCK). createGrid rewrites Plaza zones to
-          // Grass, so a live map reaches this only through a hand-built state.
-          if (cell.zone === CellZone.Plaza) continue;
-          const surf = realSurface(cell.terrain);
-          if (surf?.type === TerrainType.Water || (surf?.elevation ?? 0) !== baseElev) {
-            offenders.push({ x: cx, y: cy });
-          }
-        }
-      }
-      if (offenders.length > 0) {
-        return [{ ruleId: 'V-PLACE-TRAIT', message: 'error.placement_not_flat', cells: offenders, grid: 'micro', severity: 'error' }];
-      }
-      return [];
+/**
+ * The `flat` trait's own test: every cell of the sweep for a `w` x `h` body anchored at `pos` whose
+ * surface is water or off `base`. The sweep is the covered footprint plus one cell past the last on
+ * each axis (the dual-grid margin), by covered cells rather than `pos` plus an integer offset, so a
+ * half-integer anchor never probes a fractional cell. Off-map cells report nothing. A generator that
+ * must foresee the refusal asks this.
+ */
+export function flatSweepOffenders(state: GridState, pos: MacroCoord, w: number, h: number, base: number): MacroCoord[] {
+  const xs = coveredCells(pos.x, w, 'x');
+  const ys = coveredCells(pos.y, h, 'y');
+  const sweepXs = [...xs, xs[xs.length - 1]! + 1];
+  const sweepYs = [...ys, ys[ys.length - 1]! + 1];
+  const offenders: MacroCoord[] = [];
+  for (const cy of sweepYs) {
+    for (const cx of sweepXs) {
+      const cell = getCell(state.cells, cx, cy);
+      if (!cell) continue;
+      const surf = realSurface(cell.terrain);
+      if (surf?.type === TerrainType.Water || (surf?.elevation ?? 0) !== base) offenders.push({ x: cx, y: cy });
     }
-
-    case 'noFloat': {
-      const offenders = footprint.filter((coord) => {
-        const cell = getCell(state.cells, coord.x, coord.y);
-        return !cell || !realSurface(cell.terrain);
-      });
-      if (offenders.length > 0) {
-        return [{ ruleId: 'V-PLACE-TRAIT', message: 'error.floating_block', cells: offenders, grid: 'micro', severity: 'error' }];
-      }
-      return [];
-    }
-
-    case 'waterSpan': {
-      // Bridge: an overpass between two flat ends of EQUAL height, across a gap
-      // within [min, max]. The gap below the deck may be water, off-map void, OR
-      // lower terrain — water is not required. Auto-detects orientation
-      // and snaps position/rotation/spanLength/elevation. (See core/model/bridge-span.)
-      const bridgeWidth = item.width;
-      const span = detectBridgeSpan(state, pos, bridgeWidth, trait.min, trait.max);
-      if (!span) {
-        return [{ ruleId: 'V-PLACE-TRAIT', message: 'error.bridge_invalid', cells: [pos], severity: 'error' }];
-      }
-      cmd.object.rotation = span.rotation;
-      cmd.object.position = span.position;
-      cmd.object.spanLength = span.spanLength;
-      cmd.object.elevation = span.elevation;
-      return [];
-    }
-
-    case 'heightDrop': {
-      const spanLen = item.height;
-      const perpWidth = item.width;
-      const acrossX = terrainSpan(pos.x, perpWidth);
-      const acrossY = terrainSpan(pos.y, perpWidth);
-
-      for (const probe of RAMP_PROBES) {
-        const vertical = probe.dy !== 0;
-        const across = vertical ? acrossX : acrossY;
-        const anchorAlong = vertical ? pos.y : pos.x;
-        const anchorElev = spanElevation(state, vertical, anchorAlong, across) ?? 0;
-        const step = vertical ? probe.dy : probe.dx;
-        const neighborElev = spanElevation(state, vertical, anchorAlong + step * probe.dist, across);
-        if (neighborElev === null) continue;   // off-map: no cliff to read
-        if (Math.abs(anchorElev - neighborElev) !== trait.layers) continue;
-
-        const anchorIsHigh = anchorElev >= neighborElev;
-        const hElev = Math.max(anchorElev, neighborElev);
-        const lElev = Math.min(anchorElev, neighborElev);
-        const highX = anchorIsHigh ? pos.x : pos.x + probe.dx * probe.dist;
-        const highY = anchorIsHigh ? pos.y : pos.y + probe.dy * probe.dist;
-        const slopeDx = anchorIsHigh ? probe.dx : -probe.dx;
-        const slopeDy = anchorIsHigh ? probe.dy : -probe.dy;
-
-        // rot=0/90: include high cell (mountain in -HALF_TILE gap direction)
-        // rot=180/270: exclude high cell (mountain overlaps naturally)
-        //
-        // The ALONG coordinate (the ramp's run) always lands on a whole cell — proven for the
-        // probe-derived case (a min-support read only ever raises at a step landing on a whole
-        // neighbour), but an anchorIsHigh anchor's own position passes through untouched, and a
-        // doubly-half hover (both axes snapped to the half grid) can hand this branch a fractional
-        // along value directly. Rounded here: `terrainSpan` below reads the SAME cell via
-        // floor(v+0.5), so this aligns the stored position with what the sweep actually validated.
-        // The ACROSS slot (whichever of px/py this branch does NOT round) keeps its half freedom.
-        //
-        // A TIE ROUNDS TOWARD THE SLOPE. A half `high` coordinate sits between the cliff row and
-        // the plateau's next row in; the cliff row is the one on the DOWNHILL side. Math.round's
-        // half-up picks that row for rot 0/90 (downhill is +) but the plateau's interior for
-        // rot 180/270 (downhill is −), where the sweep then finds high ground in the run and
-        // refuses — every half hover approached from inside a north or west cliff died there.
-        const halfDown = (v: number) => Math.ceil(v - 0.5);
-        let rot: Rotation;
-        let px: number, py: number;
-        if (slopeDy > 0) { rot = 0; px = highX; py = Math.round(highY); }
-        else if (slopeDx > 0) { rot = 90; px = Math.round(highX); py = highY; }
-        else if (slopeDy < 0) { rot = 180; px = highX; py = halfDown(highY) - spanLen; }
-        else { rot = 270; px = halfDown(highX) - spanLen; py = highY; }
-        const { spanAxis, highAtStart } = rampOrientation(rot);
-
-        const isVert = spanAxis === 'y';
-
-        // Validate the terrain UNDER the ramp. Terrain renders at -HALF_TILE (up-left), so a
-        // whole-anchored footprint is visually overlapped by one extra cell on each axis, while a
-        // half-anchored one lands exactly on the cells it covers — `terrainSpan` answers both. Each
-        // swept cell must match the ramp's elevation profile: the cell at the cliff end carries the
-        // high plateau, every other one the run below it. That end faces the low run for a down-ramp
-        // (highAtStart) and the plateau for an up-ramp (the cliff "overlaps naturally"), so both ramp
-        // directions require a 1-high end and a spanLen-low run with flat support at each.
-        const along = terrainSpan(isVert ? py : px, spanLen);
-        const perp = terrainSpan(isVert ? px : py, perpWidth);
-        const highCell = highAtStart ? along.lo : along.hi;
-        let valid = true;
-        for (let a = along.lo; a <= along.hi && valid; a++) {
-          const exp = a === highCell ? hElev : lElev;
-          for (let p = perp.lo; p <= perp.hi && valid; p++) {
-            const tx = isVert ? p : a;
-            const ty = isVert ? a : p;
-            // the surface must be LAND at the expected level — water at the right
-            // elevation (a lake in the low run, a pool rim as the "cliff") is not support
-            const surf = realSurface(getCell(state.cells, tx, ty)?.terrain);
-            if (surf?.type === TerrainType.Water || (surf?.elevation ?? 0) !== exp) { valid = false; break; }
-          }
-        }
-        if (!valid) continue;
-
-        cmd.object.rotation = rot;
-        cmd.object.position = { x: px, y: py };
-        cmd.object.elevation = hElev;
-        return [];
-      }
-      return [{ ruleId: 'V-PLACE-TRAIT', message: 'error.ramp_wrong_height', cells: [pos], severity: 'error' }];
-    }
-
-    case 'surfaceCoating': {
-      const offenders = footprint.filter((coord) => {
-        const cell = getCell(state.cells, coord.x, coord.y);
-        return !cell || realSurface(cell.terrain)?.type === TerrainType.Water;
-      });
-      if (offenders.length > 0) {
-        return [{ ruleId: 'V-PLACE-TRAIT', message: 'error.road_needs_terrain', cells: offenders, grid: 'micro', severity: 'error' }];
-      }
-      return [];
-    }
-
-    case 'exclusionRadius': {
-      // Evidence = the footprints of every conflicting same-category object — the
-      // things that are too close — not the attempted spot. Candidates come from
-      // the spatial index over the radius square (anchor distance is Chebyshev,
-      // so any conflicting anchor lies inside it).
-      const offenders: MacroCoord[] = [];
-      const r = trait.radius;
-      const near = entriesNear(getObjectIndex(state), { x: pos.x - r, y: pos.y - r, w: 2 * r + 1, h: 2 * r + 1 });
-      for (const e of near) {
-        if (!e.item || e.item.category !== item.category) continue;
-        const dx = Math.abs(pos.x - e.obj.position.x);
-        const dy = Math.abs(pos.y - e.obj.position.y);
-        if (dx <= r && dy <= r) {
-          const { w, h } = getPlacedObjectSize(e.obj);
-          offenders.push(...getFootprint(e.obj.position.x, e.obj.position.y, w, h));
-        }
-      }
-      if (offenders.length > 0) {
-        return [{ ruleId: 'V-PLACE-TRAIT', message: 'error.too_close_same_kind', cells: offenders, grid: 'macro', severity: 'error' }];
-      }
-      return [];
-    }
-
-    case 'terrainBase':
-      // Passive marker (terrain may use this footprint as a base — see base-support).
-      // It imposes no placement constraint of its own.
-      return [];
-
-    case 'plantable':
-      // Passive marker (flora may stand on this coating — see standsOnCoating's readers).
-      return [];
-
-    case 'footprintTurn':
-      // Passive marker: how the item turns in the planet session (kit/operations/planet-session).
-      return [];
-
-    case 'halfStep':
-      // Passive marker: grants the item a half-cell anchor on both axes
-      // (state/object-geometry:hasHalfStep). It imposes no placement constraint of its
-      // own — an item WITHOUT this trait is what the fractional-position guard below
-      // rejects, since such an item's own traits list never reaches this arm.
-      return [];
   }
+  return offenders;
 }
 
-export const traitPlacementRule: PreCommandRule = {
+/** A marker trait read elsewhere, with no placement constraint of its own. */
+const passive = (): ValidationError[] => [];
+
+const TRAIT_VALIDATORS: { [K in PlacementTrait['type']]: TraitValidator<K> } = {
+  flat(_trait, { cmd, state, footprint, pos, fail }) {
+    const first = footprint[0];
+    if (!first) return [];
+    const firstCell = getCell(state.cells, first.x, first.y);
+    const baseElev = surfaceElevation(firstCell?.terrain);
+    // Use the rotated footprint so the flat check covers the cells the object
+    // actually occupies (matching V-ZONE-01 / V-PLACE-OVERLAP). A raw item.width/
+    // height read tests a transposed region for a rotated non-square item, letting
+    // part of the real footprint sit off a flat surface.
+    const { w, h } = getPlacedObjectSize(cmd.object);
+    // The offenders may sit outside the footprint: the sweep reaches one cell past it.
+    const offenders = flatSweepOffenders(state, pos, w, h, baseElev);
+    if (offenders.length > 0) return [fail('error.placement_not_flat', evidenceOn(TERRAIN_GRID, offenders))];
+    return [];
+  },
+
+  noFloat(_trait, { state, footprint, fail }) {
+    const offenders = footprint.filter((coord) => {
+      const cell = getCell(state.cells, coord.x, coord.y);
+      return !cell || !realSurface(cell.terrain);
+    });
+    if (offenders.length > 0) return [fail('error.floating_block', evidenceOn(TERRAIN_GRID, offenders))];
+    return [];
+  },
+
+  // The resolve step has snapped a bridge or ramp that can stand; one that still does not stands
+  // where nothing resolves it.
+  waterSpan(trait, { item, cmd, state, pos, fail }) {
+    if (bridgeSpanHolds(state, cmd.object, item.width, trait.min, trait.max)) return [];
+    return [fail('error.bridge_invalid', evidenceOn(PLACEMENT_GRID, [pos]))];
+  },
+
+  heightDrop(trait, { item, cmd, state, pos, fail }) {
+    if (rampSpanHolds(state, cmd.object, item.width, item.height, trait.layers)) return [];
+    return [fail('error.ramp_wrong_height', evidenceOn(PLACEMENT_GRID, [pos]), { messageParams: { n: trait.layers } })];
+  },
+
+  surfaceCoating(_trait, { state, footprint, fail }) {
+    const offenders = footprint.filter((coord) => {
+      const cell = getCell(state.cells, coord.x, coord.y);
+      return !cell || realSurface(cell.terrain)?.type === TerrainType.Water;
+    });
+    if (offenders.length > 0) return [fail('error.road_needs_terrain', evidenceOn(TERRAIN_GRID, offenders))];
+    return [];
+  },
+
+  exclusionRadius(trait, { item, state, pos, fail }) {
+    // Evidence = the footprints of every conflicting same-category object — the
+    // things that are too close — not the attempted spot. Candidates come from
+    // the spatial index over the radius square (anchor distance is Chebyshev,
+    // so any conflicting anchor lies inside it).
+    const offenders: MacroCoord[] = [];
+    const r = trait.radius;
+    const near = entriesNear(getObjectIndex(state), { x: pos.x - r, y: pos.y - r, w: 2 * r + 1, h: 2 * r + 1 });
+    for (const e of near) {
+      if (!e.item || e.item.category !== item.category) continue;
+      const dx = Math.abs(pos.x - e.obj.position.x);
+      const dy = Math.abs(pos.y - e.obj.position.y);
+      if (dx <= r && dy <= r) offenders.push(...placedFootprint(e.obj));
+    }
+    if (offenders.length > 0) return [fail('error.too_close_same_kind', evidenceOn(PLACEMENT_GRID, offenders))];
+    return [];
+  },
+
+  // Terrain may use this footprint as a base (base-support).
+  terrainBase: passive,
+  // Support markers consumed by overlap and finished-stroke validation.
+  coatingSupport: passive,
+  plantable: passive,
+  growsOnPlantable: passive,
+  // How the item turns in the planet session (editor/operations/planet-session).
+  footprintTurn: passive,
+  // Grants the item a half-cell anchor on both axes (state/object-geometry:hasHalfStep); an item
+  // without this trait is what the fractional-position guard in the rule refuses.
+  halfStep: passive,
+};
+
+/**
+ * The half-cell grid is a trait-granted exception (halfStep, ramps/bridges only): a fractional
+ * position on any other item is refused before any trait runs, since an item without the trait
+ * never reaches a 'halfStep' validator of its own to catch this itself. The exception is half cells
+ * and nothing finer: an anchor off both grids would otherwise reach detection, which reads it as
+ * the nearest half and would place somewhere the caller never asked for.
+ */
+function anchorOnItemGrid(item: CatalogItem, pos: MacroCoord): boolean {
+  return onItemGrid(item, pos.x) && onItemGrid(item, pos.y);
+}
+
+export const traitPlacementRule = definePreRule({
   id: 'V-PLACE-TRAIT',
-  agentHint: 'Objects validate their placement traits (see TRAITS below). For flat-trait buildings do NOT guess coordinates near water or slopes — the flat check rejects ANY water or elevation change touching the footprint+1-cell margin, so a house beside a river/lake/cliff you just made will fail; call find_flat_areas (object- and margin-aware) and place at a returned anchor. bridges/ramps auto-snap position/rotation.',
-  phase: 'pre-command',
   appliesTo: [CommandType.PlaceObject],
 
-  validate(cmd: Command, state: GridState): ValidationError[] {
-    if (cmd.type !== CommandType.PlaceObject) return [];
+  resolve(cmd, state) {
+    const item = getCatalogItem(cmd.object.catalogId);
+    if (!item || !anchorOnItemGrid(item, cmd.object.position)) return cmd;
+    let object = cmd.object;
+    for (const trait of item.traits) {
+      if (!isSelfSnappingTrait(trait.type)) continue;
+      const resolver = TRAIT_RESOLVERS[trait.type] as TraitResolver<PlacementTrait['type']>;
+      const snap = resolver(trait, item, object, state);
+      if (snap) object = { ...object, ...snap };
+    }
+    return object === cmd.object ? cmd : { ...cmd, object };
+  },
+
+  validate(cmd, state, fail) {
     const item = getCatalogItem(cmd.object.catalogId);
     if (!item) return [];
 
     const pos = cmd.object.position;
-    // The half-cell grid is a trait-granted exception (halfStep, ramps/bridges only) — a
-    // fractional position on any other item is refused here, before any trait runs,
-    // since an item without the trait never reaches a 'halfStep' case of its own to
-    // catch this itself. The exception is HALF cells and nothing finer: an anchor off both
-    // grids would otherwise reach detection, which reads it as the nearest half and would
-    // place somewhere the caller never asked for.
-    const onGrid = hasHalfStep(item)
-      ? onHalfGrid(pos.x) && onHalfGrid(pos.y)
-      : Number.isInteger(pos.x) && Number.isInteger(pos.y);
-    if (!onGrid) {
-      return [{ ruleId: 'V-PLACE-TRAIT', message: 'error.placement_off_grid', cells: [pos], severity: 'error' }];
-    }
+    if (!anchorOnItemGrid(item, pos)) return [fail('error.placement_off_grid', evidenceOn(PLACEMENT_GRID, [pos]))];
     const { w, h } = getPlacedObjectSize(cmd.object, item);
-    const footprint = footprintCells(pos.x, pos.y, w, h);
+    const check: TraitCheck = { item, cmd, state, footprint: footprintCells(pos.x, pos.y, w, h), pos, fail };
     const errors: ValidationError[] = [];
     for (const trait of item.traits) {
-      errors.push(...validateTrait(trait, item, cmd, state, footprint));
+      const validate = TRAIT_VALIDATORS[trait.type] as (t: PlacementTrait, at: TraitCheck) => ValidationError[];
+      errors.push(...validate(trait, check));
     }
     return errors;
   },
-};
+});

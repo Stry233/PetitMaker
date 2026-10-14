@@ -1,11 +1,39 @@
 import { describe, expect, it } from 'vitest';
-import {
-  roundedZoneLoops, annotationsInRect, chipApproxWidthCells, generateAnnotationId, nextZoneNumber, routeSamples,
-  zoneCentroid, zoneLoops, isTagId, SELECTABLE_ANNOTATION_TAGS,
-  type ChipNote, type MapAnnotation,
-} from '../../../core/model/annotations';
+import { generateAnnotationId, isEmptyNote, isMeasureSpan, mergeZones, nextZoneNumber, withTag, type ChipNote, type MapAnnotation } from '../../../core/model/annotations';
+import { roundedZoneLoops, annotationsInRect, routeSamples, zoneLabelAnchor } from '../../../core/model/annotation/geometry';
+import { chipApproxWidthCells } from '../../../core/model/annotation/text-metrics';
+import { isTagId, SELECTABLE_ANNOTATION_TAGS } from '../../../config/annotation-tags';
 
 const cells = (...pairs: Array<[number, number]>) => pairs.map(([x, y]) => ({ x, y }));
+/** The traced corner loops: the zone outline unrounded, without the repeated closing point. */
+const zoneLoops = (zone: ReadonlyArray<{ x: number; y: number }>) => roundedZoneLoops(zone, 0).map((loop) => loop.slice(0, -1));
+
+describe('annotation model ops', () => {
+  const zone = (id: string, c: Array<[number, number]>): MapAnnotation => ({ kind: 'zone', id, cells: cells(...c), color: '#FF8A7A', tag: null, num: 1 });
+  const chip: ChipNote = { kind: 'chip', id: 'c', x: 0, y: 0, tag: 'homes', size: 'm', color: '#FF8A7A' };
+
+  it('merges zones into the first named, keeping its identity and deduplicating cells in order', () => {
+    const items = [zone('a', [[0, 0], [1, 0]]), chip, zone('b', [[1, 0], [2, 0]])];
+    const merged = mergeZones(items, ['a', 'c', 'b'])!;
+    expect(merged.head).toBe('a');
+    expect(merged.items.map((n) => n.id)).toEqual(['a', 'c']);
+    expect(merged.items[0]).toMatchObject({ cells: cells([0, 0], [1, 0], [2, 0]) });
+    expect(mergeZones(items, ['a', 'c'])).toBeNull();
+  });
+
+  it('a measurement spans whole cells on one row or column', () => {
+    expect(isMeasureSpan([{ x: 1, y: 2 }, { x: 5, y: 2 }])).toBe(true);
+    expect(isMeasureSpan([{ x: 1, y: 2 }, { x: 5, y: 3 }])).toBe(false);
+    expect(isMeasureSpan([{ x: 1.5, y: 2 }, { x: 5, y: 2 }])).toBe(false);
+  });
+
+  it('a chip keeps its tag when a pick clears it, and empty drafts are recognised', () => {
+    expect(withTag(chip, null)).toBe(chip);
+    expect(withTag(zone('a', [[0, 0]]), null)).toMatchObject({ tag: null });
+    expect(isEmptyNote(zone('a', []))).toBe(true);
+    expect(isEmptyNote(chip)).toBe(false);
+  });
+});
 
 it('keeps retired tags readable without offering them for new notes', () => {
   for (const id of ['workshop', 'ranch']) {
@@ -67,9 +95,9 @@ describe('zoneLoops', () => {
   });
 });
 
-describe('zoneCentroid', () => {
-  it('is the mean of the cells\' drawn centres (zone ink lives on the terrain grid)', () => {
-    expect(zoneCentroid(cells([0, 0], [1, 0]))).toEqual({ x: 0.5, y: 0 });
+describe('zone caption anchor', () => {
+  it('is the mean of the cells\' drawn centres (zone ink lives on the road grid)', () => {
+    expect(zoneLabelAnchor(cells([0, 0], [1, 0]))).toEqual({ x: 1, y: 0.5 });
   });
 });
 

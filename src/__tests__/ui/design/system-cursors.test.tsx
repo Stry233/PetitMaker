@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 /**
  * The "System cursors" preference, end to end.
  *
@@ -11,17 +12,20 @@
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { render, act } from '@testing-library/react';
-import { CURSORS, CURSOR_IDS, DOM_CURSORS, type DomCursorId } from '../../../core/runtime/cursor-spec';
+import { CURSORS, CURSOR_IDS, DOM_CURSORS, type DomCursorId } from '../../../assets/cursors/cursor-spec';
 import { cursorCss } from '../../../assets/cursors/cursor-css';
 import { publishCursorPreference, useCursorVars } from '../../../ui/design/cursors/cursor-vars';
 import {
   __resetCursorController, registerCursorSurface, setToolCursor,
-} from '../../../canvas/interaction/cursor-controller';
+} from '../../../view/interaction/cursor-controller';
 import { useEditorStore } from '../../../state/store';
-import { PREFS } from '../../../core/runtime/prefs';
+import { PREFS } from '../../../platform/storage/prefs';
 
-/** The ids that HAVE art, and so are the ones a url() is expected for. */
+/** The ids that have art, and so are the ones a url() is expected for. */
 const DRAWN = CURSOR_IDS.filter((id) => CURSORS[id].hasArt);
+
+/** Set the store's preference and publish it, as a flip in Settings does. */
+const prefer = (on: boolean): void => { useEditorStore.setState({ systemCursors: on }); publishCursorPreference(); };
 
 const domProp = (id: DomCursorId): string =>
   document.documentElement.style.getPropertyValue(DOM_CURSORS[id]);
@@ -29,11 +33,11 @@ const domProp = (id: DomCursorId): string =>
 beforeEach(() => {
   __resetCursorController();
   useEditorStore.setState({ systemCursors: false });
-  publishCursorPreference(false);
+  prefer(false);
 });
 
 afterEach(() => {
-  publishCursorPreference(false);
+  prefer(false);
   useEditorStore.setState({ systemCursors: false });
   localStorage.removeItem(PREFS.systemCursors.key);
 });
@@ -44,23 +48,17 @@ describe('system cursors: the value producer', () => {
     // preference it was not built under.
     for (const id of DRAWN) cursorCss(id);
 
-    publishCursorPreference(true);
     for (const id of CURSOR_IDS) {
-      expect(cursorCss(id)).toBe(CURSORS[id].fallback);
+      expect(cursorCss(id, { system: true })).toBe(CURSORS[id].fallback);
       // A keyword cursor cannot carry the forbidden badge, so the badge cannot resurrect an image.
-      expect(cursorCss(id, { forbidden: true })).toBe(CURSORS[id].fallback);
-      expect(cursorCss(id)).not.toContain('url(');
+      expect(cursorCss(id, { forbidden: true, system: true })).toBe(CURSORS[id].fallback);
     }
   });
 
   it('gives the app its own set back when the preference goes off', () => {
-    publishCursorPreference(true);
-    for (const id of DRAWN) cursorCss(id);
+    for (const id of DRAWN) cursorCss(id, { system: true });
 
-    publishCursorPreference(false);
     for (const id of DRAWN) {
-      // Which of the two sets the image comes from is a build constant, so assert only that an
-      // image came back at all: `classic-cursors.test.tsx` owns the question of whose art it is.
       expect(cursorCss(id)).toContain('url(');
       // The keyword is still there, as the mandatory fallback after the image.
       expect(cursorCss(id).endsWith(CURSORS[id].fallback)).toBe(true);
@@ -72,10 +70,10 @@ describe('system cursors: the DOM', () => {
   it('publishes keywords into the four custom properties, and images back', () => {
     const ids = Object.keys(DOM_CURSORS) as DomCursorId[];
 
-    publishCursorPreference(true);
+    prefer(true);
     for (const id of ids) expect(domProp(id)).toBe(CURSORS[id].fallback);
 
-    publishCursorPreference(false);
+    prefer(false);
     // `help` has no drawing (the OS help arrow is the design), so its property stays the keyword
     // on either preference; everything else swaps back to its painted image.
     for (const id of ids.filter((i) => i !== 'help')) expect(domProp(id)).toContain('url(');
@@ -113,10 +111,10 @@ describe('system cursors: the canvas', () => {
     setToolCursor('mountain');
     expect(el.style.cursor).toContain('url(');
 
-    publishCursorPreference(true);
+    prefer(true);
     expect(el.style.cursor).toBe(CURSORS.mountain.fallback);
 
-    publishCursorPreference(false);
+    prefer(false);
     expect(el.style.cursor).toContain('url(');
     expect(el.style.cursor).toBe(cursorCss('mountain'));
   });
@@ -124,7 +122,7 @@ describe('system cursors: the canvas', () => {
   it('keeps following the tool while the preference is on', () => {
     const el = document.createElement('div');
     registerCursorSurface(el);
-    publishCursorPreference(true);
+    prefer(true);
     setToolCursor('water');
     expect(el.style.cursor).toBe(CURSORS.water.fallback);
     setToolCursor('place');

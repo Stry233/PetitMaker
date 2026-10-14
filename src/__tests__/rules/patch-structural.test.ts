@@ -1,22 +1,21 @@
 /**
  * A Γ patch is a cosmetic fillet: it renders at a high tier but holds no mass
  * of its own (its real support is patchBase). The floating rule and the
- * waterfall cap test must read that STRUCTURAL height — a mass-less fillet
+ * waterfall cap test must read that structural height — a mass-less fillet
  * must neither support a paint one tier up nor cap a waterfall.
  */
 import { describe, it, expect } from 'vitest';
 import { mountainFloatingRule } from '../../rules/floating-block';
-import { waterfallFacesAt } from '../../core/model/waterfall-geometry';
+import { waterfallFacesAt } from '../../core/domain/terrain/waterfall-geometry';
 import { CommandType, TerrainType } from '../../core/model/types';
 import type { Corners, PaintTerrainCommand } from '../../core/model/types';
-import { makeState, setTerrain } from './_helpers';
+import { makeState, setTerrain } from '../_support/map-state';
 
 const FAN: Corners = ['fan', 'square', 'square', 'square'];
 
 function paint(x: number, y: number, elevation: number): PaintTerrainCommand {
   return {
-    type: CommandType.PaintTerrain, timestamp: 0,
-    cells: [{ x, y }], terrainType: TerrainType.Mountain, elevation,
+    type: CommandType.PaintTerrain,     cells: [{ x, y }], terrainType: TerrainType.Mountain, elevation,
   };
 }
 
@@ -42,7 +41,7 @@ describe('floating rule reads structural height, not the cosmetic tier', () => {
 describe('waterfall caps must be real mass at the water tier', () => {
   function elevatedStrip(state: ReturnType<typeof makeState>) {
     // Water at (5,5) elev 2 over a supporting column, dropping north; the west
-    // cap is real. The EAST cap is the variable under test.
+    // cap is real. The east cap is the variable under test.
     setTerrain(state, 5, 5, TerrainType.Water, 2);
     setTerrain(state, 4, 5, TerrainType.Mountain, 2); // real west cap
   }

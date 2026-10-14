@@ -12,11 +12,11 @@ import type { CellFields } from './grid-io';
 import { SHARE_CATALOG_ORDER } from './catalog-order';
 import { frozenTemplateMask } from './template-mask';
 import type { MapTemplate } from '../../../core/model/types';
-import type { SaveObject } from '../../save-format';
-import { MAX_OBJECTS_PER_CELL } from '../../import-limits';
-import { ROTATIONS } from '../../../core/model/types';
-import { structuralTop } from '../../../core/edge-cut/terrain-silhouette';
-import { CORNER_CODE } from '../../json-codec';
+import type { SaveObject } from '../../save/format';
+import { MAX_OBJECTS_PER_CELL } from '../../save/limits';
+import { ROTATIONS, TerrainType } from '../../../core/model/types';
+import { structuralTop } from '../../../core/domain/terrain/terrain-surface';
+import { CORNER_CODE } from '../../save/terrain-token';
 
 /** The encoder's inverse of `SHARE_CATALOG_ORDER[idx]`, asked once per object per pass. */
 const SHARE_CATALOG_INDEX = new Map(SHARE_CATALOG_ORDER.map((id, i) => [id, i]));
@@ -63,8 +63,7 @@ class Models {
 
 /**
  * Stable wire predictor for square corners: a same-type edge neighbour reaching this tier pins the shared corner.
- * It is intentionally independent of editable placement rules; predictor misses remain explicit data rather than changing decode semantics.
- * The frozen predictor agrees with 99.1–100% of corpus cases and locks 91–95% of corner slots.
+ * It is independent of editable placement rules and frozen with the wire; a predictor miss is explicit data, never a change of decode semantics.
  */
 const EDGE_NEIGHBOURS: readonly (readonly (readonly [number, number])[])[] = [
   [[-1, 0], [0, -1]], // top-left
@@ -72,13 +71,11 @@ const EDGE_NEIGHBOURS: readonly (readonly (readonly [number, number])[])[] = [
   [[-1, 0], [0, 1]],  // bottom-left
   [[1, 0], [0, 1]],   // bottom-right
 ];
-const WATER = 2;
-
 /** Does this cell hold solid mass of `type` at tier `e`? Water fills from 0, mountain from 1. */
 function solidAt(f: CellFields | null, type: number, e: number): boolean {
   if (!f || f.type !== type) return false;
   const top = structuralTop(f);
-  return type === WATER ? e >= 0 && e <= top : e >= 1 && e <= top;
+  return type === TerrainType.Water ? e >= 0 && e <= top : e >= 1 && e <= top;
 }
 
 function lockedCorners(

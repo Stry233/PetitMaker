@@ -1,8 +1,5 @@
-// @ts-ignore - node:fs is untyped here (no @types/node)
 import { readFileSync, writeFileSync } from 'node:fs';
 import { referenceBlocks, rewriteReferenceDoc } from './generate-reference-core.mts';
-
-declare const process: { argv: string[]; exitCode?: number };
 
 const path = 'docs/ARCHITECTURE.md';
 const read = (file: string): string => readFileSync(file, 'utf8');

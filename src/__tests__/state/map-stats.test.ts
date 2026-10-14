@@ -5,15 +5,17 @@
  */
 import { describe, it, expect } from 'vitest';
 import { bumpObjectsVersion, bumpCellsVersion, getCell } from '../../core/model/grid-model';
+import { chunkKey } from '../../core/grid/rect';
 import { applyCommand } from '../../core/commands/command-apply';
+import { applyTrim } from '../../core/domain/edge-cut/trim-apply';
 import { EventBus } from '../../core/commands/event-bus';
-import { CommandType, TerrainType, type EditorEvents, type GridState, type PlacedObject, type TrimCornersCommand } from '../../core/model/types';
-import { chunkKey } from '../../core/model/grid-model';
+import { CommandType, TerrainType, type GridState, type PlacedObject, type TrimCornersCommand } from '../../core/model/types';
+import { type EditorEvents } from '../../state/editing/events';
 import { chunksOf, getMapStats } from '../../state/map-stats';
-import { footprintCells } from '../../state/object-geometry';
-import { getActiveLayers } from '../../state/layer-utils';
-import { makeState } from '../rules/_helpers';
-import { CHUNK_SIZE } from '../../core/model/game-profile';
+import { footprintCells } from '../../core/grid/footprint';
+import { layerRows } from '../../state/layer-utils';
+import { makeState } from '../_support/map-state';
+import { CHUNK_SIZE } from '../../core/game/profile';
 
 function tree(id: string, x: number, y: number): PlacedObject {
   return { id, catalogId: 'tree-apple', position: { x, y }, rotation: 0, elevation: 0 };
@@ -21,6 +23,11 @@ function tree(id: string, x: number, y: number): PlacedObject {
 
 function road(id: string, x: number, y: number): PlacedObject {
   return { id, catalogId: 'path-overgrown-dirt', position: { x, y }, rotation: 0, elevation: 0 };
+}
+
+/** A bridge keeps the deck elevation it stores, so it can stand above the ground under it. */
+function bridge(id: string, x: number, y: number, elevation: number): PlacedObject {
+  return { id, catalogId: 'bridge-plank', position: { x, y }, rotation: 0, elevation };
 }
 
 function add(state: GridState, ...objs: PlacedObject[]): void {
@@ -72,6 +79,19 @@ describe('map stats', () => {
     expect(getMapStats(state).objectsByLayer[0]).toBe(1);
   });
 
+  it('counts an object at the layer of the ground it stands on after the ground moves', () => {
+    const state = makeState();
+    add(state, tree('a', 4, 4));
+    expect(getMapStats(state).objectsByLayer[0]).toBe(1);
+    raise(state, 4, 4, 2);
+    const stats = getMapStats(state);
+    expect(stats.objectsByLayer[0]).toBe(0);
+    expect(stats.objectsByLayer[2]).toBe(1);
+    state.objects.delete('a');
+    bumpObjectsVersion(state, { removed: [tree('a', 4, 4)] });
+    expect(getMapStats(state).objectsByLayer[2]).toBe(0);
+  });
+
   it('counts a patchOnly object in its layer row but excludes it from chunk load', () => {
     const state = makeState();
     add(state, { ...tree('a', 2, 2), patchOnly: true });
@@ -85,9 +105,9 @@ describe('map stats', () => {
     raise(state, 3, 3, 2);
     raise(state, 4, 3, 2);
     add(state, tree('a', 8, 8));
-    const layers = getActiveLayers(state, 1);
-    expect(layers.find((l) => l.elevation === 1)!.cellCount).toBe(2);
-    expect(layers.find((l) => l.elevation === 0)!.cellCount).toBe(1);
+    const layers = layerRows(state, 1);
+    expect(layers.find((l) => l.elevation === 1)!.count).toBe(2);
+    expect(layers.find((l) => l.elevation === 0)!.count).toBe(1);
   });
 });
 
@@ -187,7 +207,7 @@ describe('map stats: incremental patching', () => {
   });
 
   it('folds an in-place edit idempotently instead of double-counting it', () => {
-    // command-apply.ts's road TrimCorners branch mutates the SAME PlacedObject in place
+    // command-apply.ts's road TrimCorners branch mutates the same PlacedObject in place
     // (new corners/rotation/patchOnly, same id) and republishes it as `added` — a re-index
     // request, not a new object. Mirrors state/object-index's re-add-in-place contract.
     const state = makeState();
@@ -232,15 +252,15 @@ describe('map stats: incremental patching', () => {
 
     const bus = new EventBus<EditorEvents>();
     const trim: TrimCornersCommand = {
-      type: CommandType.TrimCorners, timestamp: 0, x: 2, y: 2, layer: 'road', objectId: 'r',
-      beforeCorners: undefined, afterCorners: ['square', 'fan', 'square', 'square'],
+      type: CommandType.TrimCorners, x: 2, y: 2, layer: 'road', objectId: 'r',
+      afterCorners: ['square', 'fan', 'square', 'square'],
     };
-    applyCommand(trim, state, bus); // mutates the SAME PlacedObject in place, republishes as `added`
+    applyCommand(trim, state, bus, applyTrim); // mutates the same PlacedObject in place, republishes as `added`
     const patched = getMapStats(state);
 
     const rebuilt = makeState();
     add(rebuilt, road('r', 2, 2));
-    applyCommand(trim, rebuilt, new EventBus<EditorEvents>());
+    applyCommand(trim, rebuilt, new EventBus<EditorEvents>(), applyTrim);
     bumpObjectsVersion(rebuilt); // no delta: forces a rebuild, the ground truth
     const rebuiltStats = getMapStats(rebuilt);
 
@@ -249,14 +269,12 @@ describe('map stats: incremental patching', () => {
 
   it('lowers maxElevation on removal instead of leaving it stale', () => {
     const state = makeState();
-    const high = tree('high', 2, 2);
+    const high = bridge('high', 2, 2, 5);
     add(state, high, tree('low', 5, 5));
-    state.objects.set('high', { ...high, elevation: 5 });
-    bumpObjectsVersion(state, { added: [{ ...high, elevation: 5 }] });
     expect(getMapStats(state).maxElevation).toBe(5);
 
     state.objects.delete('high');
-    bumpObjectsVersion(state, { removed: [{ ...high, elevation: 5 }] });
+    bumpObjectsVersion(state, { removed: [high] });
     const patched = getMapStats(state);
 
     const rebuilt = makeState();
@@ -269,12 +287,12 @@ describe('map stats: incremental patching', () => {
   it('keeps the terrain maximum when a patch removes the tallest object', () => {
     const state = makeState();
     raise(state, 1, 1, 4);
-    const tall = tree('tall', 2, 2);
-    add(state, { ...tall, elevation: 6 });
+    const tall = bridge('tall', 2, 2, 6);
+    add(state, tall);
     expect(getMapStats(state).maxElevation).toBe(6);
 
     state.objects.delete('tall');
-    bumpObjectsVersion(state, { removed: [{ ...tall, elevation: 6 }] });
+    bumpObjectsVersion(state, { removed: [tall] });
     const patched = getMapStats(state);
 
     const rebuilt = makeState();
@@ -285,7 +303,7 @@ describe('map stats: incremental patching', () => {
   });
 
   it('patches correctly when a terrain raise and an object removal land in the same frame', () => {
-    // The fragile combination: objectsDelta is usable AND cellsVersion also moved in one
+    // The fragile combination: objectsDelta is usable and cellsVersion also moved in one
     // getMapStats call, with the removed object taller than the terrain the raise adds.
     const state = makeState();
     const tall = tree('tall', 2, 2);

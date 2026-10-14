@@ -1,20 +1,21 @@
+// @vitest-environment jsdom
 /** Save, share, and search Help figures mounted with real UI components and map state. */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, cleanup, screen, waitFor, act } from '@testing-library/react';
 import { I18nProvider, localizedName } from '../../../i18n/context';
 import { getCatalogItem } from '../../../state/catalog';
-import { setReducedMotion, __resetMotionState } from '../../../core/runtime/motion-state';
-import { makeState } from '../../rules/_helpers';
-import { setStoreState } from '../../_store';
-import { en } from '../../../i18n/locales/en';
+import { setReducedMotion, __resetMotionState } from '../../../platform/channels/motion-state';
+import { makeState } from '../../_support/map-state';
+import { setStoreState } from '../../_support/store';
+import { translateFor } from '../../../i18n/context';
 import {
   SavePreview, SharePreview, ImportPreview, JsonPreview, ChecklistPreview, CandidatesPreview,
   SearchPreview,
-} from '../../../ui/chrome/modals/help/figures/previews/share';
-import { SEARCH_EXAMPLE_IDS, searchExamples } from '../../../ui/chrome/modals/help/search-examples';
+} from '../../../ui/help/figures/previews/share';
+import { SEARCH_EXAMPLE_IDS, searchExamples } from '../../../ui/help/search-examples';
 
-vi.mock('../../../canvas/thumbnail', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('../../../canvas/thumbnail')>()),
+vi.mock('../../../view/map2d/capture/thumbnail', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../../view/map2d/capture/thumbnail')>()),
   renderThumbnail: () => new Promise<null>(() => {}),
 }));
 
@@ -45,15 +46,15 @@ describe('save/share/search Help figures mount the real components', () => {
   it('SharePreview mounts ExportPreview', async () => {
     const { container } = mount(SharePreview);
     expect(container.querySelector('[aria-hidden="true"]')).toBeTruthy();
-    await waitFor(() => expect(screen.getByText(en['export.load_t']!)).toBeTruthy());
+    await waitFor(() => expect(screen.getByText(translateFor('en', 'export.load_t'))).toBeTruthy());
   });
 
   it('ImportPreview mounts the real drop zone at the import card\'s own geometry, click copy and all', () => {
     mount(ImportPreview);
-    expect(screen.getByText(en['import.title']!)).toBeTruthy();
+    expect(screen.getByText(translateFor('en', 'import.title'))).toBeTruthy();
     // The no-op click keeps the modal's click-to-choose line rather than the drag-only wording.
-    expect(screen.getByText(en['import.drop']!)).toBeTruthy();
-    expect(screen.getByText(en['import.note']!)).toBeTruthy();
+    expect(screen.getByText(translateFor('en', 'import.drop'))).toBeTruthy();
+    expect(screen.getByText(translateFor('en', 'import.note'))).toBeTruthy();
   });
 
   it('JsonPreview mounts ExportJsonPanel', () => {

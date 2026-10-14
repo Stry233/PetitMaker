@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { isPng, readChunks, buildChunk } from '../../../../io/share/raster/png-chunks';
+import { readChunks, buildChunk } from '../../../../io/share/raster/png-chunks';
 import { encodePng, decodePng } from '../../../../io/share/raster/png-raster';
 import { DEFAULT_LIMITS } from '../../../../io/share/errors';
 
@@ -10,9 +10,8 @@ function tinyPng(): Uint8Array {
 }
 
 describe('PNG chunks and raster codec', () => {
-  it('recognizes the PNG signature', () => {
-    expect(isPng(tinyPng())).toBe(true);
-    expect(isPng(new Uint8Array([1, 2, 3]))).toBe(false);
+  it('refuses bytes without the PNG signature', () => {
+    expect(() => readChunks(new Uint8Array([1, 2, 3]))).toThrow('Not a PNG.');
   });
   it('reads chunks and verifies CRC', () => {
     expect(readChunks(tinyPng()).map((c) => c.type)).toEqual(['IHDR', 'IEND']);
@@ -27,7 +26,7 @@ describe('PNG chunks and raster codec', () => {
     for (let i = 0; i < data.length; i++) data[i] = (i * 3 + 7) & 0xff;
     const original = { width: w, height: h, data };
     const png = await encodePng(original);
-    expect(isPng(png)).toBe(true);
+    expect(readChunks(png)[0]!.type).toBe('IHDR');
     const decoded = await decodePng(png);
     expect(decoded.width).toBe(w);
     expect(decoded.height).toBe(h);

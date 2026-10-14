@@ -1,15 +1,10 @@
+// @vitest-environment jsdom
 /**
- * THE CLOSED PANEL, which is a state of the interface and not merely the absence of one.
- *
- * With the panel folded, the character is all that is left of the assistant: a faint plate behind her
- * so she reads as a control rather than as map art, and — while a job is actually running — a chip at
- * her shoulder carrying that job's own word and clock. It is the only evidence something is editing
- * the map, so what it says has to be the DOCK's sentence rather than a second wording of it, and it
- * has to arrive and leave rather than being switched on by the fold's own timer (which is what made
- * it appear fully formed beside a panel still folding).
- *
- * jsdom lays nothing out, so the placement arithmetic is not what is under test here: what is, is
- * WHEN the two show, what the chip says, and that the layer around it stays pointer-deaf.
+ * The closed panel. With it folded the character is all that is left of the assistant: a faint
+ * plate behind her so she reads as a control, and while a job runs a chip at her shoulder with the
+ * dock's own word and clock. The chip arrives and leaves rather than switching on with the fold's
+ * timer. jsdom lays nothing out, so this tests when the two show, what the chip says, and that the
+ * layer around it stays pointer-deaf.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { act, cleanup, fireEvent, render } from '@testing-library/react';
@@ -21,11 +16,11 @@ import { I18nProvider } from '../../../i18n/context';
 import { translations } from '../../../i18n/translations';
 import { useEditorStore } from '../../../state/store';
 import { CharacterHost } from '../../../ui/agent/character/CharacterHost';
-import { setSurfacePose } from '../../../ui/agent/character/surface-pose';
-import { heroChipFace, WORD_FOR_PHASE } from '../../../ui/agent/dock-face';
+import { setIntentPose } from '../../../ui/agent/character/intent';
+import { heroChipFace } from '../../../ui/agent/derive/clock';
+import { PHASE } from '../../../ui/agent/derive/phase';
 
 const backing = new Map<string, string>();
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 (globalThis as any).localStorage = {
   getItem: (k: string) => backing.get(k) ?? null,
   setItem: (k: string, v: string) => void backing.set(k, String(v)),
@@ -51,9 +46,9 @@ function mount(open: boolean, onOpen?: () => void) {
 }
 
 /** A job under way: an order and a turn that asked for a tool. The fold reads a running job off the
- *  LOG as `thinking` (only a live stream promotes it to streaming/executing, which is a coalesced
+ *  Log as `thinking` (only a live stream promotes it to streaming/executing, which is a coalesced
  *  frame this test does not need), and the chip's business is the running family as a whole.
- *  Appended through the log's OWN clock so the elapsed reading is real — the seam `states.ts` uses. */
+ *  Appended through the log's own clock so the elapsed reading is real — the seam `states.ts` uses. */
 function runningJob(agoMs: number): void {
   const log = useAgentSession.getState().log as { now: () => number };
   const real = log.now;
@@ -96,15 +91,15 @@ describe('the chip at the parked character\'s shoulder', () => {
     openPanel.unmount();
   });
 
-  it('carries the dock\'s own word and the job\'s clock', () => {
+  it('carries the status card\'s own word and the job\'s clock', () => {
     act(() => { runningJob(134_000); });
     const view = mount(false);
     const text = view.getByTestId('hero-chip').textContent ?? '';
-    expect(text).toContain(translations.en['agent3.dock_thinking']);
+    expect(text).toContain(translations.en['agent.dock_thinking']);
     expect(text).toMatch(/\d+:\d\d/);
   });
 
-  /** THE WORD IS THE DOCK'S TABLE, not a second wording: the panel open and the panel shut must not
+  /** The word is the dock's table, not a second wording: the panel open and the panel shut must not
    *  describe one job two ways. */
   it('reads its word out of the one phase table', () => {
     const face = heroChipFace(panelView(useAgentSession.getState()), Date.now());
@@ -113,7 +108,7 @@ describe('the chip at the parked character\'s shoulder', () => {
     act(() => { runningJob(1_000); });
     const live = panelView(useAgentSession.getState());
     expect(live.phase).toBe('thinking');
-    expect(heroChipFace(live, Date.now())?.wordKey).toBe(WORD_FOR_PHASE[live.phase]);
+    expect(heroChipFace(live, Date.now())?.wordKey).toBe(PHASE[live.phase].word);
   });
 
   it('moves its clock on its own, with nothing else re-rendering', () => {
@@ -131,7 +126,7 @@ describe('the chip at the parked character\'s shoulder', () => {
     }
   });
 
-  /** It is a CONTROL: the one thing in a pointer-deaf layer that takes a press, and what it does is
+  /** It is a control: the one thing in a pointer-deaf layer that takes a press, and what it does is
    *  put the panel back up. */
   it('opens the panel on a press, in a layer that takes no press of its own', () => {
     act(() => { runningJob(1_000); });
@@ -147,7 +142,7 @@ describe('the chip at the parked character\'s shoulder', () => {
   });
 });
 
-/** SHE STANDS FREE, in both states. A plate behind her while the panel was shut read as a second
+/** She stands free, in both states. A plate behind her while the panel was shut read as a second
  *  card standing beside the one she opens, and the panel now unfolds from her own corner: what says
  *  she is a control is her hover and her press. */
 describe('no card is drawn around her', () => {
@@ -162,22 +157,22 @@ describe('no card is drawn around her', () => {
 });
 
 /**
- * THE POSE A SURFACE OWNS. Three of the character's poses portray the SETUP SCREEN rather than the
+ * The pose a surface owns. Three of the character's poses portray the setup screen rather than the
  * session, and the screen is inside the panel's lazy chunk while she stands in this eager layer, so
- * the fact is published rather than passed (`character/surface-pose.ts`). Without this the dock said
+ * the fact is published rather than passed (`character/intent.ts`). Without this the dock said
  * "Reading the key" over a character fast asleep.
  */
 describe('a pose published by the surface', () => {
-  afterEach(() => setSurfacePose(null));
+  afterEach(() => setIntentPose(null));
 
   it('outranks the phase, and hands her back when the surface goes', () => {
     const view = mount(true);
     expect(view.getByTestId('pw-character').getAttribute('data-pose')).toBe('idle');
 
-    act(() => setSurfacePose('trouble'));
+    act(() => setIntentPose('trouble'));
     expect(view.getByTestId('pw-character').getAttribute('data-pose')).toBe('trouble');
 
-    act(() => setSurfacePose(null));
+    act(() => setIntentPose(null));
     expect(view.getByTestId('pw-character').getAttribute('data-pose')).toBe('idle');
   });
 });

@@ -7,7 +7,7 @@ export function ConfirmationModal({ open, helpTarget, ...content }: Confirmation
 }) {
   return (
     <ModalShell open={open} onClose={() => { if (!content.busy) content.onCancel(); }}
-      width={420} maxVw={94} maxVh={90} helpTarget={helpTarget}
+      size="confirm" helpTarget={helpTarget}
       ariaLabel={content.title} cardStyle={confirmationCardStyle}>
       <ConfirmationContent {...content} />
     </ModalShell>

@@ -1,8 +1,8 @@
 {
   "version": 2,
   "artifact": "political-index.json",
-  "bytes": 1151760,
-  "sha256": "7f50bcf080cb4cc6e1b4f5c5f5b7c61773e71090d2da732323eca1eb9466fb9f",
+  "bytes": 1152303,
+  "sha256": "ce7efc10cdfc4cd8c5bffdab78c290b0290c7562b3fc9908846f275b32e7e8f7",
   "sources": [
     {
       "id": "zhin",

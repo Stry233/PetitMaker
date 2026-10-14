@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { append, createLog, eventsOf } from '../../../agent/core/log';
 import { deriveMessages } from '../../../agent/core/project-messages';
 import { eraseRecords } from '../../../agent/session/erase-records';
-import { deserializeLog, serializeLog } from '../../../agent/session/persist';
+import { deserializeLog, serializeLog } from '../../../agent/session/log-codec';
 
 const messages = (log: ReturnType<typeof createLog>) => JSON.stringify(deriveMessages(log, { budgetTokens: 100000 }));
 

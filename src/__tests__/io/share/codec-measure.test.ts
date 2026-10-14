@@ -2,7 +2,7 @@
 import { describe, it, expect } from 'vitest';
 import { corpusCases } from './corpus';
 import { encodeMapPayload, decodeMapPayload } from '../../../io/share/codec/payload';
-import { canonicalize, canonicalBytes } from '../../../io/share/canonical';
+import { canonicalize, canonicalBytes } from '../../../io/save/canonical';
 import { choosePlan } from '../../../io/share/glyph/profiles';
 
 const META = { appVersion: 'measure', saveVersion: 3 };

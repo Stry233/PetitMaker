@@ -1,8 +1,8 @@
 /*
  * The Help Center's CPU-side costs, no renderer.
  *
- * Every Help figure is a real `DemoWorld` (a live `GridState` + `CommandExecutor` + full rule
- * registry) driven by a scene's `run(ctx, t)` timeline (`figures/scenes.ts`); a mounted page pays
+ * Every Help figure is a real `SandboxWorld` (a live `GridState` + `CommandExecutor` + full rule
+ * registry) driven by a scene's `run(ctx, t)` timeline (`figures/scenes/`); a mounted page pays
  * one such world per figure, settled through the same `on`/`during(ctx,1)` calls the reduced-motion
  * player's `finishAll` makes. This suite times exactly that path with a no-op `DemoView` (matching
  * `__tests__/ui/help/catalog.test.ts`'s own stub) standing in for the overlay layer, plus the
@@ -11,23 +11,23 @@
  */
 import { describe, it } from 'vitest';
 import { PERF, perfSuite } from './_harness';
-import { DemoWorld } from '../../ui/chrome/modals/help/figures/demo-world';
-import { HELP_SCENES, type DemoCtx, type DemoView, type HelpScene } from '../../ui/chrome/modals/help/figures/scenes';
-import { HELP_PAGES, HELP_PAGE_ORDER } from '../../ui/chrome/modals/help/catalog';
-import { searchHelp, __resetHelpSearch } from '../../ui/chrome/modals/help/search';
-import { helpFacts } from '../../ui/chrome/modals/help/facts';
-import { ensureHelpStrings } from '../../i18n/locales/help';
+import { SandboxWorld } from '../../editor/sandbox/demo-world';
+import { HELP_SCENES, type DemoCtx, type DemoView, type HelpScene } from '../../ui/help/figures/scenes';
+import { HELP_PAGES, HELP_PAGE_ORDER } from '../../ui/help/catalog';
+import { searchHelp, __resetHelpSearch } from '../../ui/help/search';
+import { helpFacts } from '../../ui/help/facts';
+import { installHelpTables } from '../_support/locale-tables';
 import { translateFor } from '../../i18n/context';
-import type { Locale } from '../../core/model/types';
+import type { Locale } from '../../core/model/locale';
 
-ensureHelpStrings();
+installHelpTables();
 
 const s = perfSuite('help');
 
 /** Every mark a no-op: the same stub `__tests__/ui/help/catalog.test.ts` runs every scene against
  *  to hold the catalog contract, standing in for the real overlay layer. */
 const NO_VIEW: DemoView = {
-  ghost: () => {}, clearGhost: () => {}, groupGhost: () => {}, selection: () => {},
+  clearGhost: () => {}, groupGhost: () => {}, selection: () => {},
   clearSelection: () => {}, band: () => {}, paintGhost: () => {}, region: () => {}, route: () => {},
   marks: () => {}, gauge: () => {}, plop: () => {}, poof: () => {}, annotations: () => {},
   spin: () => {}, groupSpin: () => {}, curveHandles: () => {},
@@ -37,7 +37,7 @@ const SCENES = Object.entries(HELP_SCENES);
 
 /** One scene's timeline settled the way the reduced-motion player's `finishAll` does: every step's
  *  `on` fired in order, every `during` sampled at its end (`k = 1`). Returns the step count. */
-function runScene(world: DemoWorld, run: HelpScene['run']): number {
+function runScene(world: SandboxWorld, run: HelpScene['run']): number {
   const ctx: DemoCtx = { world, view: NO_VIEW };
   const steps = run(ctx, (key) => key);
   for (const step of steps) {
@@ -48,23 +48,23 @@ function runScene(world: DemoWorld, run: HelpScene['run']): number {
 }
 
 describe.runIf(PERF)('perf: help', () => {
-  it('DemoWorld: construct one figure world (default template)', async () => {
-    const template = new DemoWorld().state.template;
-    await s.bench('world/construct', () => { new DemoWorld(); }, {
+  it('SandboxWorld: construct one figure world (default template)', async () => {
+    const template = new SandboxWorld().state.template;
+    await s.bench('world/construct', () => { new SandboxWorld(); }, {
       meta: { template: template.id, width: template.width, height: template.height },
     });
   });
 
-  it('DemoWorld: one world per distinct scene template in the catalog', async () => {
+  it('SandboxWorld: one world per distinct scene template in the catalog', async () => {
     const templates = new Set(SCENES.map(([, scene]) => scene.template));
     await s.bench('world/construct-all-scenes', () => {
-      for (const tpl of templates) new DemoWorld(tpl);
+      for (const tpl of templates) new SandboxWorld(tpl);
     }, { meta: { worlds: templates.size } });
   });
 
   it('scenes: every catalog timeline, run headless against a fresh world each', async () => {
-    let worlds: DemoWorld[] = [];
-    const rebuild = () => { worlds = SCENES.map(([, scene]) => new DemoWorld(scene.template)); };
+    let worlds: SandboxWorld[] = [];
+    const rebuild = () => { worlds = SCENES.map(([, scene]) => new SandboxWorld(scene.template)); };
     rebuild();
     let totalSteps = 0;
     for (let i = 0; i < SCENES.length; i++) totalSteps += runScene(worlds[i]!, SCENES[i]![1].run);
@@ -82,16 +82,16 @@ describe.runIf(PERF)('perf: help', () => {
     let heaviestId = SCENES[0]![0];
     let heaviestMs = -1;
     for (const [id, scene] of SCENES) {
-      const world = new DemoWorld(scene.template);
+      const world = new SandboxWorld(scene.template);
       const t0 = performance.now();
       runScene(world, scene.run);
       const dt = performance.now() - t0;
       if (dt > heaviestMs) { heaviestMs = dt; heaviestId = id; }
     }
     const scene = HELP_SCENES[heaviestId]!;
-    let world = new DemoWorld(scene.template);
+    let world = new SandboxWorld(scene.template);
     await s.bench('scenes/single-heaviest', () => { runScene(world, scene.run); }, {
-      setup: () => { world = new DemoWorld(scene.template); },
+      setup: () => { world = new SandboxWorld(scene.template); },
       meta: { scene: heaviestId },
     });
   });

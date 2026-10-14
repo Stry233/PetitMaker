@@ -1,11 +1,11 @@
 import { createContext, useContext, useMemo, useState, type ReactNode } from 'react';
 import { useDockRef, useFitFloor, useViewportSize } from '../design/scale';
 import { useAnimatedUiZoom } from '../design/ui-zoom-anim';
-import { useUiPreviewPose } from '../primitives/ui-preview';
+import { useUiPreviewPose } from '../design/preview';
 import { cornerArt, planFrame, railClearanceFor, sessionModes, type FrameLayout, type LayerMode } from './frame';
 import { useEditorStore } from '../../state/store';
 import { useFrameZoom } from './use-frame-zoom';
-import { PLATE_MIN_WIDTH, plateDepth, plateMinDepth } from './windows/LayerPanel';
+import { PLATE_MIN_WIDTH, plateDepth, plateMinDepth } from './controls/layer-plate';
 import { ZOOM } from './units';
 import { useDockStage } from './use-dock';
 import { frameZoomAt, PINNED_COLUMN_W } from './panel-frame';

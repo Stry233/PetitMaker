@@ -4,11 +4,13 @@
  * one-line diff here rather than a fuzzy prose assertion.
  */
 import { describe, it, expect } from 'vitest';
-import { ItemCategory, type LocalizedName } from '../../core/model/types';
+import { ItemCategory } from '../../config/catalog/categories';
+import { type LocalizedName } from '../../core/model/locale';
 import { buildChecklistText, type BuildChecklist } from '../../state/build-checklist';
 import { translateFor } from '../../i18n/context';
+import type { TextKey } from '../../i18n/keys';
 
-const t = (key: string, params?: Record<string, string | number>) => translateFor('en', key, params);
+const t = (key: TextKey, params?: Record<string, string | number>) => translateFor('en', key, params);
 
 const name = (en: string): LocalizedName => ({ en });
 
@@ -27,16 +29,24 @@ const FIXTURE: BuildChecklist = {
     { layer: 0, blocks: 0, water: 2 },
     { layer: 1, blocks: 10, water: 0 },
   ],
-  objectTotal: 21,
-  hasPlaza: true,
+  objectTotal: 23,
+  landmarks: [
+    { catalogId: 'plaza', name: name('Neighbor Center'), count: 1 },
+    { catalogId: 'station', name: name('Station'), count: 1 },
+  ],
+  landmarkTotal: 2,
   unresolved: 0,
 };
 
 describe('buildChecklistText', () => {
-  it('prints the exact shape: header, per-category sections, roads with cells, terrain a line per layer', () => {
+  it('prints the exact shape: header, landmarks, per-category sections, roads with cells, terrain a line per layer', () => {
     expect(buildChecklistText(FIXTURE, 'en', t)).toBe(
       [
         'Into the game: 15 in total',
+        '',
+        'Fixed buildings (2)',
+        '  1x Neighbor Center',
+        '  1x Station',
         '',
         'Things to place (15)',
         '',
@@ -59,11 +69,23 @@ describe('buildChecklistText', () => {
   it('omits a section entirely when it has nothing, and says so when the whole map is empty', () => {
     const empty: BuildChecklist = {
       groups: FIXTURE.groups.map((g) => ({ ...g, items: [], total: 0 })),
-      roads: [], roadTotal: 0, layers: [], objectTotal: 0, hasPlaza: true, unresolved: 0,
+      roads: [], roadTotal: 0, layers: [], objectTotal: 0, landmarks: [], landmarkTotal: 0, unresolved: 0,
     };
     expect(buildChecklistText(empty, 'en', t)).toBe(
       ['Into the game: 0 in total', '', 'Nothing on the map yet.'].join('\n'),
     );
+  });
+
+  it('counts a single cell in the singular', () => {
+    const single: BuildChecklist = {
+      ...FIXTURE,
+      roads: [{ ...FIXTURE.roads[0]!, count: 1 }], roadTotal: 1,
+      layers: [{ layer: 1, blocks: 1, water: 0 }],
+    };
+    const text = buildChecklistText(single, 'en', t);
+    expect(text).toContain('Road surfaces (1 cell)');
+    expect(text).toContain('  Dirt: 1 cell');
+    expect(text).toContain('  Layer 1 1 cell');
   });
 
   it('names what it cannot recognize', () => {

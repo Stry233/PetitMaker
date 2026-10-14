@@ -1,30 +1,35 @@
-import { captureImageAttribution } from '../../core/provenance/image-attribution';
+/** Raster-first import: decodes the visible code band, verifies it, and loads it through the save-file loader. */
+import { captureImageAttribution } from '../save/image-attribution';
 import { clampNotes } from '../../core/model/notes';
-// Raster-first import decodes the visible code band, verifies it, and uses the save-file loader.
 import type { GridState } from '../../core/model/types';
-import { migrateToCurrent, type RawSave } from '../save-format';
-import { deserialize } from '../json-codec';
+import { parseSave } from '../save/parse';
+import type { LandmarkClearance } from '../../tools/generation/transfer';
+import { loadParsedSave } from '../import/open-save';
+import { upgradeLandmarks } from '../../core/model/planet';
 import { resolveTemplate } from '../../config/maps/resolve';
-import { ShareError, DEFAULT_LIMITS, type ShareLimits } from './errors';
+import { DEFAULT_LIMITS, type ShareLimits } from './errors';
+import { ImportError, type ImportWarning } from '../save/import-error';
 import { decodeGlyphAsync, type PixelOwnership } from './glyph/decode-async';
 import { decodeMapPayload, type ProvenanceInfo } from './codec/payload';
-import { isGenerationConfig } from '../import-sections';
-import { toSaveJSON } from './canonical';
-import { validateImportedState } from './validate';
-import { decodePng } from './raster/png-raster';
+import { isGenerationConfig } from '../save/generation-record';
+import { toSaveJSON } from '../save/canonical';
+import { importDriftWarnings } from './validate';
+import { decodePng, type RasterImage } from './raster/png-raster';
 
-export interface ImportSuccess { ok: true; state: GridState; warnings: string[]; provenance: ProvenanceInfo }
-export interface ImportFailure { ok: false; error: ShareError }
+export interface ImportSuccess { ok: true; state: GridState; warnings: ImportWarning[]; provenance: ProvenanceInfo; cleared?: LandmarkClearance }
+export interface ImportFailure { ok: false; error: ImportError }
 export type ImportResult = ImportSuccess | ImportFailure;
 
 export async function importFromRaster(rgba: Uint8Array, width: number, height: number, ownership?: PixelOwnership): Promise<ImportResult> {
   try {
     const payload = await decodeGlyphAsync(rgba, width, height, ownership);
-    if (!payload) return { ok: false, error: new ShareError('no-payload', 'No share code found in this image.') };
+    if (!payload) return { ok: false, error: new ImportError('no-payload', 'No share code found in this image.') };
     const dec = await decodeMapPayload(payload); // throws corrupt / future-version / decode-failed
-    const saveJson = toSaveJSON(dec.canonical, dec.annotations);
-    migrateToCurrent(JSON.parse(saveJson) as RawSave);
-    const state = deserialize(saveJson, resolveTemplate(dec.canonical.templateId, dec.template));
+    // A carried planet's landmarks take the profile's footprints, and the map the planet's new id.
+    const planet = dec.template && upgradeLandmarks(dec.template);
+    const templateId = planet ? planet.id : dec.canonical.templateId;
+    const saveJson = toSaveJSON({ ...dec.canonical, templateId }, dec.annotations);
+    const { state, cleared } = loadParsedSave(parseSave(JSON.parse(saveJson), { template: resolveTemplate(templateId, planet) }));
     if (isGenerationConfig(dec.generation)) state.generation = dec.generation;
     state.notes = dec.notes ?? clampNotes({ title: dec.provenance.title });
     if (!dec.provenance.aiUsed && !dec.provenance.proceduralUsed) {
@@ -37,25 +42,25 @@ export async function importFromRaster(rgba: Uint8Array, width: number, height: 
       if (dec.provenance.proceduralUsed) state.provenance.session.proceduralRuns = Math.max(1, state.provenance.session.proceduralRuns);
       state.provenance.summary = null;
     }
-    const { warnings } = validateImportedState(state, {
-      templateId: dec.canonical.templateId, templateHash: dec.templateHash, catalogHash: dec.catalogHash,
-      ...(dec.template ? { template: dec.template } : {}),
-    });
-    return { ok: true, state, warnings, provenance: dec.provenance };
+    const warnings = importDriftWarnings(state.template, dec);
+    return { ok: true, state, warnings, provenance: dec.provenance, cleared };
   } catch (e) {
-    if (e instanceof ShareError) return { ok: false, error: e };
-    return { ok: false, error: new ShareError('decode-failed', e instanceof Error ? e.message : 'Import failed.') };
+    // Anything but a reader's refusal is a fault, left to the caller to log.
+    if (e instanceof ImportError) return { ok: false, error: e };
+    throw e;
   }
 }
 
-/** PNG bytes entry (node + tests). The UI decodes ANY raster format via createImageBitmap and
+/** PNG bytes entry (node + tests). The UI decodes any raster format via createImageBitmap and
  *  calls importFromRaster directly. */
 export async function importFromBytes(input: ArrayBuffer | Uint8Array, limits: ShareLimits = DEFAULT_LIMITS): Promise<ImportResult> {
   const bytes = input instanceof Uint8Array ? input : new Uint8Array(input);
+  let img: RasterImage;
   try {
-    const img = await decodePng(bytes, limits);
-    return importFromRaster(img.data, img.width, img.height);
-  } catch {
-    return { ok: false, error: new ShareError('not-an-image', 'Not a decodable image.') };
+    img = await decodePng(bytes, limits);
+  } catch (e) {
+    if (e instanceof ImportError) return { ok: false, error: e };
+    throw e;
   }
+  return importFromRaster(img.data, img.width, img.height);
 }

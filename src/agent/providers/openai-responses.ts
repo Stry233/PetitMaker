@@ -5,7 +5,7 @@ import type { FinalToolCall, StreamEvent } from '../core/types';
 import { parseArgs } from '../core/json';
 import { PROVIDER_SILENCE } from '../core/errors';
 import { streamFailureEvent } from './http-failure';
-import type { AdapterRequest } from './types';
+import type { AdapterRequest } from '../core/adapter';
 
 type Input = OpenAI.Responses.ResponseInput;
 type Output = Extract<OpenAI.Responses.ResponseOutputItem, { type: 'message' | 'reasoning' | 'function_call' }>;
@@ -16,7 +16,7 @@ function savedOutput(raw: unknown): Output[] | undefined {
 }
 
 /** Replays encrypted reasoning only with the model that produced it and unchanged call identities. */
-export function responsesInput(messages: ProviderMessage[], sameModel: boolean): Input {
+function responsesInput(messages: ProviderMessage[], sameModel: boolean): Input {
   const input: Input = [];
   for (const message of messages) {
     if (message.role === 'user') {
@@ -100,7 +100,9 @@ export async function* streamResponses(
         yield {
           t: 'done', stop: event.type === 'response.incomplete' ? 'length' : final.length ? 'tool-calls' : 'stop',
           final, raw: { dialect: 'responses', output: response.output },
-          ...(response.usage ? { usage: { input: response.usage.input_tokens, output: response.usage.output_tokens, cacheRead: response.usage.input_tokens_details.cached_tokens } } : {}),
+          ...(response.usage ? {
+            usage: { input: response.usage.input_tokens, output: response.usage.output_tokens, cacheRead: response.usage.input_tokens_details.cached_tokens },
+          } : {}),
         };
         return;
       }

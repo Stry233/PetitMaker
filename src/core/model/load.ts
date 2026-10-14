@@ -1,4 +1,4 @@
-import { CHUNK_LOAD_ENABLED, CHUNK_LOAD_LIMIT, LOAD_DECIMALS } from './game-profile';
+import { CHUNK_LOAD_ENABLED, CHUNK_LOAD_LIMIT, LOAD_DECIMALS } from '../game/profile';
 import type { GridState } from './types';
 
 export function isChunkLoadEnforced(state: GridState): boolean {
@@ -11,7 +11,12 @@ export function roundLoad(value: number): number {
   return Math.round(value * scale) / scale;
 }
 
+/** Whether a region's (quantized) load is past the limit. */
+export function isOverBudget(load: number): boolean {
+  return load > CHUNK_LOAD_LIMIT;
+}
+
 /** An already overloaded region permits changes that do not increase its load. */
 export function exceedsLoadBudget(current: number, change: number): boolean {
-  return change > 0 && roundLoad(current + change) > CHUNK_LOAD_LIMIT;
+  return change > 0 && isOverBudget(roundLoad(current + change));
 }

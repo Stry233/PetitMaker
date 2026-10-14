@@ -1,10 +1,12 @@
 // V1/v2 bands calibrate from their own swatches rather than a baked RGB table.
 import { describe, it, expect } from 'vitest';
-import { encodeGlyph, encodeGlyphV2, buildHeaderBytes } from '../../../../io/share/glyph/encode';
+import { encodeGlyph, buildHeaderBytes } from '../../../../io/share/glyph/encode';
+import { BASE_CHROMA_OFFSETS, Y_LEVELS, encodeGlyphV2 } from '../../../_support/glyph-v2';
 import { decodeGlyph } from '../../../../io/share/glyph/decode';
-import {
-  BASE_CHROMA_OFFSETS, HEADER_LEVELS, PALETTE16, PALETTE16_V1, PALETTE16_V2, Y_LEVELS, type RGB,
-} from '../../../../io/share/glyph/palette';
+import { HEADER_LEVELS, paletteForVersion, type RGB } from '../../../../io/share/glyph/palette';
+
+const PALETTE16_V1 = paletteForVersion(1)!;
+const PALETTE16_V2 = paletteForVersion(2)!;
 import {
   HEADER_NSYM, HEADER_SYMBOL_BITS, HEADER_VERSION, headerModuleAt, type Tier,
 } from '../../../../io/share/glyph/geometry';
@@ -48,7 +50,7 @@ function redrawAs(g: Band, mb: number, data: Uint8Array, version: number, to: re
   const rgba = new Uint8Array(g.rgba);
 
   const remap = new Map<number, RGB>();
-  PALETTE16.forEach((c, i) => remap.set(key(c), to[i]!));
+  PALETTE16_V2.forEach((c, i) => remap.set(key(c), to[i]!));
   for (let p = 0; p < rgba.length; p += 4) {
     const hit = remap.get((rgba[p]! << 16) | (rgba[p + 1]! << 8) | rgba[p + 2]!);
     if (hit) { rgba[p] = hit[0]; rgba[p + 1] = hit[1]; rgba[p + 2] = hit[2]; }

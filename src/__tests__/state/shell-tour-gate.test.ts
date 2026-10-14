@@ -1,5 +1,5 @@
 /**
- * `shell.ts`'s `setContextMenu`/`setDeletePopover` refuse to OPEN either surface while
+ * `shell.ts`'s `setContextMenu`/`setDeletePopover` refuse to open either surface while
  * `tourRunning` is true (both sit far above the tour's z-index and would paint over it), but never
  * refuse to close one — whatever was open when the tour started still has to go away, and both
  * work again once the tour ends.

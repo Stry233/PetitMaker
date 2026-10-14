@@ -1,48 +1,45 @@
 /**
- * Import planet's window, over Change Planet: it asks how to import. From a planet file hands the
- * press to Change Planet's file picker. From a game video shows the recording guide, reads the video
- * on this device with progress and Cancel, and hands the planet it read to the planet editor; a
- * refused video brings the guide back with the reason.
- *
- * A file dropped anywhere on the window, or picked in the guide, goes where its kind belongs: a
- * video is read here, a planet file goes to Change Planet as From a planet file, and a map file
- * gets the card that offers Import map. A video handed over by another import surface is read as
- * the window opens.
+ * Import planet's window over Change Planet: From a planet file hands the press to Change Planet's
+ * picker; From a game video shows the guide, reads the video on this device with progress and Cancel,
+ * and opens the planet read in the planet editor. Dropped and picked files go where their kind belongs.
  */
+import { useWindow, type WindowProps } from '../use-window';
 import { useEffect, useRef, useState, type CSSProperties, type DragEvent, type ReactNode } from 'react';
-import { AnimatePresence, motion, useReducedMotionConfig } from 'framer-motion';
-import { SUPPORTS_JSON_FILES } from '../../../../core/runtime/edition';
-import { useT } from '../../../../i18n/context';
-import { scanVideo as defaultScan, VideoImportError, type ImportFailure, type ScanProgress, type ScanVideo } from '../../../../io/planet-scan/import-video';
-import type { ScanOutcome } from '../../../../io/planet-scan/run';
-import { useEditorStore } from '../../../../state/store';
+import { AnimatePresence, useReducedMotionConfig } from 'framer-motion';
+import { SUPPORTS_JSON_FILES } from '../../../../platform/build/edition';
+import { useLocale, useT } from '../../../../i18n/context';
+import {
+  scanPlanetVideo, scanVideo as defaultScan, type ImportFailure, type ScanOutcome, type ScanProgress, type ScanVideo,
+} from '../../../../editor/session/planet-scan';
 import type { HandedImport } from '../../../../state/slices/shell';
-import { classifyImportFile } from '../../../../io/import-kind';
-import { showToast } from '../../../../core/runtime/toast-bus';
+import { useImportFlow, type ImportRouting } from '../import/use-import-flow';
+import { useHandedImport } from '../import/use-handed-import';
+import { showToast } from '../../../../platform/channels/toast-bus';
 import { ConfirmationModal } from '../../../primitives/ConfirmationModal';
 import { useRedirectContent } from '../import/ImportRedirect';
 import { cssMotion, seconds } from '../../../design/motion';
-import { colors, interactionProfiles, radii } from '../../../design/styles';
+import { radii } from '../../../design/styles';
+import { OVERLAY_DIM_WORKING } from '../../../design/tokens';
 import { roleFont } from '../../../design/text-weight';
-import { skin, windowCard, windowChip, windowIconButton, windowTitle } from '../../../design/window-skin';
+import { skin, windowChip } from '../../../design/window-skin';
 import { useViewportSize } from '../../../design/scale';
-import { useSizeGlide } from '../../../hooks/use-size-glide';
+import { useSizeGlide } from '../../../primitives/use-size-glide';
 import { ActionButton } from '../../../primitives/ActionButton';
-import { BackIcon, ImportFileIcon, VideoIcon } from '../../../primitives/line-glyphs';
+import { ImportFileIcon, VideoIcon } from '../../../primitives/line-glyphs';
 import { ModalShell } from '../../../primitives/ModalShell';
+import { WindowFooter, WindowHeader, windowFrame } from '../../../primitives/Window';
 import { PlanetStep } from './PlanetStep';
 import { VideoImportGuide } from './VideoImportGuide';
 import { VideoImportProgress } from './VideoImportProgress';
 
 type Step = 'choose' | 'guide' | 'scanning' | 'read';
 
+const ROUTING: ImportRouting = { map: 'card', planet: 'hand', video: 'read', unknown: 'refuse' };
+
 /** Below this window width the guide stands its protocol above the example. */
 const STACK_BELOW = 700;
 
-const cardStyle: CSSProperties = { ...windowCard, padding: '24px 26px 20px', display: 'flex', flexDirection: 'column', overflowY: 'auto', overflowX: 'hidden' };
-const titleRow: CSSProperties = { position: 'relative', display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: 40, paddingInline: 44 };
-const backButton: CSSProperties = { ...windowIconButton, position: 'absolute', insetInlineStart: 0, top: 0, bottom: 0, marginBlock: 'auto' };
-const footerStyle: CSSProperties = { display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 8, marginTop: 18 };
+const cardStyle: CSSProperties = { ...windowFrame, overflowY: 'auto', overflowX: 'hidden' };
 const choiceStyle: CSSProperties = {
   position: 'relative', flex: '1 1 0', minWidth: 0, minHeight: 132, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12,
   padding: '20px 16px', border: 'none', borderRadius: radii.lg, background: skin.inset, color: skin.ink, ...roleFont('head'),
@@ -50,12 +47,10 @@ const choiceStyle: CSSProperties = {
 };
 const choiceArt: CSSProperties = { width: 52, height: 52, borderRadius: '50%', background: skin.plate, display: 'grid', placeItems: 'center' };
 /** The Beta tag in a choice's top end corner and after the guide's title. */
-const choiceTag: CSSProperties = { ...windowChip('inset'), position: 'absolute', top: 10, insetInlineEnd: 10, padding: '3px 10px' };
-const titleTag: CSSProperties = { ...windowChip('plate'), padding: '3px 10px', marginInlineStart: 10, verticalAlign: 'middle', whiteSpace: 'nowrap' };
+const choiceTag: CSSProperties = { ...windowChip('inset'), position: 'absolute', top: 10, insetInlineEnd: 10, padding: '2px 10px' };
+const titleTag: CSSProperties = { ...windowChip('plate'), padding: '2px 10px', marginInlineStart: 10, verticalAlign: 'middle', whiteSpace: 'nowrap' };
 
-export interface PlanetImportWindowProps {
-  open: boolean;
-  onClose: () => void;
+export interface PlanetImportWindowProps extends WindowProps {
   /** From a planet file: Change Planet's file picker, opened inside this press. */
   onPickFile?: () => void;
   /** Opens the planet read from a video; false when the planet editor could not open, which keeps
@@ -69,7 +64,9 @@ export interface PlanetImportWindowProps {
   takesHandedFiles?: boolean;
 }
 
-function Choice({ testId, icon, label, tag, disabled, onClick }: { testId: string; icon: ReactNode; label: string; tag?: string; disabled?: boolean; onClick: () => void }) {
+function Choice(
+  { testId, icon, label, tag, disabled, onClick }: { testId: string; icon: ReactNode; label: string; tag?: string; disabled?: boolean; onClick: () => void },
+) {
   return (
     <ActionButton interaction="row" data-testid={testId} disabled={disabled} onClick={onClick} style={choiceStyle}>
       <span aria-hidden style={choiceArt}>{icon}</span>
@@ -79,9 +76,12 @@ function Choice({ testId, icon, label, tag, disabled, onClick }: { testId: strin
   );
 }
 
-export function PlanetImportWindow({ open, onClose, onPickFile, onScanned, canEdit, scan = defaultScan, takesHandedFiles = false }: PlanetImportWindowProps) {
+export function PlanetImportWindow(
+  { open: openProp, onClose, onPickFile, onScanned, canEdit, scan = defaultScan, takesHandedFiles = false }: PlanetImportWindowProps,
+) {
   const t = useT();
-  const locale = useEditorStore((s) => s.locale);
+  const { open, close: closeWindow } = useWindow('planetImport', { open: openProp, onClose });
+  const locale = useLocale();
   const viewport = useViewportSize();
   const [step, setStep] = useState<Step>('choose');
   const [failure, setFailure] = useState<ImportFailure | null>(null);
@@ -98,21 +98,12 @@ export function PlanetImportWindow({ open, onClose, onPickFile, onScanned, canEd
     setFinished(null);
   };
   const reduced = useReducedMotionConfig() === true;
-  /** A map file waiting on the card that offers Import map; the last one stays while the card leaves. */
-  const [redirect, setRedirect] = useState<HandedImport | null>(null);
-  const lastRedirect = useRef<HandedImport | null>(null);
-  if (redirect) lastRedirect.current = redirect;
-
-  // The window stays mounted between opens, so each opening asks again from the start.
+  // Closing stops a read in flight; each opening mounts a fresh window (its opener keys it).
   useEffect(() => {
     if (open) return;
     running.current?.abort();
     running.current = null;
     stopFinishing();
-    setStep('choose');
-    setFailure(null);
-    setHeld(null);
-    setRedirect(null);
   }, [open]);
   useEffect(() => () => { running.current?.abort(); if (finishing.current !== null) clearTimeout(finishing.current); }, []);
 
@@ -125,18 +116,12 @@ export function PlanetImportWindow({ open, onClose, onPickFile, onScanned, canEd
     setFailure(null);
     setProgress({ stage: 'reading', share: 0 });
     setStep('scanning');
-    try {
-      const outcome = await scan(file, { signal: controller.signal, onProgress: (p) => { if (!controller.signal.aborted) setProgress(p); } });
-      if (controller.signal.aborted) return;
-      running.current = null;
-      show(outcome);
-    } catch (error) {
-      if (controller.signal.aborted) return;
-      running.current = null;
-      if (!(error instanceof VideoImportError)) console.error('[planet] video import failed', error);
-      setFailure(error instanceof VideoImportError ? error.reason : 'failed');
-      setStep('guide');
-    }
+    const result = await scanPlanetVideo(scan, file, controller.signal, setProgress);
+    if (!result) return;
+    running.current = null;
+    if (result.status === 'read') { show(result.outcome); return; }
+    setFailure(result.reason);
+    setStep('guide');
   };
 
   // The planet read takes the picture's place for as long again as it takes to appear, then opens.
@@ -152,7 +137,7 @@ export function PlanetImportWindow({ open, onClose, onPickFile, onScanned, canEd
 
   // The editor opens before the window closes, so a refusal keeps the planet here.
   const hand = (outcome: ScanOutcome) => {
-    if (onScanned(outcome)) { setHeld(null); onClose(); return; }
+    if (onScanned(outcome)) { setHeld(null); closeWindow(); return; }
     setHeld(outcome);
     setStep('read');
   };
@@ -164,32 +149,28 @@ export function PlanetImportWindow({ open, onClose, onPickFile, onScanned, canEd
     setStep('guide');
   };
 
-  const close = () => { if (step === 'scanning') cancel(); onClose(); };
+  const close = () => { if (step === 'scanning') cancel(); closeWindow(); };
 
-  /** Sends `file` where its kind belongs. Only the chooser and the guide take a file; `read` starts
-   *  one scan at a time. */
+  /** A video is read here, a planet file goes to Change Planet, a map file gets the card offering
+   *  Import map; the last card's file stays while the card leaves. */
+  const flow = useImportFlow({ routing: ROUTING, onVideo: (file) => { void read(file); }, onRefused: () => showToast(t('planet.import_unknown'), 'error') });
+  const redirect = flow.redirect;
+  const lastRedirect = useRef<HandedImport | null>(null);
+  if (redirect) lastRedirect.current = redirect;
+
+  /** Only the chooser and the guide take a file; `read` starts one scan at a time. */
   const route = async (file: File) => {
     if (running.current || (step !== 'choose' && step !== 'guide')) return;
-    const kind = await classifyImportFile(file, file.name);
-    if (kind === 'video') void read(file);
-    else if (kind === 'planet') useEditorStore.getState().handImport({ kind, file });
-    else if (kind === 'map') setRedirect({ kind, file });
-    else showToast(t('planet.import_unknown'), 'error');
+    await flow.take(file);
   };
 
   // A video handed over by the page's drop or by Import map starts reading at once.
-  const handed = useEditorStore((s) => s.handedImport);
-  useEffect(() => {
-    if (!takesHandedFiles || !open || handed?.kind !== 'video') return;
-    const file = useEditorStore.getState().takeHandedImport('video');
-    if (file) void read(file);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- read starts one scan and guards a second
-  }, [takesHandedFiles, open, handed]);
+  useHandedImport('video', takesHandedFiles && open, (file) => { void read(file); });
 
   const redirectContent = useRedirectContent({
     hand: redirect ?? lastRedirect.current ?? { kind: 'map', file: new File([], '') },
-    onCancel: () => setRedirect(null),
-    onGone: () => setRedirect(null),
+    onCancel: flow.dismiss,
+    onGone: flow.dismiss,
   });
 
   /** Drops anywhere on the window; the guide's drop zone hands its own to `route` too. */
@@ -205,7 +186,7 @@ export function PlanetImportWindow({ open, onClose, onPickFile, onScanned, canEd
   // every progress change and, without graphics acceleration, takes the time the decoder needs.
   const backdropStyle: CSSProperties = {
     transition: cssMotion('modal.dim', ['background-color'], reduced),
-    ...(step === 'scanning' ? { backdropFilter: 'none', WebkitBackdropFilter: 'none', background: colors.surfaceOverlayWorking } : {}),
+    ...(step === 'scanning' ? { backdropFilter: 'none', WebkitBackdropFilter: 'none', background: OVERLAY_DIM_WORKING } : {}),
   };
 
   const title = step === 'choose' ? t('planet.import') : step === 'guide' || step === 'read' ? t('planet.scan_title') : t('planet.scan_progress_title');
@@ -213,27 +194,20 @@ export function PlanetImportWindow({ open, onClose, onPickFile, onScanned, canEd
 
   return (
     <>
-    <ModalShell helpTarget={{ page: 'planet' }} open={open} onClose={close} width={width} maxVwPct={96} maxVh={92} cardStyle={cardStyle} backdropStyle={backdropStyle} ariaLabel={title}>
+    <ModalShell helpTarget={{ page: 'planet' }} open={open} onClose={close} size="panel" width={width} cardStyle={cardStyle} backdropStyle={backdropStyle} ariaLabel={title}>
       <div ref={body.ref} data-testid="planet-import" style={body.gliding ? { overflow: 'hidden' } : undefined} onDragOver={dragOver} onDrop={drop}>
         <div style={{ position: 'relative' }}>
           <AnimatePresence mode="popLayout" initial={false}>
             <PlanetStep key={step}>
-              <div style={titleRow}>
-                {step === 'guide' && (
-                  <motion.button type="button" {...interactionProfiles.tile} aria-label={t('planet.back')} title={t('planet.back')}
-                    data-testid="planet-import-back" style={backButton} onClick={() => { setFailure(null); setStep('choose'); }}>
-                    <BackIcon size={18} />
-                  </motion.button>
-                )}
-                <div style={windowTitle}>
-                  {title}
-                  {step !== 'choose' && step !== 'scanning' && <span data-testid="planet-import-beta" style={titleTag}>{t('app.beta')}</span>}
-                </div>
-              </div>
+              <WindowHeader reserve title={title}
+                {...(step === 'guide' ? { back: { label: t('planet.back'), onPress: () => { setFailure(null); setStep('choose'); }, 'data-testid': 'planet-import-back' } } : {})}
+                close={{ label: t('hint.close'), onPress: close }}>
+                {step !== 'choose' && step !== 'scanning' && <span data-testid="planet-import-beta" style={titleTag}>{t('app.beta')}</span>}
+              </WindowHeader>
               {step === 'choose' && (
                 <div style={{ display: 'flex', gap: 14 }}>
                   {SUPPORTS_JSON_FILES && onPickFile && (
-                    <Choice testId="planet-import-file" icon={<ImportFileIcon />} label={t('planet.import_file')} onClick={() => { onClose(); onPickFile(); }} />
+                    <Choice testId="planet-import-file" icon={<ImportFileIcon />} label={t('planet.import_file')} onClick={() => { closeWindow(); onPickFile(); }} />
                   )}
                   <Choice testId="planet-import-video" icon={<VideoIcon />} label={t('planet.import_video')} tag={t('app.beta')} disabled={!canEdit} onClick={() => setStep('guide')} />
                 </div>
@@ -248,16 +222,18 @@ export function PlanetImportWindow({ open, onClose, onPickFile, onScanned, canEd
             </PlanetStep>
           </AnimatePresence>
         </div>
-        <div style={footerStyle}>
-          <ActionButton appearance="tertiary" hoverFill={skin.inset} data-testid="planet-import-cancel" onClick={step === 'scanning' ? cancel : close}>
-            {t('delete.cancel')}
-          </ActionButton>
-          {step === 'read' && held && (
+        <WindowFooter style={{ marginTop: 18 }}
+          cancel={(
+            <ActionButton appearance="tertiary" hoverFill={skin.inset} data-testid="planet-import-cancel" onClick={step === 'scanning' ? cancel : close}>
+              {t('delete.cancel')}
+            </ActionButton>
+          )}
+          primary={step === 'read' && held ? (
             <ActionButton appearance="primary" data-testid="planet-import-retry" onClick={() => hand(held)}>
               {t('planet.scan_retry_open')}
             </ActionButton>
-          )}
-        </div>
+          ) : undefined}
+        />
       </div>
     </ModalShell>
     <ConfirmationModal open={open && redirect !== null} helpTarget={{ page: 'planet' }} {...redirectContent} />

@@ -1,14 +1,15 @@
 /**
  * The annotation slice: the data lives on `gridState.annotations` and every mutation goes through
  * the slice's verbs, which bump the epoch and keep the layer's own undo/redo lanes. A gesture is
- * ONE lane entry however many edits it applies, and a new or loaded map resets the session (lanes,
+ * One lane entry however many edits it applies, and a new or loaded map resets the session (lanes,
  * selection, draft) without carrying the previous map's history over.
  */
 import { describe, it, expect, beforeEach } from 'vitest';
 import { useEditorStore } from '../../state/store';
 import { createDefaultRegistry } from '../../rules/index';
-import { makeTemplate } from '../rules/_helpers';
-import type { ZoneNote } from '../../core/model/annotations';
+import { makeTemplate } from '../_support/map-state';
+import type { CustomTagId, ZoneNote } from '../../core/model/annotations';
+import type { EditorStore } from '../../state/store';
 
 const zone = (id: string, num = 1): ZoneNote => ({
   kind: 'zone', id, cells: [{ x: 1, y: 1 }, { x: 2, y: 1 }], color: '#FF8A7A', tag: 'homes', num,
@@ -271,5 +272,52 @@ describe('unfinished annotation transitions', () => {
     expect(s().annotationTool).toBe('zone');
     expect(s().annotationDiscardAction).toBeNull();
     expect(s().gridState?.annotations?.items ?? []).toEqual([]);
+  });
+
+  describe('each verb publishes one consistent update', () => {
+    const s = () => useEditorStore.getState();
+    function published(body: () => void): EditorStore[] {
+      const seen: EditorStore[] = [];
+      const stop = useEditorStore.subscribe((state) => { seen.push(state); });
+      body();
+      stop();
+      return seen;
+    }
+
+    it('commits a draft with the note in the items and selected', () => {
+      s().setAnnotationDraft(zone('a'));
+      const seen = published(() => { s().commitAnnotationDraft(); });
+      expect(seen).toHaveLength(1);
+      expect(seen[0]!.annotationDraft).toBeNull();
+      expect(seen[0]!.annotationSelection).toEqual(['a']);
+      expect(s().gridState!.annotations!.items.map((n) => n.id)).toEqual(['a']);
+      expect(s().undoAnnotation()).toBe(true);
+      expect(s().annotationDraft).toMatchObject({ id: 'a' });
+    });
+
+    it('applies an armed colour to the selection', () => {
+      s().addAnnotation(zone('a'));
+      s().setAnnotationSelection(['a']);
+      const lane = s().annotationUndoLane.length;
+      const seen = published(() => { s().setAnnotationColor('#000000'); });
+      expect(seen).toHaveLength(1);
+      expect(seen[0]!.annotationColor).toBe('#000000');
+      expect(s().gridState!.annotations!.items[0]).toMatchObject({ color: '#000000' });
+      expect(s().annotationUndoLane).toHaveLength(lane + 1);
+    });
+
+    it('adds and removes a custom tag', () => {
+      s().addAnnotation(zone('a'));
+      s().setAnnotationSelection(['a']);
+      const lane = s().annotationUndoLane.length;
+      let id: CustomTagId | null = null;
+      expect(published(() => { id = s().addCustomTag('Orchard'); })).toHaveLength(1);
+      expect(s().annotationTag).toBe(id);
+      expect(s().gridState!.annotations!.items[0]).toMatchObject({ tag: id });
+      expect(s().annotationUndoLane).toHaveLength(lane + 1);
+      expect(published(() => { s().removeCustomTag(id!); })).toHaveLength(1);
+      expect(s().gridState!.annotations!.customTags ?? []).toEqual([]);
+      expect(s().annotationUndoLane).toHaveLength(lane + 2);
+    });
   });
 });

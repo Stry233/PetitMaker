@@ -1,14 +1,15 @@
 import { describe, it, expect } from 'vitest';
-import { CellZone, TerrainType, type MacroCell, type MapTemplate } from '../../../core/model/types';
-import {
-  createGridState, deriveBoundary, derivePlanetFrame, groundUnderRim, planetPlazaObject, planetTemplateId, refreshBoundary, rimSandOf, seedPlanetTerrain, isCustomTemplate,
-} from '../../../core/model/planet';
-import {
-  createGrid, createPlazaObject, groundZone, hasLandmark, isCellZone, isGrassZone, isLandmarkItem, isLandZone, isSeaZone, templateLandmark,
-} from '../../../core/model/grid-model';
-import { PLANET_PROFILE } from '../../../core/model/game-profile';
+import { TerrainType, type MacroCell, type MapTemplate } from '../../../core/model/types';
+import { CellZone, groundZone, isCellZone, isGrassZone, isLandZone, isSeaZone } from '../../../core/game/zones';
+import { groundFrame, planetTemplateId, isCustomTemplate } from '../../../core/model/planet';
+import { createGridState, seedPlanetTerrain } from '../../../core/model/template';
+import { deriveBoundary, groundUnderRim, refreshBoundary, rimSandOf } from '../../../core/model/shore';
+import { planetLandmarkObject, templateLandmarkObjects, hasLandmark, isLandmarkItem, templateLandmark } from '../../../core/model/landmarks';
+import { createGrid } from '../../../core/model/grid-model';
+import { PLANET_PROFILE } from '../../../core/game/profile';
+import { ANCHOR_LANDMARK } from '../../_support/anchor';
 import { getMapTemplate } from '../../../config/maps';
-import { landmarkAt } from '../../fixtures/planet';
+import { landmarkAt } from '../../_support/planet';
 
 const V = CellZone.Void, G = CellZone.Grass, B = CellZone.Beach;
 const grid = (w: number, h: number, fill = V) => Array.from({ length: h }, () => Array.from({ length: w }, () => fill));
@@ -25,16 +26,12 @@ describe('deriveBoundary', () => {
     expect(out[4]![4]).toBe(G);
     expect(z[4]![5]).toBe(B); // input untouched
   });
-  it('treats a plaza cell like grass', () => {
-    const z = grid(9, 9); z[4]![4] = CellZone.Plaza;
-    expect(deriveBoundary(z)[3]![3]).toBe(CellZone.Boundary);
-  });
-  it('marks exactly the sea and sand within the profile radius of grass or plaza, grid edges included', () => {
-    const kinds = [V, V, V, G, B, CellZone.Boundary, CellZone.Plaza];
+  it('marks exactly the sea and sand within the profile radius of grass, grid edges included', () => {
+    const kinds = [V, V, V, G, B, CellZone.Boundary];
     let seed = 7;
     const next = () => (seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648;
     const z = Array.from({ length: 23 }, () => Array.from({ length: 31 }, () => kinds[Math.floor(next() * next() * kinds.length)]!));
-    const ground = (x: number, y: number) => z[y]?.[x] === G || z[y]?.[x] === CellZone.Plaza;
+    const ground = (x: number, y: number) => z[y]?.[x] === G;
     const r = PLANET_PROFILE.shoreRadius;
     const expected = z.map((row, y) => row.map((c, x) => {
       if (isGrassZone(c)) return c;
@@ -43,7 +40,7 @@ describe('deriveBoundary', () => {
     }));
     expect(deriveBoundary(z)).toEqual(expected);
   });
-  it.each(['hexia', 'tafa'])('reproduces %s: its Boundary cells are exactly the rim its grass and plaza derive', (id) => {
+  it.each(['hexia', 'tafa'])('reproduces %s: its Boundary cells are exactly the rim its grass derives', (id) => {
     const zones = getMapTemplate(id).zones;
     const rimless = zones.map((row) => row.map((z) => (z === CellZone.Boundary ? V : z)));
     expect(deriveBoundary(rimless)).toEqual(zones);
@@ -84,12 +81,14 @@ describe('groundUnderRim', () => {
     expect(rimSandOf(ground, zones)).toEqual([0, 1, 4]);
   });
 
-  it.each(['hexia', 'tafa'])('finds sand under every rim cell of %s, as the planet shows beyond it', (id) => {
+  // Tafa's rim cells that touch no sand: (110, 2) lies between grass and sea, (34, 6) and (35, 6) in a
+  // notch enclosed by grass and rim.
+  it.each([['hexia', []], ['tafa', ['34,6', '35,6', '110,2']]] as const)('finds sand under every rim cell of %s that touches sand', (id, enclosed) => {
     const zones = getMapTemplate(id).zones;
     const under = groundUnderRim(zones);
-    const rim = zones.flatMap((row, y) => row.flatMap((z, x) => (z === CellZone.Boundary ? [under[y]![x]] : [])));
+    const rim = zones.flatMap((row, y) => row.flatMap((z, x) => (z === CellZone.Boundary ? [{ at: `${x},${y}`, z: under[y]![x] }] : [])));
     expect(rim.length).toBeGreaterThan(0);
-    expect(rim.every((z) => z === B)).toBe(true);
+    expect(rim.filter((c) => c.z !== B).map((c) => c.at).sort()).toEqual([...enclosed].sort());
   });
 });
 
@@ -184,57 +183,57 @@ describe('refreshBoundary', () => {
 
 describe('groundZone', () => {
   it('reads a rim cell as the ground under it and any other cell as its zone', () => {
-    expect(groundZone({ zone: CellZone.Boundary, terrain: null })).toBe(V);
-    expect(groundZone({ zone: CellZone.Boundary, terrain: null, under: B })).toBe(B);
-    expect([V, B, G].map((zone) => groundZone({ zone, terrain: null }))).toEqual([V, B, G]);
+    expect(groundZone({ zone: CellZone.Boundary })).toBe(V);
+    expect(groundZone({ zone: CellZone.Boundary, under: B })).toBe(B);
+    expect([V, B, G].map((zone) => groundZone({ zone }))).toEqual([V, B, G]);
   });
 });
 
 describe('isSeaZone', () => {
   it('is open sea and its shore rim', () => {
     expect([V, CellZone.Boundary].every(isSeaZone)).toBe(true);
-    expect([G, B, CellZone.Plaza].some(isSeaZone)).toBe(false);
+    expect([G, B].some(isSeaZone)).toBe(false);
   });
 });
 
 describe('zone kinds', () => {
-  it('names land as grass or sand and grass as grass or plaza', () => {
+  it('names land as grass or sand and grass as grass', () => {
     expect([G, B].every(isLandZone)).toBe(true);
-    expect([V, CellZone.Boundary, CellZone.Plaza].some(isLandZone)).toBe(false);
-    expect([G, CellZone.Plaza].every(isGrassZone)).toBe(true);
+    expect([V, CellZone.Boundary].some(isLandZone)).toBe(false);
+    expect(isGrassZone(G)).toBe(true);
     expect([V, B, CellZone.Boundary].some(isGrassZone)).toBe(false);
   });
-  it('recognises every zone value and nothing else', () => {
-    expect([V, B, G, CellZone.Plaza, CellZone.Boundary].every(isCellZone)).toBe(true);
-    expect([5, -1, 1.5, '2', null].some(isCellZone)).toBe(false);
+  it('recognises every zone a map may hold and nothing else, the retired plaza zone included', () => {
+    expect([V, B, G, CellZone.Boundary].every(isCellZone)).toBe(true);
+    expect([3, 5, -1, 1.5, '2', null].some(isCellZone)).toBe(false);
   });
 });
 
 describe('template landmark', () => {
   it('is the plaza a map seeds from its template, sized by the profile on a custom planet', () => {
-    const plaza = planetPlazaObject({ x: 2.5, y: 3 }, 90);
-    const { width, height, elevation } = PLANET_PROFILE.landmark;
-    expect(plaza).toMatchObject({ width: height, height: width, elevation, rotation: 90, locked: false });
+    const plaza = planetLandmarkObject(ANCHOR_LANDMARK, { x: 2.5, y: 3 }, 90);
+    const { width, height } = ANCHOR_LANDMARK;
+    expect(plaza).toMatchObject({ width: height, height: width, elevation: 0, rotation: 90, locked: false });
     expect(isLandmarkItem(plaza.catalogId)).toBe(true);
     expect(templateLandmark({ objects: new Map([[plaza.id, plaza]]) })).toBe(plaza);
   });
   it('treats a zero width or height as no plaza', () => {
-    const { width, height } = PLANET_PROFILE.landmark;
+    const { width, height } = ANCHOR_LANDMARK;
     expect(hasLandmark({ width, height })).toBe(true);
     expect([{ width: 0, height }, { width, height: 0 }, {}].some(hasLandmark)).toBe(false);
   });
 });
 
-describe('derivePlanetFrame', () => {
+describe('the ground frame', () => {
   it('snaps the ground bounding box to whole chunks', () => {
     const z = grid(64, 64); z[20]![17] = G; z[40]![50] = B;
-    expect(derivePlanetFrame(z)).toEqual({ x0: 16, y0: 16, cols: 3, rows: 2 });
+    expect(groundFrame(z, [])).toEqual({ x0: 16, y0: 16, cols: 3, rows: 2 });
   });
-  it('is null for an all-sea grid', () => { expect(derivePlanetFrame(grid(32, 32))).toBeNull(); });
+  it('is null for an all-sea grid', () => { expect(groundFrame(grid(32, 32), [])).toBeNull(); });
 });
 
 describe('planetTemplateId', () => {
-  const base = { width: 2, height: 1, zones: [[G, V]], plaza: { x: 0, y: 0, width: 0, height: 0, elevation: 1 } };
+  const base = { width: 2, height: 1, zones: [[G, V]], landmarks: [] };
   it('is stable for the same shape and changes with any cell', () => {
     expect(planetTemplateId(base)).toBe(planetTemplateId({ ...base, zones: [[G, V]] }));
     expect(planetTemplateId(base)).not.toBe(planetTemplateId({ ...base, zones: [[G, G]] }));
@@ -246,7 +245,7 @@ describe('planetTemplateId', () => {
 
 describe('seedPlanetTerrain', () => {
   it('lays the template terrain as mountains on grass', () => {
-    const t: MapTemplate = { id: 'custom-x', name: { en: 'X' }, width: 2, height: 1, zones: [[G, G]], plaza: { x: 0, y: 0, width: 0, height: 0, elevation: 1 }, terrain: Uint8Array.from([0, 2]) };
+    const t: MapTemplate = { id: 'custom-x', name: { en: 'X' }, width: 2, height: 1, zones: [[G, G]], landmarks: [], terrain: Uint8Array.from([0, 2]) };
     const cells = createGrid(t);
     seedPlanetTerrain(t, cells);
     expect(cells[0]![0]!.terrain).toBeNull();
@@ -256,20 +255,20 @@ describe('seedPlanetTerrain', () => {
 
 describe('createGridState', () => {
   it('opens a template with its zones, seeded terrain and landmark, and nothing else', () => {
-    const t: MapTemplate = { id: 'custom-x', name: { en: 'X' }, width: 40, height: 40, zones: grid(40, 40, G), plaza: landmarkAt(3.5, 4, 0), terrain: Uint8Array.from({ length: 1600 }, (_, i) => (i === 1599 ? 2 : 0)) };
+    const t: MapTemplate = { id: 'custom-x', name: { en: 'X' }, width: 40, height: 40, zones: grid(40, 40, G), landmarks: [landmarkAt(3.5, 4, 0)], terrain: Uint8Array.from({ length: 1600 }, (_, i) => (i === 1599 ? 2 : 0)) };
     const state = createGridState(t);
     expect(state.template).toBe(t);
     expect(state.cells[39]![39]!.terrain).toEqual({ type: TerrainType.Mountain, elevation: 2 });
-    expect([...state.objects.values()]).toEqual([createPlazaObject(t)]);
+    expect([...state.objects.values()]).toEqual([(templateLandmarkObjects(t)[0] ?? null)]);
     expect(state.lockedLayers.size).toBe(0);
     expect(state.provenance).toBeUndefined();
   });
 });
 
-describe('createPlazaObject', () => {
+describe('templateLandmarkObjects', () => {
   it('carries the template plaza rotation and stays locked', () => {
-    const t: MapTemplate = { id: 'custom-x', name: { en: 'X' }, width: 40, height: 40, zones: grid(40, 40, G), plaza: landmarkAt(3.5, 4, 90) };
-    const p = createPlazaObject(t)!;
+    const t: MapTemplate = { id: 'custom-x', name: { en: 'X' }, width: 40, height: 40, zones: grid(40, 40, G), landmarks: [landmarkAt(3.5, 4, 90)]};
+    const p = (templateLandmarkObjects(t)[0] ?? null)!;
     expect(p.rotation).toBe(90);
     expect(p.position).toEqual({ x: 3.5, y: 4 });
     expect(p.locked).toBe(true);
@@ -278,7 +277,7 @@ describe('createPlazaObject', () => {
 
 describe('planetTemplateId canonical form', () => {
   it('hashes an all-zero terrain like an absent one', () => {
-    const body = { width: 4, height: 4, zones: grid(4, 4, G), plaza: { x: 0, y: 0, width: 0, height: 0, elevation: 1 } };
+    const body = { width: 4, height: 4, zones: grid(4, 4, G), landmarks: [] };
     expect(planetTemplateId({ ...body, terrain: new Uint8Array(16) })).toBe(planetTemplateId(body));
     const raised = new Uint8Array(16); raised[3] = 2;
     expect(planetTemplateId({ ...body, terrain: raised })).not.toBe(planetTemplateId(body));

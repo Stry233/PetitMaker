@@ -1,15 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { CommandExecutor } from '../../core/commands/command-executor';
-import { EventBus } from '../../core/commands/event-bus';
-import { createDefaultRegistry } from '../../rules/index';
 import { waterContainmentRule } from '../../rules/water-containment';
 import { waterfallAdjacentUniformityRule } from '../../rules/waterfall-uniformity';
-import { CommandType, TerrainType, type EditorEvents, type PaintTerrainCommand } from '../../core/model/types';
-import { roadLookup } from '../../state/object-index';
-import { makeState, setTerrain } from './_helpers';
+import { CommandType, TerrainType, type PaintTerrainCommand } from '../../core/model/types';
+import { makeState, setTerrain, makeExecutor } from '../_support/map-state';
 
 function paint(x: number, y: number, type: TerrainType, elev: number): PaintTerrainCommand {
-  return { type: CommandType.PaintTerrain, timestamp: 0, cells: [{ x, y }], terrainType: type, elevation: elev };
+  return { type: CommandType.PaintTerrain, cells: [{ x, y }], terrainType: type, elevation: elev };
 }
 
 describe('V-WTR-02: Water Containment', () => {
@@ -78,15 +74,15 @@ describe('Water containment: an enclosed water row', () => {
       for (let x = 2; x <= 7; x++)
         setTerrain(state, x, y, TerrainType.Mountain, 2);
 
-    const executor = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
-    const strokeStart = executor.getUndoStackSize();
+    const executor = makeExecutor(state);
+    const strokeStart = executor.beginStroke();
 
     for (let x = 3; x <= 6; x++) {
       const result = executor.execute(paint(x, 4, TerrainType.Water, 2));
       expect(result.success).toBe(true);
     }
 
-    const violations = executor.commitStroke(strokeStart);
+    const violations = strokeStart.commit();
     expect(violations).toHaveLength(0);
 
     for (let x = 3; x <= 6; x++)
@@ -127,8 +123,8 @@ describe('Water containment: a cross of water in a 3x3 mountain', () => {
       for (let x = 4; x <= 6; x++)
         setTerrain(state, x, y, TerrainType.Mountain, 2);
 
-    const executor = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
-    const strokeStart = executor.getUndoStackSize();
+    const executor = makeExecutor(state);
+    const strokeStart = executor.beginStroke();
 
     const crossCells = [[5, 5], [5, 4], [4, 5], [6, 5], [5, 6]];
     for (const [x, y] of crossCells) {
@@ -136,7 +132,7 @@ describe('Water containment: a cross of water in a 3x3 mountain', () => {
       expect(result.success).toBe(true);
     }
 
-    const violations = executor.commitStroke(strokeStart);
+    const violations = strokeStart.commit();
     expect(violations).toHaveLength(0);
   });
 
@@ -146,7 +142,7 @@ describe('Water containment: a cross of water in a 3x3 mountain', () => {
       for (let x = 4; x <= 6; x++)
         setTerrain(state, x, y, TerrainType.Mountain, 2);
 
-    const executor = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
+    const executor = makeExecutor(state);
     const result = executor.execute(paint(4, 5, TerrainType.Water, 2));
     expect(result.success).toBe(true);
   });
@@ -168,10 +164,10 @@ describe('Water containment: inner water between elevation-2 caps', () => {
     for (let y = 6; y <= 9; y++)
       for (let x = 7; x <= 14; x++)
         setTerrain(state, x, y, TerrainType.Mountain, 2);
-    // Paint water at elev 2 on inner row, BETWEEN the elev-2 mountains
+    // Paint water at elev 2 on inner row, between the elev-2 mountains
     for (let x = 8; x <= 13; x++)
       setTerrain(state, x, 8, TerrainType.Water, 2);
-    // Caps at (7,8) and (14,8) are BOTH mountain elev 2
+    // Caps at (7,8) and (14,8) are both mountain elev 2
 
     expect(waterContainmentRule.validate(state)).toHaveLength(0);
     expect(waterfallAdjacentUniformityRule.validate(state)).toHaveLength(0);
@@ -186,13 +182,13 @@ describe('Water containment: inner water between elevation-2 caps', () => {
       for (let x = 7; x <= 14; x++)
         setTerrain(state, x, y, TerrainType.Mountain, 2);
 
-    const executor = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
-    const strokeStart = executor.getUndoStackSize();
+    const executor = makeExecutor(state);
+    const strokeStart = executor.beginStroke();
     for (let x = 8; x <= 13; x++) {
       const result = executor.execute(paint(x, 8, TerrainType.Water, 2));
       expect(result.success).toBe(true);
     }
-    expect(executor.commitStroke(strokeStart)).toHaveLength(0);
+    expect(strokeStart.commit()).toHaveLength(0);
   });
 });
 
@@ -203,7 +199,7 @@ describe('Water containment: elevation-2 water needs elevation-2 perpendicular c
   // ..112222222211...
   // ..11WWWWWWWW11...  ← water at elev 2
   // ..111111111111...
-  // The elev-1 outer ring CANNOT cap elev-2 water — correct rejection.
+  // The elev-1 outer ring cannot cap elev-2 water — correct rejection.
   it('correctly rejects water at elev 2 when perpendicular caps are only elev 1', () => {
     const state = makeState(20, 20);
     // Outer ring at elevation 1

@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
+import { stubFacts } from '../../_support/tool-facts';
+import type { ToolFacts } from '../../../agent/core/tool-facts';
 import { append, createLog } from '../../../agent/core/log';
-import { deriveView, type JobView, type PanelView } from '../../../agent/core/project-view';
+import { derivePhase, deriveView, type JobView, type PanelView } from '../../../agent/core/project-view';
+import type { SessionEventInput } from '../../../agent/core/types';
 import type { Part, PlanStage } from '../../../agent/core/types';
 
 describe('deriveView', () => {
@@ -78,18 +81,18 @@ describe('deriveView', () => {
     expect(view.current?.says).toBe('thinking about it');
   });
 
-  it('4. an OpRow joins a live tool part with its result: run before, ok with a summary after, isRead from readTools', () => {
+  it('4. an OpRow joins a live tool part with its result: run before, ok with a summary after, isRead from the tool facts', () => {
     const log = createLog(() => 0);
     append(log, { kind: 'order', text: 'go', mapContext: '' });
     const live: Part[] = [{ kind: 'tool', callId: 'c1', name: 'view_map', input: {}, argsDone: true }];
 
-    const before = deriveView(log, { live, readTools: new Set(['view_map']) });
+    const before = deriveView(log, { live, facts: stubFacts() });
     expect(before.current?.ops).toEqual([
       { callId: 'c1', name: 'view_map', status: 'run', summary: '', isRead: true },
     ]);
 
     append(log, { kind: 'toolResult', callId: 'c1', name: 'view_map', content: 'a flat plain\nmore detail', isError: false });
-    const after = deriveView(log, { live, readTools: new Set(['view_map']) });
+    const after = deriveView(log, { live, facts: stubFacts() });
     expect(after.current?.ops).toEqual([
       { callId: 'c1', name: 'view_map', status: 'ok', summary: 'a flat plain', isRead: true },
     ]);
@@ -100,8 +103,25 @@ describe('deriveView', () => {
     append(log, { kind: 'order', text: 'go', mapContext: '' });
     const live: Part[] = [{ kind: 'tool', callId: 'c1', name: 'view_map', input: {}, argsDone: true }];
     append(log, { kind: 'toolResult', callId: 'c1', name: 'view_map', content: 'Rendered view attached.', isError: false, image: 'data:image/png;base64,AAAA' });
-    const view = deriveView(log, { live, readTools: new Set(['view_map']) });
+    const view = deriveView(log, { live, facts: stubFacts() });
     expect(view.current?.ops[0]?.image).toBe('data:image/png;base64,AAAA');
+  });
+
+  it('keeps each op footprint on a job settled by jobEnd or by an incident', () => {
+    const footprint = { origin: { x: 2, y: 3 }, width: 3, height: 3 };
+    for (const end of ['jobEnd', 'incident'] as const) {
+      const log = createLog(() => 0);
+      append(log, { kind: 'order', text: 'raise a hill', mapContext: '' });
+      append(log, { kind: 'assistant', stop: 'tool-calls', parts: [
+        { kind: 'tool', callId: 'c1', name: 'paint_terrain', argsDone: true, input: { shape: 'rect', x1: 2, y1: 3, x2: 4, y2: 5 } },
+      ] });
+      append(log, { kind: 'toolResult', callId: 'c1', name: 'paint_terrain', content: 'Built', isError: false, write: true, detail: { cells: 9 } });
+      if (end === 'jobEnd') append(log, { kind: 'jobEnd', outcome: 'done' });
+      else append(log, { kind: 'incident', error: { cls: 'network', detail: 'down' } });
+      const view = deriveView(log, { facts: stubFacts(['paint_terrain']) });
+      expect(view.current, end).toBeUndefined();
+      expect(view.jobs[0]?.ops[0]?.footprint, end).toEqual(footprint);
+    }
   });
 
   it('5. a toolResult detail decides revert/blocked/error status', () => {
@@ -140,7 +160,7 @@ describe('deriveView', () => {
   });
 
   /**
-   * A DECLINE AND A CUT ARE DIFFERENT FACTS. The user answering "no" is a decision of theirs; a call
+   * A decline and a cut are different facts. The user answering "no" is a decision of theirs; a call
    * that never ran because the job ended under it is not. The panel draws them with different marks,
    * so the fold that knows the difference has to keep it: `skipped` is the decline and nothing else.
    */
@@ -164,11 +184,7 @@ describe('deriveView', () => {
     expect(job?.ops.find((o) => o.callId === 'c2')?.status).toBe('cut');
   });
 
-  /**
-   * THE SUMMARY IS THE LINE THAT SAYS SOMETHING. Every write tool words its own refusal as a banner
-   * ("REVERTED:", "All commands rejected:") and puts the rule text on the line below, so reading
-   * line 0 handed the panel a header and left the one fact a person can act on unread.
-   */
+  /** A refusal that opens with a banner marks it with `detail.banner`; the summary is the rule line below it. */
   it('6c. a result summary skips the tool\'s own banner and carries the rule line', () => {
     const log = createLog(() => 0);
     append(log, { kind: 'order', text: 'go', mapContext: '' });
@@ -178,7 +194,7 @@ describe('deriveView', () => {
       name: 'carve_river',
       isError: true,
       content: 'REVERTED:\n[V-WTR-02] Water: the pond needs a closed bank at (3,4).',
-      detail: { reverted: true },
+      detail: { reverted: true, banner: true },
     });
     expect(deriveView(log).current?.ops[0]?.summary)
       .toBe('[V-WTR-02] Water: the pond needs a closed bank at (3,4).');
@@ -187,15 +203,33 @@ describe('deriveView', () => {
   it('6d. a result that is ALL banner reports nothing rather than the banner', () => {
     const log = createLog(() => 0);
     append(log, { kind: 'order', text: 'go', mapContext: '' });
-    append(log, { kind: 'toolResult', callId: 'c1', name: 'undo', isError: true, content: 'REVERTED:' });
+    append(log, { kind: 'toolResult', callId: 'c1', name: 'undo', isError: true, content: 'REVERTED:', detail: { reverted: true, banner: true } });
     expect(deriveView(log).current?.ops[0]?.summary).toBe('');
+  });
+
+  it('6h. a partial rollback\'s banner is skipped like a full one', () => {
+    const log = createLog(() => 0);
+    append(log, { kind: 'order', text: 'go', mapContext: '' });
+    append(log, {
+      kind: 'toolResult', callId: 'c1', name: 'paint_terrain', isError: true, write: true,
+      content: 'PARTIALLY REVERTED: the edit violated post-stroke rules. Retained changes: 1 cell(s), 0 object(s).\n[V-STR-01] Terrain: the mound needs support at (3,4).',
+      detail: { reverted: true, partialRevert: true, banner: true, cells: 1 },
+    });
+    expect(deriveView(log).current?.ops[0]?.summary).toBe('[V-STR-01] Terrain: the mound needs support at (3,4).');
+  });
+
+  it('6i. a result without the banner flag is summarized by its first line', () => {
+    const log = createLog(() => 0);
+    append(log, { kind: 'order', text: 'go', mapContext: '' });
+    append(log, { kind: 'toolResult', callId: 'c1', name: 'inspect_region', isError: false, content: 'REVERTED is a word here\nsecond' });
+    expect(deriveView(log).current?.ops[0]?.summary).toBe('REVERTED is a word here');
   });
 
   it('6f. the "all rejected"/"partially applied" banners are skipped like REVERTED is', () => {
     const log = createLog(() => 0);
     append(log, { kind: 'order', text: 'go', mapContext: '' });
     append(log, {
-      kind: 'toolResult', callId: 'c1', name: 'paint_terrain', isError: true,
+      kind: 'toolResult', callId: 'c1', name: 'paint_terrain', isError: true, detail: { banner: true },
       content: 'All commands rejected:\n(3,4): Terrain: cannot build on cells occupied by objects',
     });
     append(log, {
@@ -209,7 +243,7 @@ describe('deriveView', () => {
     expect(ops?.find((o) => o.callId === 'c2')?.summary).toBe('Painted 5 cells.');
   });
 
-  /** A colon at the end of a line is not by itself a refusal banner: a SUCCESS result routinely
+  /** A colon at the end of a line is not by itself a refusal banner: a success result routinely
    *  opens on one too ("Legal … anchors (…):", "Available skills:"), and treating every trailing
    *  colon as a header buried the model's own answer behind the sentence introducing it. */
   it('6g. a success result leading with a colon is its own summary, not skipped as a header', () => {
@@ -229,7 +263,7 @@ describe('deriveView', () => {
     expect(ops?.find((o) => o.callId === 'c2')?.summary).toBe('Available skills:');
   });
 
-  /** The caret on the ticket's says line reports the WORDS still arriving, which the phase cannot:
+  /** The caret on the ticket's says line reports the words still arriving, which the phase cannot:
    *  a turn whose text has landed while a tool runs on reads `executing`, and one whose text has
    *  landed with nothing after it is a finished line rather than a line being typed. */
   it('6e. reports the says line as streaming only while its own text part is unfinished', () => {
@@ -314,7 +348,7 @@ describe('deriveView', () => {
   });
 
   /**
-   * WHICH STAGE A CALL RAN UNDER. The view carries ONE flat op list for the whole job, so without a
+   * Which stage a call ran under. The view carries one flat op list for the whole job, so without a
    * stamp there is no partition and a finished record can report no per-stage figure at all, which
    * leaves the capped ledger showing stage names and ticks and nothing else. The log names a
    * stage twice, and both are read: the `stage` event the model advances with, and the `stageIndex`
@@ -332,7 +366,7 @@ describe('deriveView', () => {
     append(log, { kind: 'checkpoint', undoIndex: 4, label: 'stage', stageIndex: 1 });
     append(log, { kind: 'toolResult', callId: 'w1', name: 'build_road', content: 'ok', isError: false, write: true, detail: { cells: 118 } });
 
-    // And a checkpoint ALONE names a stage too, which is the only carrier a replayed log may have.
+    // And a checkpoint alone names a stage too, which is the only carrier a replayed log may have.
     append(log, { kind: 'checkpoint', undoIndex: 9, label: 'stage', stageIndex: 2 });
     append(log, { kind: 'toolResult', callId: 'w2', name: 'place_object', content: 'ok', isError: false, write: true, detail: { objects: 6 } });
 
@@ -340,7 +374,7 @@ describe('deriveView', () => {
     expect(ops.map((op) => [op.callId, op.stageIndex])).toEqual([['r1', 0], ['w1', 1], ['w2', 2]]);
   });
 
-  /** It only ever goes FORWARD: a checkpoint banks a stage the `stage` event already announced, so
+  /** It only ever goes forward: a checkpoint banks a stage the `stage` event already announced, so
    *  taking the later of the two would step a later call back under an earlier stage. */
   it('11c. never walks a call back under an earlier stage, and stamps nothing without a plan', () => {
     const planned = createLog(() => 0);
@@ -644,12 +678,12 @@ describe('deriveView', () => {
     });
   });
 
-  describe("an op's read-ness comes off its own result before it comes off readTools", () => {
-    function opFor(log: ReturnType<typeof createLog>, callId: string, readTools?: ReadonlySet<string>) {
-      return deriveView(log, readTools ? { readTools } : undefined).current?.ops.find((o) => o.callId === callId);
+  describe("an op's read-ness comes off its own result before it comes off the tool facts", () => {
+    function opFor(log: ReturnType<typeof createLog>, callId: string, facts?: ToolFacts) {
+      return deriveView(log, facts ? { facts } : undefined).current?.ops.find((o) => o.callId === callId);
     }
 
-    it('a stamped result answers with no readTools passed at all', () => {
+    it('a stamped result answers with no tool facts passed at all', () => {
       const log = createLog(() => 0);
       append(log, { kind: 'order', text: 'go', mapContext: '' });
       append(log, { kind: 'toolResult', callId: 'r1', name: 'view_map', content: 'a flat plain', isError: false, write: false });
@@ -659,20 +693,20 @@ describe('deriveView', () => {
       expect(opFor(log, 'w1')?.isRead).toBe(false);
     });
 
-    it('a stamped result outranks a readTools set that disagrees with it', () => {
+    it('a stamped result outranks tool facts that disagree with it', () => {
       const log = createLog(() => 0);
       append(log, { kind: 'order', text: 'go', mapContext: '' });
       append(log, { kind: 'toolResult', callId: 'w1', name: 'paint_terrain', content: 'painted', isError: false, write: true });
 
-      expect(opFor(log, 'w1', new Set(['paint_terrain']))?.isRead).toBe(false);
+      expect(opFor(log, 'w1', stubFacts())?.isRead).toBe(false);
     });
 
-    it('a legacy result with no stamp falls back to readTools, and to false with neither', () => {
+    it('a legacy result with no stamp falls back to the tool facts, and to false with neither', () => {
       const log = createLog(() => 0);
       append(log, { kind: 'order', text: 'go', mapContext: '' });
       append(log, { kind: 'toolResult', callId: 'c1', name: 'view_map', content: 'a flat plain', isError: false });
 
-      expect(opFor(log, 'c1', new Set(['view_map']))?.isRead).toBe(true);
+      expect(opFor(log, 'c1', stubFacts())?.isRead).toBe(true);
       expect(opFor(log, 'c1')?.isRead).toBe(false);
     });
   });
@@ -753,6 +787,20 @@ describe('deriveView', () => {
       const job = deriveView(log).jobs[0];
       expect(job?.kind).toBe('build');
       expect(job?.celebrate).toBe(false);
+    });
+
+    it('done with a write the stroke PARTLY kept celebrates the retained work', () => {
+      const log = createLog(() => 0);
+      append(log, { kind: 'order', text: 'raise a hill', mapContext: '' });
+      append(log, {
+        kind: 'toolResult', callId: 'c1', name: 'paint_terrain', content: 'PARTIALLY REVERTED: kept one cell',
+        isError: true, write: true, detail: { reverted: true, partialRevert: true, banner: true, cells: 1 },
+      });
+      append(log, { kind: 'jobEnd', outcome: 'done', summary: 'part of it stands' });
+
+      const job = deriveView(log).jobs[0];
+      expect(job?.kind).toBe('build');
+      expect(job?.celebrate).toBe(true);
     });
 
     it('done with a write SKIPPED at its gate is still a build, with nothing to celebrate', () => {
@@ -916,8 +964,8 @@ describe('deriveView', () => {
       expect(withLive([{ kind: 'reasoning', text: 'weighing the ridge', done: false }]).phase).toBe('thinking');
     });
 
-    /** THE SAYS LINE MUST NEVER CARRY REASONING: `saysFromLive` matches a `text` part only, and a
-     *  stream that has ONLY thought so far must leave `current.says` unset (the dots, never the
+    /** The says line must never carry reasoning: `saysFromLive` matches a `text` part only, and a
+     *  stream that has only thought so far must leave `current.says` unset (the dots, never the
      *  chain-of-thought, stand in for it) — not merely "not yet", which a fallback to the reasoning
      *  part would also satisfy while still printing it as the assistant's own line. */
     it('a reasoning-only stream leaves current.says unset, whether the thought is done or not', () => {
@@ -979,7 +1027,7 @@ describe('deriveView', () => {
 
   /** Character count remains available when a provider omits reasoning-token usage. */
   describe('a job carries how much was thought inside it', () => {
-    /** The SIZE reading alone, so a test about counting stays about counting: the per-turn marks
+    /** The size reading alone, so a test about counting stays about counting: the per-turn marks
      *  and the total span are their own subject, right below. */
     const size = (t: JobView['thought']) => (t ? { chars: t.chars, turns: t.turns } : t);
 
@@ -1026,7 +1074,7 @@ describe('deriveView', () => {
       expect(size(deriveView(log, { live: later }).current?.thought)).toEqual({ chars: 15, turns: 2 });
     });
 
-    /** A STORED thought is an EXCERPT: the log keeps a readable head plus the original length, so
+    /** A stored thought is an excerpt: the log keeps a readable head plus the original length, so
      *  the count must come off `chars` and never off the head it kept. */
     it('a stored excerpt reports the thought it stands for, not the head that survived storage', () => {
       const log = createLog(() => 0);
@@ -1038,7 +1086,7 @@ describe('deriveView', () => {
       expect(size(deriveView(log).current?.thought)).toEqual({ chars: 10_000, turns: 1 });
     });
 
-    /** ABSENT IS UNKNOWN, NOT ZERO. A log written before the excerpt existed carries no `chars`
+    /** Absent is unknown, not zero. A log written before the excerpt existed carries no `chars`
      *  key at all, and its part still holds the whole thought — so the honest reading measures the
      *  text. Reading a missing key as 0 would report a session that thought at length as one that
      *  never thought, which is the same reading a provider that sends no reasoning gets. */
@@ -1089,7 +1137,7 @@ describe('deriveView', () => {
     });
   });
 
-  /** THE TURN IS THE UNIT, and the record's own thought rows stand on this: one digest per turn
+  /** The turn is the unit, and the record's own thought rows stand on this: one digest per turn
    *  that thought, in log order, each knowing where in the op list it files. */
   describe('the per-turn thought digest', () => {
     it('files one mark per thinking turn, above the row that turn opened', () => {
@@ -1129,7 +1177,7 @@ describe('deriveView', () => {
     });
 
     /** A turn is measured from whatever the log last recorded, so a question the user sat on is the
-     *  GATE's time and not the model's. */
+     *  Gate's time and not the model's. */
     it('measures a turn from the event before it, gate answer included', () => {
       let clock = 0;
       const log = createLog(() => clock);
@@ -1144,7 +1192,7 @@ describe('deriveView', () => {
       expect(deriveView(log).current?.thought?.marks[0]?.ms).toBe(7_000);
     });
 
-    /** A HIDDEN-CoT TURN GETS A MARK WITH NO TEXT, which is what keeps the panel from offering a
+    /** A HIDDEN-CoT turn gets a mark with no text, which is what keeps the panel from offering a
      *  box that would open on nothing. Nothing here reads a provider capability: the reading is of
      *  what arrived. */
     it('carries no text for a turn whose reasoning was never exposed', () => {
@@ -1158,7 +1206,7 @@ describe('deriveView', () => {
       expect(deriveView(log).current?.thought).toBeUndefined();
     });
 
-    /** A STORED thought is a HEAD plus its original length: the box shows what survived, the count
+    /** A stored thought is a head plus its original length: the box shows what survived, the count
      *  reports what was thought. */
     it('keeps the stored head as the mark text while the count stays the whole thought', () => {
       const log = createLog(() => 0);
@@ -1305,7 +1353,7 @@ describe('deriveView', () => {
     });
   });
 
-  /* A HELD SESSION SAYS ONE THING. Published independently of the phase, every marker below would
+  /* A held session says one thing. Published independently of the phase, every marker below would
    * surface live questions and live waits on a paused log that no loop is left to answer. */
   describe('a hold outranks every open marker', () => {
     /** The tail a reload leaves on an active log: `persist.ts:loadLog` appends the synthetic
@@ -1330,8 +1378,8 @@ describe('deriveView', () => {
       // The question is not answerable while nothing is asking it.
       expect(held.gate).toBeUndefined();
 
-      // Resume re-enters the job, and the loop re-issues the unresolved call onto the SAME gate
-      // (`loop.ts:existingGateId`), so the ask is the one the log already holds.
+      // Resume re-enters the job, and the loop re-issues the unresolved call onto the same gate
+      // (`job-reads.ts:existingGateId`), so the ask is the one the log already holds.
       append(log, { kind: 'resumed' });
       const resumed = deriveView(log);
       expect(resumed.phase).toBe('gated');
@@ -1367,7 +1415,7 @@ describe('deriveView', () => {
       expect(streaming.phase).toBe('streaming');
       expect(streaming.current?.says).toBe('Laying the first road...');
 
-      // A stream carrying only THOUGHT is not speech, so the wait still stands.
+      // A stream carrying only thought is not speech, so the wait still stands.
       const thinking = deriveView(log, { live: [{ kind: 'reasoning', text: 'hmm', done: false }] });
       expect(thinking.phase).toBe('retrying');
     });
@@ -1406,8 +1454,8 @@ describe('deriveView', () => {
         parts: [{ kind: 'tool', callId: 'c1', name: 'paint_terrain', input: {}, argsDone: true }],
       });
       append(log, { kind: 'gateAsked', gateId: 'g1', scope: 'tool', callId: 'c1', summary: 's' });
-      // The user stopped the job AT the gate. They never answered it, so this is a call the end of
-      // the job cut short — NOT one they declined, which is a decision of theirs and wears its own
+      // The user stopped the job at the gate. They never answered it, so this is a call the end of
+      // the job cut short — not one they declined, which is a decision of theirs and wears its own
       // quiet mark.
       append(log, { kind: 'jobEnd', outcome: 'aborted' });
 
@@ -1492,7 +1540,7 @@ describe('an ask records WHAT IT OFFERED, not only what was asked', () => {
   });
 
   /** The offer outlives the answer, exactly as the ask does: a settled card still has to say what
-   *  the tapped word was one OF. */
+   *  the tapped word was one of. */
   it('keeps the offer on the record once the ask is answered', () => {
     const log = createLog(() => 0);
     append(log, { kind: 'order', text: 'go', mapContext: '' });
@@ -1521,7 +1569,7 @@ describe('a record says which map it was built on', () => {
     expect(deriveView(settled).jobs[0]?.mapId).toBe('tafa');
   });
 
-  /** ABSENT IS UNVERIFIABLE, NOT "THE OPEN MAP". A log written before the field existed carries
+  /** Absent is unverifiable, not "THE OPEN MAP". A log written before the field existed carries
    *  none, and the fold must hand that absence on rather than filling it in. */
   it('leaves it undefined for an order that carried none', () => {
     const log = createLog(() => 0);
@@ -1553,5 +1601,32 @@ describe('deriveView: the settle depth', () => {
     append(older, { kind: 'order', text: 'build', mapContext: '' });
     append(older, { kind: 'jobEnd', outcome: 'done' });
     expect(deriveView(older).jobs[0]?.endUndoIndex).toBeUndefined();
+  });
+});
+
+describe('derivePhase', () => {
+  it('agrees with the panel view after every event of a job that gates, retries, pauses and ends', () => {
+    const log = createLog();
+    const steps: SessionEventInput[] = [
+      { kind: 'resumed' },
+      { kind: 'order', text: 'Build', mapContext: '' },
+      { kind: 'retry', attempt: 1, cls: 'overloaded', delayMs: 500 },
+      { kind: 'gateAsked', gateId: 'g1', scope: 'tool', callId: 'c1', summary: 's' },
+      { kind: 'pauseRequested' },
+      { kind: 'paused' },
+      { kind: 'resumed' },
+      { kind: 'gateAnswered', gateId: 'g1', answer: 'allow' },
+      { kind: 'assistant', stop: 'stop', parts: [{ kind: 'text', text: 'Done', done: true }] },
+      { kind: 'jobEnd', outcome: 'aborted' },
+      { kind: 'order', text: 'Again', mapContext: '' },
+      { kind: 'incident', error: { cls: 'unknown', detail: 'x' } },
+    ];
+    const seen = new Set<string>();
+    for (const step of steps) {
+      append(log, step);
+      expect(derivePhase(log)).toBe(deriveView(log).phase);
+      seen.add(derivePhase(log));
+    }
+    expect([...seen].sort()).toEqual(['aborted', 'gated', 'idle', 'incident', 'paused', 'pausing', 'retrying', 'thinking']);
   });
 });

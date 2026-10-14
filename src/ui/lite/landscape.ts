@@ -1,5 +1,5 @@
-import { setViewportSpace } from '../../core/runtime/viewport-space';
-import { isTextEntry } from '../../core/runtime/text-entry';
+import { setViewportSpace } from '../../platform/device/viewport-space';
+import { isTextEntry } from '../../platform/input/text-entry';
 
 /** Rotate the page, including body portals, without changing native event or DOM APIs. */
 export function installLiteLandscape(): void {

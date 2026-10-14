@@ -1,5 +1,5 @@
 /**
- * The frame's ROOM EXPRESSIONS, resolved — not the strings that express them.
+ * The frame's room expressions, resolved — not the strings that express them.
  *
  * `panelTop`/`panelMaxHeight`/`deskSeatInset` answer in css, against a viewport unit and custom
  * properties, so jsdom can hold the strings but never lays them out. The grammar is closed — `calc`,
@@ -9,7 +9,7 @@
  * Shared, because two suites read the same expressions (the column's room, the character's seat) and
  * a resolver copied into each is a place for them to disagree about what the app computes.
  */
-import { frameFit } from '../../../ui/design/scale';
+import { fittedUiScale } from '../../../ui/design/scale';
 import { ZOOM } from '../../../ui/shell/units';
 
 /** Where the parenthesis opened at `open` closes. */
@@ -67,5 +67,5 @@ export function resolveCss(
  *  Ctrl +/- preference. Every length in the frame is drawn at it, and it is what a viewport unit
  *  inside the frame divides back out. */
 export function frameZoom(vw: number, vh: number, uiZoom: number): number {
-  return ZOOM * frameFit(vw, vh) * uiZoom;
+  return ZOOM * fittedUiScale(vw, vh, uiZoom);
 }

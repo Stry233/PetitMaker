@@ -1,0 +1,20 @@
+{
+  "src/core/base/clock.ts": {
+    "uses": [
+      "Date"
+    ],
+    "reason": "The one wall-clock read: provenance operation times and the session id prefix."
+  },
+  "src/core/base/sha256.ts": {
+    "uses": [
+      "crypto"
+    ],
+    "reason": "The digest prefers the platform's crypto.subtle and falls back to its own implementation."
+  },
+  "src/core/model/object-id.ts": {
+    "uses": [
+      "Math.random"
+    ],
+    "reason": "Session ids end in a random tail so two tabs editing at once never mint the same id."
+  }
+}

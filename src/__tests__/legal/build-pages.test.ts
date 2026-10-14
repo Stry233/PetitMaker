@@ -1,21 +1,17 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-// @ts-ignore - node:fs is untyped here (no @types/node)
 import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs';
-// @ts-ignore - node:os is untyped here (no @types/node)
 import { tmpdir } from 'node:os';
-// @ts-ignore - node:path is untyped here (no @types/node)
 import { join } from 'node:path';
-// @ts-ignore
-declare const process: { cwd(): string; env: Record<string, string | undefined> };
 
 import type { LegalConfig } from '../../legal/config';
 import { LEGAL } from '../../legal/config';
-import { DEPLOY_TARGETS } from '../../legal/deploy-targets';
-import { isIndexablePage } from '../../legal/site-paths';
+import { DEPLOY_TARGETS } from '../../platform/build/deploy-targets';
+import { DOC_IDS, isIndexablePage } from '../../legal/site-paths';
 import { DOCS } from '../../legal/registry';
+import { escapeHtml } from '../../legal/markdown-html';
+import { translateFor } from '../../i18n/context';
 import type { MdNode } from '../../legal/markdown';
 import {
-  ALL_DOC_IDS,
   computeExpires,
   metaDescription,
   pageHtml,
@@ -32,13 +28,13 @@ import {
 // A fully release-ready fixture config — mirrors validate-config.test.ts's
 // `resolvedConfig()` fixture so this suite exercises a config that passes
 // validateLegalConfig cleanly, isolating the page-generation logic under test
-// from the real LEGAL instance.
+// from the real `LEGAL` instance.
 function fixtureCfg(overrides: Partial<LegalConfig> = {}): LegalConfig {
   return {
     canonicalOrigin: 'https://example.org',
     legacyOrigins: [],
     productName: 'PetitMaker',
-    operatorDisplayName: 'PetitMaker Team / 谷地工坊团队',
+    operatorName: { en: 'PetitMaker Team', zh: '谷地工坊团队' },
     privacyContactEmail: 'legal@example.org',
     securityContactEmail: 'security@example.org',
     qqFeedbackChannel: 'pd123456789',
@@ -46,10 +42,12 @@ function fixtureCfg(overrides: Partial<LegalConfig> = {}): LegalConfig {
     icpUrl: null,
     psbNumber: null,
     psbUrl: null,
+    privacyHostNetwork: { en: 'the test host', zh: '测试主机' },
+    privacyEdgeDelivery: { en: 'Delivered from the test edge.', zh: '由测试边缘节点分发。' },
     effectiveDates: { privacy: '2026-01-01', terms: '2026-01-01' },
     policyVersions: { privacy: '1.0', terms: '1.0' },
-    team: [{ name: 'Jane Doe', sort: 'janedoe', url: 'https://example.com/jane' }],
-    acknowledgements: [{ name: 'Sam Roe', sort: 'samroe', url: 'https://example.com/sam' }],
+    team: [{ name: 'Jane Doe', sort: 'janedoe', bilibili: '101' }],
+    acknowledgements: [{ name: 'Sam Roe', sort: 'samroe', bilibili: '202' }],
     repoUrl: 'https://github.com/example/petitmaker',
     sponsorship: { patreon: 'https://www.patreon.com/c/example', afdian: 'https://afdian.com/a/example' },
     ...overrides,
@@ -83,8 +81,8 @@ describe('pageHtml', () => {
     expect(html).toContain('<link rel="canonical" href="https://example.org/zh/privacy" />');
   });
 
-  it('escapes config values placed into the page (operatorDisplayName in the © line)', () => {
-    const html = pageHtml('privacy', 'en', fixtureCfg({ operatorDisplayName: 'A & B <Co>' }));
+  it('escapes config values placed into the page (the operator name in the © line)', () => {
+    const html = pageHtml('privacy', 'en', fixtureCfg({ operatorName: { en: 'A & B <Co>', zh: 'C' } }));
     expect(html).toContain('A &amp; B &lt;Co&gt;');
     expect(html).not.toContain('A & B <Co>');
   });
@@ -98,7 +96,7 @@ describe('pageHtml', () => {
   });
 
   it('every doc/lang page contains zero <script> tags', () => {
-    for (const id of ALL_DOC_IDS) {
+    for (const id of DOC_IDS) {
       const html = pageHtml(id, 'en', cfg);
       expect(html, `${id}/en contains <script`).not.toContain('<script');
       if (DOCS[id].source.zh !== null) {
@@ -134,6 +132,13 @@ describe('pageHtml', () => {
 
     const withoutFiling = pageHtml('privacy', 'en', cfg);
     expect(withoutFiling.match(/<footer[\s\S]*?<\/footer>/)?.[0]).not.toContain('filing');
+  });
+
+  it('words the footer disclaimer as the About window does, in each page language', () => {
+    for (const lang of ['en', 'zh'] as const) {
+      const html = pageHtml('privacy', lang, cfg);
+      expect(html).toContain(escapeHtml(translateFor(lang, 'about.disclaimer')));
+    }
   });
 
   it('shows effective date + policy version for privacy/terms, not for docs without that schema flag', () => {
@@ -282,7 +287,7 @@ describe('writeAll', () => {
   it('release mode builds a release-valid fixture cleanly, no token deferred', () => {
     // No token is deferred: the deployment facts are authored directly into
     // privacy.*.md. A release-valid fixture therefore resolves every token,
-    // so writeAll must NOT throw in release mode.
+    // so writeAll must not throw in release mode.
     const cfg = fixtureCfg();
     expect(() => writeAll(dir, cfg, 'release')).not.toThrow();
   });
@@ -313,7 +318,7 @@ describe('package.json build:release script', () => {
     const buildRelease = pkg.scripts['build:release'];
 
     expect(buildRelease).toContain('PETIT_RELEASE=1 vite-node scripts/build-legal-pages.mts');
-    // Ensure the env var is NOT at the front of the entire chain where it would get lost to POSIX scoping
+    // Ensure the env var is not at the front of the entire chain where it would get lost to POSIX scoping
     expect(buildRelease).not.toContain('PETIT_RELEASE=1 npm run legal:validate');
   });
 });

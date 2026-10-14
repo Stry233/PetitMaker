@@ -1,10 +1,10 @@
-// The mirror operator. What it must guarantee is that whatever comes out of it scores a PERFECT
+// The mirror operator. What it must guarantee is that whatever comes out of it scores a perfect
 // mirror under the evaluation's own reading — a plant matching the same species at the mirrored
 // cell — because a composition that is nearly symmetric reads as a mistake rather than as a
 // composition.
 import { describe, it, expect } from 'vitest';
-import { makeRng } from '../../../../../core/model/rng';
-import { mirrorScore } from '../../../../../tools/generation/designer/eval';
+import { makeRng } from '../../../../../core/base/rng';
+import { mirrorScore } from '../../../../_support/design-eval';
 import {
   composesFormally, mirrorOf, reflect, symmetrize, type Mark,
 } from '../../../../../tools/generation/designer/dressing/symmetry';

@@ -1,7 +1,7 @@
-// canonical cell tokens as structured fields. Reuses json-codec's
-// EXACT token functions and its RLE so re-emission is byte-identical to what serialize produced.
-import { rleEncode, rleDecode } from '../../rle';
-import { decodeCorners, encodeCorners, terrainToken, parseTerrain } from '../../json-codec';
+// canonical cell tokens as structured fields. Reuses the save's exact terrain-token functions
+// (save/terrain-token.ts) and its RLE so re-emission is byte-identical to what serialize produced.
+import { rleEncode, rleDecode } from '../../save/rle';
+import { decodeCorners, encodeCorners, terrainToken, parseTerrain } from '../../save/terrain-token';
 import type { TerrainCell } from '../../../core/model/types';
 
 export interface CellFields {

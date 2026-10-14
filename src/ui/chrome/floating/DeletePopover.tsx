@@ -1,25 +1,25 @@
 import { useEffect, useRef, type ReactElement, type RefObject } from 'react';
 import { useChromeScale, useTouchPrimary, useWeightVars } from '../../design/scale';
-import { getActiveView } from '../../../canvas/active-view';
+import { getActiveView } from '../../../view/active-view';
 import { AnimatePresence, type MotionStyle } from 'framer-motion';
 import { useEditorStore } from '../../../state/store';
 import { getCatalogItem } from '../../../state/catalog';
 import { getPlacedObjectSize } from '../../../state/object-geometry';
 import { getCell } from '../../../core/model/grid-model';
-import { peelTerrain } from '../../../tools/objects';
-import { deleteSelection } from '../../../kit/group-edit';
+import { deleteObjectConfirmed, peelTerrainAt } from '../../../editor/editing/group-edit';
 import { useT, localizedName } from '../../../i18n/context';
 import type { FloatingTarget } from '../../primitives/use-floating-position';
 import { visualRect } from '../../design/visual-rect';
 import { AnchoredConfirm } from '../../primitives/AnchoredConfirm';
+import type { Translate } from '../../../i18n/keys';
 
 /** The question a single object's removal asks, with the piece named in the visitor's language. */
-export function objectDeleteTitle(t: (key: string) => string, name: string): string {
-  return t('delete.confirm').replace('{name}', name);
+export function objectDeleteTitle(t: Translate, name: string): string {
+  return t('delete.confirm', { name });
 }
 
 /** The confirmation card: the question and its two answers. Every surface that raises this
- *  question mounts THIS — the live card over the map, and the Help Center's figure of it.
+ *  question mounts this — the live card over the map, and the Help Center's figure of it.
  *  `style` carries the position and the scale the card draws at. `trigger` is the control that
  *  asked, if any: pressing it again closes the card rather than counting as a press outside. */
 export function DeleteConfirmFace({ title, onCancel, onConfirm, style, anchor, trigger, prefer, zoom = 1 }: {
@@ -87,10 +87,7 @@ export function DeletePopover() {
         const name = item ? localizedName(item.name, locale) : obj.catalogId;
         title = objectDeleteTitle(t, name);
         confirm = () => {
-          // Routed through deleteSelection (one member) rather than removeObject directly, so a
-          // locked object reports through the SAME register any other refused delete does.
-          deleteSelection(executor, useEditorStore.getState().gridState!, eventBus, t, [obj.id]);
-          useEditorStore.getState().clearSelection();
+          deleteObjectConfirmed(t, obj.id);
           dismiss();
         };
       }
@@ -104,8 +101,7 @@ export function DeletePopover() {
         }
         title = t('delete.confirm_terrain');
         confirm = () => {
-          peelTerrain(executor, sel.x, sel.y, cell);
-          useEditorStore.getState().clearSelection();
+          peelTerrainAt(sel.x, sel.y);
           dismiss();
         };
       }

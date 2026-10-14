@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 /**
  * A lazy chunk that never arrives throws where React would otherwise unmount the whole tree, so
  * the boundary is pinned on what stays on screen: the child while it works, a reload offer when it
@@ -7,6 +8,7 @@ import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { ChunkBoundary } from '../../../ui/primitives/ChunkBoundary';
+import { ChunkNotice } from '../../../ui/chrome/guards/ChunkNotice';
 import { I18nProvider } from '../../../i18n/context';
 import { translateFor } from '../../../i18n/context';
 
@@ -39,7 +41,7 @@ afterEach(() => {
 
 describe('a boundary around a lazily loaded surface', () => {
   it('keeps a working child exactly as it is', () => {
-    show(<ChunkBoundary><p data-testid="child">Help</p></ChunkBoundary>);
+    show(<ChunkBoundary fallback={<ChunkNotice />}><p data-testid="child">Help</p></ChunkBoundary>);
     expect(screen.getByTestId('child').textContent).toBe('Help');
     expect(screen.queryByText(FAILED)).toBeNull();
   });
@@ -47,18 +49,18 @@ describe('a boundary around a lazily loaded surface', () => {
   it('offers a reload when the chunk fails', () => {
     const reload = vi.fn();
     vi.stubGlobal('location', { reload });
-    show(<ChunkBoundary><Boom /></ChunkBoundary>);
+    show(<ChunkBoundary fallback={<ChunkNotice />}><Boom /></ChunkBoundary>);
     expect(screen.getByText(FAILED)).not.toBeNull();
     fireEvent.click(screen.getByRole('button', { name: RELOAD }));
     expect(reload).toHaveBeenCalledTimes(1);
   });
 
   it('tries again when its surface is opened afresh', () => {
-    const view = show(<ChunkBoundary resetKey={false}><Boom /></ChunkBoundary>);
+    const view = show(<ChunkBoundary resetKey={false} fallback={<ChunkNotice />}><Boom /></ChunkBoundary>);
     expect(screen.getByText(FAILED)).not.toBeNull();
     view.rerender(
       <I18nProvider>
-        <ChunkBoundary resetKey><p data-testid="child">Help</p></ChunkBoundary>
+        <ChunkBoundary resetKey fallback={<ChunkNotice />}><p data-testid="child">Help</p></ChunkBoundary>
       </I18nProvider>,
     );
     expect(screen.getByTestId('child').textContent).toBe('Help');

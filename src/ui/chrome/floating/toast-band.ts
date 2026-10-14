@@ -3,7 +3,7 @@
  * the air under it, in css px.
  *
  * Its own module rather than a pair of exports on `Toast.tsx`, because the other reader is the
- * ARRIVAL notice, which stands clear of this band so a refusal is never lost under a greeting — and
+ * Arrival notice, which stands clear of this band so a refusal is never lost under a greeting — and
  * a surface that reached into the toast component for two numbers would be importing a whole live
  * region to find out where it may stand.
  *
@@ -25,6 +25,6 @@ export function bandTop(px: number): string {
 /** The arrival greeting's own row: its card is 72 tall (48px of planet art with 12px of padding
  *  above and below it) and this keeps 12 of air under that. The dev-build notice stands below this,
  *  so the band's three tenants (refusals, the greeting, the notice) are stacked here by declaration
- *  rather than by luck. Every one of them is placed INSIDE the chrome zoom, so the sums here are in
+ *  rather than by luck. Every one of them is placed inside the chrome zoom, so the sums here are in
  *  one space and the stack holds at every scale. */
 export const ARRIVAL_ROW = 84;

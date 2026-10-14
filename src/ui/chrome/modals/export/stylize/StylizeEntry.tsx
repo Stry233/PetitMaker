@@ -1,20 +1,21 @@
 import type { CSSProperties } from 'react';
 import { motion } from 'framer-motion';
-import { radii, cursors, pressable } from '../../../../design/styles';
+import { radii, cursors, pressable, shadows } from '../../../../design/styles';
 import { skin } from '../../../../design/window-skin';
 import { roleFont } from '../../../../design/text-weight';
 import { useT } from '../../../../../i18n/context';
 import { useEditorStore } from '../../../../../state/store';
-import { PROC_PACK_META, STYLE_PACKS, type StylizeDirection } from '../../../../../io/stylize';
+import { PROC_PACK_META, STYLE_PACKS, type StylizeDirection } from '../../../../../pipelines/stylize/facts';
 import { packSampleUrl } from './sample-assets';
 import { useStylizeVersions } from './use-stylize-versions';
 import { amplitude, framerMotion } from '../../../../design/motion';
 import { MAP_ASPECT } from './sample-art';
+import type { I18nKey } from '../../../../../i18n/keys';
 
 const capStyle: CSSProperties = { ...roleFont('subhead'), color: skin.muted };
 
 /** The i18n key naming a direction, custom included (STYLE_PACKS holds no entry for it). */
-function directionNameKey(direction: StylizeDirection): string {
+function directionNameKey(direction: StylizeDirection): I18nKey {
   return PROC_PACK_META.find((p) => p.id === direction)?.nameKey
     ?? STYLE_PACKS.find((p) => p.id === direction)?.nameKey
     ?? 'stylize.dir_custom';
@@ -47,7 +48,7 @@ function FannedCards() {
             transition={framerMotion('stylize.entry.fan')}
             style={{
               position: 'absolute', left: pose.left, top: pose.top, width: 40, aspectRatio: MAP_ASPECT,
-              borderRadius: 7, boxShadow: '0 1px 3px rgba(67,65,62,0.25)', zIndex: i, display: 'block',
+              borderRadius: radii.chip, boxShadow: shadows.knob, zIndex: i, display: 'block',
               background: url ? `${skin.plate} url(${url}) center / cover no-repeat` : pack.palette[0],
             }}
           />
@@ -95,9 +96,9 @@ export function StylizeEntry() {
 }
 
 const entryBtn: CSSProperties = {
-  display: 'flex', alignItems: 'center', gap: 11, textAlign: 'left',
+  display: 'flex', alignItems: 'center', gap: 10, textAlign: 'left',
   background: skin.inset, border: 'none', borderRadius: radii.lg,
-  padding: '11px 12px', cursor: cursors.clickable, width: '100%', boxSizing: 'border-box',
+  padding: '10px 12px', cursor: cursors.clickable, width: '100%', boxSizing: 'border-box',
 };
 /** Active-color ring for the style currently applied to the export. */
 const appliedRing: CSSProperties = { boxShadow: `0 0 0 2px ${skin.active}` };

@@ -71,7 +71,7 @@ function decodeForSchemeCheck(s: string): string {
  * to a banned scheme. Returns `null` on any rejection; the caller renders
  * the link text as plain text with no href. When in doubt, reject.
  */
-export function sanitizeHref(raw: string): { href: string; external: boolean } | null {
+function sanitizeHref(raw: string): { href: string; external: boolean } | null {
   const s = stripControlChars(raw.trim());
   if (s.length === 0) return null;
 
@@ -87,7 +87,7 @@ export function sanitizeHref(raw: string): { href: string; external: boolean } |
 
   // Scheme-less relative paths only: '#fragment' or '/root-relative'.
   // '//host' (protocol-relative) is explicitly rejected — it resolves to an
-  // arbitrary origin under the current scheme. A backslash ANYWHERE, or a
+  // arbitrary origin under the current scheme. A backslash anywhere, or a
   // '/' immediately followed by '/' or '\', is also rejected: browsers
   // normalize both '/\host' and '/\/host' to '//host' (protocol-relative),
   // so a naive check admitting those is an open-redirect bypass.
@@ -102,13 +102,13 @@ export function sanitizeHref(raw: string): { href: string; external: boolean } |
 // Single-pass inline tokenizer. No nesting: once a span's delimiters match,
 // its inner text is taken verbatim (never re-scanned), so malformed nesting
 // like "**a *b** c*" just leaves stray '*' runs as literal text instead of
-// throwing or mis-parsing. The link destination allows ONE level of balanced
+// throwing or mis-parsing. The link destination allows one level of balanced
 // parens (`(?:[^()]|\([^()]*\))*`) so hrefs like a Wikipedia disambiguation
 // link — or an attacker's `javascript:alert(1)` — capture whole, not
 // truncated at the first inner ')'.
 // Emphasis is written both ways in the wild, so both are read. The underscore forms are guarded on
 // both sides against word characters — `snake_case`, `file_name.md` and a URL's path must stay
-// literal, which is exactly the intraword rule CommonMark applies. The guard is a leading CAPTURE
+// literal, which is exactly the intraword rule CommonMark applies. The guard is a leading capture
 // rather than a lookbehind: lookbehind is a recent addition to some engines, and a SyntaxError here
 // would take the whole module down at import rather than degrade.
 const INLINE_RE =
@@ -173,7 +173,7 @@ function padOrTruncate(cells: string[], width: number): string[] {
   return out;
 }
 
-// Does this line (given what follows) start a NEW structural block, rather
+// Does this line (given what follows) start a new structural block, rather
 // than continue the paragraph currently being accumulated?
 function isBlockStart(line: string, next: string | undefined): boolean {
   if (line.trim() === '') return true;

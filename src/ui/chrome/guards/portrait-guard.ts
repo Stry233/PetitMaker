@@ -3,12 +3,12 @@ import {
   readOrientationSignals,
   shouldBlockPortrait,
   type OrientationSignals,
-} from '../../../core/runtime/portrait-signals';
+} from '../../../platform/device/portrait-signals';
 
 /**
  * The live half of the portrait blocker: the signals as React state, plus the orientation-lock
- * escape hatch. What the signals ARE and why they are the right ones lives in
- * `core/runtime/portrait-signals`, which the store also reads to seed itself.
+ * escape hatch. What the signals are and why they are the right ones lives in
+ * `platform/device/portrait-signals`, which the store also reads to seed itself.
  */
 
 export interface PortraitGuard {
@@ -23,7 +23,7 @@ export interface PortraitGuard {
  *
  * `dismiss` is the way past the gate for a user with an OS-level orientation lock, who can never
  * satisfy it otherwise. It is not a one-shot: it holds while the device stays portrait and clears
- * the moment the device is next measured in LANDSCAPE. One rule, two behaviours — a device that
+ * the moment the device is next measured in landscape. One rule, two behaviours — a device that
  * cannot rotate never meets the reset condition, so its dismissal lasts the session; a device that
  * can rotate re-arms the gate on its next return to portrait.
  */

@@ -1,7 +1,6 @@
 import { exceedsLoadBudget, isChunkLoadEnforced, roundLoad } from '../core/model/load';
 import type { GridState, PlacedObject } from '../core/model/types';
-import { catalogLoadValue } from './catalog';
-import { chunksOf, getMapStats } from './map-stats';
+import { chunksOf, getMapStats, placedLoad } from './map-stats';
 
 /** A detached load ledger for planning whole layouts before issuing placement commands. */
 export class LoadBudget {
@@ -14,7 +13,7 @@ export class LoadBudget {
 
   change(object: PlacedObject, sign: 1 | -1): void {
     if (object.patchOnly) return;
-    const cost = sign * catalogLoadValue(object.catalogId);
+    const cost = sign * placedLoad(object);
     for (const key of chunksOf(object, this.state.template)) {
       this.changes.set(key, roundLoad((this.changes.get(key) ?? 0) + cost));
     }

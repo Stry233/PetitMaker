@@ -11,24 +11,21 @@
  *
  * Reports one error per violating water cell, not per face.
  */
-import {
-  TerrainType,
-  type GridState,
-  type PostStrokeRule,
-  type ValidationError,
-} from '../core/model/types';
+import { TerrainType, type ValidationError } from '../core/model/types';
 import { getCell } from '../core/model/grid-model';
-import { surfaceElevation } from '../core/edge-cut/terrain-silhouette';
-import { DIR_OFFSETS, PERP_DIRS, traceToMountain, type Direction } from '../core/model/waterfall-geometry';
+import { surfaceElevation } from '../core/domain/terrain/terrain-surface';
+import { traceToMountain } from '../core/domain/terrain/waterfall-geometry';
+import { DIR_OFFSETS, PERP_DIRS, type Direction } from '../core/grid/directions';
+import { TERRAIN_GRID } from '../core/game/profile';
+import { evidenceOn } from '../core/grid/grids';
+import { definePostRule } from './define';
 
 const ALL_DIRS: Direction[] = ['north', 'south', 'east', 'west'];
 
-export const waterContainmentRule: PostStrokeRule = {
+export const waterContainmentRule = definePostRule({
   id: 'V-WTR-02',
-  agentHint: 'POST-CHECK, WHOLE-MAP — every water cell with a lower neighbor (an exposed face) must be capped by mountains at EXACTLY the water elevation on both perpendicular ends. Because it re-checks the ENTIRE map, a pre-existing illegal water cell reverts ANY edit, even one far away. If the cited cell is NOT one you just touched, that water was already broken: you canNOT fix it by editing elsewhere — clear_area that water (or cap its faces with mountains at its elevation) FIRST, then RE-APPLY the edit that just reverted — it did NOT land — and continue. Otherwise enclose new water in the SAME call or keep it surrounded by same-level ground.',
-  phase: 'post-stroke',
 
-  validate(state: GridState, opts?: { firstOnly?: boolean }): ValidationError[] {
+  validate(state, opts, fail) {
     const { width, height } = state.template;
     const errors: ValidationError[] = [];
 
@@ -51,12 +48,7 @@ export const waterContainmentRule: PostStrokeRule = {
 
           // Out-of-bounds neighbor means water flows off the map edge — always uncapped
           if (!neighborCell) {
-            errors.push({
-              ruleId: 'V-WTR-02',
-              message: 'error.water_uncapped',
-              cells: [{ x, y }],
-              severity: 'error',
-            });
+            errors.push(fail('error.water_uncapped', evidenceOn(TERRAIN_GRID, [{ x, y }])));
             if (opts?.firstOnly) return errors;
             break;
           }
@@ -65,16 +57,11 @@ export const waterContainmentRule: PostStrokeRule = {
           const { dx: pdxA, dy: pdyA } = DIR_OFFSETS[perpA];
           const { dx: pdxB, dy: pdyB } = DIR_OFFSETS[perpB];
 
-          const hasLeft = traceToMountain(state, x, y, elev, pdxA, pdyA);
-          const hasRight = traceToMountain(state, x, y, elev, pdxB, pdyB);
+          const hasLeft = traceToMountain(state, x, y, elev, { dx: pdxA, dy: pdyA });
+          const hasRight = traceToMountain(state, x, y, elev, { dx: pdxB, dy: pdyB });
 
           if (!hasLeft || !hasRight) {
-            errors.push({
-              ruleId: 'V-WTR-02',
-              message: 'error.water_uncapped',
-              cells: [{ x, y }],
-              severity: 'error',
-            });
+            errors.push(fail('error.water_uncapped', evidenceOn(TERRAIN_GRID, [{ x, y }])));
             if (opts?.firstOnly) return errors;
             break;
           }
@@ -83,4 +70,4 @@ export const waterContainmentRule: PostStrokeRule = {
     }
     return errors;
   },
-};
+});

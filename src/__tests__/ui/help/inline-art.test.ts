@@ -1,9 +1,9 @@
 /*
- * The inline-art table is a MAPPING, never a second pointer: each control's art must be the very
+ * The inline-art table is a mapping, never a second pointer: each control's art must be the very
  * record its owning module draws from, so re-pointing an icon in the owner re-draws the help.
  */
 import { describe, expect, it } from 'vitest';
-import { inlineArt } from '../../../ui/chrome/modals/help/inline-art';
+import { inlineArt } from '../../../ui/help/inline-art';
 import { ASSISTANT_BLOCK, GLYPHS, LAYERS_STACK_SRC, MODES, TOP_RIGHT } from '../../../ui/shell/frame';
 import { TOOL_CELLS } from '../../../ui/shell/bars/terrain-cells';
 import { SMART } from '../../../ui/shell/bars/smart-menu';
@@ -48,8 +48,8 @@ describe('help inline art reads the owners\' own records', () => {
   });
 
   it('every [[name]] the shipped copy carries resolves to some art', async () => {
-    const { HELP_TABLES, ensureHelpStrings } = await import('../../../i18n/locales/help');
-    ensureHelpStrings();
+    const { HELP_TABLES } = await import('../../_support/locale-tables');
+    (await import('../../_support/locale-tables')).installHelpTables();
     const names = new Set<string>();
     for (const table of Object.values(HELP_TABLES)) {
       for (const value of Object.values(table)) {

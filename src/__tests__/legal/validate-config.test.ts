@@ -10,7 +10,7 @@ function resolvedConfig(overrides: Partial<LegalConfig> = {}): LegalConfig {
     canonicalOrigin: 'https://petitmaker.app',
     legacyOrigins: [],
     productName: 'PetitMaker',
-    operatorDisplayName: 'PetitMaker Team / 谷地工坊团队',
+    operatorName: { en: 'PetitMaker Team', zh: '谷地工坊团队' },
     privacyContactEmail: 'legal@petitmaker.app',
     securityContactEmail: 'security@petitmaker.app',
     qqFeedbackChannel: 'pd123456789',
@@ -18,12 +18,14 @@ function resolvedConfig(overrides: Partial<LegalConfig> = {}): LegalConfig {
     icpUrl: null,
     psbNumber: null,
     psbUrl: null,
+    privacyHostNetwork: { en: 'the test host', zh: '测试主机' },
+    privacyEdgeDelivery: { en: 'Delivered from the test edge.', zh: '由测试边缘节点分发。' },
     effectiveDates: { privacy: '2026-07-14', terms: '2026-07-14' },
     policyVersions: { privacy: '1.0', terms: '1.0' },
     team: [
-      { name: 'Jane Doe', sort: 'janedoe', url: 'https://example.com/jane' },
+      { name: 'Jane Doe', sort: 'janedoe', bilibili: '101' },
     ],
-    acknowledgements: [{ name: 'Sam Roe', sort: 'samroe', url: 'https://example.com/sam' }],
+    acknowledgements: [{ name: 'Sam Roe', sort: 'samroe', bilibili: '202' }],
     repoUrl: 'https://github.com/example/petitmaker',
     sponsorship: { patreon: 'https://www.patreon.com/c/example', afdian: 'https://afdian.com/a/example' },
     ...overrides,
@@ -32,43 +34,37 @@ function resolvedConfig(overrides: Partial<LegalConfig> = {}): LegalConfig {
 
 describe('validateLegalConfig — canonicalOrigin', () => {
   it('release mode rejects an empty/placeholder origin', () => {
-    const problems = validateLegalConfig(resolvedConfig({ canonicalOrigin: '' }), 'release');
+    const problems = validateLegalConfig(resolvedConfig({ canonicalOrigin: '' }));
     expect(problems.length).toBeGreaterThan(0);
   });
 
   it('release mode rejects a non-https origin', () => {
     const problems = validateLegalConfig(
-      resolvedConfig({ canonicalOrigin: 'http://petitmaker.app' }),
-      'release',
-    );
+      resolvedConfig({ canonicalOrigin: 'http://petitmaker.app' }));
     expect(problems.length).toBeGreaterThan(0);
   });
 
   it('release mode rejects an origin with a trailing slash', () => {
     const problems = validateLegalConfig(
-      resolvedConfig({ canonicalOrigin: 'https://petitmaker.app/' }),
-      'release',
-    );
+      resolvedConfig({ canonicalOrigin: 'https://petitmaker.app/' }));
     expect(problems.length).toBeGreaterThan(0);
   });
 
   it('release mode rejects an origin with a path', () => {
     const problems = validateLegalConfig(
-      resolvedConfig({ canonicalOrigin: 'https://petitmaker.app/foo' }),
-      'release',
-    );
+      resolvedConfig({ canonicalOrigin: 'https://petitmaker.app/foo' }));
     expect(problems.length).toBeGreaterThan(0);
   });
 });
 
 describe('validateLegalConfig — contacts', () => {
   it('rejects an empty privacyContactEmail', () => {
-    const problems = validateLegalConfig(resolvedConfig({ privacyContactEmail: '' }), 'release');
+    const problems = validateLegalConfig(resolvedConfig({ privacyContactEmail: '' }));
     expect(problems.length).toBeGreaterThan(0);
   });
 
   it('rejects an empty securityContactEmail', () => {
-    const problems = validateLegalConfig(resolvedConfig({ securityContactEmail: '' }), 'release');
+    const problems = validateLegalConfig(resolvedConfig({ securityContactEmail: '' }));
     expect(problems.length).toBeGreaterThan(0);
   });
 });
@@ -76,17 +72,13 @@ describe('validateLegalConfig — contacts', () => {
 describe('validateLegalConfig — draft policyVersions', () => {
   it('rejects a "-draft" suffixed privacy policy version', () => {
     const problems = validateLegalConfig(
-      resolvedConfig({ policyVersions: { privacy: '1.0-draft', terms: '1.0' } }),
-      'release',
-    );
+      resolvedConfig({ policyVersions: { privacy: '1.0-draft', terms: '1.0' } }));
     expect(problems.length).toBeGreaterThan(0);
   });
 
   it('rejects a "-draft" suffixed terms policy version', () => {
     const problems = validateLegalConfig(
-      resolvedConfig({ policyVersions: { privacy: '1.0', terms: '1.0-draft' } }),
-      'release',
-    );
+      resolvedConfig({ policyVersions: { privacy: '1.0', terms: '1.0-draft' } }));
     expect(problems.length).toBeGreaterThan(0);
   });
 });
@@ -94,33 +86,25 @@ describe('validateLegalConfig — draft policyVersions', () => {
 describe('validateLegalConfig — ICP/PSB pairing', () => {
   it('rejects icpNumber set without icpUrl', () => {
     const problems = validateLegalConfig(
-      resolvedConfig({ icpNumber: '京ICP备2026xxxxxx号-1', icpUrl: null }),
-      'release',
-    );
+      resolvedConfig({ icpNumber: '京ICP备2026xxxxxx号-1', icpUrl: null }));
     expect(problems.length).toBeGreaterThan(0);
   });
 
   it('rejects icpUrl set without icpNumber', () => {
     const problems = validateLegalConfig(
-      resolvedConfig({ icpNumber: null, icpUrl: 'https://beian.miit.gov.cn/' }),
-      'release',
-    );
+      resolvedConfig({ icpNumber: null, icpUrl: 'https://beian.miit.gov.cn/' }));
     expect(problems.length).toBeGreaterThan(0);
   });
 
   it('rejects psbNumber set without psbUrl', () => {
     const problems = validateLegalConfig(
-      resolvedConfig({ psbNumber: '京公网安备 1101xxxxxxxxx号', psbUrl: null }),
-      'release',
-    );
+      resolvedConfig({ psbNumber: '京公网安备 1101xxxxxxxxx号', psbUrl: null }));
     expect(problems.length).toBeGreaterThan(0);
   });
 
   it('rejects psbUrl set without psbNumber', () => {
     const problems = validateLegalConfig(
-      resolvedConfig({ psbNumber: null, psbUrl: 'https://example.gov.cn/psb' }),
-      'release',
-    );
+      resolvedConfig({ psbNumber: null, psbUrl: 'https://example.gov.cn/psb' }));
     expect(problems.length).toBeGreaterThan(0);
   });
 
@@ -131,41 +115,24 @@ describe('validateLegalConfig — ICP/PSB pairing', () => {
         icpUrl: 'https://beian.miit.gov.cn/',
         psbNumber: '京公网安备 1101xxxxxxxxx号',
         psbUrl: 'https://example.gov.cn/psb',
-      }),
-      'release',
-    );
+      }));
     expect(problems).toEqual([]);
   });
 
-  it('null ICP + PSB pairs are valid in both modes', () => {
+  it('null ICP + PSB pairs are valid', () => {
     const cfg = resolvedConfig({ icpNumber: null, icpUrl: null, psbNumber: null, psbUrl: null });
-    expect(validateLegalConfig(cfg, 'release')).toEqual([]);
-    expect(validateLegalConfig(cfg, 'dev')).toEqual([]);
-  });
-});
-
-describe('validateLegalConfig — dev vs release', () => {
-  it('dev mode returns the same problem list as release mode (callers decide fail vs warn)', () => {
-    const broken = resolvedConfig({
-      canonicalOrigin: '',
-      privacyContactEmail: '',
-    });
-    expect(validateLegalConfig(broken, 'dev')).toEqual(validateLegalConfig(broken, 'release'));
+    expect(validateLegalConfig(cfg)).toEqual([]);
   });
 });
 
 describe('validateLegalConfig — fully-resolved fixture', () => {
-  it('passes with an empty problem list in release mode', () => {
-    expect(validateLegalConfig(resolvedConfig(), 'release')).toEqual([]);
-  });
-
-  it('passes with an empty problem list in dev mode', () => {
-    expect(validateLegalConfig(resolvedConfig(), 'dev')).toEqual([]);
+  it('passes with an empty problem list', () => {
+    expect(validateLegalConfig(resolvedConfig())).toEqual([]);
   });
 });
 
 describe('validateLegalConfig — the real LEGAL instance', () => {
   it('is release-valid', () => {
-    expect(validateLegalConfig(LEGAL, 'release')).toEqual([]);
+    expect(validateLegalConfig(LEGAL)).toEqual([]);
   });
 });

@@ -1,7 +1,7 @@
 /*
  * Resolves icon PNG basenames → URLs via a single Vite glob
  * over src/assets/icons/ (recursive: icons live in `catalog/` item sprites and
- * `ui/` chrome). Shared by the UI (menu/icons.tsx, the placement picker) and the
+ * `ui/` chrome). Shared by the UI (ui/primitives/icons.tsx, the placement picker) and the
  * PixiJS renderer (object-layer sprites) so both pull from the one folder.
  * Lookup is by basename, so the subfolder layout is transparent to callers
  * (basenames are unique across folders).

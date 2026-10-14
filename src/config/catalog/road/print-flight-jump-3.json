@@ -1,0 +1,36 @@
+{
+  "id": "print-flight-jump-3",
+  "category": "road",
+  "icon": "road",
+  "name": {
+    "en": "Jump Tile Print 3",
+    "zh": "飞跃格印花3号",
+    "ja": "ジャンプマス模様3",
+    "ru": "Узор клетки прыжка 3",
+    "th": "ลายช่องกระโดด 3",
+    "id": "Motif Petak Lompatan 3",
+    "fr": "Motif de case de saut 3"
+  },
+  "color": "#8bc6c5",
+  "width": 1,
+  "height": 1,
+  "loadValue": 0,
+  "rotatable": true,
+  "placementMode": "brush",
+  "traits": [
+    {
+      "type": "flat"
+    },
+    {
+      "type": "surfaceCoating",
+      "layer": 1
+    }
+  ],
+  "surfacePrint": {
+    "kind": "vector",
+    "repeat": 1,
+    "background": "#8bc6c5",
+    "paths": []
+  },
+  "disabled": true
+}

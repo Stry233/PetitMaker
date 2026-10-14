@@ -1,33 +1,21 @@
 /*
- * The slider every bottom bar uses: a track, a row of tick marks, and a knob.
- *
- * The design draws one slider and reuses it, so this takes the art and the geometry as arguments
- * rather than importing either. Two numbers are deliberately independent: how many STOPS the value
- * has (the engine's range) and how many TICKS are drawn (the design's marks). The brush has five
- * stops; the generate sliders have a hundred and one. Neither wants a tick per stop.
- *
- * The knob's travel is the span between the outer ticks, so a stop lands on its mark rather than at
- * the plate's edge.
- *
- * A SLIDER THAT CANNOT BE MOVED SAYS SO. Some contexts leave one meaningless — a rectangle takes no
- * brush width, water has one layer to reach — and an inert control that still looks live is
- * a lie: it gets dragged, nothing happens, and the app reads as broken. So it dims and takes the
- * blocked cursor, the same pair the layer panel's spent arrows wear, and it STAYS: removing it would
- * reflow the row every time the context changed, and a knob you can see not applying is information.
- * A single-stop range (`min === max`) is that state by construction and needs no caller to say so.
+ * Every bottom bar's slider: a track, ticks and a knob, the art and geometry passed in. The value's stops
+ * and the drawn ticks are independent, and the knob travels between the outer ticks. A slider that cannot
+ * act dims, takes the blocked cursor and stays (a one-stop range is that state).
  */
-import { clientPoint, viewportSize } from '../../../core/runtime/viewport-space';
+import { presence } from '../../design/motion';
+import { clientPoint, viewportSize } from '../../../platform/device/viewport-space';
 import { useLayoutEffect, useRef, useState, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
-import { AnimatePresence, motion } from 'framer-motion';
+import { AnimatePresence, motion, useReducedMotionConfig } from 'framer-motion';
 import { usePx } from '../../design/scale';
 import { cursors, font, UNAVAILABLE, z, radii } from '../../design/styles';
-import { useUiPreview } from '../../primitives/ui-preview';
+import { useUiPreview } from '../../design/preview';
 import { BarText, Plate } from './bar-atoms';
 import { PANEL_EDGE, PLATE, PLATE_INK } from '../../design/tokens';
 import { TEXT } from '../units';
-import { MOTIONS } from '../motion/registry';
-import { useMotion } from '../motion/use-motion';
+import { MOTIONS } from '../../design/motion/registry';
+import { useTransition } from '../../design/motion/use-motion';
 import { visualRect } from '../../design/visual-rect';
 
 /** How far the bubble rises into place, in css px: the registry's own amplitude, since a distance
@@ -78,24 +66,12 @@ export function BarSlider({
 }: Props) {
   const { px } = usePx();
   const ref = useRef<HTMLDivElement>(null);
-  /*
-   * THE READING LIVES ON THE KNOB, and only while a hand is on the slider.
-   *
-   * Standing permanently to the LEFT of every track with the setting's name beside it, it costs twice:
-   * a row of names and numbers spends most of the strip's width on labels for controls whose own
-   * drawing already says what they are, and a reading that is always there is read once and then
-   * never again. On the knob it answers the question at the moment it is asked -- which value am I
-   * on -- and it costs the row nothing the rest of the time.
-   *
-   * Shown while HOVERED or while DRAGGING, since a drag takes the pointer off the knob and a bubble
-   * that vanished mid-drag would hide exactly the number being chosen.
-   */
+  const glide = useTransition('tool.control.morph');
+  /* The reading lives on the knob while it is hovered or dragged. */
   const [hovered, setHovered] = useState(false);
   const [dragging, setDragging] = useState(false);
   const off = disabled || max <= min;
-  // Shown even while the slider REFUSES: a control that has nothing to set is the one most in need of
-  // saying so, and its reading is where the reason goes ("n/a" beside the setting's own name). It is
-  // the only thing a refusing slider still does.
+  // Shown even while the slider refuses: its reading is where the reason goes.
   const showReading = hovered || dragging;
   const steps = Math.max(1, max - min);
   const clamp = (v: number): number => Math.min(max, Math.max(min, v));
@@ -107,9 +83,7 @@ export function BarSlider({
   // control no one uses twice.
   const nudge = Math.max(1, Math.round(steps / 20));
 
-  // Measured as a FRACTION of the track's own rect, never against `px()`: the frame is drawn under
-  // a page zoom, so a rect (and a pointer coordinate) is in screen px where `px()` is in the
-  // frame's own, and the two differ by exactly that zoom.
+  // Measured as a fraction of the track's rect, never `px()`: rects and pointers are in screen px under the zoom.
   const pick = (clientX: number): void => {
     if (off) return;
     const rect = ref.current ? visualRect(ref.current) : null;
@@ -174,26 +148,26 @@ export function BarSlider({
           }}
         />
       ))}
-      <Plate
-        src={art.knob}
-        style={{
-          left: px(centre - shape.knob / 2), top: px(shape.centreY - shape.track.y - shape.knob / 2),
-          width: px(shape.knob), height: px(shape.knob),
-        }}
-      />
-      <Plate
-        src={art.pip}
-        style={{
-          left: px(centre - shape.pip / 2), top: px(shape.centreY - shape.track.y - shape.pip / 2),
-          width: px(shape.pip), height: px(shape.pip),
-        }}
-      />
-      {/* The bubble carries the READING; the setting's name stands beside the track (the strip's
-          `Knob`), so here it would repeat itself. Centred on the knob and standing ABOVE the track,
-          where the strip has air and what it covers is the map rather than another control.
-          `pointerEvents: none` so it can never take the press meant for the slider under it, and no
-          transition on `left`: it has to be exactly on the knob at every step of a drag, and a lag
-          reads as the number belonging to the previous value. */}
+      {/* A value set from elsewhere (a tool switch onto another stored width) glides the knob there;
+          under the hand it follows at once. */}
+      <motion.span aria-hidden initial={false} animate={{ x: px(centre) }} transition={dragging ? { duration: 0 } : glide}
+        style={{ position: 'absolute', left: 0, top: 0, pointerEvents: 'none' }}>
+        <Plate
+          src={art.knob}
+          style={{
+            left: px(-shape.knob / 2), top: px(shape.centreY - shape.track.y - shape.knob / 2),
+            width: px(shape.knob), height: px(shape.knob),
+          }}
+        />
+        <Plate
+          src={art.pip}
+          style={{
+            left: px(-shape.pip / 2), top: px(shape.centreY - shape.track.y - shape.pip / 2),
+            width: px(shape.pip), height: px(shape.pip),
+          }}
+        />
+      </motion.span>
+      {/* The bubble carries the reading above the track, deaf to the pointer and following the knob without lag. */}
       <AnimatePresence initial={false}>
         {showReading ? (
         <SliderReading
@@ -214,7 +188,7 @@ function SliderReading({ anchor, centre, width, text }: {
   const pictured = useUiPreview();
   const layer = useRef<HTMLDivElement>(null);
   const bubble = useRef<HTMLSpanElement>(null);
-  const readingMotion = useMotion('slider.reading');
+  const readingMotion = presence('slider.reading', { opacity: 0, y: RISE }, { reduced: useReducedMotionConfig() });
   useLayoutEffect(() => {
     if (pictured) return;
     let raf = 0;
@@ -245,10 +219,7 @@ function SliderReading({ anchor, centre, width, text }: {
       ref={bubble}
       data-testid="shell-slider-reading"
       aria-hidden
-      initial={{ opacity: 0, y: RISE }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: RISE }}
-      transition={readingMotion}
+      {...readingMotion}
       style={{
         position: 'absolute', left: pictured ? centre : 0, bottom: '100%',
         translateX: '-50%', marginBottom: 6,

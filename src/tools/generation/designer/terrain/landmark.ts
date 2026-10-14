@@ -4,128 +4,17 @@
  * arrangements preserve the water-cap and mountain-support invariants. Local masks avoid a browser
  * font rasterizer, keeping this stage pure and worker-safe.
  */
-import { flatIndex } from '../../../../core/model/grid-model';
-import { makeRng, type Rng } from '../../../../core/model/rng';
-import type { MacroCoord, Rect, Stencil } from '../../../../core/model/types';
+import { flatIndex, type Rect } from '../../../../core/grid/rect';
+import { makeRng, type Rng } from '../../../../core/base/rng';
+import type { MacroCoord } from '../../../../core/model/types';
+import type { Stencil } from '../../recipe';
 import { covered } from '../../stencil/stencil';
-import type { TerrainPlan } from '../../core/types';
+import type { TerrainPlan } from '../../terrain-plan/types';
 import type { DesignPlan, RegionPlan } from '../types';
-
-// --- the glyph bank ------------------------------------------------------------------------------
-
-/**
- * The alphabet, 5 cells wide and 6 tall — the letter size in the target's own ground field, and half the
- * size of its banner's, which `SCALES` reaches by doubling.
- *
- * A `#` is ink. Every row of a glyph is the same length as its first, which `glyphBank.test.ts`
- * holds, so a typo in a drawing fails the build rather than shifting a letter.
- */
-const LETTERS: Readonly<Record<string, readonly string[]>> = {
-  A: ['.###.', '#...#', '#...#', '#####', '#...#', '#...#'],
-  B: ['####.', '#...#', '####.', '#...#', '#...#', '####.'],
-  C: ['.####', '#....', '#....', '#....', '#....', '.####'],
-  D: ['####.', '#...#', '#...#', '#...#', '#...#', '####.'],
-  E: ['#####', '#....', '####.', '#....', '#....', '#####'],
-  F: ['#####', '#....', '####.', '#....', '#....', '#....'],
-  G: ['.####', '#....', '#....', '#..##', '#...#', '.####'],
-  H: ['#...#', '#...#', '#####', '#...#', '#...#', '#...#'],
-  I: ['#####', '..#..', '..#..', '..#..', '..#..', '#####'],
-  J: ['..###', '....#', '....#', '....#', '#...#', '.###.'],
-  K: ['#...#', '#..#.', '###..', '###..', '#..#.', '#...#'],
-  L: ['#....', '#....', '#....', '#....', '#....', '#####'],
-  M: ['#...#', '##.##', '#.#.#', '#...#', '#...#', '#...#'],
-  N: ['#...#', '##..#', '#.#.#', '#..##', '#...#', '#...#'],
-  O: ['.###.', '#...#', '#...#', '#...#', '#...#', '.###.'],
-  P: ['####.', '#...#', '#...#', '####.', '#....', '#....'],
-  Q: ['.###.', '#...#', '#...#', '#.#.#', '#..#.', '.##.#'],
-  R: ['####.', '#...#', '#...#', '####.', '#..#.', '#...#'],
-  S: ['.####', '#....', '.###.', '....#', '....#', '####.'],
-  T: ['#####', '..#..', '..#..', '..#..', '..#..', '..#..'],
-  U: ['#...#', '#...#', '#...#', '#...#', '#...#', '.###.'],
-  V: ['#...#', '#...#', '#...#', '#...#', '.#.#.', '..#..'],
-  W: ['#...#', '#...#', '#...#', '#.#.#', '##.##', '#...#'],
-  X: ['#...#', '.#.#.', '..#..', '..#..', '.#.#.', '#...#'],
-  Y: ['#...#', '.#.#.', '..#..', '..#..', '..#..', '..#..'],
-  Z: ['#####', '...#.', '..#..', '.#...', '#....', '#####'],
-};
-
-/** The figures, drawn a little wider than a letter so a lone one still fills a panel. */
-const FIGURES: Readonly<Record<string, readonly string[]>> = {
-  HEART: ['.##.##.', '#######', '#######', '.#####.', '..###..', '...#...'],
-  STAR: ['...#...', '..###..', '#######', '.#####.', '..###..', '.##.##.', '##...##'],
-  PAW: ['.##.##.', '.##.##.', '##...##', '.#####.', '#######', '.#####.'],
-};
-
-export const GLYPHS: Readonly<Record<string, readonly string[]>> = { ...LETTERS, ...FIGURES };
-
-/** One thing the map can be made to say. Adding a row is the whole of extending the bank, provided
- *  every glyph it names is drawn above. */
-interface Phrase {
-  id: string;
-  /** Keys into `GLYPHS`, in reading order. */
-  glyphs: readonly string[];
-  /** Draw weight. A WORD is the reference's own grammar and a lone figure is the cheap version of
-   *  it, so the words are drawn oftener — and a figure fits almost any panel, which without a
-   *  weight would make it the answer nearly every time. */
-  weight: number;
-}
-
-export const PHRASE_BANK: readonly Phrase[] = [
-  { id: 'home', glyphs: ['H', 'O', 'M', 'E'], weight: 3 },
-  { id: 'i-love-you', glyphs: ['I', 'HEART', 'U'], weight: 3 },
-  { id: 'heart', glyphs: ['HEART'], weight: 1 },
-  { id: 'star', glyphs: ['STAR'], weight: 1 },
-  { id: 'paw', glyphs: ['PAW'], weight: 1 },
-];
-
-// --- rasterizing a phrase --------------------------------------------------------------------------
-
-/**
- * A phrase as a `Stencil`: the same structure the browser rasterizer hands the generator, so the two
- * ways of drawing a shape read identically downstream. Colour is unused here — the glyph is built out
- * of terrain, which has its own — and every cell's four quadrants carry its own coverage, since a
- * cell mask has no sub-cell detail to report.
- *
- * `scale` multiplies both axes, which is what makes the stroke 2 cells wide at scale 2: the target's
- * banner strokes measure 1 to 2 cells and its ground-field letters 1.
- */
-export function rasterizePhrase(
-  glyphs: readonly string[], scale: number, axis: 'h' | 'v',
-): Stencil | null {
-  const drawings = glyphs.map((key) => GLYPHS[key]).filter((rows): rows is readonly string[] => !!rows);
-  if (drawings.length !== glyphs.length || drawings.length === 0 || scale < 1) return null;
-  const sizes = drawings.map((rows) => ({ w: (rows[0]?.length ?? 0) * scale, h: rows.length * scale }));
-  // One cell of air per unit of scale, so the letters of a doubled phrase do not touch.
-  const gap = scale;
-  const across = Math.max(...sizes.map((s) => (axis === 'h' ? s.h : s.w)));
-  const along = sizes.reduce((a, s) => a + (axis === 'h' ? s.w : s.h), 0) + gap * (sizes.length - 1);
-  const width = axis === 'h' ? along : across;
-  const height = axis === 'h' ? across : along;
-
-  const coverage = new Uint8Array(width * height);
-  let cursor = 0;
-  for (const [k, rows] of drawings.entries()) {
-    const size = sizes[k]!;
-    // Centred on the cross axis, so a figure taller than the letters beside it sits on their middle
-    // rather than on their baseline.
-    const offX = axis === 'h' ? cursor : Math.floor((width - size.w) / 2);
-    const offY = axis === 'h' ? Math.floor((height - size.h) / 2) : cursor;
-    for (let y = 0; y < size.h; y++) {
-      const row = rows[Math.floor(y / scale)]!;
-      for (let x = 0; x < size.w; x++) {
-        if (row[Math.floor(x / scale)] !== '#') continue;
-        coverage[(offY + y) * width + offX + x] = 255;
-      }
-    }
-    cursor += (axis === 'h' ? size.w : size.h) + gap;
-  }
-  const quad = new Uint8Array(width * height * 4);
-  for (let i = 0; i < coverage.length; i++) {
-    const v = coverage[i]!;
-    quad[i * 4] = v; quad[i * 4 + 1] = v; quad[i * 4 + 2] = v; quad[i * 4 + 3] = v;
-  }
-  return { width, height, coverage, color: new Uint32Array(width * height), quad };
-}
+import { isSetPieceTheme } from '../themes';
+import { COURT_INK_MIN, COURT_PATTERNS, type CourtPattern, PHRASE_BANK, type Phrase, courtInk, inkOf, rasterizePhrase } from './landmark-glyphs';
+import { type PanelSearch, canHold, clipRect, findPanel, rectProfile } from './landmark-panels';
+import { summedArea } from '../summed-area';
 
 // --- what a landmark is ----------------------------------------------------------------------------
 
@@ -172,90 +61,62 @@ interface LandmarkInput {
 
 // --- tunables ------------------------------------------------------------------------------------
 
-/** Cells of water between the glyph and the panel's own edge. The target's banner is 14 rows deep
- *  around a 12-row phrase; its ground field is far roomier than its letters. */
+/** Cells of water between the glyph and the panel's own edge. A banner is 14 rows deep around a
+ *  12-row phrase; a ground field is far roomier than its letters. */
 const BANNER_PAD = 1;
 const FIELD_PAD = 2;
-/** Cell scales tried, largest first: scale 2 draws the target's banner (letters 10x12, strokes 2
- *  cells), scale 1 its ground field (letters 5x6, strokes 1). */
+/** Cell scales tried, largest first: scale 2 draws a banner (letters 10x12, strokes 2 cells), scale 1
+ *  a ground field (letters 5x6, strokes 1). */
 const SCALES = [2, 1] as const;
 /**
- * The FIELD's own scales, and it is offered one more than the banner.
+ * The field's own scales, and it is offered one more than the banner.
  *
  * A field's ink is ground left standing rather than a wall stroke, so a fat letter reads as a platform
- * in a pool and not as a thick line — and the scale is what lets a TEXT form answer the big rung at
- * all: at scale 2 a lone figure fills 18x18 and the reference-scale rung asks for 600 cells, so the
- * court answered every planet that could carry one. Measured, scale 3 puts a field at 25x25 to 74x24.
+ * in a pool and not as a thick line — and the scale is what lets a text form answer the big rung at
+ * all: at scale 2 a lone figure fills 18x18 and the big rung asks for 600 cells, so the
+ * court answered every planet that could carry one. Scale 3 lets a field reach that rung.
  */
 const FIELD_SCALES = [3, 2, 1] as const;
 /** The lowest wall tier worth writing a banner on. Below this the plateau is a rise, not a wall, and
  *  a phrase across it does not read as a signboard. */
 const BANNER_MIN_TIER = 2;
-/** Open ground a GROUND-LEVEL field keeps around itself. Same reading as the channel's own keep: what
+/** Open ground a ground-level field keeps around itself. Same reading as the channel's own keep: what
  *  a body of water leaves beside it must still be a road's width of ground, or the water and the lots
  *  beyond it are one wall across the network. A raised field is tested by its ring instead. */
 const FIELD_KEEP = 2;
 /**
- * How often a map builds a landmark BELOW `SET_PIECE_FROM`, at richness 0 and that threshold.
+ * How often a map builds a landmark below `SET_PIECE_FROM`, at richness 0 and that threshold.
  *
  * A quiet planet is a garden town and a set piece written across it is not what the axis is for, so
- * down there the text or pattern landmark stays OCCASIONAL. At and above the threshold the roll is gone: the map is
+ * down there the text or pattern landmark stays occasional. At and above the threshold the roll is gone: the map is
  * required to carry one figure, per the size ladder below.
  */
 const OCCURRENCE = { min: 0.4, max: 0.6 } as const;
 /**
- * THE RICHNESS FROM WHICH A PLANET MUST CARRY ITS ONE FIGURE, and how large that figure is.
- *
- * THE RULE IS THAT A COMPOSITION HAS A PRIMARY SET PIECE and ordinary ground for the rest. Without one a
- * map is an even field of interchangeable blocks — one building per block, one pond per block, at one
- * level, nothing occurring once — where the reference carries one unmistakable large form running right
- * beside the path network.
- *
- * TWO SIZES, because the ground and the ambition do not always agree. `SET_PIECE_WANT` is the floor for a
- * composed figure (300 cells; the reference's own two are 772 and 330) and it is what a figure is drawn at
- * wherever the planet offers the room. `SET_PIECE_MIN` is the smallest panel the pass will still call a
- * figure, and it is MEASURED rather than chosen: on the tightest seeds the largest clear one-tier panel
- * with a legal ring is 120 to 240 cells, because the streets, the lots and their doorsteps are reserved
- * before this runs. So a figure is asked for at the wanted size on every tier first, and only then at
- * whatever the best ground can carry.
+ * The richness from which a planet must carry its one figure, and its size: without a primary set
+ * piece a map is an even field of interchangeable blocks. `SET_PIECE_WANT` is the size drawn wherever
+ * the planet has room; `SET_PIECE_MIN` is the smallest panel still called a figure, set from the
+ * clear ground left on the tightest seeds after streets and lots are reserved. The wanted size is
+ * tried on every tier before the smaller one.
  */
 const SET_PIECE_FROM = 0.5;
 const SET_PIECE_WANT = 300;
 export const SET_PIECE_MIN = 120;
 /**
- * THE ONE BIG THING: the panel a full-richness planet is asked for FIRST, and the shape of the ask.
- *
- * WHAT THE NUMBER ANSWERS is hierarchy: the reference maps carry a one-off centerpiece clearly
- * larger and more elaborate than anything else, where modest scattered ponds of similar size read
- * as no centerpiece at all. Measured on ten full-richness seeds of both
- * templates, the biggest composed figure read 118 to 524 water cells against the terraced reference's
- * 1010 and the garden town's 1427 — and the panel that carried it was drawn at one of `COURT_SIZES`,
- * whose largest entry is 544 cells before the pattern takes its share.
- *
- * So the ask is the TERRACE FLOOR rather than a size from a list: `floorPanel` reads the largest
- * rectangle the tier's own clear ground can hold and offers THAT, which is how a figure comes out at
- * the scale of the ground it stands on instead of at a scale chosen in advance. Measured over six
- * seeds, the largest such rectangle runs 495 to 817 cells, so the rung is set where most planets can
- * answer it and the ladder falls back to the smaller rungs where one cannot.
- *
- * The aspect cap is what keeps a 4-cell-wide sliver 200 cells long from winning on area alone, and the
- * area cap is what keeps the figure from eating a whole terrace the streets need.
+ * The panel a full-richness planet is asked for first: a centrepiece clearly larger than anything
+ * else, which panels from `COURT_SIZES` never reach. `floorPanel` offers the largest rectangle the
+ * tier's clear ground holds, so the figure takes the scale of its ground; the rung sits where most
+ * planets can answer and the ladder falls back below it. The aspect cap stops a long sliver winning
+ * on area, and the area cap keeps a terrace for the streets.
  */
 export const SET_PIECE_BIG = 600;
 const COURT_ASPECT_MAX = 7;
 const COURT_AREA_MAX = 1100;
 /**
- * The calm band around a figure, in cells, and the sizes a summit court is tried at.
- *
- * FRAMING IS WHAT MAKES A FIGURE READ AS ONE. The reference's banner is framed on four sides by a road
- * border 3 rows deep with 4-cell jambs, and that border is the whole difference between a signboard and a
- * lake. Ours is reserved as calm ground the moment the panel lands and paved by the pipeline where it can
- * join the network.
- *
- * The court sizes are the room a real planet offers: the largest SQUARE of unreserved one-tier ground
- * measures about thirteen cells, with long rooms of 20 to 39 common, so a court is drawn as
- * a long panel rather than as a square one. They are tried largest AREA first, so a tier answers with
- * the biggest panel it can carry rather than with the first aspect that happens to fit.
+ * The calm band around a figure, in cells, and the sizes a summit court is tried at. A banner is
+ * framed by a road border 3 rows deep, so the band is reserved as calm ground when the
+ * panel lands and paved where it can join the network. Clear one-tier ground runs long rather than
+ * square, so courts are long panels, tried largest area first.
  */
 const FRAME_PAD = 3;
 const COURT_SIZES: readonly { w: number; h: number }[] = [
@@ -267,22 +128,22 @@ const COURT_SIZES: readonly { w: number; h: number }[] = [
 
 // --- the entry points --------------------------------------------------------------------------------
 
-/** The text or pattern landmark region, where the region list drew one. Its presence is the FIRST of the three
- *  gates a landmark passes: `region-list.ts` holds the theme at `minRichness`, so a map below that
- *  richness never carries one. The other two are `OCCURRENCE` and finding a panel at all. */
+/** The text or pattern landmark region, where the region list drew one. It only says where a ground
+ *  field would rather stand: a landmark's gates are `SET_PIECE_FROM` (with `OCCURRENCE` below it)
+ *  and finding a panel at all. */
 export function landmarkRegion(plan: DesignPlan): RegionPlan | null {
-  return plan.regions.find((r) => r.themeId === 'landmark-text') ?? null;
+  return plan.regions.find((r) => isSetPieceTheme(r.themeId)) ?? null;
 }
 
 /**
- * Write the map's ONE FIGURE, or nothing where no form fits anywhere legal.
+ * Write the map's one figure, or nothing where no form fits anywhere legal.
  *
  * The three placements are tried in a seeded order and the phrase is drawn from the bank, but no
  * choice can force a shape onto ground that will not carry it: a panel is only taken where the whole
  * of it plus its surrounding ring already stands as the construction needs, so a landmark that would
  * ship mangled is simply not built.
  *
- * ONE PER PLANET, NEVER TWO: the pass returns at the first form that lands, and the size floor is
+ * One per planet, never two: the pass returns at the first form that lands, and the size floor is
  * what keeps the one it returns the map's biggest composed thing rather than another ornament.
  */
 export function carveLandmark(input: LandmarkInput): LandmarkPlan | null {
@@ -290,23 +151,23 @@ export function carveLandmark(input: LandmarkInput): LandmarkPlan | null {
   const r = input.richness < 0 ? 0 : input.richness > 1 ? 1 : input.richness;
   if (r < SET_PIECE_FROM
     && rng.float() >= OCCURRENCE.min + (OCCURRENCE.max - OCCURRENCE.min) * r) return null;
-  // The floor binds where a figure is REQUIRED. Below that a landmark is an occasional ornament and
+  // The floor binds where a figure is required. Below that a landmark is an occasional ornament and
   // the ground a quiet planet offers is smaller, so a small one is better than none.
   const floor = r >= SET_PIECE_FROM ? SET_PIECE_MIN : 0;
 
-  // The drawn phrase leads and the rest of the bank follows it, so a map that cannot carry HOME
+  // The drawn phrase leads and the rest of the bank follows it, so a map that cannot carry home
   // anywhere writes something rather than nothing.
   const wanted = drawPhrase(rng);
   const phrases = [wanted, ...PHRASE_BANK.filter((p) => p !== wanted)];
-  // The WALL is the target's own placement and the ground field is the cheap version of it (the
-  // garden town's), so the banner is asked first on two maps in three. The COURT is asked last and is
+  // The wall is the terraced planet's placement and the ground field is the cheap version of it (the
+  // garden town's), so the banner is asked first on two maps in three. The court is asked last and is
   // the form that does not depend on a phrase fitting: a flooded terrace with a pattern standing in
   // it, which is what a planet with room for the figure but not for the words gets.
   const pattern = COURT_PATTERNS[rng.int(COURT_PATTERNS.length)]!;
   const courts = courtSearches(input);
   const banners = bannerSearches(input);
   const fields = fieldSearches(input);
-  // THE FAMILY IS A CHOICE, NOT A CONSEQUENCE OF WHICH ONE COULD ANSWER THE LARGEST RUNG.
+  // The family is a choice, not a consequence of which one could answer the largest rung.
   // Choose a family first, then try its size rungs. Comparing every family at each rung would favor
   // terrace courts because their panels are usually larger than phrase panels.
   const preferred = drawKind(rng, r);
@@ -338,8 +199,8 @@ export function carveLandmark(input: LandmarkInput): LandmarkPlan | null {
 /**
  * How often each family is the one a seed sets out to build.
  *
- * The wall banner is the style target's own set piece and the ground field is the garden town's, so the
- * two TEXT forms carry most of the weight between them; the court is the form that depends on no phrase
+ * The wall banner is the terraced planet's set piece and the ground field is the garden town's, so the
+ * two text forms carry most of the weight between them; the court is the form that depends on no phrase
  * fitting, which makes it both the most reliable and — left to win by reliability alone — the one that
  * turns up on every planet.
  */
@@ -352,7 +213,7 @@ const KIND_WEIGHTS: ReadonlyArray<{ kind: LandmarkKind; low: number; high: numbe
 /**
  * The family this seed sets out to build, drawn by weight against richness.
  *
- * THE QUIET END LEANS ON THE COURT, and that is the arrival rule rather than taste: a flat garden town
+ * The quiet end leans on the court, and that is the arrival rule rather than taste: a flat garden town
  * carries no cascade and few composed bodies, so its court is the one thing on it built to be arrived
  * at, and the two text forms both want a large clear panel a low-relief planet rarely has; drawn evenly
  * down there, street ends arrive at nothing.
@@ -381,7 +242,7 @@ function drawPhrase(rng: Rng): Phrase {
   return PHRASE_BANK[PHRASE_BANK.length - 1]!;
 }
 
-/** The cells a landmark claims, panel and FRAME: what the decoration pass must leave alone. A plant
+/** The cells a landmark claims, panel and frame: what the decoration pass must leave alone. A plant
  *  standing on a letter is a letter that cannot be read, a stroke two cells wide carries plantable
  *  ground down its middle, and a bed planted against the panel's edge is the framing gone. */
 export function landmarkCells(plan: LandmarkPlan, W: number, H: number): Set<number> {
@@ -412,7 +273,7 @@ interface Found {
  * The banner: the largest scale that fits anywhere on the wall wins, and at one scale the highest
  * tier that carries it.
  *
- * A panel's INSIDE must be untouched wall standing at exactly the panel's tier, and the ring around
+ * A panel's inside must be untouched wall standing at exactly the panel's tier, and the ring around
  * it must stand at that tier or higher and hold no water — which is precisely the condition under
  * which the flood shows no face, so the legality argument and the search are the same test.
  */
@@ -460,7 +321,7 @@ function bannerSearches(input: LandmarkInput): TierSearches {
       if (built.has(tier)) return built.get(tier)!;
       let made: PanelSearch | null = null;
       if (area) {
-        // A panel's INSIDE must be untouched wall standing at exactly the panel's tier, and the ring
+        // A panel's inside must be untouched wall standing at exactly the panel's tier, and the ring
         // around it must stand at that tier or higher and hold no water — which is precisely the
         // condition under which the flood shows no face, so the legality argument and the search are the
         // same test.
@@ -491,14 +352,14 @@ function fieldSearches(input: LandmarkInput): TierSearches {
   const toward = lot
     ? { x: lot.x + lot.w / 2, y: lot.y + lot.h / 2 }
     : { x: input.hub.x, y: input.hub.y };
-  // A FIELD IS A BANNER WRITTEN OFF THE WALL, so it is asked of every tier and not of elevation 0
-  // alone. At full richness the relief floor leaves a planet with almost no ground AT 0: asked of
+  // A field is a banner written off the wall, so it is asked of every tier and not of elevation 0
+  // alone. At full richness the relief floor leaves a planet with almost no ground at 0: asked of
   // elevation 0 alone the form lands on none of twenty maps and the court answers every one of them,
   // which is one form on every planet again. The legality argument is the
   // banner's, unchanged: water at the panel's tier with its ring at that tier or above shows no face,
   // and a letter left standing at the same tier keeps the 3x3 window it had before the flood.
-  // A RAISED FIELD IS A TERRACED-PLANET FORM. Below the set-piece richness the map is a garden town and
-  // the ground field is its own ground-level version, exactly as the reference garden town draws it.
+  // A raised field is a terraced-planet form. Below the set-piece richness the map is a garden town and
+  // the ground field is its own ground-level version, as a garden town draws it.
   // The raised variant down there takes ground the street ends need, and the arrival rule then reads
   // those ends as arriving at nothing.
   const tiers: number[] = [];
@@ -516,7 +377,7 @@ function fieldSearches(input: LandmarkInput): TierSearches {
         for (let i = 0; i < inside.length; i++) {
           const dry = t.water[i]! < 0;
           if (dry && t.tier[i]! >= tier) ring[i] = 1;
-          // The open-ground KEEP is the ground-level form's own: at 0 a field is cut into the town's
+          // The open-ground keep is the ground-level form's own: at 0 a field is cut into the town's
           // own floor, and what it leaves beside it must still be a road's width of ground. A raised
           // field stands on a terrace the streets already declined, so its ring is the test instead.
           if (dry && t.tier[i] === tier && input.grass[i] === 1 && !input.flat[i]
@@ -540,16 +401,15 @@ function fieldSearches(input: LandmarkInput): TierSearches {
  * The ground field: a flooded rectangle on the open ground the landmark region was planned into,
  * with the letters standing dry inside it.
  *
- * The lot itself is rarely big enough — the reference's field is 18x28 against a 21x15 lot — so the
- * search takes the whole map and is only PULLED toward the lot, which is what puts the field on the
- * town's flank the way the target's is. It is tried at the roomiest clearance first, so a field
+ * The lot itself is rarely big enough (a full field is 18x28 against a 21x15 lot), so the search takes
+ * the whole map and is only pulled toward the lot, which is what puts the field on the town's flank. It is tried at the roomiest clearance first, so a field
  * lands in genuinely open ground where the map has any.
  */
 function planField(phrase: Phrase, cache: TierSearches): Found | null {
-  // SIZE BEFORE ROOM. The target's field is 18x28 around 5x6 letters, so a landmark drawn small in the
+  // Size before room. A full field is 18x28 around 5x6 letters, so a landmark drawn small in the
   // roomiest pocket is further from it than one drawn full size in a tighter one.
   for (const scale of FIELD_SCALES) {
-    // Down the y axis first: the target's field is read side-on from the plaza, so its letters stack
+    // Down the y axis first: a field is read side-on from the plaza, so its letters stack
     // rather than run.
     for (const axis of ['v', 'h'] as const) {
       const stencil = rasterizePhrase(phrase.glyphs, scale, axis);
@@ -570,23 +430,23 @@ function planField(phrase: Phrase, cache: TierSearches): Found | null {
 
 function planCourt(floor: number, pattern: CourtPattern, cache: CourtSearches): Found | null {
   for (const tier of cache.tiers) {
-    // THE TIER IS ASKED ONE QUESTION FIRST. A tier whose largest inscribable rectangle is smaller than
+    // The tier is asked one question first. A tier whose largest inscribable rectangle is smaller than
     // the floor cannot answer any size in the ladder, and its own mask is cheaper to measure than one
     // position sweep.
     const search = cache.at(tier);
     if (!search) continue;
-    // THE TERRACE FLOOR LEADS, and the list is what a tier too small for it falls back to.
+    // The terrace floor leads, and the list is what a tier too small for it falls back to.
     const sizes = [...floorPanel(search), ...COURT_SIZES];
     for (const size of sizes) {
       for (const [w, h] of [[size.w, size.h], [size.h, size.w]] as const) {
         if (w * h < floor || !canHold(search, w, h)) continue;
         const panel = findPanel(search, w, h);
         if (!panel) continue;
-        // THE PATTERN STANDS IN THE MIDDLE OF THE WATER, and how far in scales with the panel: the
-        // reference's banner is 130 cells of ink inside 772 of water, so a figure drawn to the edge of
-        // a reference-scale panel is a paved terrace with a moat rather than one big composed body.
+        // The pattern stands in the middle of the water, and how far in scales with the panel: the
+        // full banner is 130 cells of ink inside 772 of water, so a figure drawn to the edge of a
+        // full-size panel is a paved terrace with a moat rather than one big composed body.
         const pad = courtPad(w, h);
-        // A PATTERN THE PANEL CANNOT CARRY IS NOT DRAWN THIN, it is exchanged for the one every panel
+        // A pattern the panel cannot carry is not drawn thin, it is exchanged for the one every panel
         // can: a cross's arms and an islet grid both need room, and drawn into a small panel they came
         // out as four cells of mass in a pool.
         let ink = courtInk(w - 2 * pad, h - 2 * pad, pattern);
@@ -604,11 +464,11 @@ function planCourt(floor: number, pattern: CourtPattern, cache: CourtSearches): 
 
 /**
  * The largest rectangle this tier's clear ground can hold, within the aspect and area caps: the
- * TERRACE FLOOR offered as a panel size, or nothing where the tier holds no room worth the name.
+ * terrace floor offered as a panel size, or nothing where the tier holds no room worth the name.
  *
- * Each width is offered twice — the tallest rectangle that fits at all, and the same TRIMMED to the
+ * Each width is offered twice — the tallest rectangle that fits at all, and the same trimmed to the
  * aspect cap, since a room 6 cells wide and 60 tall holds no panel this pass may take but holds a 6x42
- * one it may. (Written as a rounding of the WIDTH to a multiple of the cap, which is what the first cut
+ * one it may. (Written as a rounding of the width to a multiple of the cap, which is what the first cut
  * shipped, that second candidate came out 6x7: the clamp belongs on the height.)
  */
 function floorPanel(s: PanelSearch): { w: number; h: number }[] {
@@ -619,7 +479,7 @@ function floorPanel(s: PanelSearch): { w: number; h: number }[] {
       if (h < 1) continue;
       const area = Math.min(w * h, COURT_AREA_MAX);
       if (Math.max(w, h) > COURT_ASPECT_MAX * Math.min(w, h)) continue;
-      // A panel over the area cap is trimmed on BOTH axes by the square root of the overshoot, so it
+      // A panel over the area cap is trimmed on both axes by the square root of the overshoot, so it
       // keeps the aspect of the room it was found in rather than turning into a strip.
       const scale = area / (w * h);
       const shrink = scale < 1 ? Math.sqrt(scale) : 1;
@@ -692,74 +552,6 @@ function courtSearches(input: LandmarkInput): CourtSearches {
   return self;
 }
 
-/**
- * The patterns a court's dry mass can be drawn as, and the whole of the court's vocabulary.
- *
- * ONE FORM REPEATED IS THE TELL: a map whose water is 85% to 95% one stamped rectangle reads as
- * wallpaper, and a figure pass answering every planet with the same medallion would put that fault back
- * at set-piece scale. So a court draws its pattern from this bank by seed, and every entry is
- * symmetric in both axes — nothing about the drawing depends on which way round the panel was found.
- */
-export const COURT_PATTERNS = ['medallion', 'rings', 'bars', 'islets', 'cross'] as const;
-export type CourtPattern = (typeof COURT_PATTERNS)[number];
-
-/** How many cells of a stencil carry ink. */
-const inkOf = (s: Stencil): number => s.coverage.reduce((a, v) => a + (v > 0 ? 1 : 0), 0);
-
-/** The least mass a court's pattern may draw. Under this the panel reads as a pool rather than as a
- *  figure, and the pattern the seed drew is not one this panel can carry. */
-const COURT_INK_MIN = 9;
-
-/** How many nested rectangles the `rings` pattern draws, and how often a `bars` tooth stands. */
-const RING_BANDS = 3;
-const BAR_PITCH = 4;
-
-/** The court's pattern as a stencil: the strokes are what stands dry inside the flooded panel. */
-export function courtInk(width: number, height: number, pattern: CourtPattern): Stencil {
-  const w = Math.max(1, width), h = Math.max(1, height);
-  const coverage = new Uint8Array(w * h);
-  const cx = (w - 1) / 2, cy = (h - 1) / 2;
-  const block = Math.max(1, Math.round(Math.min(w, h) / 6));
-  for (let y = 0; y < h; y++) {
-    for (let x = 0; x < w; x++) {
-      // Distance measured on the SHORTER axis's scale in both, so a long panel carries the figure at
-      // its own proportions rather than one stretched to the ends.
-      const dx = Math.abs(x - cx) * (h / w), dy = Math.abs(y - cy);
-      const corner = (x < block || x >= w - block) && (y < block || y >= h - block);
-      // THE RINGS ARE NORMALIZED TO THE PANEL, not counted in from its edge. `min(x, w-1-x, y, h-1-y)`
-      // is the distance to the nearest side, so on the long panels a real planet most often offers
-      // (46x8, 52x7, 60x6) it never passes 3 and the pattern came out as one or two lines running the
-      // whole width — a stripe. Scaled to each axis's own half-span it draws `RING_BANDS` nested
-      // rectangles at any aspect, which is the figure the name promises.
-      const ring = Math.round(RING_BANDS * Math.max(
-        Math.abs(x - cx) / Math.max(1, cx), Math.abs(y - cy) / Math.max(1, cy),
-      ));
-      // AND THE BARS RUN ACROSS THE LONG AXIS WITH A SPINE DOWN IT. Drawn as `x % 3` they are parallel
-      // lines whichever way the panel lies, the same silhouette as the rings — two of the bank's five
-      // entries reading as one. Across the long axis with a spine they are a comb, a shape of its own and
-      // the one the reference's water gardens carry.
-      const alongX = w >= h;
-      const teeth = (alongX ? x : y) % BAR_PITCH === 1;
-      const spine = alongX ? Math.abs(y - cy) <= block : Math.abs(x - cx) <= block;
-      let ink = false;
-      switch (pattern) {
-        case 'medallion': ink = dx + dy <= Math.max(2, Math.min(w, h) / 2 - 1) / 2 || corner; break;
-        case 'rings': ink = ring % 2 === 1; break;
-        case 'bars': ink = teeth || spine; break;
-        case 'islets': ink = x % 5 < 2 && y % 4 < 2; break;
-        case 'cross': ink = Math.abs(x - cx) <= block || Math.abs(y - cy) <= block || corner; break;
-      }
-      if (ink) coverage[y * w + x] = 255;
-    }
-  }
-  const quad = new Uint8Array(w * h * 4);
-  for (let i = 0; i < coverage.length; i++) {
-    const v = coverage[i]!;
-    quad[i * 4] = v; quad[i * 4 + 1] = v; quad[i * 4 + 2] = v; quad[i * 4 + 3] = v;
-  }
-  return { width: w, height: h, coverage, color: new Uint32Array(w * h), quad };
-}
-
 // --- writing it ---------------------------------------------------------------------------------------
 
 /** Flood the panel and leave the glyph standing. A banner's water sits at the plateau's tier and its
@@ -802,110 +594,4 @@ export function frameCells(plan: LandmarkPlan, W: number, H: number): MacroCoord
     }
   }
   return out;
-}
-
-// --- finding a rectangle ---------------------------------------------------------------------------------
-
-interface PanelSearch {
-  W: number; H: number;
-  area: Rect;
-  toward: { x: number; y: number };
-  /** Summed area over the cells the panel's inside may take. */
-  inside: Int32Array;
-  /** Summed area over the cells its surrounding ring must satisfy; absent leaves the ring free. */
-  ring?: Int32Array;
-  /**
-   * The tallest rectangle of each WIDTH that fits inside the mask at all, indexed by width, and the whole
-   * point of it is to be asked BEFORE a position scan: `findPanel` sweeps every position of the map, and
-   * the size ladder asks about twenty sizes in two orientations against every tier. An AREA bound is not
-   * enough — a tier holding thousands of open cells in awkward shapes passes it for every size and then
-   * pays the sweep — so the profile answers each (w, h) exactly.
-   */
-  profile: Int32Array;
-}
-
-/** The panel of `w` x `h` closest to `toward` whose inside and ring both hold, or null. Positions
- *  are compared by Manhattan distance from `toward` and ties go to the first in scan order, so the
- *  answer is a function of the terrain rather than of the order candidates were reached in. */
-function findPanel(s: PanelSearch, w: number, h: number): Rect | null {
-  if (w > s.area.w || h > s.area.h) return null;
-  let best: Rect | null = null;
-  let bestD = Infinity;
-  for (let y = s.area.y; y + h <= s.area.y + s.area.h; y++) {
-    for (let x = s.area.x; x + w <= s.area.x + s.area.w; x++) {
-      const rect = { x, y, w, h };
-      if (rectSum(s.inside, s.W, rect) !== w * h) continue;
-      if (s.ring) {
-        const round = { x: x - 1, y: y - 1, w: w + 2, h: h + 2 };
-        if (round.x < 0 || round.y < 0 || round.x + round.w > s.W || round.y + round.h > s.H) continue;
-        if (rectSum(s.ring, s.W, round) !== round.w * round.h) continue;
-      }
-      const d = Math.abs(x + w / 2 - s.toward.x) + Math.abs(y + h / 2 - s.toward.y);
-      if (d < bestD) { bestD = d; best = rect; }
-    }
-  }
-  return best;
-}
-
-/**
- * The tallest all-inside rectangle of each width, indexed by width: `profile[w]` is the greatest `h` for
- * which some `w` x `h` rectangle fits wholly inside the mask, and 0 where none does.
- *
- * The standard histogram sweep — per row, the run of set cells above each column, then every MAXIMAL
- * rectangle in that histogram off one stack — and a suffix pass at the end, since a rectangle `w` wide
- * and `h` tall means one `w - 1` wide is at least as tall. O(W x H) once per tier, against a sweep of
- * every position per size asked.
- */
-function rectProfile(mask: Uint8Array, W: number, area: Rect): Int32Array {
-  const heights = new Int32Array(area.w);
-  const best = new Int32Array(area.w + 2);
-  const stack: number[] = [];
-  for (let y = area.y; y < area.y + area.h; y++) {
-    for (let c = 0; c < area.w; c++) {
-      heights[c] = mask[flatIndex(area.x + c, y, W)] ? heights[c]! + 1 : 0;
-    }
-    stack.length = 0;
-    for (let c = 0; c <= area.w; c++) {
-      const h = c === area.w ? 0 : heights[c]!;
-      while (stack.length && heights[stack[stack.length - 1]!]! >= h) {
-        const top = stack.pop()!;
-        const left = stack.length ? stack[stack.length - 1]! + 1 : 0;
-        const width = c - left;
-        if (heights[top]! > best[width]!) best[width] = heights[top]!;
-      }
-      stack.push(c);
-    }
-  }
-  for (let w = area.w - 1; w >= 1; w--) if (best[w + 1]! > best[w]!) best[w] = best[w + 1]!;
-  return best;
-}
-
-/** Whether a `w` x `h` panel fits anywhere inside the search's mask, read off its profile. */
-const canHold = (s: PanelSearch, w: number, h: number): boolean =>
-  w <= s.area.w && h <= s.area.h && (s.profile[w] ?? 0) >= h;
-
-/** Prefix sums over a 0/1 mask, `(W+1) x (H+1)`, so any rectangle's count is four reads. */
-function summedArea(mask: Uint8Array, W: number, H: number): Int32Array {
-  const stride = W + 1;
-  const out = new Int32Array(stride * (H + 1));
-  for (let y = 0; y < H; y++) {
-    let row = 0;
-    for (let x = 0; x < W; x++) {
-      row += mask[flatIndex(x, y, W)]!;
-      out[(y + 1) * stride + x + 1] = out[y * stride + x + 1]! + row;
-    }
-  }
-  return out;
-}
-
-function rectSum(sat: Int32Array, W: number, r: Rect): number {
-  const stride = W + 1;
-  const x0 = r.x, y0 = r.y, x1 = r.x + r.w, y1 = r.y + r.h;
-  return sat[y1 * stride + x1]! - sat[y0 * stride + x1]! - sat[y1 * stride + x0]! + sat[y0 * stride + x0]!;
-}
-
-function clipRect(r: Rect, W: number, H: number): Rect | null {
-  const x0 = Math.max(0, r.x), y0 = Math.max(0, r.y);
-  const x1 = Math.min(W, r.x + r.w), y1 = Math.min(H, r.y + r.h);
-  return x1 > x0 && y1 > y0 ? { x: x0, y: y0, w: x1 - x0, h: y1 - y0 } : null;
 }

@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 /**
  * The planet editor opened on a planet read from a video: a new planet under the default name with
  * its cells to check on the map behind a switch, saved, renamed and left as a drawn planet is.
@@ -6,26 +7,33 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { I18nProvider, translate } from '../../../../i18n/context';
 import { useEditorStore } from '../../../../state/store';
-import { newMap } from '../../../../kit/operations/map';
-import { host } from '../../../../kit/host';
-import type { PlanetDraft } from '../../../../kit/operations/planet-session';
-import { listPlanets } from '../../../../io/planet-library';
+import { newMap } from '../../../../editor/operations/map';
+import { editorPort } from '../../../../editor/session/context';
+import { host } from '../../../../editor/host/host';
+import type { PlanetDraft } from '../../../../editor/operations/planet-session';
+import { listPlanets } from '../../../../io/storage/planet-library';
 import { Shell } from '../../../../ui/shell/Shell';
-import { startPlanetEditing, stopPlanetEditing } from '../../../../ui/shell/planet/planet-editing';
-import { setStoreState } from '../../../_store';
-import { planetFixture } from '../../../fixtures/planet';
+import { installPlanetOverlays } from '../../../../editor/session/planet-overlays';
+import { startPlanetEditing, stopPlanetEditing } from '../../../../editor/session/planet-editing';
+import { setStoreState } from '../../../_support/store';
+import { planetFixture } from '../../../_support/planet';
+import type { TextKey } from '../../../../i18n/keys';
 
-vi.mock('../../../../io/moderation/text/reviewer', async (original) => ({
-  ...await original<typeof import('../../../../io/moderation/text/reviewer')>(),
+vi.mock('../../../../pipelines/moderation/text/reviewer', async (original) => ({
+  ...await original<typeof import('../../../../pipelines/moderation/text/reviewer')>(),
   reviewText: vi.fn(async () => ({ allowed: true })),
 }));
 
 const store = () => useEditorStore.getState();
-const t = (key: string, params?: Record<string, string | number>) => translate(key, params);
+const t = (key: TextKey, params?: Record<string, string | number>) => translate(key, params);
 
 const draft = (cells: number[] = [2, 3, 40], landmark = true): PlanetDraft => ({ template: planetFixture(), review: { cells, landmark } });
 
+let uninstall: (() => void) | null = null;
+
+/** The shell over the editor session's planet overlays, which the edition root installs. */
 function mount() {
+  uninstall = installPlanetOverlays(0);
   return render(<Shell onRestoreSession={() => {}}><div /></Shell>, { wrapper: ({ children }) => <I18nProvider>{children}</I18nProvider> });
 }
 
@@ -34,17 +42,19 @@ const plate = () => screen.getByTestId('planet-nameplate');
 beforeEach(() => {
   localStorage.clear();
   setStoreState({ locale: 'en' });
-  newMap('hexia');
+  newMap(editorPort, 'hexia');
   store().setAssistantOpen(false);
   store().setTourRunning(false);
   store().setModal('newProject', false);
-  store().setPlanetReturn(null);
+  useEditorStore.setState({ planetReturn: null });
 });
 
 afterEach(() => {
   act(() => { stopPlanetEditing(); });
   host.camera.takeQueued();
   cleanup();
+  uninstall?.();
+  uninstall = null;
   vi.restoreAllMocks();
 });
 
@@ -52,12 +62,12 @@ describe('a planet session opened from a video', () => {
   it('shows the count of cells to check and draws them until the switch turns them off', () => {
     const show = vi.spyOn(host.planetReview, 'show');
     mount();
-    act(() => { store().setTourRunning(false); startPlanetEditing(draft()); });
+    act(() => { store().setTourRunning(false); startPlanetEditing(draft(), false); });
     expect(screen.getByTestId('planet-review-count').textContent).toBe(t('planet.review_short', { n: 4 }));
     expect(screen.getByTestId('planet-review').getAttribute('title')).toBe(t('planet.review_count_landmark', { n: 3 }));
     const cells = store().planetSession!.review!.cells;
     const last = () => show.mock.calls[show.mock.calls.length - 1]!;
-    expect(last()[0]).toBe(cells);
+    expect(last()[0]).toEqual({ grid: 'object', cells });
     expect(last()[1]).not.toBeNull();
     const toggle = within(screen.getByTestId('planet-review')).getByRole('switch', { name: t('planet.review_toggle') });
     expect(toggle.getAttribute('aria-checked')).toBe('true');
@@ -65,25 +75,25 @@ describe('a planet session opened from a video', () => {
     expect(last()).toEqual([null, null]);
     expect(toggle.getAttribute('aria-checked')).toBe('false');
     fireEvent.click(toggle);
-    expect(last()[0]).toBe(cells);
+    expect(last()[0]).toEqual({ grid: 'object', cells });
   });
 
   it('counts one cell in the singular and leaves the landmark out when it was found', () => {
     mount();
-    act(() => { store().setTourRunning(false); startPlanetEditing(draft([5], false)); });
+    act(() => { store().setTourRunning(false); startPlanetEditing(draft([5], false), false); });
     expect(screen.getByTestId('planet-review-count').textContent).toBe(t('planet.review_short', { n: 1 }));
-    expect(screen.getByTestId('planet-review').getAttribute('title')).toBe(t('planet.review_count_one', { n: 1 }));
+    expect(screen.getByTestId('planet-review').getAttribute('title')).toBe(t('planet.review_count', { n: 1 }));
   });
 
   it('has no review segment on a drawn planet', () => {
     mount();
-    act(() => { store().setTourRunning(false); startPlanetEditing(null); });
+    act(() => { store().setTourRunning(false); startPlanetEditing(null, false); });
     expect(screen.queryByTestId('planet-review')).toBeNull();
   });
 
   it('saves to My planets as a new planet under the default name, renamed through the name check', async () => {
     mount();
-    act(() => { store().setTourRunning(false); startPlanetEditing(draft()); });
+    act(() => { store().setTourRunning(false); startPlanetEditing(draft(), false); });
     expect(within(plate()).getByText(t('planet.default_name', { n: 1 }))).toBeTruthy();
     fireEvent.click(within(plate()).getByRole('button', { name: t('planet.done') }));
     const panel = await screen.findByRole('dialog', { name: t('planet.save_title_new') });
@@ -97,7 +107,7 @@ describe('a planet session opened from a video', () => {
 
   it('asks before Back discards a planet read from a video, even unedited', async () => {
     mount();
-    act(() => { store().setTourRunning(false); startPlanetEditing(draft()); });
+    act(() => { store().setTourRunning(false); startPlanetEditing(draft(), false); });
     fireEvent.click(within(plate()).getByRole('button', { name: t('planet.back') }));
     expect(store().planetSession).not.toBeNull();
     const ask = await screen.findByRole('dialog', { name: t('planet.discard_title') });
@@ -108,14 +118,14 @@ describe('a planet session opened from a video', () => {
 
   it('leaves a blank drawn planet at once with Back', () => {
     mount();
-    act(() => { store().setTourRunning(false); startPlanetEditing(null); });
+    act(() => { store().setTourRunning(false); startPlanetEditing(null, false); });
     fireEvent.click(within(plate()).getByRole('button', { name: t('planet.back') }));
     expect(store().planetSession).toBeNull();
   });
 
   it('stands the review segment on the plate between the name and Done, at its own width', () => {
     mount();
-    act(() => { store().setTourRunning(false); startPlanetEditing(draft()); });
+    act(() => { store().setTourRunning(false); startPlanetEditing(draft(), false); });
     const segment = screen.getByTestId('planet-review');
     expect(screen.getByTestId('planet-nameplate-plate').contains(segment)).toBe(true);
     expect(segment.parentElement).toBe(screen.getByTestId('planet-done').parentElement);

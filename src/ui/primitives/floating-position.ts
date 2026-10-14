@@ -8,10 +8,12 @@ export interface FloatingPlacement {
   anchorX: number;
   /** The height the window leaves the card on the side it opens on, in the card's px. */
   room: number;
+  /** The anchor's width, in the card's px. */
+  anchorWidth: number;
 }
 
 /** Anchors and viewport dimensions are visual pixels; returned lengths belong to the zoomed card. */
-export function placeFloating({ anchor, width, height, zoom, viewport, gap = 0, align = 'start', maxHeight = Infinity, margin = 8, prefer = 'below' }: {
+export function placeFloating({ anchor, width, height, zoom, viewport, gap = 0, align = 'start', maxHeight = Infinity, margin = 8, prefer = 'below', side }: {
   anchor: FloatingAnchor;
   width: number;
   height: number;
@@ -23,13 +25,17 @@ export function placeFloating({ anchor, width, height, zoom, viewport, gap = 0, 
   margin?: number;
   /** The side to open on while it has room for the whole card. */
   prefer?: 'above' | 'below';
+  /** Open on this side whatever the room, capping the card to it, so content that grows lengthens
+   *  the card away from the anchor and never moves the edge facing it. */
+  side?: 'above' | 'below';
 }): FloatingPlacement {
   const availableWidth = Math.max(0, viewport.width - 2 * margin);
   const drawnWidth = Math.min(width * zoom, availableWidth);
   const below = Math.max(0, viewport.height - anchor.bottom - gap * zoom - margin);
   const aboveRoom = Math.max(0, anchor.top - gap * zoom - margin);
   const desiredHeight = Math.min(height, maxHeight) * zoom;
-  const above = prefer === 'above' ? desiredHeight <= aboveRoom || aboveRoom > below : desiredHeight > below && aboveRoom > below;
+  const above = side ? side === 'above'
+    : prefer === 'above' ? desiredHeight <= aboveRoom || aboveRoom > below : desiredHeight > below && aboveRoom > below;
   const room = Math.min(Math.max(0, viewport.height - 2 * margin), above ? aboveRoom : below);
   const cap = Math.min(maxHeight * zoom, room);
   const drawnHeight = Math.min(desiredHeight, cap);
@@ -42,6 +48,7 @@ export function placeFloating({ anchor, width, height, zoom, viewport, gap = 0, 
     above,
     anchorX: Math.max(0, Math.min(drawnWidth, anchorPoint - left)) / zoom,
     room: room / zoom,
+    anchorWidth: anchor.width / zoom,
     box: {
       position: 'fixed', boxSizing: 'border-box', left: left / zoom, top: top / zoom,
       width: drawnWidth / zoom, maxWidth: availableWidth / zoom, maxHeight: cap / zoom,

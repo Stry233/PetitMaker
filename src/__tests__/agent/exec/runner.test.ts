@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-// Hoisted above every import (including the transitive `openai` import inside
-// agent/exec/runner.ts -> agent/providers/openai.ts) so the region test can inspect exactly what
-// base URL the SDK constructor received, the same technique providers/openai.test.ts uses.
+// Hoisted above every import (including the `openai` import inside agent/providers/openai.ts, which
+// the runner's adapter loads on its first request) so the region test can inspect exactly what base
+// URL the SDK constructor received, the same technique providers/openai.test.ts uses.
 const { openAiCtorMock } = vi.hoisted(() => ({ openAiCtorMock: vi.fn() }));
 vi.mock('openai', () => {
   class MockOpenAI {
@@ -12,32 +12,60 @@ vi.mock('openai', () => {
   }
   return { default: MockOpenAI };
 });
+// The Anthropic SDK records the conversation its adapter sends, so a replay test reads the wire itself.
+const { anthropicSent } = vi.hoisted(() => ({ anthropicSent: [] as unknown[] }));
+vi.mock('@anthropic-ai/sdk', () => {
+  class MockAnthropic {
+    messages = {
+      stream: (params: { messages: unknown }) => {
+        anthropicSent.push(params.messages);
+        return { async *[Symbol.asyncIterator]() {}, finalMessage: async () => ({ content: [], stop_reason: 'end_turn', usage: { input_tokens: 0, output_tokens: 0 } }) };
+      },
+    };
+  }
+  return { default: MockAnthropic };
+});
 
-import { CommandExecutor } from '../../../core/commands/command-executor';
-import { EventBus } from '../../../core/commands/event-bus';
-import type { EditorEvents } from '../../../core/model/types';
 import { createDefaultRegistry } from '../../../rules';
-import { roadLookup } from '../../../state/object-index';
-import { makeState } from '../../rules/_helpers';
+import { makeState, makeExecutor } from '../../_support/map-state';
 
-import { createScriptedAdapter, type ScriptedTurn } from '../../../agent/eval/scripted-adapter';
-import { append, eventsOf } from '../../../agent/core/log';
+import { createScriptedAdapter, type ScriptedTurn } from '../../_support/agent/scripted-adapter';
+import { append, createLog, eventsOf } from '../../../agent/core/log';
 import { answerGate, pendingGate } from '../../../agent/core/gates';
 import { deriveView } from '../../../agent/core/project-view';
 import type { Part, StreamEvent } from '../../../agent/core/types';
-import type { Adapter } from '../../../agent/providers/types';
-import { toAnthropicMessages } from '../../../agent/providers/anthropic';
+import type { Adapter, AdapterRequest } from '../../../agent/core/adapter';
 import { buildMapContext, type AgentToolDeps } from '../../../agent/tools';
 import { useAgentSession } from '../../../agent/session/store';
+import { __resetModelCatalog, rememberNativeModels } from '../../../agent/providers/model-catalog';
+import { COMPACTION_RESERVE } from '../../../agent/core/compaction';
 import { createRunner, type RunnerConfig } from '../../../agent/exec/runner';
+import { agentSessionPort, type SessionPort } from '../../../agent/exec/session-port';
+import type { Scripted } from '../../_support/agent/scripted-connect';
+import { createAnthropicAdapter } from '../../../agent/providers/anthropic';
 
-const screening = vi.hoisted(() => ({ refuse: new Set<string>(), signals: [] as AbortSignal[] }));
+/** The conversation the Anthropic adapter would send for a request the runner made, as JSON text. */
+async function anthropicWire(req: AdapterRequest): Promise<string> {
+  anthropicSent.length = 0;
+  for await (const _event of createAnthropicAdapter({ apiKey: 'sk-ant-test' }).stream(req, new AbortController().signal)) { /* drained */ }
+  return JSON.stringify(anthropicSent[0]);
+}
+
+vi.mock('../../../agent/providers/connect', async (real) => (await import('../../_support/agent/scripted-connect')).scriptedConnect(await real()));
+
+/** A runner config that may carry the scripted adapter its connection builds. */
+type TestConfig = RunnerConfig & Scripted;
+
+const screening = vi.hoisted(() => ({ refuse: new Set<string>(), signals: [] as AbortSignal[], texts: [] as string[], unavailable: false }));
 // The runner asks the export text check before a provider sees an order; here the check is a lookup.
-vi.mock('../../../io/moderation/text/reviewer', () => ({
+vi.mock('../../../pipelines/moderation/text/reviewer', async (importOriginal) => ({
+  ...await importOriginal<object>(),
   ReviewWorkerLease: class { dispose() {} },
   reviewText: async (parts: { text: string }[], signal: AbortSignal) => {
     screening.signals.push(signal);
-    return screening.refuse.has(parts[0]!.text) ? { allowed: false, reason: 'political', fields: ['description'] } : { allowed: true };
+    screening.texts.push(parts[0]!.text);
+    if (screening.unavailable) throw new Error('check unavailable');
+    return [...screening.refuse].some((t) => parts[0]!.text.includes(t)) ? { allowed: false, reason: 'political', fields: ['description'] } : { allowed: true };
   },
 }));
 
@@ -70,15 +98,15 @@ function toolTurn(calls: { callId: string; name: string; args?: Record<string, u
 function makeToolDepsFactory(): () => AgentToolDeps {
   return () => {
     const state = makeState(20, 20);
-    const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
+    const exec = makeExecutor(state);
     return { getState: () => state, getExecutor: () => exec, getRegion: () => [] };
   };
 }
 
-function makeCfg(overrides: Partial<RunnerConfig> = {}, draftReplies = false): RunnerConfig {
-  const source = overrides.adapterForTest;
+function makeCfg(overrides: Partial<TestConfig> = {}, draftReplies = false): TestConfig {
+  const source = overrides.scripted;
   // Build scripts reserve their turns for map work; optional drafts have a separate response.
-  const adapterForTest: Adapter | undefined = source && !draftReplies ? {
+  const scripted: Adapter | undefined = source && !draftReplies ? {
     async *stream(request, signal) {
       if (request.tools.length === 0 && request.maxOutputTokens === 256) {
         yield { t: 'text', delta: '{"reply":null}' };
@@ -94,8 +122,9 @@ function makeCfg(overrides: Partial<RunnerConfig> = {}, draftReplies = false): R
     oversight: 'yolo',
     makeToolDeps: makeToolDepsFactory(),
     registry: createDefaultRegistry(),
+    session: agentSessionPort,
     ...overrides,
-    ...(adapterForTest ? { adapterForTest } : {}),
+    ...(scripted ? { scripted } : {}),
   };
 }
 
@@ -105,12 +134,13 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.useRealTimers();
+  __resetModelCatalog();
 });
 
 describe('exec/runner', () => {
   it('offers a missing reply draft after settlement without sending it or running tools', async () => {
     const adapter = createScriptedAdapter([textTurn('Shall I add flowers?'), textTurn('{"reply":"Yes, add flowers"}')]);
-    const runner = createRunner(makeCfg({ adapterForTest: adapter }, true));
+    const runner = createRunner(makeCfg({ scripted: adapter }, true));
     runner.send('Add a pond');
     await flush();
     const log = useAgentSession.getState().log;
@@ -126,7 +156,7 @@ describe('exec/runner', () => {
       { t: 'text', delta: 'Shall I add flowers?' },
       { t: 'done', stop: 'tool-calls', final: [{ callId: 'reply', name: 'suggest_reply', args: { reply: 'Add flowers' }, rawArgs: '{"reply":"Add flowers"}' }] },
     ] }]);
-    const runner = createRunner(makeCfg({ adapterForTest: adapter }, true));
+    const runner = createRunner(makeCfg({ scripted: adapter }, true));
     runner.send('Add a pond');
     await flush();
     expect(adapter.requests).toHaveLength(1);
@@ -148,7 +178,7 @@ describe('exec/runner', () => {
       },
       async listModels() { return []; },
     };
-    const runner = createRunner(makeCfg({ adapterForTest: adapter }, true));
+    const runner = createRunner(makeCfg({ scripted: adapter }, true));
     runner.send('Add a pond');
     await flush();
     expect(runner.active()).toBe(false);
@@ -172,7 +202,7 @@ describe('exec/runner', () => {
       },
       async listModels() { return []; },
     };
-    const runner = createRunner(makeCfg({ adapterForTest: adapter }));
+    const runner = createRunner(makeCfg({ scripted: adapter }));
     runner.send('go');
     await flush();
     const oldLog = useAgentSession.getState().log;
@@ -194,7 +224,7 @@ describe('exec/runner', () => {
     screening.refuse.add('draw the forbidden thing');
     const turns: ScriptedTurn[] = [textTurn('should never stream')];
     const adapter = createScriptedAdapter(turns);
-    const runner = createRunner(makeCfg({ adapterForTest: adapter, uiLocale: 'zh' }));
+    const runner = createRunner(makeCfg({ scripted: adapter, uiLocale: 'zh' }));
     runner.send('draw the forbidden thing');
     await flush();
     screening.refuse.clear();
@@ -215,7 +245,7 @@ describe('exec/runner', () => {
     screening.signals.length = 0;
     try {
       const adapter = createScriptedAdapter([textTurn('hello')]);
-      const runner = createRunner(makeCfg({ adapterForTest: adapter }));
+      const runner = createRunner(makeCfg({ scripted: adapter }));
       runner.send('lay a plaza');
       await flush();
       expect(screening.signals).toHaveLength(1);
@@ -228,12 +258,116 @@ describe('exec/runner', () => {
     }
   });
 
+  describe('screening the user\'s words', () => {
+    const REFUSAL = "I can't help with that request here. Let's continue with the map.";
+    const sent = (adapter: { requests: unknown[] }) => JSON.stringify(adapter.requests);
+    afterEach(() => {
+      screening.refuse.clear();
+      screening.texts.length = 0;
+      screening.unavailable = false;
+    });
+
+    it('checks an order longer than one review window in full and refuses a phrase past the first window', async () => {
+      screening.refuse.add('forbidden thing');
+      const order = `${'Lay a quiet pond with flowers around it near the plaza. '.repeat(80)}then draw the forbidden thing`;
+      expect(order.length).toBeGreaterThan(4096);
+      const adapter = createScriptedAdapter([textTurn('should never stream')]);
+      const runner = createRunner(makeCfg({ scripted: adapter }));
+      runner.send(order);
+      await flush();
+      expect(screening.texts.length).toBeGreaterThan(1);
+      expect(eventsOf(useAgentSession.getState().log).map((e) => e.kind)).toEqual(['order', 'assistant', 'jobEnd']);
+      expect(adapter.requests).toHaveLength(0);
+    });
+
+    it('drops a refused mid-job note with a refusal line and carries the job on', async () => {
+      screening.refuse.add('forbidden note');
+      const adapter = createScriptedAdapter([
+        toolTurn([{ callId: 'c1', name: 'inspect_region', args: { x1: 0, y1: 0, x2: 1, y2: 1 } }]),
+        textTurn('Done now. Anything else?'),
+      ]);
+      const runner = createRunner(makeCfg({ scripted: adapter }));
+      runner.send('go');
+      runner.send('add the forbidden note');
+      runner.send('and a bridge');
+      await flush();
+      const log = useAgentSession.getState().log;
+      expect(eventsOf(log).filter((e) => e.kind === 'noteRefused')).toHaveLength(1);
+      expect(adapter.requests).toHaveLength(2);
+      expect(sent(adapter)).not.toContain('forbidden note');
+      expect(sent(adapter)).toContain('and a bridge');
+      const view = deriveView(log);
+      expect(view.phase).toBe('idle');
+      expect(view.queuedSteers).toEqual([]);
+      const job = view.jobs[view.jobs.length - 1]!;
+      expect(job.refusals).toEqual([REFUSAL]);
+      expect(job.steerNotes).toEqual(['and a bridge']);
+      expect(job.outcome).toBe('done');
+    });
+
+    it('drops a refused resume note before the resumed job\'s first turn', async () => {
+      screening.refuse.add('forbidden note');
+      const adapter = createScriptedAdapter([
+        toolTurn([{ callId: 'c1', name: 'inspect_region', args: { x1: 0, y1: 0, x2: 1, y2: 1 } }]),
+        textTurn('Resumed and done. Anything else?'),
+      ]);
+      const runner = createRunner(makeCfg({ scripted: adapter }));
+      runner.send('go');
+      runner.pause();
+      await flush();
+      runner.send('continue with the forbidden note');
+      await flush();
+      const log = useAgentSession.getState().log;
+      expect(eventsOf(log).some((e) => e.kind === 'noteRefused')).toBe(true);
+      expect(sent(adapter)).not.toContain('forbidden note');
+      expect(eventsOf(log)[eventsOf(log).length - 1]).toMatchObject({ kind: 'jobEnd', outcome: 'done' });
+    });
+
+    it('counts a refused typed gate answer as a skip that never reaches the model', async () => {
+      screening.refuse.add('forbidden answer');
+      const adapter = createScriptedAdapter([
+        toolTurn([{ callId: 'c1', name: 'paint_terrain', args: { rect: { x1: 2, y1: 2, x2: 3, y2: 3 }, terrain: 'mountain', elevation: 1 } }]),
+        textTurn('Skipped as asked.'),
+      ]);
+      const runner = createRunner(makeCfg({ scripted: adapter, oversight: 'strict' }));
+      runner.send('build something');
+      await flush();
+      runner.send('the forbidden answer');
+      await flush();
+      const log = useAgentSession.getState().log;
+      expect(sent(adapter)).not.toContain('forbidden answer');
+      expect(sent(adapter)).toContain('The user chose not to run this call.');
+      const job = deriveView(log).jobs[0]!;
+      expect(job.asks[0]).toMatchObject({ verdict: 'declined' });
+      expect(job.asks[0]!.words).toBeUndefined();
+      expect(job.ops.find((op) => op.callId === 'c1')?.status).toBe('skipped');
+      expect(job.refusals).toEqual([REFUSAL]);
+    });
+
+    it('delivers notes and typed answers silently while the check is unavailable', async () => {
+      const adapter = createScriptedAdapter([
+        toolTurn([{ callId: 'c1', name: 'paint_terrain', args: { rect: { x1: 2, y1: 2, x2: 3, y2: 3 }, terrain: 'mountain', elevation: 1 } }]),
+        textTurn('Skipped as asked.'),
+      ]);
+      const runner = createRunner(makeCfg({ scripted: adapter, oversight: 'strict' }));
+      screening.unavailable = true;
+      runner.send('build something');
+      await flush();
+      runner.send('a smaller hill please');
+      await flush();
+      const log = useAgentSession.getState().log;
+      expect(eventsOf(log).some((e) => e.kind === 'noteRefused')).toBe(false);
+      expect(sent(adapter)).toContain('a smaller hill please');
+      expect(deriveView(log).jobs[0]!.refusals).toBeUndefined();
+    });
+  });
+
   it('send while idle appends an order and drives a scripted text-only turn to done', async () => {
     // Question-ending closes throughout this file: a zero-write close that hands back to the user
     // settles at once, while a plain one is answered by the loop's delivery nudge first — these
     // tests are about the runner's mechanics, so their scripts close on the settled shape.
     const adapter = createScriptedAdapter([textTurn('All set. Want anything changed?')]);
-    const runner = createRunner(makeCfg({ adapterForTest: adapter }));
+    const runner = createRunner(makeCfg({ scripted: adapter }));
 
     runner.send('build a house');
     await flush();
@@ -246,9 +380,41 @@ describe('exec/runner', () => {
     expect(runner.active()).toBe(false);
   });
 
+  it('drives a job on the session port it is handed, leaving the page session alone', async () => {
+    const own = createLog();
+    const live: (readonly Part[] | null)[] = [];
+    const session: SessionPort = {
+      log: () => own, watch: () => () => {}, isFiled: () => false,
+      setLive: (parts) => live.push(parts), setChildLive: () => {},
+    };
+    const adapter = createScriptedAdapter([textTurn('All set. Want anything changed?')]);
+    const runner = createRunner(makeCfg({ scripted: adapter, session }));
+
+    runner.send('build a house');
+    await flush();
+
+    expect(eventsOf(own).map((e) => e.kind)).toEqual(['order', 'assistant', 'jobEnd']);
+    expect(eventsOf(useAgentSession.getState().log)).toEqual([]);
+    expect(live.at(-1)).toBeNull();
+  });
+
+  it("budgets the job against the model's own context window", async () => {
+    // One order larger than the window's free space cannot be folded, so the job ends as an
+    // overflow before any request; a 128k default would have sent it.
+    rememberNativeModels('claude', [{ id: 'small-window-model', context_length: COMPACTION_RESERVE + 1_000 }]);
+    const adapter = createScriptedAdapter([textTurn('All set. Want anything changed?')]);
+    const runner = createRunner(makeCfg({ scripted: adapter, model: 'small-window-model' }));
+
+    runner.send('Add a pond by the gate. '.repeat(400));
+    await flush();
+
+    expect(adapter.requests).toHaveLength(0);
+    expect(eventsOf(useAgentSession.getState().log).find((e) => e.kind === 'incident')).toMatchObject({ error: { cls: 'overflow' } });
+  });
+
   /**
-   * THE TURN AS IT ARRIVES REACHES THE STORE. The loop appends nothing until a turn closes, so the
-   * live parts are the panel's ONLY evidence that anything is happening: without this wire the
+   * The turn as it arrives reaches the store. The loop appends nothing until a turn closes, so the
+   * live parts are the panel's only evidence that anything is happening: without this wire the
    * phase never leaves `thinking`, a sentence appears only once it is finished, and a tool call
    * shows no row until its result lands. `LoopDeps.onLive` is that wire.
    */
@@ -256,7 +422,7 @@ describe('exec/runner', () => {
     const adapter = createScriptedAdapter([{
       events: [{ t: 'text', delta: 'Levelling ' }, { t: 'text', delta: 'the shore.' }, { t: 'done', stop: 'stop' }],
     }]);
-    const runner = createRunner(makeCfg({ adapterForTest: adapter }));
+    const runner = createRunner(makeCfg({ scripted: adapter }));
     const seen: (readonly Part[] | null)[] = [];
     const unsub = useAgentSession.subscribe((st) => seen.push(st.live));
 
@@ -276,7 +442,7 @@ describe('exec/runner', () => {
       toolTurn([{ callId: 'c1', name: 'inspect_region', args: { x1: 0, y1: 0, x2: 1, y2: 1 } }]),
       textTurn('Done now. Anything else?'),
     ]);
-    const runner = createRunner(makeCfg({ adapterForTest: adapter }));
+    const runner = createRunner(makeCfg({ scripted: adapter }));
 
     runner.send('go');
     runner.send('go faster'); // fired while the first job is still mid-flight
@@ -285,7 +451,7 @@ describe('exec/runner', () => {
     const log = useAgentSession.getState().log;
     expect(eventsOf(log).filter((e) => e.kind === 'order')).toHaveLength(1);
     expect(eventsOf(log).some((e) => e.kind === 'steer' && e.text === 'go faster')).toBe(true);
-    expect(adapter.requests).toHaveLength(2); // both turns of the ONE job, never a second job's turn
+    expect(adapter.requests).toHaveLength(2); // both turns of the one job, never a second job's turn
     expect(deriveView(log).phase).toBe('idle');
   });
 
@@ -294,7 +460,7 @@ describe('exec/runner', () => {
       toolTurn([{ callId: 'c1', name: 'paint_terrain', args: { rect: { x1: 2, y1: 2, x2: 3, y2: 3 }, terrain: 'mountain', elevation: 1 } }]),
       textTurn('Skipped as asked.'),
     ]);
-    const runner = createRunner(makeCfg({ adapterForTest: adapter, oversight: 'strict' }));
+    const runner = createRunner(makeCfg({ scripted: adapter, oversight: 'strict' }));
 
     runner.send('build something');
     await flush();
@@ -314,7 +480,7 @@ describe('exec/runner', () => {
       toolTurn([{ callId: 'c1', name: 'inspect_region', args: { x1: 0, y1: 0, x2: 1, y2: 1 } }]),
       textTurn('Resumed and done. Anything else?'),
     ]);
-    const runner = createRunner(makeCfg({ adapterForTest: adapter }));
+    const runner = createRunner(makeCfg({ scripted: adapter }));
 
     runner.send('go');
     runner.pause();
@@ -338,7 +504,7 @@ describe('exec/runner', () => {
 
   it('pause() on an already-settled paused session appends nothing, and resume still works', async () => {
     const adapter = createScriptedAdapter([textTurn('finally done')]);
-    const runner = createRunner(makeCfg({ adapterForTest: adapter }));
+    const runner = createRunner(makeCfg({ scripted: adapter }));
 
     runner.send('go');
     runner.pause();
@@ -348,7 +514,7 @@ describe('exec/runner', () => {
     expect(deriveView(log).phase).toBe('paused');
     expect(eventsOf(log).filter((e) => e.kind === 'pauseRequested')).toHaveLength(1);
 
-    // pause() again on an already-settled 'paused' log (no job in flight) must not append a SECOND
+    // pause() again on an already-settled 'paused' log (no job in flight) must not append a second
     // pauseRequested: that sticks the projected phase at 'pausing' forever, and from there a
     // further send only queues a steer nobody delivers while resume() no-ops.
     runner.pause();
@@ -364,7 +530,7 @@ describe('exec/runner', () => {
   });
 
   /**
-   * SET-ASIDE IS THE OTHER ANSWER TO A HOLD, and it has to SETTLE the job rather than hide it.
+   * Set-aside is the other answer to a hold, and it has to settle the job rather than hide it.
    *
    * A paused job owns the composer's resume route and the session's current seat, so a panel that
    * only put its card away would be one with no way to a fresh order and a dock still reporting a
@@ -375,7 +541,7 @@ describe('exec/runner', () => {
       toolTurn([{ callId: 'c1', name: 'inspect_region', args: { x1: 0, y1: 0, x2: 1, y2: 1 } }]),
       textTurn('never reached'),
     ]);
-    const runner = createRunner(makeCfg({ adapterForTest: adapter }));
+    const runner = createRunner(makeCfg({ scripted: adapter }));
 
     runner.send('go');
     runner.pause();
@@ -395,7 +561,7 @@ describe('exec/runner', () => {
   });
 
   /**
-   * A KEY GOING AWAY CALLS `stop()`, AND AN ABORT REACHES NOTHING ON A HELD JOB. `settings.ts`'s
+   * A key going away calls `stop()`, and an abort reaches nothing on a held job. `settings.ts`'s
    * `forgetKey` aborts first so the record survives the disconnection, but a paused job has no loop
    * to abort: `inflight` is undefined, `abortController?.abort()` settles nothing, and the job stood
    * at `paused` forever with its partial edits on the map and no `jobEnd` on the log — no phase the
@@ -406,7 +572,7 @@ describe('exec/runner', () => {
       toolTurn([{ callId: 'c1', name: 'inspect_region', args: { x1: 0, y1: 0, x2: 1, y2: 1 } }]),
       textTurn('never reached'),
     ]);
-    const runner = createRunner(makeCfg({ adapterForTest: adapter }));
+    const runner = createRunner(makeCfg({ scripted: adapter }));
 
     runner.send('go');
     runner.pause();
@@ -426,7 +592,7 @@ describe('exec/runner', () => {
 
   it('stop() on a session holding nothing appends nothing at all', async () => {
     const adapter = createScriptedAdapter([textTurn('done')]);
-    const runner = createRunner(makeCfg({ adapterForTest: adapter }));
+    const runner = createRunner(makeCfg({ scripted: adapter }));
 
     runner.stop(); // never ran anything
     expect(eventsOf(useAgentSession.getState().log)).toHaveLength(0);
@@ -439,9 +605,9 @@ describe('exec/runner', () => {
   });
 
   /**
-   * THE INVARIANT LIVES AT THE APPEND SITE, NOT AT THE DRAW SITE. Every surface withholds Pause
+   * The invariant lives at the append site, not at the draw site. Every surface withholds Pause
    * while a gate stands, but `askGate` appends `gateAsked` from a promise continuation — outside any
-   * React event handler — so the subscription SCHEDULES rather than commits, and for one frame the
+   * React event handler — so the subscription schedules rather than commits, and for one frame the
    * DOM shows a Pause over a log that is already gated. A `pointerdown` already travelling then
    * lands `pauseRequested`: the phase goes `pausing`, the projection withholds the gate, and the
    * loop's `awaitGate` is left parked with no question on screen.
@@ -451,7 +617,7 @@ describe('exec/runner', () => {
       toolTurn([{ callId: 'c1', name: 'paint_terrain', args: { rect: { x1: 2, y1: 2, x2: 3, y2: 3 }, terrain: 'mountain', elevation: 1 } }]),
       textTurn('carried on'),
     ]);
-    const runner = createRunner(makeCfg({ adapterForTest: adapter, oversight: 'strict' }));
+    const runner = createRunner(makeCfg({ scripted: adapter, oversight: 'strict' }));
 
     runner.send('build something');
     await flush();
@@ -470,13 +636,13 @@ describe('exec/runner', () => {
   });
 
   /**
-   * OVERSIGHT IS READ AT THE GATE DECISION, NOT AT LAUNCH.
+   * Oversight is read at the gate decision, not at launch.
    *
    * The manage card is reachable while a job runs, and its oversight row writes straight through to
-   * the runner's config object (`ui/agent/panel-runner.ts` mutates it in place), so the tier a call
+   * the runner's config object (`agent/exec/runner-host.ts` mutates it in place), so the tier a call
    * is judged against is the one standing when that call arrives.
    *
-   * The change lands BETWEEN two calls, which is where a user makes it: the second scripted turn is
+   * The change lands between two calls, which is where a user makes it: the second scripted turn is
    * a function, so it runs after the first write has settled and before the second is minted.
    */
   const writeCall = (callId: string, x: number): ScriptedTurn => toolTurn([{
@@ -488,7 +654,7 @@ describe('exec/runner', () => {
 
   it('tightening oversight mid-run gates the NEXT write', async () => {
     const cfg = makeCfg({ oversight: 'yolo' });
-    cfg.adapterForTest = createScriptedAdapter([
+    cfg.scripted = createScriptedAdapter([
       writeCall('c1', 2),
       () => { cfg.oversight = 'strict'; return eventsOfTurn(writeCall('c2', 6)); },
       textTurn('all done'),
@@ -506,7 +672,7 @@ describe('exec/runner', () => {
 
   it('loosening oversight mid-run stops asking', async () => {
     const cfg = makeCfg({ oversight: 'strict' });
-    cfg.adapterForTest = createScriptedAdapter([
+    cfg.scripted = createScriptedAdapter([
       writeCall('c1', 2),
       writeCall('c2', 6),
       textTurn('all done'),
@@ -530,7 +696,7 @@ describe('exec/runner', () => {
 
   it('setAside is a no-op on a session that is not holding anything', async () => {
     const adapter = createScriptedAdapter([textTurn('done')]);
-    const runner = createRunner(makeCfg({ adapterForTest: adapter }));
+    const runner = createRunner(makeCfg({ scripted: adapter }));
 
     runner.setAside(); // an idle session
     expect(eventsOf(useAgentSession.getState().log)).toHaveLength(0);
@@ -555,7 +721,7 @@ describe('exec/runner', () => {
         return [];
       },
     };
-    const runner = createRunner(makeCfg({ adapterForTest: throwingAdapter }));
+    const runner = createRunner(makeCfg({ scripted: throwingAdapter }));
 
     runner.send('go');
     await flush();
@@ -573,12 +739,12 @@ describe('exec/runner', () => {
     const runner = createRunner(makeCfg({ providerId: 'zhipu', apiKey: 'zhipu-key', region: 1 }));
 
     runner.send('go');
-    runner.stop(); // abort before the mocked client is ever asked to stream anything
-    await flush();
-
-    expect(openAiCtorMock).toHaveBeenCalledWith(
+    // The SDK adapter is constructed on the first request, once its module has loaded.
+    await vi.waitFor(() => expect(openAiCtorMock).toHaveBeenCalledWith(
       expect.objectContaining({ baseURL: 'https://open.bigmodel.cn/api/paas/v4' }),
-    );
+    ));
+    runner.stop();
+    await flush();
   });
 
   /** The editor's display language is the system prompt's `{uiLanguage}` fallback: which language to
@@ -586,7 +752,7 @@ describe('exec/runner', () => {
    *  is not told falls back to English — for the whole app, not one seam. */
   it('speaks the editor\'s display language into the system prompt, and English when told none', async () => {
     const adapter = createScriptedAdapter([textTurn('好的。')]);
-    const runner = createRunner(makeCfg({ adapterForTest: adapter, uiLocale: 'zh' }));
+    const runner = createRunner(makeCfg({ scripted: adapter, uiLocale: 'zh' }));
     runner.send('build a house');
     await flush();
     expect(adapter.requests[0]!.system).toContain('Simplified Chinese');
@@ -594,7 +760,7 @@ describe('exec/runner', () => {
 
     useAgentSession.getState().clearSession();
     const bare = createScriptedAdapter([textTurn('All set.')]);
-    createRunner(makeCfg({ adapterForTest: bare })).send('build a house');
+    createRunner(makeCfg({ scripted: bare })).send('build a house');
     await flush();
     expect(bare.requests[0]!.system).toContain('English');
     expect(bare.requests[0]!.system).not.toContain('Simplified Chinese');
@@ -608,7 +774,7 @@ describe('exec/runner', () => {
       return captured;
     });
     const adapter = createScriptedAdapter([textTurn('ok')]);
-    const runner = createRunner(makeCfg({ adapterForTest: adapter, makeToolDeps }));
+    const runner = createRunner(makeCfg({ scripted: adapter, makeToolDeps }));
 
     runner.send('build a house');
     await flush();
@@ -628,7 +794,7 @@ describe('exec/runner', () => {
     const makeToolDepsWithRegion = (): AgentToolDeps => ({ ...factory(), getRegion: () => paintedCells });
 
     const adapter1 = createScriptedAdapter([textTurn('ok')]);
-    const runner1 = createRunner(makeCfg({ adapterForTest: adapter1, makeToolDeps: makeToolDepsWithRegion }));
+    const runner1 = createRunner(makeCfg({ scripted: adapter1, makeToolDeps: makeToolDepsWithRegion }));
     runner1.send('build a house');
     await flush();
     const order1 = eventsOf(useAgentSession.getState().log).find((e) => e.kind === 'order');
@@ -636,7 +802,7 @@ describe('exec/runner', () => {
 
     useAgentSession.getState().clearSession();
     const adapter2 = createScriptedAdapter([textTurn('ok')]);
-    const runner2 = createRunner(makeCfg({ adapterForTest: adapter2 })); // default factory: getRegion() => []
+    const runner2 = createRunner(makeCfg({ scripted: adapter2 })); // default factory: getRegion() => []
     runner2.send('build a house');
     await flush();
     const order2 = eventsOf(useAgentSession.getState().log).find((e) => e.kind === 'order');
@@ -645,7 +811,7 @@ describe('exec/runner', () => {
 
   it('stop aborts: outcome aborted, no adapter call after', async () => {
     const adapter = createScriptedAdapter([textTurn('never gets here')]);
-    const runner = createRunner(makeCfg({ adapterForTest: adapter }));
+    const runner = createRunner(makeCfg({ scripted: adapter }));
 
     runner.send('go');
     runner.stop();
@@ -659,7 +825,7 @@ describe('exec/runner', () => {
   });
 
   /** The dock's retry countdown presses `retryNow()` to end the ladder's own backoff early; this
-   *  must resolve the pending sleep WITHOUT the fake clock ever advancing, since a real countdown
+   *  must resolve the pending sleep without the fake clock ever advancing, since a real countdown
    *  press does not wait out the delay it is cutting short. */
   it('retryNow() during the retry backoff lets the job finish without advancing fake time', async () => {
     vi.useFakeTimers();
@@ -667,7 +833,7 @@ describe('exec/runner', () => {
       { error: { cls: 'rate-limit', detail: 'slow down', retryAfterMs: 30000 } },
       textTurn('Done after the retry. Anything else?'),
     ]);
-    const runner = createRunner(makeCfg({ adapterForTest: adapter }));
+    const runner = createRunner(makeCfg({ scripted: adapter }));
 
     runner.send('go');
     await flush();
@@ -688,7 +854,7 @@ describe('exec/runner', () => {
 
   it('retryNow() with no retry pending is a no-op', async () => {
     const adapter = createScriptedAdapter([textTurn('all set')]);
-    const runner = createRunner(makeCfg({ adapterForTest: adapter }));
+    const runner = createRunner(makeCfg({ scripted: adapter }));
 
     expect(() => runner.retryNow()).not.toThrow();
 
@@ -702,7 +868,7 @@ describe('exec/runner', () => {
   it('makeToolDeps is called fresh per job start', async () => {
     const spy = vi.fn(makeToolDepsFactory());
     const adapter = createScriptedAdapter([textTurn('first'), textTurn('second')]);
-    const runner = createRunner(makeCfg({ adapterForTest: adapter, makeToolDeps: spy }));
+    const runner = createRunner(makeCfg({ scripted: adapter, makeToolDeps: spy }));
 
     runner.send('job one');
     await flush();
@@ -716,7 +882,7 @@ describe('exec/runner', () => {
 
   it('a second send in the same tick as the first yields one order event (reentry joins)', async () => {
     const adapter = createScriptedAdapter([textTurn('Where should the house go?')]);
-    const runner = createRunner(makeCfg({ adapterForTest: adapter }));
+    const runner = createRunner(makeCfg({ scripted: adapter }));
 
     runner.send('build a house'); // double-click: both calls fire before any await runs
     runner.send('build a house');
@@ -731,7 +897,7 @@ describe('exec/runner', () => {
     const { log } = useAgentSession.getState();
     const toolDeps = makeToolDepsFactory()();
     const exec = toolDeps.getExecutor();
-    const before = exec.getUndoStackSize();
+    const before = exec.historyDepth();
     const args = { rect: { x1: 2, y1: 2, x2: 3, y2: 3 }, terrain: 'mountain', elevation: 1 };
 
     // The shape a page reload leaves behind: an order, an assistant turn with one unresolved
@@ -745,7 +911,7 @@ describe('exec/runner', () => {
     append(log, { kind: 'paused' });
 
     const adapter = createScriptedAdapter([textTurn('continued and done')]);
-    const runner = createRunner(makeCfg({ adapterForTest: adapter, makeToolDeps: () => toolDeps }));
+    const runner = createRunner(makeCfg({ scripted: adapter, makeToolDeps: () => toolDeps }));
 
     runner.send('continue'); // double-click: both fire before any await runs
     runner.send('continue');
@@ -754,12 +920,12 @@ describe('exec/runner', () => {
     const events = eventsOf(log);
     expect(events.filter((e) => e.kind === 'resumed')).toHaveLength(1);
     expect(events.filter((e) => e.kind === 'toolResult' && e.callId === 'c1')).toHaveLength(1);
-    expect(exec.getUndoStackSize()).toBe(before + 1); // the write ran exactly once
+    expect(exec.historyDepth()).toBe(before + 1); // the write ran exactly once
     expect(events[events.length - 1]).toMatchObject({ kind: 'jobEnd', outcome: 'done' });
   });
 
   it('delegate_task is really wired: the child runs on the SAME adapter, and under strict oversight its write gate mirrors onto the parent log', async () => {
-    // One scripted adapter serves BOTH the parent job and the child job the runner spawns for it
+    // One scripted adapter serves both the parent job and the child job the runner spawns for it
     // (exactly what `createRunner`'s `launch()` wires: one `buildAdapter` call, reused as both
     // `loopDeps.adapter` and `delegateOpts.adapter`) — turns in the order each side asks for one:
     // the parent's delegate call, then the child's own two turns, then the parent's closing turn.
@@ -769,12 +935,12 @@ describe('exec/runner', () => {
       textTurn('child done'),
       textTurn('All set with the helper task.'),
     ]);
-    const runner = createRunner(makeCfg({ adapterForTest: adapter, oversight: 'strict' }));
+    const runner = createRunner(makeCfg({ scripted: adapter, oversight: 'strict' }));
 
     runner.send('get some help');
     await flush();
 
-    // Gate 1: the parent's OWN call to delegate_task (itself a write tool, gated like any other
+    // Gate 1: the parent's own call to delegate_task (itself a write tool, gated like any other
     // under strict oversight) before the runner ever reaches `delegateTask`.
     let log = useAgentSession.getState().log;
     expect(deriveView(log).phase).toBe('gated');
@@ -783,7 +949,7 @@ describe('exec/runner', () => {
     answerGate(log, gate1!.gateId, 'allow');
     await flush();
 
-    // Gate 2: the CHILD's own paint_terrain write, gated under the same strict oversight on its
+    // Gate 2: the child's own paint_terrain write, gated under the same strict oversight on its
     // own log, mirrored onto the parent log by `bridgeChildGates` (never answerable directly on
     // a log this test, or a human, never sees).
     log = useAgentSession.getState().log;
@@ -812,7 +978,7 @@ describe('exec/runner', () => {
       textTurn('child done'),
       textTurn('All set with the helper task.'),
     ]);
-    const runner = createRunner(makeCfg({ adapterForTest: adapter, oversight: 'strict' }));
+    const runner = createRunner(makeCfg({ scripted: adapter, oversight: 'strict' }));
 
     runner.send('get some help');
     await flush();
@@ -847,7 +1013,7 @@ describe('exec/runner', () => {
       toolTurn([{ callId: 'c1', name: 'paint_terrain', args: { rect: { x1: 2, y1: 2, x2: 3, y2: 3 }, terrain: 'mountain', elevation: 1 } }]),
       textTurn('should never run'),
     ]);
-    const runner = createRunner(makeCfg({ adapterForTest: adapter, oversight: 'strict' }));
+    const runner = createRunner(makeCfg({ scripted: adapter, oversight: 'strict' }));
 
     runner.send('build something');
     await flush();
@@ -859,7 +1025,7 @@ describe('exec/runner', () => {
     useAgentSession.getState().clearSession(); // swaps the store's log out from under the live job
     await flush();
 
-    // The abort, and its jobEnd, land on the OLD log — the one the orphaned job actually held.
+    // The abort, and its jobEnd, land on the old log — the one the orphaned job actually held.
     const oldEvents = eventsOf(oldLog);
     expect(oldEvents[oldEvents.length - 1]).toMatchObject({ kind: 'jobEnd', outcome: 'aborted' });
     expect(oldEvents.some((e) => e.kind === 'toolResult')).toBe(false); // the gated call never executed
@@ -873,7 +1039,7 @@ describe('exec/runner', () => {
 
     // A fresh send on it starts a clean job with no trace of the aborted run.
     const adapter2 = createScriptedAdapter([textTurn('Fresh and clean. What shall I build?')]);
-    const runner2 = createRunner(makeCfg({ adapterForTest: adapter2 }));
+    const runner2 = createRunner(makeCfg({ scripted: adapter2 }));
     runner2.send('start again');
     await flush();
 
@@ -885,17 +1051,17 @@ describe('exec/runner', () => {
 
   it('a composed strict-oversight + region-lock job: the gated write straying outside the region is refused with OUT OF REGION, detail.regionBlocked, and no change outside the region', async () => {
     const state = makeState(20, 20);
-    const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
+    const exec = makeExecutor(state);
     const region: { x: number; y: number }[] = [];
     for (let y = 1; y <= 4; y++) for (let x = 1; x <= 4; x++) region.push({ x, y });
     const toolDeps: AgentToolDeps = { getState: () => state, getExecutor: () => exec, getRegion: () => region };
-    const before = exec.getUndoStackSize();
+    const before = exec.historyDepth();
 
     const adapter = createScriptedAdapter([
       toolTurn([{ callId: 'c1', name: 'paint_terrain', args: { rect: { x1: 2, y1: 2, x2: 9, y2: 9 }, terrain: 'mountain', elevation: 1 } }]),
       textTurn('done'),
     ]);
-    const runner = createRunner(makeCfg({ adapterForTest: adapter, oversight: 'strict', makeToolDeps: () => toolDeps }));
+    const runner = createRunner(makeCfg({ scripted: adapter, oversight: 'strict', makeToolDeps: () => toolDeps }));
 
     runner.send('paint a big square');
     await flush();
@@ -917,13 +1083,13 @@ describe('exec/runner', () => {
     expect(toolResult!.detail?.regionBlocked).toBe(true);
     expect(state.cells[9]![9]!.terrain).toBeNull(); // outside the region, untouched
     expect(state.cells[2]![2]!.terrain).toBeNull(); // all-or-nothing: even the in-region part never landed
-    expect(exec.getUndoStackSize()).toBe(before);
+    expect(exec.historyDepth()).toBe(before);
     expect(deriveView(useAgentSession.getState().log).phase).toBe('idle');
   });
 });
 
 /**
- * A RUNNING JOB IS ONE CONTRACT.
+ * A running job is one contract.
  *
  * The panel mutates the runner's config in place, so every connection field can move under a job in
  * flight. The rule is that none of them reaches it: `launch()` builds the adapter and copies the
@@ -931,7 +1097,7 @@ describe('exec/runner', () => {
  * next order. A mid-thought swap would change the author mid-sentence, and on the Anthropic dialect
  * it would feed one model's signed thinking blocks to another.
  *
- * OVERSIGHT IS THE DELIBERATE EXCEPTION, pinned by the gate tests: it is read through a getter
+ * Oversight is the deliberate exception, pinned by the gate tests: it is read through a getter
  * because a tier the user tightens mid-run has to reach the next write.
  */
 describe('exec/runner: a running job keeps the connection it launched with', () => {
@@ -946,7 +1112,7 @@ describe('exec/runner: a running job keeps the connection it launched with', () 
 
   it('sends every turn of the job on the launch model, however the armed one moves', async () => {
     const adapter = createScriptedAdapter(threeTurnJob());
-    const cfg = makeCfg({ adapterForTest: adapter, model: 'model-a' });
+    const cfg = makeCfg({ scripted: adapter, model: 'model-a' });
     const runner = createRunner(cfg);
 
     runner.send('go');
@@ -959,7 +1125,7 @@ describe('exec/runner: a running job keeps the connection it launched with', () 
 
   it('gives the next order the newly armed model, so the change is applied and not dropped', async () => {
     const adapter = createScriptedAdapter([...threeTurnJob(), textTurn('Second order done. Anything else?')]);
-    const cfg = makeCfg({ adapterForTest: adapter, model: 'model-a' });
+    const cfg = makeCfg({ scripted: adapter, model: 'model-a' });
     const runner = createRunner(cfg);
 
     runner.send('first order');
@@ -974,7 +1140,7 @@ describe('exec/runner: a running job keeps the connection it launched with', () 
   it('reports the launch connection while the job runs, and nothing once it settles', async () => {
     const adapter = createScriptedAdapter(threeTurnJob());
     const cfg = makeCfg({
-      adapterForTest: adapter, model: 'model-a', providerId: 'custom', customBaseUrl: 'https://gw.example/v1',
+      scripted: adapter, model: 'model-a', providerId: 'custom', customBaseUrl: 'https://gw.example/v1',
     });
     const runner = createRunner(cfg);
 
@@ -1000,22 +1166,23 @@ describe('exec/runner: a running job keeps the connection it launched with', () 
 
     runner.send('first order');
     cfg.customBaseUrl = 'https://second.example/v1';
-    await flush();
+    await vi.waitFor(() => expect(runner.active()).toBe(false));
     runner.send('second order');
-    await flush();
+    await vi.waitFor(() => expect(openAiCtorMock).toHaveBeenCalledTimes(2));
+    await vi.waitFor(() => expect(runner.active()).toBe(false));
 
     expect(openAiCtorMock.mock.calls.map((c) => (c[0] as { baseURL?: string }).baseURL))
       .toEqual(['https://first.example/v1', 'https://second.example/v1']);
   });
 
   /**
-   * THE DISPLAY LANGUAGE HAS A FOOT IN BOTH CAMPS, and this is the half that is a connection fact: it
-   * is the system prompt's opening language, built once per launch with everything else. Its OTHER
+   * The display language has a foot in both camps, and this is the half that is a connection fact: it
+   * is the system prompt's opening language, built once per launch with everything else. Its other
    * role, the words on screen, is environmental and moves the instant the user changes it.
    */
   it('builds the system prompt once per job, so a language change reaches the next one', async () => {
     const adapter = createScriptedAdapter([...threeTurnJob(), textTurn('Second order done. Anything else?')]);
-    const cfg = makeCfg({ adapterForTest: adapter, uiLocale: 'en' });
+    const cfg = makeCfg({ scripted: adapter, uiLocale: 'en' });
     const runner = createRunner(cfg);
 
     runner.send('first order');
@@ -1030,10 +1197,10 @@ describe('exec/runner: a running job keeps the connection it launched with', () 
   });
 
   /**
-   * THE REPLAY PATH STAYS COHERENT ACROSS A MID-RUN CHANGE, which is the one way this rule could
+   * The replay path stays coherent across a mid-run change, which is the one way this rule could
    * corrupt something rather than merely surprise someone.
    *
-   * `rawModel` is stamped with the model the turn was actually SENT to (`loop.ts` reads `deps.model`,
+   * `rawModel` is stamped with the model the turn was actually sent to (`loop.ts` reads `deps.model`,
    * the launch copy), so a change made mid-job cannot mislabel bytes the previous model minted. The
    * next job then reads the log honestly: its own model did not produce that raw, so `sameModel` is
    * false and the Anthropic dialect rebuilds the history from the neutral fields instead of echoing
@@ -1041,7 +1208,7 @@ describe('exec/runner: a running job keeps the connection it launched with', () 
    */
   it('stamps raw with the model that produced it, so the next job replays nothing it should not', async () => {
     const adapter = createScriptedAdapter([rawTurn('one done, more?','sig-a'), rawTurn('two done, more?','sig-b')]);
-    const cfg = makeCfg({ adapterForTest: adapter, model: 'model-a' });
+    const cfg = makeCfg({ scripted: adapter, model: 'model-a' });
     const runner = createRunner(cfg);
 
     runner.send('first order');
@@ -1057,7 +1224,7 @@ describe('exec/runner: a running job keeps the connection it launched with', () 
     const second = adapter.requests[1]!;
     expect(second.model).toBe('model-b');
     expect(second.sameModel).toBe(false);
-    expect(JSON.stringify(toAnthropicMessages(second.messages, second.sameModel))).not.toContain('sig-a');
+    expect(await anthropicWire(second)).not.toContain('sig-a');
   });
 });
 
@@ -1067,7 +1234,7 @@ describe('exec/runner: a running job keeps the connection it launched with', () 
 describe('exec/runner: sameModel across launches', () => {
   it('replays a logged turn\'s raw to the same model, and stops replaying it the moment a different model is armed', async () => {
     const adapter = createScriptedAdapter([rawTurn('one done, more?','sig-a'), rawTurn('two done, more?','sig-a2'), rawTurn('three done, more?','sig-b')]);
-    const cfg = makeCfg({ adapterForTest: adapter, model: 'model-a' });
+    const cfg = makeCfg({ scripted: adapter, model: 'model-a' });
     const runner = createRunner(cfg);
 
     runner.send('first order');
@@ -1078,7 +1245,7 @@ describe('exec/runner: sameModel across launches', () => {
     const second = adapter.requests[1]!;
     expect(second.sameModel).toBe(true);
     // The first turn's raw bytes reach the model that minted them, verbatim.
-    expect(JSON.stringify(toAnthropicMessages(second.messages, second.sameModel))).toContain('sig-a');
+    expect(await anthropicWire(second)).toContain('sig-a');
 
     // Exactly what the panel does when the user arms another model: the config object is mutated,
     // the runner is not rebuilt.
@@ -1089,7 +1256,7 @@ describe('exec/runner: sameModel across launches', () => {
     const third = adapter.requests[2]!;
     expect(third.sameModel).toBe(false);
     // Both earlier turns' raw is withheld; the history is rebuilt from the neutral fields.
-    const projected = JSON.stringify(toAnthropicMessages(third.messages, third.sameModel));
+    const projected = await anthropicWire(third);
     expect(projected).not.toContain('sig-a');
     expect(projected).not.toContain('sig-a2');
     expect(projected).toContain('one'); // the turns themselves are still there, as plain text
@@ -1102,7 +1269,7 @@ describe('exec/runner: sameModel across launches', () => {
 
   it('a fresh log answers true again: what a previous session ran cannot pin a new one to false', async () => {
     const adapter = createScriptedAdapter([rawTurn('one done, more?','sig-a'), rawTurn('two done, more?','sig-b'), rawTurn('three done, more?','sig-b2')]);
-    const cfg = makeCfg({ adapterForTest: adapter, model: 'model-a' });
+    const cfg = makeCfg({ scripted: adapter, model: 'model-a' });
     const runner = createRunner(cfg);
 
     runner.send('first order');
@@ -1120,7 +1287,7 @@ describe('exec/runner: sameModel across launches', () => {
 
   it('the OpenAI dialect is unaffected either way: it never replays raw, whatever the flag says', async () => {
     const adapter = createScriptedAdapter([rawTurn('one done, more?','sig-a'), rawTurn('two done, more?','sig-a2')]);
-    const cfg = makeCfg({ adapterForTest: adapter, providerId: 'deepseek', model: 'model-a' });
+    const cfg = makeCfg({ scripted: adapter, providerId: 'deepseek', model: 'model-a' });
     const runner = createRunner(cfg);
 
     runner.send('first order');
@@ -1136,7 +1303,7 @@ describe('exec/runner: sameModel across launches', () => {
 });
 
 /**
- * PAUSE, FROM THE PRESS TO THE SETTLE.
+ * Pause, from the press to the settle.
  *
  * The dock offers a pause in exactly the phases `RUNNING` covers (thinking, streaming, executing)
  * with a ticket standing, so those are the moments the press really arrives in. The loop honours it
@@ -1153,7 +1320,7 @@ describe('pause reaches the loop from every moment the dock offers it', () => {
 
   it('lands from a press while the turn is streaming, before its calls run', async () => {
     const runner = createRunner(makeCfg({
-      adapterForTest: createScriptedAdapter([
+      scripted: createScriptedAdapter([
         // The press arrives as the turn begins, which is a phase the dock draws a pause in.
         () => { runner.pause(); return streamOf(paint('c1', 2)); },
         textTurn('carried on'),
@@ -1171,7 +1338,7 @@ describe('pause reaches the loop from every moment the dock offers it', () => {
 
   it('lands from a press between two calls of one turn', async () => {
     const runner = createRunner(makeCfg({
-      adapterForTest: createScriptedAdapter([
+      scripted: createScriptedAdapter([
         { events: [{ t: 'done', stop: 'tool-calls', final: [
           { callId: 'c1', name: 'inspect_region', args: { x1: 0, y1: 0, x2: 1, y2: 1 }, rawArgs: '{}' },
           { callId: 'c2', name: 'inspect_region', args: { x1: 2, y1: 2, x2: 3, y2: 3 }, rawArgs: '{}' },
@@ -1197,7 +1364,7 @@ describe('pause reaches the loop from every moment the dock offers it', () => {
 
   it('lands from a press taken between turns, and resume carries the job on', async () => {
     const runner = createRunner(makeCfg({
-      adapterForTest: createScriptedAdapter([
+      scripted: createScriptedAdapter([
         paint('c1', 2),
         () => { runner.pause(); return streamOf(paint('c2', 6)); },
         textTurn('all done'),
@@ -1217,17 +1384,17 @@ describe('pause reaches the loop from every moment the dock offers it', () => {
   });
 
   /**
-   * A PAUSE REQUEST NEVER OUTLIVES THE JOB IT WAS ASKED OF.
+   * A pause request never outlives the job it was asked of.
    *
    * The dock says "Pausing" the moment the request lands, and the loop answers it at the next
    * boundary — but a turn that settles the job has no next boundary, so the request would still be
-   * the newest pause event on the log with nothing left to answer it. The NEXT job then reads it and
+   * the newest pause event on the log with nothing left to answer it. The next job then reads it and
    * pauses itself before its first turn, which is a run that never starts and a panel holding a
    * pause nobody asked for.
    */
   it('does not carry a pause request into the job after it', async () => {
     const runner = createRunner(makeCfg({
-      adapterForTest: createScriptedAdapter([
+      scripted: createScriptedAdapter([
         () => { runner.pause(); return streamOf(textTurn('Nothing to do. What would you like instead?')); },
         textTurn('The next order ran clean. Anything else?'),
       ]),
@@ -1247,12 +1414,12 @@ describe('pause reaches the loop from every moment the dock offers it', () => {
 });
 
 /**
- * A JOB THE LOG SAYS IS RUNNING THAT NO LOOP HOLDS.
+ * A job the log says is running that no loop holds.
  *
  * A reload mid-run, or a session adopted from storage, leaves an `order` with no `jobEnd` on the log:
  * every surface reads that as a running job and the dock draws the pause its phase asks for, while
  * this runner holds no promise and no controller. The request the live path makes would then wait for
- * a boundary that no loop will ever reach, so the press has to act HERE instead.
+ * a boundary that no loop will ever reach, so the press has to act here instead.
  */
 describe('a job with no loop behind it', () => {
   /** What a reload leaves behind: an order, a checkpoint, and nothing that ends them. */
@@ -1263,7 +1430,7 @@ describe('a job with no loop behind it', () => {
   }
 
   it('parks it where it stands, so the press the dock offers actually holds it', () => {
-    const runner = createRunner(makeCfg({ adapterForTest: createScriptedAdapter([textTurn('x')]) }));
+    const runner = createRunner(makeCfg({ scripted: createScriptedAdapter([textTurn('x')]) }));
     orphan();
     const log = useAgentSession.getState().log;
     expect(runner.active(), 'no loop holds it').toBe(false);
@@ -1279,7 +1446,7 @@ describe('a job with no loop behind it', () => {
 
   it('is resumable from that hold, which is the point of parking rather than ending it', async () => {
     const runner = createRunner(makeCfg({
-      adapterForTest: createScriptedAdapter([textTurn('picked it up again')]),
+      scripted: createScriptedAdapter([textTurn('picked it up again')]),
     }));
     orphan();
     runner.pause();
@@ -1293,7 +1460,7 @@ describe('a job with no loop behind it', () => {
   });
 
   it('is stoppable too, which the dock offers over the same job', () => {
-    const runner = createRunner(makeCfg({ adapterForTest: createScriptedAdapter([textTurn('x')]) }));
+    const runner = createRunner(makeCfg({ scripted: createScriptedAdapter([textTurn('x')]) }));
     orphan();
 
     runner.stop();
@@ -1304,7 +1471,7 @@ describe('a job with no loop behind it', () => {
   });
 
   it('leaves a settled session and an already-held job alone', () => {
-    const runner = createRunner(makeCfg({ adapterForTest: createScriptedAdapter([textTurn('x')]) }));
+    const runner = createRunner(makeCfg({ scripted: createScriptedAdapter([textTurn('x')]) }));
     const log = useAgentSession.getState().log;
 
     runner.pause(); // nothing at all on the log
@@ -1321,7 +1488,7 @@ describe('a job with no loop behind it', () => {
 describe('history erasure reaches provider requests', () => {
   it('excludes cleared records from the next job after a storage round trip', async () => {
     const adapter = createScriptedAdapter([textTurn('PRIVATE_REPLY?'), textTurn('Clean answer?')]);
-    const runner = createRunner(makeCfg({ adapterForTest: adapter }));
+    const runner = createRunner(makeCfg({ scripted: adapter }));
     runner.send('PRIVATE_ORDER');
     await flush();
     const order = eventsOf(useAgentSession.getState().log).find((e) => e.kind === 'order')!;
@@ -1340,7 +1507,7 @@ describe('history erasure reaches provider requests', () => {
       toolTurn([{ callId: 'pending-write', name: 'paint_terrain', args: { cells: [{ x: 2, y: 2 }], terrain: 'grass' } }]),
       textTurn('I will inspect the map first. What next?'),
     ]);
-    const runner = createRunner(makeCfg({ adapterForTest: adapter, oversight: 'strict' }));
+    const runner = createRunner(makeCfg({ scripted: adapter, oversight: 'strict' }));
     runner.send('PRIVATE_ORDER');
     await flush();
     const old = useAgentSession.getState().log;
@@ -1381,7 +1548,7 @@ describe('history erasure reaches provider requests', () => {
       },
       listModels: async () => [],
     };
-    const runner = createRunner(makeCfg({ adapterForTest: adapter }));
+    const runner = createRunner(makeCfg({ scripted: adapter }));
     runner.send('PRIVATE_ORDER');
     await flush();
     const old = useAgentSession.getState().log;

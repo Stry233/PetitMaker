@@ -1,35 +1,31 @@
 /*
- * The RESERVED pane under the booklet: one box of fixed height whose contents
- * change with the direction, never its size.
- *
- * A preset shows its sample enlarged, which is the only honest answer to "what will this look
- * like". Custom shows the writing desk: a field with real room, the fragment chips that append to
- * it in the reader's own language, and the counter that says how much of the cap is spent. The two
- * fill the same rect, so choosing a direction never moves the shelf or the canvas beside it — and
- * they CROSS over each other rather than one following the other out, so the pane is never empty
- * for a frame in the middle of a change nobody asked to wait for.
+ * The fixed-height pane under the booklet: a preset's sample enlarged, or for Custom the prompt field,
+ * its fragment chips and the length counter. The two fill one rect and crossfade, so choosing a
+ * direction never moves the shelf or the canvas.
  */
+import { ActionButton } from '../../../../primitives/ActionButton';
+import { STYLIZE_PAPER, rgbaOf } from '../../../../design/tokens';
 import type { CSSProperties } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { cursors, font, pressable, radii } from '../../../../design/styles';
+import { cursors, font, radii, shadows } from '../../../../design/styles';
 import { skin } from '../../../../design/window-skin';
 import { roleFont } from '../../../../design/text-weight';
 import { useT } from '../../../../../i18n/context';
 import {
   CUSTOM_DIRECTION_ID, CUSTOM_PROMPT_MAX, appendFragment,
   type StylizeDirection,
-} from '../../../../../io/stylize';
+} from '../../../../../pipelines/stylize/facts';
 import { packSampleUrl } from './sample-assets';
-import { SampleTile, entering, fieldBox } from './atoms';
+import { SampleTile, entering, fieldBox } from './stylize-parts';
 import { directionRow } from './DirectionBooklet';
 import { framerMotion } from '../../../../design/motion';
 
-/** The six fragments the desk offers. They carry the LOCALE'S OWN words into the prompt: the model
+/** The six fragments the desk offers. They carry the locale's own words into the prompt: the model
  *  reads them, and the user has to recognise their own sentence afterwards. */
 const CHIP_KEYS = [
   'stylize.chip_paper', 'stylize.chip_soft', 'stylize.chip_outline',
   'stylize.chip_flat', 'stylize.chip_night', 'stylize.chip_mass',
-];
+] as const;
 
 export function DirectionPane({ direction, text, onText, connected, onConnect, enterIndex = 0 }: {
   direction: StylizeDirection;
@@ -53,7 +49,7 @@ export function DirectionPane({ direction, text, onText, connected, onConnect, e
             exit={{ opacity: 0 }}
             transition={framerMotion('stylize.pane.turn')}
             style={faceStyle}
-          >
+         >
             {faceOf(direction, connected) === 'desk'
               ? <WritingDesk text={text} onText={onText} />
               : <SampleFace direction={direction} needsKey={directionRow(direction).kind === 'model' && !connected} onConnect={onConnect} />}
@@ -83,17 +79,16 @@ function WritingDesk({ text, onText }: { text: string; onText: (next: string) =>
         onChange={(e) => onText(e.target.value)}
         style={{ ...fieldBox, flex: 1, minHeight: 0, lineHeight: 1.55 }}
       />
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, paddingTop: 6 }}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, paddingTop: 6 }}>
         {CHIP_KEYS.map((key) => (
-          <motion.button
+          <ActionButton
             key={key}
-            type="button"
             onClick={() => onText(appendFragment(text, t(key)))}
-            {...pressable}
+            interaction="tile"
             style={chipStyle}
-          >
+         >
             {t(key)}
-          </motion.button>
+          </ActionButton>
         ))}
       </div>
       <div style={{ alignSelf: 'flex-end', ...roleFont('caption'), color: skin.muted, opacity: 0.5, paddingTop: 2 }}>
@@ -113,22 +108,22 @@ function SampleFace({ direction, needsKey, onConnect }: {
   const t = useT();
   const row = directionRow(direction);
   return (
-    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 7, alignItems: 'center', justifyContent: 'center' }}>
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'center', justifyContent: 'center' }}>
       <span style={{ position: 'relative', width: '78%', display: 'block' }}>
         <SampleTile
           url={packSampleUrl(direction)}
           art={row.art}
           radius={10}
-          style={{ boxShadow: '0 3px 10px rgba(74,59,50,0.18)' }}
+          style={{ boxShadow: shadows.float }}
         />
         {needsKey ? (
           <span style={keyVeil}>
-            <span style={{ ...roleFont('caption'), color: '#F5EEDA', textAlign: 'center', padding: '0 10px' }}>
+            <span style={{ ...roleFont('caption'), color: STYLIZE_PAPER.onVeil, textAlign: 'center', padding: '0 10px' }}>
               {t('stylize.key_needed')}
             </span>
-            <motion.button type="button" onClick={onConnect} {...pressable} style={connectStyle}>
+            <ActionButton onClick={onConnect} interaction="tile" style={connectStyle}>
               {t('stylize.connect_cta')}
-            </motion.button>
+            </ActionButton>
           </span>
         ) : null}
       </span>
@@ -141,10 +136,10 @@ function SampleFace({ direction, needsKey, onConnect }: {
  *  below, one rounded bottom matching the tile's own radius. */
 const keyVeil: CSSProperties = {
   position: 'absolute', left: 0, right: 0, bottom: 0, height: '68%',
-  borderRadius: '0 0 10px 10px',
-  background: 'linear-gradient(180deg, rgba(30,26,20,0) 0%, rgba(30,26,20,0.62) 38%, rgba(30,26,20,0.86) 100%)',
+  borderRadius: `0 0 ${radii.md}px ${radii.md}px`,
+  background: `linear-gradient(180deg, ${rgbaOf(STYLIZE_PAPER.veil, 0)} 0%, ${rgbaOf(STYLIZE_PAPER.veil, 0.62)} 38%, ${rgbaOf(STYLIZE_PAPER.veil, 0.86)} 100%)`,
   display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-end',
-  gap: 7, paddingBottom: 11,
+  gap: 6, paddingBottom: 10,
 };
 
 const connectStyle: CSSProperties = {

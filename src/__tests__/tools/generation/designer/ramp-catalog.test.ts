@@ -7,27 +7,30 @@ vi.mock('../../../../state/catalog', async (original) => {
 });
 
 import { MAP_TEMPLATES } from '../../../../config/maps';
-import { CommandExecutor } from '../../../../core/commands/command-executor';
-import { EventBus } from '../../../../core/commands/event-bus';
-import { createGrid, createPlazaObject } from '../../../../core/model/grid-model';
-import { ItemCategory, type GridState } from '../../../../core/model/types';
+import { templateLandmarkObjects } from '../../../../core/model/landmarks';
+import { createGridState } from '../../../../core/model/template';
+import type { GridState } from '../../../../core/model/types';
 import { createDefaultRegistry } from '../../../../rules';
 import { categoryOf } from '../../../../state/catalog';
 import { objectRect } from '../../../../state/object-geometry';
-import { roadLookup } from '../../../../state/object-index';
 import { generateDesigned } from '../../../../tools/generation/designer/pipeline';
-import { MAX_RAMP_RUN } from '../../../../tools/generation/designer/ramps';
+import { maxRampRun } from '../../../../tools/generation/designer/ramps';
+import { makeExecutor } from '../../../_support/map-state';
+import { ItemCategory } from '../../../../config/catalog/categories';
 
 describe('generator catalog dimensions', () => {
   it('plans and places flights when the offered ramp length changes', () => {
     const template = MAP_TEMPLATES.hexia!;
-    const state: GridState = { template, cells: createGrid(template), objects: new Map(), lockedLayers: new Set() };
-    const plaza = createPlazaObject(template);
+    const state: GridState = {
+      template, cells: createGridState(template).cells, objects: new Map(), objectsVersion: 0, cellsVersion: 0, lockedLayers: new Set(),
+    };
+    const plaza = (templateLandmarkObjects(template)[0] ?? null);
     if (plaza) state.objects.set(plaza.id, plaza);
     const reg = createDefaultRegistry();
-    const exec = new CommandExecutor(state, new EventBus(), reg, roadLookup(state));
+    const exec = makeExecutor(state, reg);
+    const whole = exec.beginStroke();
     const outcome = generateDesigned({ state, execute: (cmd) => exec.execute(cmd), reg, seed: 42, richness: 1 });
-    expect(MAX_RAMP_RUN).toBe(3);
+    expect(maxRampRun()).toBe(3);
     expect(outcome.crossings.ramps).toBeGreaterThan(0);
     expect(outcome.rampsMisplaced).toBe(0);
     for (const ramp of outcome.streets.ramps) {
@@ -39,6 +42,6 @@ describe('generator catalog dimensions', () => {
       const r = objectRect(obj);
       expect(obj.rotation === 0 || obj.rotation === 180 ? r.h : r.w).toBe(3);
     }
-    expect(exec.commitStroke(0)).toEqual([]);
+    expect(whole.commit()).toEqual([]);
   });
 });

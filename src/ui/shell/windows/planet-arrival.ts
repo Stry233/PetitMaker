@@ -1,10 +1,10 @@
-import type { Arrival, ArrivalLine } from '../../../core/runtime/arrival-bus';
-import type { TransferCounts } from '../../../kit/operations';
+import type { Arrival, ArrivalLine } from '../../session/arrival-bus';
+import type { TransferCounts } from '../../../tools/generation/transfer';
 
 const CAME_ALONG: ArrivalLine = { key: 'arrival.transferred' };
 
 /** Terrain cells and objects use separate counts and translated labels. */
-export function transferLines(dropped: TransferCounts): readonly ArrivalLine[] {
+function transferLines(dropped: TransferCounts): readonly ArrivalLine[] {
   const { cells, objects } = dropped;
   if (cells > 0 && objects > 0) return [CAME_ALONG, { key: 'arrival.transferred_both', params: { cells, objects } }];
   if (cells > 0) return [CAME_ALONG, { key: 'arrival.transferred_ground', params: { cells } }];
@@ -22,4 +22,11 @@ export function transferArrival(outcome: { moved: TransferCounts; dropped: Trans
   if (moved.cells + moved.objects > 0) return { kind: 'transferred', detail: transferLines(dropped) };
   if (dropped.cells + dropped.objects > 0) return { kind: 'transferred', detail: NOTHING_ARRIVED };
   return { kind: 'boot' };
+}
+
+/** The first thing a carry left behind, as `transferArrival` says it after what came along; null
+ *  when nothing was left behind. An edition without the arrival card says only this. */
+export function transferLoss(outcome: { moved: TransferCounts; dropped: TransferCounts }): ArrivalLine | null {
+  const arrival = transferArrival(outcome);
+  return arrival.detail?.find((line) => line !== CAME_ALONG) ?? null;
 }

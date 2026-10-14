@@ -9,11 +9,14 @@
 import { CommandExecutor } from '../../core/commands/command-executor';
 import { EventBus } from '../../core/commands/event-bus';
 import { createDefaultRegistry } from '../../rules/index';
-import { createGrid, createPlazaObject } from '../../core/model/grid-model';
+import { createGrid } from '../../core/model/grid-model';
+import { templateLandmarkObjects } from '../../core/model/landmarks';
 import { getMapTemplate } from '../../config/maps';
-import { generateTerrain } from '../../tools/generation/terrain-generator';
-import { roadLookup } from '../../state/object-index';
-import type { EditorEvents, GenerateConfig, GridState } from '../../core/model/types';
+import type { GridState } from '../../core/model/types';
+import { defaultConfig, type GenerateConfig } from '../../tools/generation/recipe';
+import type { EditorEvents } from '../../state/editing/events';
+import { createExecutor } from '../../state/executor';
+import { generateWith } from '../_support/generation';
 
 export interface World {
   state: GridState;
@@ -24,7 +27,7 @@ export interface World {
 /** A live world over `state`: full rule registry, road lookup, load values — the app's own wiring. */
 export function makeWorld(state: GridState): World {
   const bus = new EventBus<EditorEvents>();
-  const executor = new CommandExecutor(state, bus, createDefaultRegistry(), roadLookup(state));
+  const executor = createExecutor(state, createDefaultRegistry(), bus);
   return { state, bus, executor };
 }
 
@@ -35,9 +38,9 @@ export function templateWorld(templateId = 'hexia'): World {
     template,
     cells: createGrid(template),
     objects: new Map(),
-    lockedLayers: new Set(),
+    objectsVersion: 0, cellsVersion: 0, lockedLayers: new Set(),
   };
-  const plaza = createPlazaObject(template);
+  const plaza = (templateLandmarkObjects(template)[0] ?? null);
   if (plaza) state.objects.set(plaza.id, plaza);
   return makeWorld(state);
 }
@@ -45,10 +48,7 @@ export function templateWorld(templateId = 'hexia'): World {
 export const ISLAND_SEED = 12345;
 
 export function islandConfig(seed = ISLAND_SEED): GenerateConfig {
-  return {
-    algorithm: 'designed', mode: 'mixed', corridorWidth: 1,
-    maxElevation: 8, seed, region: null, richness: 0.7,
-  };
+  return defaultConfig('designed', { maxElevation: 8, seed, richness: 0.7 });
 }
 
 const cache = new Map<string, World>();
@@ -62,9 +62,9 @@ export function denseIsland(seed = ISLAND_SEED, templateId = 'hexia'): World {
   const hit = cache.get(key);
   if (hit) return hit;
   const world = templateWorld(templateId);
-  const start = world.executor.getUndoStackSize();
-  generateTerrain(islandConfig(seed), world.state, (c) => world.executor.execute(c), world.executor.getRegistry());
-  world.executor.commitStroke(start);
+  const start = world.executor.beginStroke();
+  generateWith(world.state, world.executor, islandConfig(seed));
+  start.commit();
   cache.set(key, world);
   return world;
 }
@@ -75,7 +75,7 @@ export function cloneWorld(src: World): World {
     template: src.state.template,
     cells: structuredClone(src.state.cells),
     objects: structuredClone(src.state.objects),
-    lockedLayers: new Set(src.state.lockedLayers),
+    objectsVersion: 0, cellsVersion: 0, lockedLayers: new Set(src.state.lockedLayers),
   };
   return makeWorld(state);
 }

@@ -1,0 +1,35 @@
+{
+  "id": "print-field-cross",
+  "category": "road",
+  "icon": "print-field-cross",
+  "name": {
+    "en": "Field Cross Print",
+    "zh": "绿茵交叉印花",
+    "ja": "フィールドの交差模様",
+    "ru": "Перекрёстная разметка поля",
+    "th": "ลายเส้นตัดสนาม",
+    "id": "Motif Silang Lapangan",
+    "fr": "Marquage croisé de terrain"
+  },
+  "color": "#f0eedb",
+  "width": 1,
+  "height": 1,
+  "loadValue": 0,
+  "rotatable": true,
+  "placementMode": "brush",
+  "traits": [
+    {
+      "type": "flat"
+    },
+    {
+      "type": "surfaceCoating",
+      "layer": 1
+    }
+  ],
+  "surfacePrint": {
+    "kind": "image",
+    "image": "print-field-cross",
+    "repeat": 1
+  },
+  "strokeConnections": 15
+}

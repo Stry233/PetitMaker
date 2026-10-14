@@ -16,17 +16,15 @@ import { analyzeTerrain } from '../../tools/placement/analysis';
 import type { PlacementAnalysis } from '../../tools/placement/analysis';
 import { makeCtx } from '../../tools/placement/object';
 import type { PlaceCtx } from '../../tools/placement/object';
-import { buildNetwork, nearestWalkable, type Node } from '../../tools/placement/network';
-import { scanPortals } from '../../tools/placement/portals';
-import type { Portal } from '../../tools/placement/portals';
-import { placeNature } from '../../tools/placement/nature';
-import { decorateZone, type Zone } from '../../tools/placement/themes';
-import { applyMacro } from '../../tools/macros';
+import { connectRoadNetwork, nearestWalkable, type Node } from '../../tools/macros/roads/network';
+import { scanPortals, type Portal } from '../../tools/macros/roads/portals';
+import { placeNature } from '../../tools/macros/planting/nature';
+import { buildCommunity, buildHabitatField } from '../../tools/macros/planting/habitat';
+import { applyMacro, decorateRoom } from '../../tools/macros';
 import type { MacroContext } from '../../tools/macros';
-import { makeRng } from '../../core/model/rng';
 import { objectRect } from '../../state/object-geometry';
-import { rectsOverlap } from '../../core/model/grid-model';
-import type { GridState, PlacedObject } from '../../core/model/types';
+import { rectsOverlap } from '../../core/grid/rect';
+import type { GridState, MacroCoord, PlacedObject } from '../../core/model/types';
 
 const s = perfSuite('placement');
 
@@ -43,7 +41,7 @@ function networkFixture(island: World): { world: World; ctx: PlaceCtx; a: Placem
   return { world, ctx, a, nodes, regionAdj };
 }
 
-/** Bare terrain: the dense map's ground with every non-locked object stripped BEFORE the
+/** Bare terrain: the dense map's ground with every non-locked object stripped before the
  *  executor exists, so its road lookup is built on the cleared state rather than one that still
  *  remembers pavement nothing stands on any more. */
 function bareTerrainWorld(island: World): World {
@@ -51,7 +49,7 @@ function bareTerrainWorld(island: World): World {
     template: island.state.template,
     cells: structuredClone(island.state.cells),
     objects: new Map([...island.state.objects].filter(([, o]) => o.locked)),
-    lockedLayers: new Set(island.state.lockedLayers),
+    objectsVersion: 0, cellsVersion: 0, lockedLayers: new Set(island.state.lockedLayers),
   };
   return makeWorld(state);
 }
@@ -65,26 +63,21 @@ function natureFixture(island: World): { world: World; ctx: PlaceCtx; a: Placeme
 
 const ZONE_RECT = { x: 40, y: 40, w: 20, h: 20 };
 
-function zoneFixture(island: World): { world: World; ctx: PlaceCtx; a: PlacementAnalysis; zone: Zone } {
+function zoneFixture(island: World): { kit: MacroContext; world: World; cells: MacroCoord[] } {
   const inRect = (o: PlacedObject): boolean => rectsOverlap(objectRect(o), ZONE_RECT);
   const state: GridState = {
     template: island.state.template,
     cells: structuredClone(island.state.cells),
     objects: new Map([...island.state.objects].filter(([, o]) => o.locked || !inRect(o))),
-    lockedLayers: new Set(island.state.lockedLayers),
+    objectsVersion: 0, cellsVersion: 0, lockedLayers: new Set(island.state.lockedLayers),
   };
   const world = makeWorld(state);
-  const a = analyzeTerrain(world.state);
-  const ctx = makeCtx(world.state, (c) => world.executor.execute(c), world.executor.getRegistry(), 7);
-  const cells: number[] = [];
+  const kit: MacroContext = { state: world.state, executor: world.executor, registry: world.executor.getRegistry() };
+  const cells: MacroCoord[] = [];
   for (let y = ZONE_RECT.y; y < ZONE_RECT.y + ZONE_RECT.h; y++) {
-    for (let x = ZONE_RECT.x; x < ZONE_RECT.x + ZONE_RECT.w; x++) cells.push(y * a.width + x);
+    for (let x = ZONE_RECT.x; x < ZONE_RECT.x + ZONE_RECT.w; x++) cells.push({ x, y });
   }
-  const zone: Zone = {
-    id: 1, cells, theme: 'hamlet',
-    centroid: { x: ZONE_RECT.x + ZONE_RECT.w / 2, y: ZONE_RECT.y + ZONE_RECT.h / 2 },
-  };
-  return { world, ctx, a, zone };
+  return { kit, world, cells };
 }
 
 function macroFixture(island: World): { world: World; kit: MacroContext } {
@@ -101,13 +94,13 @@ describe.runIf(PERF)('perf: placement', () => {
     });
   });
 
-  it('buildNetwork over a cloned dense map', async () => {
+  it('connectRoadNetwork over a cloned dense map', async () => {
     const island = denseIsland();
     let f = networkFixture(island);
     await s.bench('network/build', () => {
-      const start = f.world.executor.getUndoStackSize();
-      buildNetwork(f.ctx, f.a, 1, f.nodes, f.regionAdj);
-      f.world.executor.commitStroke(start);
+      const start = f.world.executor.beginStroke();
+      connectRoadNetwork(f.ctx, f.a, f.nodes, f.regionAdj, { variation: 7 });
+      start.commit();
     }, {
       setup: () => { f = networkFixture(island); },
       minSamples: 3, maxSamples: 8, budgetMs: 6000,
@@ -119,22 +112,22 @@ describe.runIf(PERF)('perf: placement', () => {
     const island = denseIsland();
     let f = natureFixture(island);
     await s.bench('nature/place', () => {
-      const start = f.world.executor.getUndoStackSize();
-      placeNature(f.ctx, f.a, 1, new Set());
-      f.world.executor.commitStroke(start);
+      const start = f.world.executor.beginStroke();
+      placeNature(f.ctx, f.a, 1, new Set(), { pick: buildCommunity(buildHabitatField(f.a), (f.a.height >> 1) * f.a.width + (f.a.width >> 1), 7) });
+      start.commit();
     }, {
       setup: () => { f = natureFixture(island); },
       minSamples: 3, maxSamples: 8, budgetMs: 6000,
     });
   });
 
-  it('decorateZone over a cleared district rect', async () => {
+  it('decorateRoom over a cleared district rect', async () => {
     const island = denseIsland();
     let f = zoneFixture(island);
-    await s.bench('themes/decorate-zone', () => {
-      const start = f.world.executor.getUndoStackSize();
-      decorateZone(f.ctx, f.a, f.zone, 1, 1, new Set(), makeRng(7));
-      f.world.executor.commitStroke(start);
+    await s.bench('themes/decorate-room', () => {
+      const start = f.world.executor.beginStroke();
+      decorateRoom(f.kit, f.cells, 'hamlet', 7);
+      start.commit();
     }, {
       setup: () => { f = zoneFixture(island); },
       minSamples: 5, maxSamples: 30,

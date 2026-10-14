@@ -1,8 +1,8 @@
-import { quotePromptData } from '../../core/runtime/prompt-data';
+import { compactionSummary, gateWords, noResultRecorded, orderMessage, playbookStillLoaded, skippedCallResult } from './nudges';
 import { languageCue } from './language-cue';
 import type { SessionLog } from './log';
 import { eventsOf } from './log';
-import { DROPPED_STOPS } from './types';
+import { DROPPED_STOPS, estimateTokens } from './types';
 import type { GateAnswer, SessionEvent } from './types';
 import { OccurrenceScan, occurrenceKey } from './occurrence';
 
@@ -16,12 +16,11 @@ interface ProjectOptions {
   estimate?: (text: string) => number;
   /** Loop-authored note appended after budget trimming so it always reaches the next request. */
   appendSystemNote?: string;
+  /** Projects only the events before this seq (compaction events always count), the prefix a
+   *  compaction evicts. */
+  beforeSeq?: number;
 }
 
-const defaultEstimate = (s: string): number => Math.ceil(s.length / 4);
-
-/** User-denied calls are successful control outcomes rather than retryable tool failures. */
-const SKIP_RESULT_MESSAGE = 'The user chose not to run this call. Continue without it, or ask what they would prefer.';
 
 type ToolCall = { callId: string; name: string; args: Record<string, unknown> };
 type ToolResultEntry = { callId: string; name: string; content: string; isError: boolean; image?: string };
@@ -37,7 +36,9 @@ interface Tagged { message: ProviderMessage; opensGroup: boolean }
 
 /** Projects the log into a replay-safe, compacted and budgeted provider message sequence. */
 export function deriveMessages(log: SessionLog, opts: ProjectOptions): ProviderMessage[] {
-  const tagged = buildTagged(eventsOf(log));
+  const { beforeSeq } = opts;
+  const events = beforeSeq === undefined ? eventsOf(log) : eventsOf(log).filter((e) => e.kind === 'compaction' || e.seq < beforeSeq);
+  const tagged = buildTagged(events);
   const groups = groupBy(tagged);
   const windowed = applyBudget(groups, opts);
   const messages = keepLatestImageOnly(windowed);
@@ -73,11 +74,13 @@ function buildTagged(events: readonly SessionEvent[]): Tagged[] {
     else if (e.kind === 'gateAsked' && e.callId !== undefined) {
       gateIdByOccurrence.set(scan.keyOf(e.callId, e.seq), e.gateId);
     } else if (e.kind === 'gateAnswered') answerByGateId.set(e.gateId, { answer: e.answer, words: e.words });
+    // A typed answer the content check refused reaches the model as a skip.
+    else if (e.kind === 'noteRefused' && e.gateId !== undefined) answerByGateId.set(e.gateId, { answer: 'skip' });
   }
 
   const tagged: Tagged[] = [];
   if (compaction) {
-    tagged.push({ message: { role: 'user', text: `(conversation summary, reference only) <summary_data>${quotePromptData(compaction.summary)}</summary_data>` }, opensGroup: true });
+    tagged.push({ message: { role: 'user', text: compactionSummary(compaction.summary) }, opensGroup: true });
     // Reissue the newest evicted body for each skill unless the retained window loads it again.
     const newestBySkill = new Map<string, Extract<SessionEvent, { kind: 'toolResult' }>>();
     const reloaded = new Set<string>();
@@ -89,13 +92,13 @@ function buildTagged(events: readonly SessionEvent[]): Tagged[] {
     for (const [name, r] of newestBySkill) {
       if (reloaded.has(name)) continue;
       const title = r.detail?.skill?.title ?? '';
-      tagged.push({ message: { role: 'user', text: `(playbook still loaded: ${quotePromptData(title)})\n<playbook_data>${quotePromptData(r.content)}</playbook_data>` }, opensGroup: false });
+      tagged.push({ message: { role: 'user', text: playbookStillLoaded(title, r.content) }, opensGroup: false });
     }
   }
 
   for (const e of kept) {
     if (e.kind === 'order') {
-      const text = withLanguageCue(`<map_context>${quotePromptData(e.mapContext)}</map_context>\n${e.text}`, e.text);
+      const text = withLanguageCue(orderMessage(e.mapContext, e.text), e.text);
       tagged.push({ message: { role: 'user', text }, opensGroup: true });
     } else if (e.kind === 'steerDelivered') {
       if (recalledSteerSeqs.has(e.steerSeq)) continue;
@@ -126,9 +129,9 @@ function buildTagged(events: readonly SessionEvent[]): Tagged[] {
             const gateId = gateIdByOccurrence.get(occurrenceKey(call.callId, e.seq));
             const answer = gateId !== undefined ? answerByGateId.get(gateId) : undefined;
             if (answer?.answer === 'skip' || answer?.answer === 'words') {
-              return { callId: call.callId, name: call.name, content: SKIP_RESULT_MESSAGE, isError: false };
+              return { callId: call.callId, name: call.name, content: skippedCallResult(), isError: false };
             }
-            return { callId: call.callId, name: call.name, content: 'No result recorded.', isError: true };
+            return { callId: call.callId, name: call.name, content: noResultRecorded(), isError: true };
           }
           return r.image === undefined
             ? { callId: r.callId, name: r.name, content: r.content, isError: r.isError }
@@ -141,7 +144,7 @@ function buildTagged(events: readonly SessionEvent[]): Tagged[] {
           const gateId = gateIdByOccurrence.get(occurrenceKey(call.callId, e.seq));
           const answer = gateId !== undefined ? answerByGateId.get(gateId) : undefined;
           if (answer?.answer === 'words' && answer.words !== undefined) {
-            tagged.push({ message: { role: 'user', text: `(about your request) ${answer.words}` }, opensGroup: false });
+            tagged.push({ message: { role: 'user', text: gateWords(answer.words) }, opensGroup: false });
           }
         }
       }
@@ -151,7 +154,7 @@ function buildTagged(events: readonly SessionEvent[]): Tagged[] {
   return tagged;
 }
 
-function latestCompaction(events: readonly SessionEvent[]): Extract<SessionEvent, { kind: 'compaction' }> | undefined {
+export function latestCompaction(events: readonly SessionEvent[]): Extract<SessionEvent, { kind: 'compaction' }> | undefined {
   for (let i = events.length - 1; i >= 0; i--) {
     const e = events[i];
     if (e?.kind === 'compaction') return e;
@@ -177,7 +180,7 @@ export function messageText(m: ProviderMessage): string {
 }
 
 function applyBudget(groups: ProviderMessage[][], opts: ProjectOptions): ProviderMessage[] {
-  const estimate = opts.estimate ?? defaultEstimate;
+  const estimate = opts.estimate ?? estimateTokens;
   const groupCost = (g: ProviderMessage[]): number => g.reduce((sum, m) => sum + estimate(messageText(m)), 0);
 
   const costs = groups.map(groupCost);

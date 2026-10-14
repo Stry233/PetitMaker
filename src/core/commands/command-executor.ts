@@ -1,162 +1,188 @@
-import { EventBus } from './event-bus';
-import { cloneCell, clonePlacedObject, getCell, cellKey, NEIGHBORS4 } from '../model/grid-model';
+import type { KernelEvents } from './events';
+import type { EventBus } from './event-bus';
+import { cloneCell, clonePlacedObject, getCell } from '../model/grid-model';
+import { cellKey } from '../grid/rect';
 import type { RuleDispatcher } from '../model/rule-dispatcher';
-import type { RoadLookup } from '../model/road-lookup';
-import { reconcileCuts } from '../edge-cut/cut-reconcile';
-import { reconcileRoads } from './road-reconcile';
+import type { StrokeKernel, StrokePolicy } from '../model/stroke-policy';
+import type { Authorship, HistoryRecorder } from '../model/history-recorder';
 import {
   CommandType,
   type CellSnapshot,
   type Command,
-  type EditorEvents,
+  type GenerationMark,
   type GridState,
   type MacroCoord,
   type PlacedObject,
+  type StrokeScope,
   type ValidationError,
   type ValidationResult,
 } from '../model/types';
-import type { ProvenanceTracker } from '../provenance/tracker';
 import type { SourceContext, MapProvenanceSummary } from '../provenance/types';
 import {
   applyCommand,
-  detachCommand,
+  entryCells,
   getAffectedCells,
   reapplyEntryState,
   revertEntryState,
-  unrecoverableObjectOps,
+  touchedObjectId,
+  readGenerationMark,
+  writeGenerationMark,
   type HistoryEntry,
+  type TrimApplier,
 } from './command-apply';
-import { ProvenanceRecorder } from './provenance-recorder';
 import { reportRefusal } from './refusal';
+import { TERRAIN_GRID } from '../game/profile';
+import { cellSet, type CellSet } from '../grid/grids';
+import { cellsOn } from '../grid/grid-convert';
+
+/** Restored map cells as the one set they form: the map's cells lie on the terrain grid. */
+function restoredCells(coords: MacroCoord[]): CellSet[] {
+  return [cellSet(TERRAIN_GRID, coords)];
+}
+
+/** What an executor is built from. */
+export interface ExecutorDeps {
+  /** Where the kernel announces its events. */
+  bus: EventBus<KernelEvents>;
+  rules: RuleDispatcher;
+  /** The game's repairs around each command and each commit; `NO_STROKE_POLICY` adds none. */
+  policy: StrokePolicy;
+  /** Authorship of every history step, bound to the executor's map. */
+  provenance: HistoryRecorder;
+  /** What a corner trim does to the map; the game's is `domain/edge-cut/trim-apply.ts:applyTrim`. */
+  trims: TrimApplier;
+}
 
 /** How a stroke transaction runs its body. */
-export interface TransactionOptions {
+interface TransactionOptions {
   /** Authorship for every command the body issues; popped on every exit. */
   source?: SourceContext;
   /** Silence validation-failed across the whole body, its commit included. */
   silent?: boolean;
 }
 
-/** The body's handle on its stroke group. */
-export interface StrokeTransaction {
-  /** The undo stack size when the transaction opened. */
-  readonly start: number;
-  /** `commitStroke` over the group. `atomic` reverts the whole group when the post-stroke rules
-   *  report a violation, where a plain commit reverts only until the map is clean. */
+/**
+ * A stroke group, begun at one history depth. Everything executed after it began belongs to it
+ * until it commits, rolls back or collapses; a handle may be closed more than once, and a handle
+ * begun inside another is a savepoint of the outer one.
+ */
+export interface Stroke {
+  /** How many history entries stand above the stroke's start. */
+  readonly size: number;
+  /** The commands applied above the start, oldest first, as resolved: a bridge or ramp lands
+   *  where its trait snapped it. Read before `commit`, whose collapse folds the group into one
+   *  entry. */
+  commands(): Command[];
+  /** The history entries above the start, oldest first: each cell's and object's pre-image. */
+  entries(): HistoryEntry[];
+  /** The post-stroke commit over the group. `atomic` reverts the whole group when the post-stroke
+   *  rules report a violation, where a plain commit reverts only until the map is clean. */
   commit(opts?: { reconcile?: boolean; atomic?: boolean }): ValidationError[];
-  /** Silently revert everything the group applied. */
+  /** Silently revert everything above the start: no redo entries, no per-entry validation. */
   rollback(): void;
+  /** Fold the entries above the start into one undo entry, with no validation of its own. */
+  collapse(): void;
+  /** Write the map's generation, recorded on the stroke's top entry so undo and redo restore it
+   *  with the stroke. Called after `commit`; a stroke that left no entry writes it unrecorded. */
+  setGeneration(mark: GenerationMark): void;
 }
 
 /**
- * Executes commands against GridState with two-phase validation.
+ * Executes commands against GridState with two-phase validation, orchestrating validate, apply,
+ * record, history and events. `command-apply.ts` holds the per-CommandType mutation and emits
+ * `objects-changed`; the injected `HistoryRecorder` captures, merges and reverts authorship.
  *
- * This class is the ORCHESTRATOR: validate → apply → record → history → events.
- * The two mechanical halves live in collaborators it drives, so this file reads
- * as the control flow only:
- *   - `command-apply.ts`  — the per-CommandType state mutation (cells + objects)
- *     for apply/revert/reapply, plus `getAffectedCells`. `objects-changed` is
- *     emitted at those mutation sites.
- *   - `provenance-recorder.ts` — the ProvenanceTracker, the derived-op scope, and
- *     all taint capture/merge/revert threading. Its calls must stay in the exact
- *     order relative to state mutation documented in that file.
- *
- * Phase 1 (pre-command): `execute()` runs all applicable pre-command rules.
- * If any return errors, the command is rejected and state is unchanged.
- *
- * Phase 2 (post-stroke): `commitStroke()` runs all post-stroke rules against
- * the current state. If violations exist, it auto-undoes commands from the
- * stroke one at a time until the state is clean or the stroke is fully reverted.
- *
- * Assumptions:
- * - State is owned exclusively by this executor during command execution.
- * - Rules are pure functions that never mutate state.
- * - Commands carry no snapshots; the executor records before/after cells on its own history entries.
- *
- * Guarantees:
- * - After `execute()` returns failure, state is unchanged.
- * - After `commitStroke()`, state satisfies all post-stroke rules.
- * - Undo skips through illegal intermediate states via post-stroke validation.
+ * `execute()` runs the pre-command rules and rejects the command, state unchanged, on any error.
+ * `commitStroke()` runs the post-stroke rules and undoes the stroke's commands one at a time until
+ * the state satisfies them all, so undo and redo skip illegal intermediate states. The stroke policy
+ * (`core/model/stroke-policy.ts`) adds the game's repairs around both. Rules are pure.
  */
 export class CommandExecutor {
   private state: GridState;
-  private eventBus: EventBus<EditorEvents>;
+  private eventBus: EventBus<KernelEvents>;
   private registry: RuleDispatcher;
   private undoStack: HistoryEntry[] = [];
   private redoStack: HistoryEntry[] = [];
   /** Silenced runs in progress; while any is, rejected commands emit no validation-failed (no error
    *  toast). A count, so async runs that overlap and settle in any order restore it exactly. */
   private silentRuns = 0;
-  private provenance: ProvenanceRecorder;
-  /** Satisfies `CutReconcileTarget` and `RoadReconcileTarget` — the executor passes itself as the
-   *  reconcile target. */
-  readonly roadAt: RoadLookup;
+  /** The objects the open stroke took off the map, by id; cleared when it commits, rolls back or
+   *  is abandoned. Placement rules judge a re-placed object on its net change through it. */
+  private readonly lifted = new Map<string, PlacedObject>();
+  private readonly scope: StrokeScope = { lifted: this.lifted };
+  /** The causes named by `withCause` runs in progress, innermost last. */
+  private causes: string[] = [];
+  private provenance: HistoryRecorder;
+  private policy: StrokePolicy;
+  private trims: TrimApplier;
+  /** This executor as its policy sees it. */
+  private kernel: StrokeKernel;
 
-  /** `roadAt` must answer for `state`. The reconcile pass reads terrain from one and coatings from
-   *  the other and treats them as one map, so a lookup bound to a different grid reports roads that
-   *  are not on the map being repaired. Bind the pair in one expression. */
-  constructor(
-    state: GridState,
-    eventBus: EventBus<EditorEvents>,
-    registry: RuleDispatcher,
-    roadAt: RoadLookup,
-  ) {
+  /** A policy that reads a map must answer for `state`. */
+  constructor(state: GridState, deps: ExecutorDeps) {
     this.state = state;
-    this.eventBus = eventBus;
-    this.registry = registry;
-    this.roadAt = roadAt;
-    this.provenance = new ProvenanceRecorder(state);
+    this.eventBus = deps.bus;
+    this.registry = deps.rules;
+    this.policy = deps.policy;
+    this.provenance = deps.provenance;
+    this.trims = deps.trims;
+    this.kernel = {
+      state,
+      execute: (cmd) => this.execute(cmd),
+      validatePre: (cmd) => this.validatePre(cmd),
+    };
   }
 
   /** Pre-command validation with no execution and no validation-failed event — the reconcile
    *  passes probe with this, since their refusals are outcomes, not errors. */
   validatePre(cmd: Command): ValidationError[] {
-    return this.registry.validatePreCommand(cmd, this.state);
+    return this.registry.validatePreCommand(cmd, this.state, this.scope);
   }
 
-  /** Run `fn` with validation-failed events silenced — for bulk generation, which reject-and-skips many
-   *  candidate commands by design and must not spew an error toast per rejection. Restores even on throw. */
-  runSilently<T>(fn: () => T): T {
-    this.silentRuns++;
-    try { return fn(); } finally { this.silentRuns--; }
-  }
 
-  /** Async variant — keeps validation-failed silenced across awaits (cooperative generation yields between
-   *  stages), restoring only once the whole run settles. */
-  async runSilentlyAsync<T>(fn: () => Promise<T>): Promise<T> {
-    this.silentRuns++;
-    try { return await fn(); } finally { this.silentRuns--; }
+  /** Run `fn` with `cause` on the `cells-changed` and `objects-changed` its commands emit, so a
+   *  listener can tell this change from any other. Restores even on throw. */
+  withCause<T>(cause: string, fn: () => T): T {
+    this.causes.push(cause);
+    try { return fn(); } finally { this.causes.pop(); }
   }
 
   /**
    * Run `body` as one stroke group: the start is taken, `source` is pushed and `silent` applied
    * around the body, and a throw reverts the group before it propagates. The body decides when to
    * commit or roll back through the handle; a body that returns without committing leaves its
-   * entries uncollapsed on the stack.
+   * entries uncollapsed on the stack. This is the one door for silence and authorship: a caller
+   * that tries many candidate commands and expects refusals passes `silent`.
    */
-  transaction<T>(opts: TransactionOptions, body: (tx: StrokeTransaction) => T): T {
-    const tx = this.openTransaction();
+  transaction<T>(opts: TransactionOptions, body: (tx: Stroke) => T): T {
+    const start = this.undoStack.length;
+    const tx = this.beginStroke();
     if (opts.source) this.pushSource(opts.source);
+    if (opts.silent) this.silentRuns++;
     try {
-      return opts.silent ? this.runSilently(() => body(tx)) : body(tx);
+      return body(tx);
     } catch (err) {
-      this.rollbackAfterThrow(tx.start);
+      this.rollbackAfterThrow(start);
       throw err;
     } finally {
+      if (opts.silent) this.silentRuns--;
       if (opts.source) this.popSource();
     }
   }
 
   /** `transaction` for a body that awaits; the source and silence hold until it settles. */
-  async transactionAsync<T>(opts: TransactionOptions, body: (tx: StrokeTransaction) => Promise<T>): Promise<T> {
-    const tx = this.openTransaction();
+  async transactionAsync<T>(opts: TransactionOptions, body: (tx: Stroke) => Promise<T>): Promise<T> {
+    const start = this.undoStack.length;
+    const tx = this.beginStroke();
     if (opts.source) this.pushSource(opts.source);
+    if (opts.silent) this.silentRuns++;
     try {
-      return await (opts.silent ? this.runSilentlyAsync(() => body(tx)) : body(tx));
+      return await body(tx);
     } catch (err) {
-      this.rollbackAfterThrow(tx.start);
+      this.rollbackAfterThrow(start);
       throw err;
     } finally {
+      if (opts.silent) this.silentRuns--;
       if (opts.source) this.popSource();
     }
   }
@@ -170,87 +196,87 @@ export class CommandExecutor {
     }
   }
 
-  private openTransaction(): StrokeTransaction {
+  /**
+   * Begin a stroke group at the current history depth. The pointer tools begin one per gesture
+   * through their host and the editor operations their own; any other caller runs its group through
+   * `transaction` (`stroke-doors.test.ts`).
+   */
+  beginStroke(): Stroke {
     const start = this.undoStack.length;
+    const depth = (): number => this.undoStack.length;
     return {
-      start,
+      get size() { return depth() - start; },
+      commands: () => this.commandsSince(start),
+      entries: () => this.undoStack.slice(start),
       commit: ({ reconcile, atomic = false } = {}) => {
         const violations = this.commitStroke(start, reconcile === undefined ? {} : { reconcile });
         if (atomic && violations.length > 0) this.rollbackTo(start);
         return violations;
       },
       rollback: () => { this.rollbackTo(start); },
+      collapse: () => { this.collapseHistory(start); },
+      setGeneration: (mark) => { this.recordGeneration(start, mark); },
     };
   }
 
-  /** True while a road-reconcile pass is issuing its own commands through execute(). */
-  private reconciling = false;
-  /** Roads the settle pass removed mid-stroke, kept so a footprint that settles back to uniform
-   *  gets its road re-seated — emptied when the stroke commits. */
-  private strokeRemovedRoads = new Map<string, PlacedObject>();
+  private recordGeneration(start: number, mark: GenerationMark): void {
+    const top = this.undoStack.length > start ? this.undoStack[this.undoStack.length - 1]! : undefined;
+    if (top) top.generation = { before: top.generation?.before ?? readGenerationMark(this.state), after: mark };
+    writeGenerationMark(this.state, mark);
+  }
 
-  /** Validates and applies a single command. Returns success/failure with errors. State unchanged on failure. */
-  execute(cmd: Command): ValidationResult {
-    const errors: ValidationError[] = this.registry.validatePreCommand(cmd, this.state);
+  /** True while the policy's `afterCommand` is issuing its own commands through execute(). */
+  private inAfterCommand = false;
+
+  /** Forget what the open stroke lifted and what its policy holds: a later commit must not act on
+   *  a stroke that was rolled back, undone past, or replaced by a restored history. */
+  private abandonStroke(): void {
+    this.lifted.clear();
+    this.policy.endStroke?.();
+  }
+
+  /**
+   * Resolves, validates and applies a single command; history, the events and the policy see it
+   * as resolved (`RuleDispatcher.resolve`), and `requested` itself is never written to. Returns
+   * success/failure with errors. State unchanged on failure.
+   */
+  execute(requested: Command): ValidationResult {
+    const cmd = this.registry.resolve(requested, this.state);
+    const errors: ValidationError[] = this.registry.validatePreCommand(cmd, this.state, this.scope);
 
     if (errors.length > 0) {
       if (this.silentRuns === 0) reportRefusal(this.eventBus, { cmd, errors });
       return { success: false, errors };
     }
 
-    // Whether a removal is taking the coating at its cell — asked before the apply, since the
-    // lookup cannot answer for an object already gone.
-    const removesCoating = cmd.type === CommandType.RemoveObject
-      && this.roadAt(cmd.removedObject.position.x, cmd.removedObject.position.y)?.id === cmd.objectId;
-
-    const coords = getAffectedCells(cmd);
+    const sets = getAffectedCells(cmd, this.state);
+    const coords = cellsOn(sets, TERRAIN_GRID);
     const before = this.snapshot(coords);
-    const objectOps = unrecoverableObjectOps(cmd, this.state);
-    applyCommand(cmd, this.state, this.eventBus);
-    if (cmd.type === CommandType.RemoveObject) (this.state.liftedObjects ??= new Map()).set(cmd.objectId, cmd.removedObject);
+    const touched = touchedObjectId(cmd);
+    const objectBefore = touched === undefined ? undefined : this.state.objects.get(touched);
+    const removed = objectBefore ? [clonePlacedObject(objectBefore)] : [];
+    const cause = this.causes[this.causes.length - 1];
+    applyCommand(cmd, this.state, this.eventBus, this.trims, cause);
+    const objectAfter = touched === undefined ? undefined : this.state.objects.get(touched);
+    const objectOps = removed.length > 0 || objectAfter ? { removed, added: objectAfter ? [clonePlacedObject(objectAfter)] : [] } : undefined;
+    if (cmd.type === CommandType.RemoveObject && removed[0]) this.lifted.set(cmd.objectId, removed[0]);
     const after = this.snapshot(coords);
-    const taint = this.provenance.capture(cmd, before, after);
+    const taint = this.provenance.capture(cmd, before, after, objectOps);
 
-    // History keeps its own copy: the map's objects and corner arrays are edited in place later.
-    const recorded = detachCommand(cmd);
-    this.undoStack.push(objectOps ? { cmd: recorded, before, after, objectOps, taint } : { cmd: recorded, before, after, taint });
+    this.undoStack.push(objectOps ? { cmd, before, after, objectOps, taint } : { cmd, before, after, taint });
     this.redoStack = [];
 
-    // A road tile's drawn boundary depends on its neighbours (road-shape.ts: roadEdgeInsets,
-    // roadCutFeeds — the feather lifts where its surface continues, and a cut tile's gap is fed
-    // by the wrap), so a coating arriving, leaving or changing its cut re-announces the roads it
-    // borders — the objects-changed idiom a corner trim already uses, which both views answer by
-    // redrawing the object in place.
-    const seamHost = cmd.type === CommandType.PlaceObject
-      ? (this.roadAt(cmd.object.position.x, cmd.object.position.y)?.id === cmd.object.id ? cmd.object : null)
-      : removesCoating && cmd.type === CommandType.RemoveObject ? cmd.removedObject
-      : cmd.type === CommandType.TrimCorners && cmd.layer === 'road' ? (objectOps?.removed[0] ?? this.roadAt(cmd.x, cmd.y)) : null;
-    if (seamHost) {
-      for (const [dx, dy] of NEIGHBORS4) {
-        const n = this.roadAt(seamHost.position.x + dx, seamHost.position.y + dy);
-        if (n && n.id !== seamHost.id) this.eventBus.emit('objects-changed', { added: [n] });
-      }
-    }
-
-    this.eventBus.emit('cells-changed', { cells: coords });
+    this.eventBus.emit('cells-changed', cause === undefined ? { cells: sets } : { cells: sets, cause });
     this.eventBus.emit('history-changed', { canUndo: this.canUndo(), canRedo: this.canRedo() });
 
-    // A road rides the terrain change under it AS IT HAPPENS, not at the pointer's release: the
-    // settle-only pass carries a road whose footprint stands uniform at a new level and leaves a
-    // mixed one for commitStroke's full pass (mid-stroke, mixed usually means the stroke has not
-    // finished covering the footprint). Edge cuts repair on the same beat — a fillet whose walls
-    // this dab outgrew, a bevel the new mass covered — so the map is right under the moving
-    // pointer, not at its release; commitStroke's full passes stay as the backstop. Guarded,
-    // since both passes issue commands through here.
-    if (!this.reconciling && (cmd.type === CommandType.PaintTerrain || cmd.type === CommandType.EraseTerrain)) {
-      this.reconciling = true;
+    // Guarded, since the policy's repairs issue commands through here.
+    const afterCommand = this.policy.afterCommand;
+    if (afterCommand && !this.inAfterCommand) {
+      this.inAfterCommand = true;
       try {
-        this.provenance.deriveScope(() => {
-          reconcileRoads(cmd.cells, this.state, this, { settleOnly: true, removedPool: this.strokeRemovedRoads });
-          reconcileCuts(cmd.cells, this.state, this);
-        });
+        this.provenance.deriveScope(() => afterCommand.call(this.policy, this.kernel, cmd));
       } finally {
-        this.reconciling = false;
+        this.inAfterCommand = false;
       }
     }
 
@@ -258,37 +284,35 @@ export class CommandExecutor {
   }
 
   /**
-   * Validates the current state after a brush stroke completes.
-   * @param strokeStartSize - undo stack size when the stroke began (from getUndoStackSize())
+   * Validates the current state after a brush stroke completes; reached through `Stroke.commit`.
+   * @param strokeStartSize - undo stack size when the stroke began
    * @returns The initial violations found (empty if state was clean). Auto-reverts until clean.
    *
-   * The stroke + its auto-reconcile (edge-cut repairs) collapse into ONE undo entry, so a gesture is a
-   * single, ATOMIC undo step. The reconcile must never be undoable on its own: reverting just the repair
-   * (e.g. restoring a Γ-patch fillet) while the terrain change that invalidated it stays applied leaves an
-   * illegal structure (an orphan fillet). One entry means undo reverts the change and its repair together.
+   * The stroke and its policy's repairs collapse into one undo entry, so a gesture is a single,
+   * atomic undo step. A repair is never undoable on its own: reverting it while the change that
+   * called for it stays applied would restore the state the repair fixed.
    */
-  commitStroke(strokeStartSize: number, opts: { reconcile?: boolean } = {}): ValidationError[] {
+  private commitStroke(strokeStartSize: number, opts: { reconcile?: boolean } = {}): ValidationError[] {
     try {
       return this.commitStrokeGroup(strokeStartSize, opts.reconcile ?? true);
     } finally {
-      this.state.liftedObjects?.clear();
+      this.lifted.clear();
     }
   }
 
   private commitStrokeGroup(strokeStartSize: number, reconcile: boolean): ValidationError[] {
     if (this.undoStack.length - strokeStartSize <= 0) return [];
 
-    // Roads follow the surface they coat, whoever edited it — this pass runs BEFORE the
-    // post-stroke validation below so its re-places are validated (and auto-revertable) with the
-    // stroke, unlike the cut repairs, which are legal by construction and run after.
-    if (reconcile) {
+    // The policy's commit hooks are not guarded against re-entry: a repair command they issue
+    // runs `afterCommand` like any other.
+    const { beforeValidate, afterValidate } = this.policy;
+    if (reconcile && beforeValidate) {
       const changed = this.cellsChangedSince(strokeStartSize);
-      if (changed.length > 0 || this.strokeRemovedRoads.size > 0) {
-        this.provenance.deriveScope(() =>
-          reconcileRoads(changed, this.state, this, { removedPool: this.strokeRemovedRoads }));
+      if (changed.length > 0 || this.policy.pending?.()) {
+        this.provenance.deriveScope(() => beforeValidate.call(this.policy, this.kernel, changed));
       }
     }
-    this.strokeRemovedRoads.clear();
+    this.policy.endStroke?.();
     const maxUndos = this.undoStack.length - strokeStartSize;
 
     const violations = this.registry.validatePostStroke(this.state);
@@ -300,33 +324,29 @@ export class CommandExecutor {
         const entry = this.undoStack.pop();
         if (!entry) break;
         affectedCoords.push(...this.revertEntry(entry));
-        // Deliberately NOT pushed to the redo stack: an auto-reverted fragment is an
-        // ILLEGAL partial state — redo would reinstate it unvalidated, and the fragment
-        // (sitting below every later stroke's revert window) would then make every future
-        // commitStroke fully revert its own stroke. Auto-reverted work is simply gone.
+        // Not pushed to the redo stack: an auto-reverted fragment is an illegal partial state.
+        // Redo would reinstate it unvalidated, and the fragment, below every later stroke's revert
+        // window, would then make every later commit revert its own stroke whole.
         undone++;
         const remaining = this.registry.validatePostStroke(this.state, { firstOnly: true });
         if (remaining.length === 0) break;
       }
       if (affectedCoords.length > 0) {
-        this.eventBus.emit('cells-changed', { cells: affectedCoords });
+        this.eventBus.emit('cells-changed', { cells: restoredCells(affectedCoords) });
         this.eventBus.emit('history-changed', { canUndo: this.canUndo(), canRedo: this.canRedo() });
       }
     }
 
-    // Reconcile edge cuts on whatever this stroke actually changed (after any auto-revert), so cuts the new
-    // context invalidated update to their closest valid form. Repairs are issued through execute(), joining
-    // this stroke's history. SKIPPED for corner-only strokes (the edge-cut tool): an edge cut changes only
-    // the silhouette, never terrain support, so it can't invalidate any cut — running the neighbourhood
-    // repair there could only mis-touch a neighbour's cut. The tool already produces its final valid state.
-    if (reconcile) {
+    // Repairs over whatever this stroke still changed after any auto-revert, issued through
+    // execute() and joining this stroke's history. A commit with `reconcile: false` skips them.
+    if (reconcile && afterValidate) {
       const changed = this.cellsChangedSince(strokeStartSize);
       if (changed.length > 0) {
-        this.provenance.deriveScope(() => reconcileCuts(changed, this.state, this));
+        this.provenance.deriveScope(() => afterValidate.call(this.policy, this.kernel, changed));
       }
     }
 
-    // Fold the whole stroke — its commands AND the reconcile repairs above — into one undo entry, so undo
+    // Fold the whole stroke — its commands and the reconcile repairs above — into one undo entry, so undo
     // reverts them together and can never stop at a reconcile-orphaned (illegal) intermediate. No-op when
     // the stroke is a single entry (collapseHistory returns early).
     this.collapseHistory(strokeStartSize);
@@ -335,59 +355,46 @@ export class CommandExecutor {
   }
 
   /** Every cell touched by the entries above `strokeStartSize` — the region both reconcile
-   *  passes work over. Re-collected between them, since road repairs add entries of their own. */
-  private cellsChangedSince(strokeStartSize: number): MacroCoord[] {
-    const changed: MacroCoord[] = [];
+   *  passes work over. Re-collected between them, since repairs add entries of their own. */
+  private cellsChangedSince(strokeStartSize: number): CellSet[] {
+    const changed: CellSet[] = [];
     for (let i = strokeStartSize; i < this.undoStack.length; i++) {
-      changed.push(...getAffectedCells(this.undoStack[i]!.cmd));
+      for (const set of entryCells(this.undoStack[i]!)) if (set.cells.length > 0) changed.push(set);
     }
     return changed;
   }
 
   /**
    * Silently revert every entry above `watermark`: no redo-stack entries, no per-entry
-   * validation, one cells-changed/history-changed emission. For callers that must guarantee
-   * "nothing happened" after a mid-operation failure (the agent tool bridge rolls a crashed
-   * stroke back to its start so a crash never leaves half-applied, unvalidated edits).
+   * validation, one cells-changed/history-changed emission; reached through `Stroke.rollback`, for
+   * callers that must guarantee "nothing happened" after a mid-operation failure.
    */
-  rollbackTo(watermark: number): void {
-    this.state.liftedObjects?.clear();
+  private rollbackTo(watermark: number): void {
+    this.abandonStroke();
     if (this.undoStack.length <= watermark) return;
     const coords: MacroCoord[] = [];
     while (this.undoStack.length > watermark) {
       coords.push(...this.revertEntry(this.undoStack.pop()!));
     }
-    this.eventBus.emit('cells-changed', { cells: coords });
+    this.eventBus.emit('cells-changed', { cells: restoredCells(coords) });
     this.eventBus.emit('history-changed', { canUndo: this.canUndo(), canRedo: this.canRedo() });
   }
 
   /**
    * Merge undoStack entries [start, top) into one: earliest `before` + latest `after` per
-   * cell for terrain, plus the NET object add/removes (objectOps) so grouped object
-   * placements/removals undo/redo together. Public so tools can fold follow-up commands
-   * (auto-trim, a gamma click's raise+trim) into the user-visible step they belong to —
-   * ATOMIC UNDO: a stroke and its auto-trims/repairs collapse into one undo entry.
+   * cell for terrain, plus the net object add/removes (objectOps) so grouped object
+   * placements/removals undo/redo together. `Stroke.collapse` lets tools fold follow-up commands
+   * into the user-visible step they belong to.
    */
-  collapseHistory(start: number): void {
+  private collapseHistory(start: number): void {
     if (this.undoStack.length - start <= 1) return;
     const group = this.undoStack.splice(start);
     const firstBefore = new Map<string, CellSnapshot>();
     const lastAfter = new Map<string, CellSnapshot>();
     const added = new Map<string, PlacedObject>();
     const removed = new Map<string, PlacedObject>();
-    /** Ids whose `removed` snapshot already holds an explicit pre-stroke rotation. */
-    const rotationKnown = new Set<string>();
-    /** The object `id` as a removal recorded after entry `index` kept it: a road a later all-empty
-     *  trim deleted is gone from the map by now. Earlier removals do not count, since an object
-     *  removed before the entry was not on the map when the entry ran. */
-    const removedAfter = (index: number, id: string): PlacedObject | undefined => {
-      for (let j = index + 1; j < group.length; j++) {
-        const kept = group[j]!.objectOps?.removed.find((o) => o.id === id);
-        if (kept) return kept;
-      }
-      return undefined;
-    };
-    for (const [index, entry] of group.entries()) {
+    const marked = group.filter((e) => e.generation);
+    for (const entry of group) {
       for (const s of entry.before) {
         const k = cellKey(s.coord.x, s.coord.y);
         if (!firstBefore.has(k)) firstBefore.set(k, s);
@@ -395,56 +402,14 @@ export class CommandExecutor {
       for (const s of entry.after) {
         lastAfter.set(cellKey(s.coord.x, s.coord.y), s);
       }
-      // An entry with recorded `objectOps` (a collapsed group, whose `cmd` is only its last command,
-      // or a command that cannot reverse its own object effect) is folded through the same
-      // add/remove netting; deriving from the cmd would drop the ops it recorded.
-      if (entry.objectOps) {
-        for (const o of entry.objectOps.removed) {
-          if (added.has(o.id)) added.delete(o.id);
-          else removed.set(o.id, o);
-        }
-        for (const o of entry.objectOps.added) added.set(o.id, o);
-        continue;
+      // Add-then-remove within the group nets out; a remove then re-add of one id (a move, a turn,
+      // an edit in place) keeps the removal, so the group is one modify of the original.
+      if (!entry.objectOps) continue;
+      for (const o of entry.objectOps.removed) {
+        if (added.has(o.id)) added.delete(o.id);
+        else removed.set(o.id, o);
       }
-      const c = entry.cmd;
-      if (c.type === CommandType.PlaceObject) {
-        // Keep any earlier removal of the same id (in `removed`) untouched so a
-        // remove+re-add of one object — rotate/move in place — collapses to a
-        // single modify: `removed` holds the original, `added` the new version.
-        added.set(c.object.id, c.object);
-      } else if (c.type === CommandType.RemoveObject) {
-        // Add-then-remove within the group nets out (object never persisted).
-        if (added.has(c.removedObject.id)) added.delete(c.removedObject.id);
-        else removed.set(c.removedObject.id, c.removedObject);
-      } else if (c.type === CommandType.TrimCorners && c.layer === 'road' && c.objectId) {
-        // A road corner edit mutates the object IN PLACE (corners/rotation), which the
-        // cell-snapshot + add/remove netting can't see — without this, undoing a collapsed
-        // stroke would silently keep the repaired corners. Convert it to a remove(pre-state)
-        // + add(post-state) pair of the SAME id, which the netting already treats as an
-        // in-place modify. First trim wins for the `removed` snapshot (the true pre-stroke
-        // state); a later trim that carries the group's only explicit beforeRotation
-        // back-fills it (the earlier trim didn't rotate, so that IS the original rotation).
-        const obj = this.state.objects.get(c.objectId) ?? removedAfter(index, c.objectId);
-        if (obj) {
-          if (added.has(c.objectId)) {
-            added.set(c.objectId, clonePlacedObject(obj));
-          } else {
-            const prior = removed.get(c.objectId);
-            if (!prior) {
-              removed.set(c.objectId, {
-                ...clonePlacedObject(obj),
-                corners: c.beforeCorners ? [...c.beforeCorners] : undefined,
-                rotation: c.beforeRotation ?? obj.rotation,
-              });
-              if (c.beforeRotation !== undefined) rotationKnown.add(c.objectId);
-            } else if (!rotationKnown.has(c.objectId) && c.beforeRotation !== undefined) {
-              prior.rotation = c.beforeRotation;
-              rotationKnown.add(c.objectId);
-            }
-            added.set(c.objectId, clonePlacedObject(obj));
-          }
-        }
-      }
+      for (const o of entry.objectOps.added) added.set(o.id, o);
     }
     const mergedTaint = this.provenance.mergeGroup(group.map((e) => e.taint));
     this.undoStack.push({
@@ -453,11 +418,14 @@ export class CommandExecutor {
       after: [...lastAfter.values()],
       objectOps: { removed: [...removed.values()], added: [...added.values()] },
       taint: mergedTaint,
+      ...(marked.length > 0
+        ? { generation: { before: marked[0]!.generation!.before, after: marked[marked.length - 1]!.generation!.after } }
+        : {}),
     });
   }
 
   undo(): boolean {
-    this.state.liftedObjects?.clear();
+    this.abandonStroke();
     if (this.undoStack.length === 0) return false;
 
     const affectedCoords: MacroCoord[] = [];
@@ -473,38 +441,46 @@ export class CommandExecutor {
       if (violations.length === 0) break;
     }
 
-    this.eventBus.emit('cells-changed', { cells: affectedCoords });
-    this.eventBus.emit('history-applied', { cells: affectedCoords, objects: this.flashObjects(reverted) });
+    const cells = restoredCells(affectedCoords);
+    this.eventBus.emit('cells-changed', { cells });
+    this.eventBus.emit('history-applied', { cells, objects: this.flashObjects(reverted) });
     this.eventBus.emit('history-changed', { canUndo: this.canUndo(), canRedo: this.canRedo() });
     return true;
   }
 
-  redo(): void {
-    this.state.liftedObjects?.clear();
-    const entry = this.redoStack.pop();
-    if (!entry) return;
+  /** Mirrors `undo`: reapplies until the map is legal, so one redo restores what one undo took back.
+   *  False when there was nothing to redo. */
+  redo(): boolean {
+    this.abandonStroke();
+    if (this.redoStack.length === 0) return false;
 
-    const coords = this.reapplyEntry(entry);
-    this.undoStack.push(entry);
+    const coords: MacroCoord[] = [];
+    const reapplied: HistoryEntry[] = [];
+    while (this.redoStack.length > 0) {
+      const entry = this.redoStack.pop()!;
+      reapplied.push(entry);
+      coords.push(...this.reapplyEntry(entry));
+      this.undoStack.push(entry);
 
-    this.eventBus.emit('cells-changed', { cells: coords });
-    this.eventBus.emit('history-applied', { cells: coords, objects: this.flashObjects([entry]) });
+      const violations = this.registry.validatePostStroke(this.state, { firstOnly: true });
+      if (violations.length === 0) break;
+    }
+
+    const cells = restoredCells(coords);
+    this.eventBus.emit('cells-changed', { cells });
+    this.eventBus.emit('history-applied', { cells, objects: this.flashObjects(reapplied) });
     this.eventBus.emit('history-changed', { canUndo: this.canUndo(), canRedo: this.canRedo() });
+    return true;
   }
 
   /**
    * The objects a history step touched, for an object-anchored flash (rendered at the object's own
    * footprint, no terrain offset). Reported alongside the step's terrain cells rather than instead
-   * of them: one step can move both — a stroke whose road reconcile carried a coating away, a
-   * generate — and the renderer flashes each part on its own grid (`resolveHistoryFlash`).
+   * of them: one step can move both, and the renderer flashes each part on its own grid.
    */
   private flashObjects(entries: HistoryEntry[]): PlacedObject[] | undefined {
     const out: PlacedObject[] = [];
-    for (const e of entries) {
-      if (e.objectOps) out.push(...e.objectOps.removed, ...e.objectOps.added);
-      else if (e.cmd.type === CommandType.PlaceObject) out.push(e.cmd.object);
-      else if (e.cmd.type === CommandType.RemoveObject) out.push(e.cmd.removedObject);
-    }
+    for (const e of entries) if (e.objectOps) out.push(...e.objectOps.removed, ...e.objectOps.added);
     return out.length > 0 ? out : undefined;
   }
 
@@ -522,39 +498,37 @@ export class CommandExecutor {
 
   canUndo(): boolean { return this.undoStack.length > 0; }
   canRedo(): boolean { return this.redoStack.length > 0; }
-  getUndoStackSize(): number { return this.undoStack.length; }
+  /** How many entries the undo history holds: a depth to compare, never a stroke start. */
+  historyDepth(): number { return this.undoStack.length; }
   getRegistry(): RuleDispatcher { return this.registry; }
 
-  /** Undo entries oldest-first, optionally limited to the stroke above a watermark. */
-  getUndoEntries(watermark = 0): HistoryEntry[] {
-    return this.undoStack.slice(watermark);
+  /** The whole undo history, oldest first, as a copy. */
+  getUndoEntries(): HistoryEntry[] {
+    return this.undoStack.slice();
   }
 
   /**
-   * The commands APPLIED above `watermark`, oldest first — what a caller that issued its commands
-   * indirectly (through a populator, a macro, a per-cell loop) has to read to learn where its edit
-   * actually landed. A placement trait SNAPS position during validation, so a command's final
-   * footprint is knowable only after it has run, and never from the argument the caller passed.
-   * Read it BEFORE commitStroke: the collapse folds the group into one entry.
+   * The commands applied above `watermark`, oldest first; reached through `Stroke.commands`.
    */
-  commandsSince(watermark: number): Command[] {
+  private commandsSince(watermark: number): Command[] {
     return this.undoStack.slice(watermark).map(e => e.cmd);
   }
 
   /** Seed the undo stack from an imported save's history section (redo cleared). The entries
    *  were produced by getUndoEntries() on the exporting side and validated by history-codec. */
   restoreHistory(entries: HistoryEntry[]): void {
+    this.abandonStroke();
     this.undoStack = [...entries];
     this.redoStack = [];
     this.eventBus.emit('history-changed', { canUndo: this.canUndo(), canRedo: this.canRedo() });
   }
 
-  pushSource(ctx: SourceContext): void { this.provenance.pushSource(ctx); }
-  popSource(): void { this.provenance.popSource(); }
-  withSource<T>(ctx: SourceContext, fn: () => T): T { return this.provenance.withSource(ctx, fn); }
-  noteAnalysisOnly(): void { this.provenance.noteAnalysisOnly(); }
+  private pushSource(ctx: SourceContext): void { this.provenance.pushSource(ctx); }
+  private popSource(): void { this.provenance.popSource(); }
+
   getProvenanceSummary(): MapProvenanceSummary { return this.provenance.getSummary(); }
-  getProvenanceTracker(): ProvenanceTracker { return this.provenance.getTracker(); }
+  /** The map's authorship as the editor reads it; recording stays the executor's. */
+  getAuthorship(): Authorship { return this.provenance; }
 
   private snapshot(coords: MacroCoord[]): CellSnapshot[] {
     return coords

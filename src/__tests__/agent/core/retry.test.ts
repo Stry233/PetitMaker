@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { retryDelayMs, MAX_TURN_RETRIES } from '../../../agent/core/retry';
+import { retryDelayMs, MAX_TURN_ATTEMPTS } from '../../../agent/core/retry';
 
 describe('retryable + delay', () => {
   it('honors retryAfterMs exactly', () => {
     expect(retryDelayMs(1, { cls: 'rate-limit', detail: '', retryAfterMs: 9000 })).toBe(9000);
+  });
+  it('caps a provider Retry-After, so one header cannot park the job for an hour', () => {
+    expect(retryDelayMs(1, { cls: 'rate-limit', detail: '', retryAfterMs: 3_600_000 })).toBe(60_000);
   });
   it('backs off exponentially with jitter inside [0.75, 1] of the base, capped at 30s', () => {
     const noJitter = () => 1;
@@ -13,5 +16,5 @@ describe('retryable + delay', () => {
     const floor = () => 0;
     expect(retryDelayMs(1, { cls: 'overloaded', detail: '' }, floor)).toBe(1500);
   });
-  it('caps attempts', () => { expect(MAX_TURN_RETRIES).toBe(5); });
+  it('caps attempts', () => { expect(MAX_TURN_ATTEMPTS).toBe(5); });
 });

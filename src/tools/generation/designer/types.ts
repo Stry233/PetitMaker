@@ -1,59 +1,41 @@
 /**
- * The designer generator's PLAN model: what a map is going to be, before a single command exists.
+ * The designer generator's plan model: what a map is going to be, before any command exists.
  *
- * The vocabulary:
- *  - a REGION is the unit of thought, in two kinds: a BUILDING-ANCHOR region (a building comes
- *    first and the place is composed around it) and a PURE THEME region (no building; one theme
- *    from the library holds it up). `RegionKind` is exactly that split.
- *  - a region has an ORIENTATION, never 360°: with a building the door faces the look-out and the
- *    door's opposite carries the BACKING; without one, the road's entry direction is the look-out
- *    and the region's depth carries the backing. So `orientation` and `entrySide` name the same
- *    plaza-ward direction here, derived differently, and `backing` is always the far end.
- *  - an ELEMENT (tree, bridge, water, furniture) is never a region and never appears in this model:
- *    the dressing kits fill a lot, they do not plan one.
+ *  - A region is the unit of thought: a building-anchor region (the place is composed around a
+ *    building) or a pure theme region (`RegionKind`).
+ *  - A region has an orientation: with a building the door faces the look-out and its opposite
+ *    carries the backing; without one the road's entry direction is the look-out. `orientation` and
+ *    `entrySide` name the same plaza-ward direction, derived differently; `backing` is the far end.
+ *  - An element (tree, bridge, water, furniture) is never a region: the kits fill a lot.
  *
- * Everything here is DATA — no state, no commands, no randomness. `region-list.ts` decides WHICH
- * regions a map holds and `districts.ts` decides WHERE, and both produce values of these types.
- *
- * Geometry is macro-grid and axis-aligned: the references are rectilinear maps, so a lot is a Rect.
- * `RegionPlan.lot` is a LIST of rects to leave the door open for an L-shaped lot later; v1 always
- * writes exactly one.
+ * Data only: no state, commands or randomness. `region-list.ts` decides which regions a map holds
+ * and `districts.ts` where. Geometry is macro-grid and axis-aligned; `RegionPlan.lot` is a list of
+ * rects, always one today.
  */
-import type { Rect, Rotation } from '../../../core/model/types';
-// The tree's one cardinal-direction type. It lives beside the waterfall reader because that is
-// where it was first needed; a second copy here would be a second source for one fact.
-import type { Direction } from '../../../core/model/waterfall-geometry';
+import { ROTATIONS, type MapTemplate, type Rotation } from '../../../core/model/types';
+import type { Rect } from '../../../core/grid/rect';
+import { ROTATION_FACING, type Direction } from '../../../core/grid/directions';
+import type { AnchorKind } from '../../../config/generation-style';
 
-export type { Direction };
+export type { AnchorKind, Direction };
 
 // --- region kinds ------------------------------------------------------------------------------
 
-/** The building-anchor regions: every placeable Building and
- *  Facility belongs to exactly one of these. `region-list.ts:ANCHOR_ROLES` is the mapping. */
-export type AnchorKind = 'residential' | 'own-house' | 'museum' | 'shop';
+// The theme vocabulary is read off the theme library (`themes.ts`).
+export type {
+  ThemeFamily, ThemeId, FoodLeisureTheme, NatureTheme, ViewpointTheme, CultureTheme, ProductionTheme,
+} from './themes';
+import type { ThemeRef } from './themes';
 
-/** The five theme families of the theme library. */
-export type ThemeFamily = 'food-leisure' | 'nature' | 'viewpoint' | 'culture' | 'production';
-
-/** Food and leisure: cafe, teahouse, picnic area, gathering/banquet area, seaside light dining. */
-export type FoodLeisureTheme = 'cafe' | 'teahouse' | 'picnic' | 'banquet' | 'seaside-dining';
-/** Natural scenery: park/central garden, garden/flower plot, flower field, bamboo sunken courtyard,
- *  lake/fountain, tree avenue/grove array, pure mountain-water-waterfall scenery, canyon/valley. */
-export type NatureTheme =
-  | 'park' | 'garden' | 'flower-field' | 'bamboo-court'
-  | 'lake-fountain' | 'tree-avenue' | 'mountain-water' | 'canyon';
-/** Viewing and photo spots: lookout, panorama platform, waterside deck/lakeside walk, text/pattern landmark. */
-export type ViewpointTheme = 'lookout' | 'panorama-deck' | 'waterside-deck' | 'landmark-text';
-/** Culture and activity: library, stage/small theatre, chess garden, music corner. */
-export type CultureTheme = 'library' | 'stage' | 'chess-garden' | 'music-corner';
-/** Production and daily life: planting/crop area, orchard, small-animal run. */
-export type ProductionTheme = 'crop-field' | 'orchard' | 'animal-run';
-
-export type ThemeId =
-  | FoodLeisureTheme | NatureTheme | ViewpointTheme | CultureTheme | ProductionTheme;
-
-/** A region is one of the four anchor kinds, or a pure theme region (its `themeId` says which). */
-type RegionKind = AnchorKind | 'theme';
+/** What a design is planned from, and what every pure stage reads first; a stage takes it together
+ *  with the plans of the stages before it, as one object. */
+export interface DesignInput {
+  seed: number;
+  template: MapTemplate;
+  richness: number;
+  /** The map's height ceiling; the composition's own default when absent. */
+  maxElevation?: number;
+}
 
 // --- affinity (the taste cases) -----------------------------------------------------------------
 
@@ -74,16 +56,10 @@ export type AffinityTag =
 
 // --- regions -----------------------------------------------------------------------------------
 
-/** What `region-list.ts` decides: which regions the map holds, and how big each wants to be.
- *  No position yet — that is `districts.ts`. */
-export interface RegionSpec {
+/** What every region spec carries, anchor or theme. */
+interface RegionBase {
   /** Stable within one plan (`res-0`, `theme-3`), so a plan diffs and a test names a region. */
   id: string;
-  kind: RegionKind;
-  /** Set exactly when `kind === 'theme'`. */
-  themeId?: ThemeId;
-  /** The theme's family; anchors leave it undefined. */
-  family?: ThemeFamily;
   /** Catalog ids this region is responsible for placing, in the order it should place them.
    *  Empty for theme regions; every placeable Building/Facility appears in exactly one list. */
   anchors: string[];
@@ -95,8 +71,22 @@ export interface RegionSpec {
   tags: readonly AffinityTag[];
 }
 
-/** A region with a place on the map: `region-list.ts`'s spec plus everything `districts.ts` decided. */
-export interface RegionPlan extends RegionSpec {
+/** A building-anchor region: no theme. */
+export interface AnchorRegionSpec extends RegionBase {
+  kind: AnchorKind;
+  themeId?: never;
+  family?: never;
+}
+
+/** A pure theme region, its theme and family correlated so a switch on `family` narrows `themeId`. */
+export type ThemeRegionSpec = RegionBase & { kind: 'theme' } & ThemeRef;
+
+/** What `region-list.ts` decides: which regions the map holds, and how big each wants to be.
+ *  No position yet — that is `districts.ts`. */
+export type RegionSpec = AnchorRegionSpec | ThemeRegionSpec;
+
+/** Where `districts.ts` put a region and how it faces. */
+interface RegionPlacement {
   /** The lot, as 1 or 2 axis-aligned rects. v1 always writes exactly one. */
   lot: Rect[];
   /** The side the road reaches this region on, always the plaza-ward one. */
@@ -108,14 +98,17 @@ export interface RegionPlan extends RegionSpec {
   /** The strip at the far end of the lot, opposite `orientation`, where the sculptor raises this region's
    *  own mountain/waterfall backing. Absent only where the lot is too shallow to hold one. */
   backing?: Rect;
-  /** The QUIET treatment: a place in a block nothing claimed — no theme behind it, planted sparsely
+  /** The quiet treatment: a place in a block nothing claimed — no theme behind it, planted sparsely
    *  and edged. Every block gets a treatment, so there is no ground on a finished map that nobody
    *  decided about; this is what a block gets when the decision was to leave it alone. */
   quiet?: boolean;
-  /** This place stands in a block given the WATER treatment: its ground is composed with water as
+  /** This place stands in a block given the water treatment: its ground is composed with water as
    *  the material rather than decorated around a bed cut into a corner of it. */
   water?: boolean;
 }
+
+/** A region with a place on the map: `region-list.ts`'s spec plus everything `districts.ts` decided. */
+export type RegionPlan = RegionSpec & RegionPlacement;
 
 // --- the finished plan --------------------------------------------------------------------------
 
@@ -131,7 +124,7 @@ export interface SeedInfo {
 export interface DesignPlan {
   seedInfo: SeedInfo;
   /** The template's plaza, as macro cells: the hub the plan radiates from. */
-  plazaHub: Rect;
+  hubArea: Rect;
   /** The map-scale high ground the composition raised: object-free, terrain-only, and the landmark
    *  figure's home. No place overlaps it. */
   backingBand: Rect;
@@ -141,25 +134,19 @@ export interface DesignPlan {
   unplaced: string[];
 }
 
+// --- road widths -------------------------------------------------------------------------------
+
+/** The game's own two rank widths: a trunk is 3 cells wide, a branch 2, and nothing is 1. */
+export const TRUNK_W = 3;
+export const BRANCH_W = 2;
+
 // --- orientation helpers -----------------------------------------------------------------------
 
-/** The object rotation that makes a building's DOOR face `dir`. Mirrors the gate convention in
- *  `placement/object.ts:buildingGate`: at rotation 0 the door is the footprint's bottom
- *  edge, so it faces +y (south). The anchor placement turns buildings with this. */
-export const DOOR_ROTATION: Readonly<Record<Direction, Rotation>> = {
-  south: 0, west: 90, north: 180, east: 270,
-};
-
-/** The direction facing `dir`. */
-export const OPPOSITE: Readonly<Record<Direction, Direction>> = {
-  north: 'south', south: 'north', east: 'west', west: 'east',
-};
-
-/** Unit step of a direction on the macro grid (y grows south). */
-export const STEP: Readonly<Record<Direction, { dx: number; dy: number }>> = {
-  north: { dx: 0, dy: -1 }, south: { dx: 0, dy: 1 },
-  west: { dx: -1, dy: 0 }, east: { dx: 1, dy: 0 },
-};
+/** The object rotation that makes a building's door face `dir`: `ROTATION_FACING` read backwards.
+ *  The anchor placement turns buildings with this. */
+export const DOOR_ROTATION = Object.fromEntries(
+  ROTATIONS.map((rotation) => [ROTATION_FACING[rotation], rotation]),
+) as Readonly<Record<Direction, Rotation>>;
 
 /** The cardinal an offset points at, or null when it is shorter than `deadband` on both axes — the
  *  offset says nothing then, and a caller that names a direction anyway is inventing one. The

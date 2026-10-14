@@ -1,26 +1,40 @@
 import { describe, it, expect } from 'vitest';
-import { CommandExecutor } from '../../../core/commands/command-executor';
-import { EventBus } from '../../../core/commands/event-bus';
-import { createDefaultRegistry } from '../../../rules/index';
-import { makeState, setTerrain } from '../../rules/_helpers';
+import { makeState, setTerrain, makeExecutor } from '../../_support/map-state';
 import { getCatalogByCategory } from '../../../state/catalog';
-import { makeCtx, tryDecorate, tryPlace, enforceClearance, probePlacement } from '../../../tools/placement/object';
-import { ItemCategory, TerrainType, type EditorEvents } from '../../../core/model/types';
-import { roadLookup } from '../../../state/object-index';
+import { makeCtx, tryDecorate, tryPlace, probePlacement } from '../../../tools/placement/object';
+import { TerrainType } from '../../../core/model/types';
+import { networkCells } from '../../../tools/macros/roads/walkable';
+import { readRoadStyle } from '../../../tools/macros/roads/road-style';
+import { ItemCategory } from '../../../config/catalog/categories';
 
 const floraId = getCatalogByCategory(ItemCategory.Flora)[0]!.id;
 const roadId = getCatalogByCategory(ItemCategory.Road)[0]!.id;
 
 function ctxFor(size = 12) {
   const state = makeState(size, size);
-  const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
+  const exec = makeExecutor(state);
   return { state, exec, ctx: makeCtx(state, (c) => exec.execute(c), exec.getRegistry(), 42) };
 }
 
 describe('placement/object', () => {
+  it('keeps surface prints out of pavement reuse, connectivity and style inference', () => {
+    const { state, exec, ctx } = ctxFor();
+    const style = readRoadStyle(state);
+    expect(tryPlace(ctx, 'print-field-line', 4, 4)).not.toBeNull();
+    expect(ctx.roads.size).toBe(0);
+    expect(makeCtx(state, c => exec.execute(c), exec.getRegistry(), 42).roads.size).toBe(0);
+    expect(networkCells(state, state.template.width, state.template.height).cells.size).toBe(0);
+    expect(readRoadStyle(state)).toEqual(style);
+    expect(tryPlace(ctx, roadId, 4, 4)).not.toBeNull();
+    expect(ctx.roads.size).toBe(1);
+    expect(networkCells(state, state.template.width, state.template.height).cells.size).toBe(1);
+  });
+
   it.each([ItemCategory.Bridge, ItemCategory.Ramp])('probes snapped %s geometry without changing the map or history', kind => {
     const { state, exec, ctx } = ctxFor(20), bridge = kind === ItemCategory.Bridge;
-    for (let y = 3; y < 18; y++) for (let x = bridge ? 7 : 10; x < (bridge ? 11 : 17); x++) setTerrain(state, x, y, bridge ? TerrainType.Water : TerrainType.Mountain, bridge ? 0 : 1);
+    for (let y = 3; y < 18; y++) for (let x = bridge ? 7 : 10; x < (bridge ? 11 : 17); x++) setTerrain(
+      state, x, y, bridge ? TerrainType.Water : TerrainType.Mountain, bridge ? 0 : 1,
+    );
     const cells = JSON.stringify(state.cells), versions = [state.cellsVersion, state.objectsVersion];
     const id = getCatalogByCategory(kind)[0]!.id, x = bridge ? 8 : 9;
     const probe = probePlacement(ctx, id, x, 8.5);
@@ -28,7 +42,7 @@ describe('placement/object', () => {
     expect(state.objects.size).toBe(0);
     expect(JSON.stringify(state.cells)).toBe(cells);
     expect([state.cellsVersion, state.objectsVersion]).toEqual(versions);
-    expect(exec.getUndoStackSize()).toBe(0);
+    expect(exec.historyDepth()).toBe(0);
     const placed = tryPlace(ctx, id, x, 8.5);
     expect(placed).toEqual({ ...probe, id: placed?.id });
   });
@@ -68,20 +82,9 @@ describe('placement/object', () => {
     it('still plants a curb-adjacent cell with exactly one paved side', () => {
       const { state, ctx } = ctxFor();
       expect(tryPlace(ctx, roadId, 5, 5)).toBeTruthy();
-      // (5,4) touches pavement on ONE side only — beside the road, not inside it.
+      // (5,4) touches pavement on one side only — beside the road, not inside it.
       expect(tryDecorate(ctx, floraId, 5, 4)).toBeTruthy();
       expect(state.objects.size).toBe(2);
-    });
-
-    it('enforceClearance sweeps a decoration a later road loop grows around', () => {
-      const { state, ctx } = ctxFor();
-      expect(tryDecorate(ctx, floraId, 5, 5)).toBeTruthy();
-      for (const [x, y] of [[4, 4], [5, 4], [6, 4], [4, 5], [6, 5], [4, 6], [5, 6], [6, 6]] as const) {
-        expect(tryPlace(ctx, roadId, x, y), `road@${x},${y}`).toBeTruthy();
-      }
-      expect(state.objects.size).toBe(9); // flora + 8 road tiles, still standing
-      enforceClearance(ctx);
-      expect(state.objects.size).toBe(8); // flora swept out of the now-enclosed pocket
     });
   });
 });

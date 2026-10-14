@@ -1,31 +1,25 @@
 /**
- * The planet session's nameplate: Back, the planet's name and Done on one plate at the top, on the
- * line the mode row's ink runs through. It stands centred on the window where the span between the
- * mode row and the corner allows, slides along that span where it does not, and past that the name
- * gives up width; Back and Done keep theirs.
- *
- * The toast band moves below the plate while it stands (`toastBandShift`).
- *
- * Back leaves at once while nothing has been drawn and otherwise asks from under the plate, starting
- * at its own end, before discarding. Done is unavailable until the planet has ground, and grows the
- * save panel from the plate; pressing the name opens the same panel at its name field, so the planet
- * is named in one place.
+ * The planet session's nameplate: Back, the planet's name and Done on one plate on the mode row's ink line,
+ * centred while the span allows, then sliding, then the name giving up width. The toast band moves below
+ * it (`nameplate-layout.ts:toastBandShift`). Back asks before discarding drawn work; Done waits for ground and grows the save
+ * panel, which a press on the name opens at its field.
  */
 import { AnimatePresence, motion, useIsPresent, useReducedMotionConfig } from 'framer-motion';
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
-import { CellZone } from '../../../core/model/types';
-import { ZONE_COLORS } from '../../../core/model/constants';
-import { showToast } from '../../../core/runtime/toast-bus';
-import { quantityParams, useT } from '../../../i18n/context';
-import { sessionFrame, sessionHasGround } from '../../../kit/operations/planet-session';
+import { type GridState } from '../../../core/model/types';
+import { joinList } from '../../../i18n/locale-info';
+import { showToast } from '../../../platform/channels/toast-bus';
+import { localizedName, quantityParams, useLocale, useT } from '../../../i18n/context';
+import { getCatalogItem } from '../../../state/catalog';
+import { pendingLandmarks, sessionFrame, sessionHasEdits, sessionHasGround } from '../../../editor/operations/planet-session';
 import { useEditorStore } from '../../../state/store';
 import { touchFloorZoom, useChromeScale, useDenseScript, useDevicePixelRatio, useTouchPrimary, useViewportSize } from '../../design/scale';
-import { TOAST_BAND_SHIFT_VAR, TOAST_BAND_TOP } from '../../chrome/floating/toast-band';
+import { TOAST_BAND_SHIFT_VAR } from '../../chrome/floating/toast-band';
 import { ShapeEdge, isWebKitEngine } from '../../design/shape-edge';
-import { btnReset, font, interactionProfiles, radii, z } from '../../design/styles';
+import { btnReset, font, radii, z } from '../../design/styles';
 import { roleFont, weightVars } from '../../design/text-weight';
-import { INK, LINE, PLATE, PLATE_INK } from '../../design/tokens';
+import { INK, LINE, PLATE, PLATE_INK, SEA } from '../../design/tokens';
 import { cozyPanel, skin, windowCard } from '../../design/window-skin';
 import { ActionButton } from '../../primitives/ActionButton';
 import { Switch } from '../../primitives/Switch';
@@ -33,18 +27,19 @@ import { AnchoredConfirm, anchoredCardMotion, anchoredOrigin } from '../../primi
 import { useFloatingPosition } from '../../primitives/use-floating-position';
 import { BackIcon, CheckIcon, EditIcon } from '../../primitives/line-glyphs';
 import { mapEdgeAttr } from '../../primitives/map-edge';
-import { paintPlanet } from '../../primitives/planet-painter';
+import { paintPlanet } from '../../../view/map2d/capture/planet-painter';
 import { useSurfaceScope } from '../../primitives/surface-scope';
 import { PlanetNameField, usePlanetNameReview } from '../../chrome/modals/planet/PlanetNameField';
-import { MODE_ROW_INK_CENTRE, cornerArt, cornerWidth, modeRowRight, sessionModes, TOP_RIGHT_TOP, type FrameLayout } from '../frame';
+import { sessionModes, TOP_RIGHT_TOP } from '../frame';
 import { useFrameLayout } from '../frame-layout';
-import { EDGE_RIGHT, RAIL } from '../units';
+import { EDGE_RIGHT } from '../units';
 import { useFrameZoom } from '../use-frame-zoom';
-import { finishPlanetEditing, stopPlanetEditing, useSessionPlanetName } from './planet-editing';
-import { useCanvasFact } from './use-canvas-fact';
+import { finishPlanetEditing, stopPlanetEditing } from '../../../editor/session/planet-editing';
+import { useSessionPlanetName } from './use-planet-session';
+import { useCanvasFact } from '../../session/use-canvas-fact';
+import { useRootCssVars } from '../../primitives/use-root-css-vars';
+import { NAME_GAP, NAME_LEAST, NAME_PAD, PANEL_GAP, PEN, PLATE_ROW, nameplateSpan, nameplateTop, toastBandShift } from './nameplate-layout';
 
-/** The plate's height in css px; its ends are half-circles. */
-export const PLATE_ROW = 52;
 /** Each control on the plate and in its panel, in css px. */
 const BUTTON = 44;
 /** Inset of the controls from the plate's ends, and the space between them, in css px. */
@@ -53,17 +48,10 @@ const PLATE_GAP = 4;
 /** The rule between Back and the name: inset from the plate's top and bottom, and its side air. */
 const RULE_INSET = 12;
 const RULE_AIR = 2;
-const NAME_PAD = 12;
-const NAME_GAP = 8;
 const NAME_MAX_W = 220;
-const PEN = 16;
-/** The name button at its narrowest: its padding and the pen, with the name itself down to nothing. */
-export const NAME_LEAST = 2 * NAME_PAD + NAME_GAP + PEN;
 const TICK = 18;
 const DONE_PAD = { start: 14, end: 18 };
 const DONE_GAP = 6;
-/** Space between the plate and the surfaces it opens, and between the plate and the toast band, in css px. */
-const PANEL_GAP = 8;
 const PANEL_PAD = 16;
 /** The panel's width with its picture above the name, and beside it. */
 const STACKED_W = 380;
@@ -80,50 +68,10 @@ const DISCARD_W = 360;
 const REVIEW_PAD = { start: 10, end: 6 };
 const REVIEW_GAP = 8;
 
-/**
- * Where the plate's box starts, in chrome css px: its middle on the mode row's ink centre, which
- * the frame draws at `frameZoom` while the plate draws at `chromeZoom`.
- */
-export function nameplateTop(frameZoom: number, chromeZoom: number): number {
-  return (MODE_ROW_INK_CENTRE * frameZoom) / chromeZoom - PLATE_ROW / 2;
-}
-
-/** Where the plate's box ends, in chrome css px. */
-export function nameplateBottom(frameZoom: number, chromeZoom: number): number {
-  return nameplateTop(frameZoom, chromeZoom) + PLATE_ROW;
-}
-
-/** The span the plate may stand in and the centre it keeps while it fits there, in screen px. */
-export interface NameplateSpan { left: number; right: number; centre: number }
-
-/**
- * Where the plate may stand across the window, in screen px: clear of the session's mode row
- * (its selected splat included) on the left and, while the corner stands level with the plate, of
- * the corner's controls on the right, each by the frame's least gap between groups.
- */
-export function nameplateSpan(
-  viewportW: number, frameZoom: number, chromeZoom: number,
-  layout: Pick<FrameLayout, 'width' | 'edgeRight' | 'cornerTop'>, modes: number,
-): NameplateSpan {
-  const level = layout.cornerTop < nameplateBottom(frameZoom, chromeZoom) * chromeZoom / frameZoom;
-  const corner = level ? cornerWidth(cornerArt(true)) + RAIL.groupMin : 0;
-  return {
-    left: (modeRowRight(modes) + RAIL.groupMin) * frameZoom,
-    right: (layout.width - layout.edgeRight - corner) * frameZoom,
-    centre: viewportW / 2,
-  };
-}
-
-/** How far the toast band moves down while the plate stands, in chrome css px: to clear the plate. */
-export function toastBandShift(frameZoom: number, chromeZoom: number): number {
-  return Math.max(0, nameplateBottom(frameZoom, chromeZoom) + PANEL_GAP - TOAST_BAND_TOP);
-}
-
-/** Whether leaving would lose work: an edit, or a planet the session opened that is not saved yet
- *  (one read from a scan), which Back must not throw away unasked. */
+/** Whether leaving would lose work (`sessionHasEdits`). */
 const hasEdits = (): boolean => {
   const s = useEditorStore.getState();
-  return (s.commandExecutor?.getUndoStackSize() ?? 0) > 0 || !!s.planetSession?.review;
+  return sessionHasEdits(s.planetSession, s.commandExecutor?.historyDepth() ?? 0);
 };
 
 const iconButton: CSSProperties = {
@@ -167,11 +115,7 @@ export function PlanetNameplate({ motionProps }: {
   const name = draft ?? fallback;
   const shown = name.trim() || fallback;
 
-  useEffect(() => {
-    const root = document.documentElement.style;
-    root.setProperty(TOAST_BAND_SHIFT_VAR, `${shift}px`);
-    return () => { root.removeProperty(TOAST_BAND_SHIFT_VAR); };
-  }, [shift]);
+  useRootCssVars({ [TOAST_BAND_SHIFT_VAR]: `${shift}px` });
 
   const back = () => {
     if (asking === 'discard') { close(); return; }
@@ -182,7 +126,7 @@ export function PlanetNameplate({ motionProps }: {
   const save = (asCopy: boolean) => {
     const trimmed = name.trim();
     if (!trimmed || !ground) return;
-    const result = finishPlanetEditing(trimmed, asCopy);
+    const result = finishPlanetEditing(trimmed, asCopy, fallback);
     // A save that did not finish keeps the panel and the session, so nothing drawn is lost.
     if (result.ok) close();
     else showToast(t(result.reason === 'quota' ? 'planet.save_failed' : 'planet.finish_failed'), 'error');
@@ -214,17 +158,17 @@ export function PlanetNameplate({ motionProps }: {
             <span style={{ position: 'absolute', inset: 0, background: PLATE, borderRadius: (PLATE_ROW / 2) * (isWebKitEngine() ? 2 : 1) }} />
           </ShapeEdge>
           <div style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: PLATE_GAP, height: PLATE_ROW, padding: `0 ${PLATE_PAD}px` }}>
-            <motion.button ref={backRef} type="button" data-testid="planet-back" {...interactionProfiles.tile}
+            <ActionButton ref={backRef} data-testid="planet-back" interaction="tile"
               aria-label={t('planet.back')} title={t('planet.back')} onClick={back} style={iconButton}>
               <BackIcon />
-            </motion.button>
+            </ActionButton>
             <PlateRule />
-            <motion.button type="button" data-testid="planet-name" {...interactionProfiles.pill}
+            <ActionButton data-testid="planet-name" interaction="pill"
               aria-label={t('planet.rename_named', { name: shown })} aria-expanded={asking === 'save'} onClick={rename} title={shown}
               style={{ ...btnReset, display: 'flex', alignItems: 'center', gap: NAME_GAP, height: BUTTON, padding: `0 ${NAME_PAD}px`, borderRadius: radii.pill, color: PLATE_INK, flex: '0 1 auto', minWidth: NAME_LEAST }}>
               <span style={{ ...roleFont('head'), minWidth: 0, maxWidth: NAME_MAX_W, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{shown}</span>
               <span aria-hidden style={{ display: 'flex', color: skin.muted, flex: 'none' }}><EditIcon size={PEN} /></span>
-            </motion.button>
+            </ActionButton>
             {review && <PlateRule />}
             {review && <ReviewSegment cells={review.cells.length} landmark={review.landmark} />}
             <ActionButton appearance="primary" interaction="pill" data-testid="planet-done"
@@ -264,24 +208,31 @@ function PlateRule() {
   return <span aria-hidden style={{ width: 1, alignSelf: 'stretch', margin: `${RULE_INSET}px ${RULE_AIR}px`, background: LINE, flex: 'none' }} />;
 }
 
-/** A scanned planet's segment of the plate: how many places to check, the landmark counted as one,
- *  and the switch that shows them on the map. Its title spells the count out. */
+/** `pendingLandmarks` of the live session, as their ids joined by spaces, so a reading compares by value. */
+function pendingIds(state: GridState | null): string {
+  return pendingLandmarks(useEditorStore.getState().planetSession, state).join(' ');
+}
+
+/** A scanned planet's segment of the plate: how many places to check, the inferred landmark and each
+ *  landmark still to place counted as one, and the switch that shows them on the map. Its title spells
+ *  the count out. */
 function ReviewSegment({ cells, landmark }: { cells: number; landmark: boolean }) {
   const t = useT();
-  const locale = useEditorStore((s) => s.locale);
+  const locale = useLocale();
+  const pending = useCanvasFact(pendingIds).split(' ').filter(Boolean);
   const shown = useEditorStore((s) => s.planetReviewShown);
   const setShown = useEditorStore((s) => s.setPlanetReviewShown);
-  const key = landmark
-    ? (cells === 1 ? 'planet.review_count_landmark_one' : 'planet.review_count_landmark')
-    : (cells === 1 ? 'planet.review_count_one' : 'planet.review_count');
-  const full = t(key, quantityParams(locale, { n: cells }));
+  const key = landmark ? 'planet.review_count_landmark' : 'planet.review_count';
+  const counted = t(key, quantityParams(locale, { n: cells }));
+  const names = pending.map((id) => { const item = getCatalogItem(id); return item ? localizedName(item.name, locale) : id; });
+  const full = names.length ? t('planet.review_with_unplaced', { review: counted, name: joinList(locale, names) }) : counted;
   return (
     <div data-testid="planet-review" title={full} style={{
       display: 'flex', alignItems: 'center', gap: REVIEW_GAP, height: BUTTON, flex: 'none', whiteSpace: 'nowrap',
       paddingInline: `${REVIEW_PAD.start}px ${REVIEW_PAD.end}px`,
     }}>
       <span data-testid="planet-review-count" style={{ ...roleFont('label'), color: PLATE_INK }}>
-        {t('planet.review_short', quantityParams(locale, { n: cells + (landmark ? 1 : 0) }))}
+        {t('planet.review_short', quantityParams(locale, { n: cells + (landmark ? 1 : 0) + pending.length }))}
       </span>
       <Switch on={shown} onClick={() => setShown(!shown)} label={t('planet.review_toggle')} />
     </div>
@@ -386,7 +337,7 @@ function PlanetShot({ style }: { style: CSSProperties }) {
   }, [style.width, style.height]);
   return (
     <canvas ref={ref} aria-hidden style={{
-      display: 'block', borderRadius: radii.md, background: ZONE_COLORS[CellZone.Void],
+      display: 'block', borderRadius: radii.md, background: SEA,
       border: `1.5px solid ${skin.line}`, boxSizing: 'border-box', ...style,
     }} />
   );

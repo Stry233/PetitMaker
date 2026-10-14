@@ -3,58 +3,52 @@
 // `genOn`: a silent CommandExecutor stroke group drives generateTerrain, then one
 // commitStroke collapses it to a single undo entry — exactly the live Generate path.
 // It does not set `state.generation`; callers that need an informational recipe add it explicitly.
-import { CommandExecutor } from '../../../core/commands/command-executor';
-import { EventBus } from '../../../core/commands/event-bus';
 import { createDefaultRegistry } from '../../../rules/index';
-import { makeState, makeTemplate } from '../../rules/_helpers';
-import { generateTerrain } from '../../../tools/generation/terrain-generator';
-import { deserialize } from '../../../io/json-codec';
+import { makeState, makeTemplate } from '../../_support/map-state';
+import { openSave } from '../../../io/import/open-save';
+import { clearUnderLandmarks } from '../../../tools/generation/transfer';
 import { getMapTemplate, MAP_TEMPLATES } from '../../../config/maps';
-import { createGrid, NEIGHBORS4 } from '../../../core/model/grid-model';
+import { createGrid } from '../../../core/model/grid-model';
+import { NEIGHBORS4 } from '../../../core/grid/directions';
 import { getPlaceableByCategory } from '../../../state/catalog';
-import { makeRng } from '../../../core/model/rng';
-import {
-  CellZone,
-  ItemCategory,
-  TerrainType,
-  type Command,
-  type Corners,
-  type CornerTrim,
-  type EditorEvents,
-  type GenerateConfig,
-  type GridState,
-  type MapTemplate,
-} from '../../../core/model/types';
-// @ts-ignore
+import { makeRng } from '../../../core/base/rng';
+import { TerrainType, type Corners, type CornerTrim, type GridState, type MapTemplate } from '../../../core/model/types';
+import { defaultConfig, type GenerateConfig } from '../../../tools/generation/recipe';
+import { CellZone } from '../../../core/game/zones';
+import { templateAnchor } from '../../../core/model/landmarks';
+import { wholeCellsOf } from '../../../core/grid/footprint';
+import { rectContains } from '../../../core/grid/rect';
 import { readFileSync } from 'node:fs';
-import { roadLookup } from '../../../state/object-index';
+import { createExecutor } from '../../../state/executor';
+import { generateWith } from '../../_support/generation';
+import { ItemCategory } from '../../../config/catalog/categories';
 
 // ── Shared generation helpers (the genOn stroke-group pattern) ─────────────────────────────────
 
 /** Drive the real Generate path inside one silent stroke group (the same order as
- *  `kit/operations/generate.ts:runGeneration`, so these are maps the app itself can produce). Does
- *  NOT set `state.generation` — callers do that explicitly so hand-built states never carry it. */
+ *  `tools/generation/run/generation-run.ts:runGeneration`, so these are maps the app itself can produce). Does
+ *  Not set `state.generation` — callers do that explicitly so hand-built states never carry it. */
 function genOn(state: GridState, cfg: GenerateConfig): GridState {
-  const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
-  exec.runSilently(() => {
-    generateTerrain(cfg, state, (c: Command) => exec.execute(c), exec.getRegistry());
+  const exec = createExecutor(state, createDefaultRegistry());
+  exec.transaction({ silent: true }, () => {
+    generateWith(state, exec, cfg);
   });
-  exec.commitStroke(exec.getUndoStackSize());
+  exec.beginStroke().commit();
   return state;
 }
 
 function islandCfg(seed: number): GenerateConfig {
-  return { algorithm: 'designed', mode: 'mixed', corridorWidth: 1, maxElevation: 8, seed, region: null };
+  return defaultConfig('designed', { maxElevation: 8, seed });
 }
 
 /** The hexia map template with a blank grid (no cells painted) — the real-map baseline case, and
  *  the base every hexia-derived corpus case starts from. */
 function hexiaBlank(): GridState {
-  const raw = readFileSync('src/__tests__/io/__fixtures__/petit-planet-hexia-1782022830197.json', 'utf8');
-  return deserialize(raw, getMapTemplate((JSON.parse(raw) as { templateId?: string }).templateId));
+  const raw = readFileSync('src/__tests__/fixtures/saves/petit-planet-hexia-1782022830197.json', 'utf8');
+  return openSave(raw, getMapTemplate((JSON.parse(raw) as { templateId?: string }).templateId));
 }
 
-/** `makeState` always builds template id 'test' (see src/__tests__/rules/_helpers.ts), so two
+/** `makeState` always builds template id 'test' (see src/__tests__/_support/map-state.ts), so two
  *  synthetic corpus cases of different sizes would collide in the shared MAP_TEMPLATES registry if
  *  they both used the default id. Give each synthetic case its own id and register it up front —
  *  the same approach payload.test.ts uses for a single synthetic map, generalized to many. */
@@ -120,7 +114,7 @@ function generatedThenEdited(): GridState {
 }
 
 function mazeCase(): GridState {
-  const cfg: GenerateConfig = { algorithm: 'maze', mode: 'earth', corridorWidth: 1, maxElevation: 3, seed: 5, region: null };
+  const cfg: GenerateConfig = defaultConfig('maze', { maxElevation: 3, seed: 5 });
   const state = genOn(namedState('maze-64', 64, 64), cfg);
   state.generation = cfg;
   return state;
@@ -128,7 +122,7 @@ function mazeCase(): GridState {
 
 /** Deterministic "entropy bomb": a real hexia-sized map filled with the worst-case terrain/corner/
  *  object noise the codec's context models are least able to predict, all still within the ranges
- *  `validateImportedState` accepts (type/elevation) — built by DIRECT cell/object writes (no
+ *  the save loader admits (type/elevation) — built by direct cell/object writes (no
  *  commands, no rule registry) since we're measuring the compression ceiling, not exercising rules.
  *  `n` caps how many objects are placed (the corpus asks for a few thousand — the game's load
  *  budget order of magnitude); `seed` makes the noise reproducible. */
@@ -137,16 +131,15 @@ export function adversarialState(n: number, seed: number): GridState {
   const rng = makeRng(seed);
   const { width, height } = state.template;
 
-  // `cell.zone` reads Grass under the plaza too (createGrid folds the template's raw Plaza zone
-  // into Grass since the plaza is a locked PlacedObject, not terrain-bearing zone data) — but
-  // json-codec's deserialize() deliberately strips any terrain baked onto a RAW-Plaza cell on
-  // load (io/json-codec.ts:195, keyed off `template.zones`, not the live `cell.zone`), since the
-  // plaza object always occupies that footprint in real gameplay. Writing terrain there via this
-  // rule-bypassing builder would silently vanish on the next save/load round trip, breaking the
-  // E2E content-equality assertion for a reason that has nothing to do with the codec. Gate on
-  // the raw template zone (matching deserialize's own check) so every terrain write here is one
-  // that actually survives a real save/load.
-  const rawZone = (x: number, y: number): CellZone => state.template.zones[y]?.[x] ?? CellZone.Void;
+  // `cell.zone` reads Grass under the plaza, but every load path strips terrain under a landmark
+  // (tools/generation/transfer/landmark-clearance.ts:clearUnderLandmarks), since the plaza object
+  // always occupies that footprint in real gameplay. Terrain this rule-bypassing builder wrote
+  // there would vanish on the next save/load round trip and break the E2E content-equality
+  // assertion for a reason that has nothing to do with the codec, so no write here lands on a cell
+  // the plaza covers whole.
+  const anchor = templateAnchor(state.template)!;
+  const plaza = wholeCellsOf({ x: anchor.x, y: anchor.y, w: anchor.width, h: anchor.height });
+  const underPlaza = (x: number, y: number): boolean => rectContains(plaza, x, y);
 
   // 1) Checkerboard-noise mountains at elevations 1-3 over Grass cells only — layers 1-3 auto-pass
   //    the 3x3 base rule, so single isolated cells at any of these elevations are legal.
@@ -156,7 +149,7 @@ export function adversarialState(n: number, seed: number): GridState {
     for (let x = 0; x < width; x++) {
       if ((x + y) % 2 !== 0) continue;
       const cell = state.cells[y]![x]!;
-      if (cell.zone !== CellZone.Grass || rawZone(x, y) === CellZone.Plaza) continue;
+      if (cell.zone !== CellZone.Grass || underPlaza(x, y)) continue;
       cell.terrain = { type: TerrainType.Mountain, elevation: 1 + rng.int(3) };
     }
   }
@@ -167,7 +160,7 @@ export function adversarialState(n: number, seed: number): GridState {
     for (let x = 1; x < width - 1; x++) {
       if ((x + y) % 2 === 0) continue;
       const cell = state.cells[y]![x]!;
-      if (cell.zone !== CellZone.Grass || cell.terrain || rawZone(x, y) === CellZone.Plaza) continue;
+      if (cell.zone !== CellZone.Grass || cell.terrain || underPlaza(x, y)) continue;
       if (rng.float() >= 0.015) continue;
       const allFlat = NEIGHBORS4.every(([dx, dy]) => {
         const nb = state.cells[y + dy]?.[x + dx];
@@ -179,7 +172,7 @@ export function adversarialState(n: number, seed: number): GridState {
 
   // 3) Legal corner deviations: a cell whose W or N neighbour differs in elevation has a free
   //    convex corner there (the edge-cut policy) — sprinkle a fan/tri trim on it. Heuristic,
-  //    not exhaustive (validateImportedState only checks type/elevation ranges, not cut geometry).
+  //    not exhaustive (the loader only checks type/elevation ranges, not cut geometry).
   const TRIMS: readonly CornerTrim[] = ['fan', 'tri-NW', 'tri-NE', 'tri-SW', 'tri-SE'];
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
@@ -211,6 +204,8 @@ export function adversarialState(n: number, seed: number): GridState {
     }
   }
 
+  // A load takes off whatever stands under a landmark, so the corpus holds none of it.
+  clearUnderLandmarks(state);
   return state;
 }
 

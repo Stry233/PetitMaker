@@ -1,5 +1,5 @@
 /**
- * THE LEGIBILITY READING, on grids whose answers are known by construction.
+ * The legibility reading, on grids whose answers are known by construction.
  *
  * `_stencil-image.ts`'s tonal measures answer "did the reduction keep the picture's light and dark".
  * These four answer "can the picture still be READ", which is the question a small box raises,
@@ -7,11 +7,11 @@
  * arriving as fragments, water arriving as specks, and two hues arriving as one colour.
  *
  * Every case here is a hand-built stencil and a hand-built result, so a number is checked against
- * arithmetic rather than against a picture. What these numbers do on REAL pictures is the evaluation
+ * arithmetic rather than against a picture. What these numbers do on real pictures is the evaluation
  * harness's business, not a test's.
  */
 import { describe, it, expect } from 'vitest';
-import type { Stencil } from '../../../../core/model/types';
+import type { Stencil } from '../../../../tools/generation/recipe';
 import {
   GROUND, HUE_CHROMA_MIN, HUE_FAR, HUE_LUMA_NEAR, REGION_MIN, WATER,
   sameLabelRegions, scoreLegibility,
@@ -85,7 +85,7 @@ describe('presence: the share of the picture that arrived at all', () => {
   });
 
   it('is taken over the FOOTPRINT, so a subject keyed out of the reading still reads 0', () => {
-    // The failure this measure exists for: the backdrop pass took the whole picture, so the SUBJECT
+    // The failure this measure exists for: the backdrop pass took the whole picture, so the subject
     // reading is empty and every measure taken over it is vacuous — while the picture's own ink is
     // still there, unbuilt. `bare` reads 0 (nothing missing) on the same case.
     const footprint = stencilOf(['ssss', 'ssss'], ink);
@@ -115,7 +115,7 @@ describe('region survival: the source\'s areas arriving as areas', () => {
   });
 
   it('falls when an area arrives as fragments rather than as an area', () => {
-    // The right AVERAGE tier over the left area and the right count of each, laid as a checkerboard:
+    // The right average tier over the left area and the right count of each, laid as a checkerboard:
     // every tonal measure is content and the area is gone.
     const truth = stencilOf(['aaabbb', 'aaabbb', 'aaabbb'], ink);
     const built = builtOf(['xyxyyy', 'yxyyyy', 'xyxyyy'], { x: TIER_A, y: TIER_B });

@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 import { useState } from 'react';
 import { fireEvent, render } from '@testing-library/react';
 import { AnimatePresence, MotionConfig } from 'framer-motion';

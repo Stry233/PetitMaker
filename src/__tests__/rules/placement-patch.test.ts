@@ -1,12 +1,12 @@
 import { describe, it, expect } from 'vitest';
 import { traitPlacementRule } from '../../rules/placement';
 import { TerrainType } from '../../core/model/types';
-import { makeState, setTerrain, placeCmd, makeObject } from './_helpers';
+import { makeState, setTerrain, placeCmd, makeObject } from '../_support/map-state';
 
 /**
- * Γ-patches (patchOnly fillets) are COSMETIC: per the terrain-silhouette kernel a
+ * Γ-patches (patchOnly fillets) are cosmetic: per the silhouette kernel a
  * patch at tier N holds real mass only to N-1. Placement validity must read the
- * REAL surface, or fillets phantom-block / phantom-allow placements.
+ * real surface, or fillets phantom-block / phantom-allow placements.
  */
 describe('placement vs edge-cut patches', () => {
   it('a tier-1 fillet on ground does not block a flower next to it (patch is cosmetic)', () => {
@@ -24,7 +24,7 @@ describe('placement vs edge-cut patches', () => {
     const state = makeState(20, 20);
     // 6x6 plateau at elevation 2
     for (let y = 4; y <= 9; y++) for (let x = 4; x <= 9; x++) setTerrain(state, x, y, TerrainType.Mountain, 2);
-    // one interior cell is only a tier-2 FILLET over a real tier-1 base
+    // one interior cell is only a tier-2 fillet over a real tier-1 base
     setTerrain(state, 6, 6, TerrainType.Mountain, 2);
     state.cells[6]![6]!.terrain!.patchOnly = true;
     // flower anchored on the fillet cell: raw reads say "flat at 2" but the real
@@ -36,7 +36,7 @@ describe('placement vs edge-cut patches', () => {
   it('noFloat-style support: a road tile cannot ride on a fillet-only column', () => {
     const state = makeState(20, 20);
     // tier-1 patch = no real terrain; surfaceCoating requires real terrain? no —
-    // roads need non-water terrain OR ground; the flat trait is the gate here.
+    // roads need non-water terrain or ground; the flat trait is the gate here.
     // Instead: bridge-style noFloat via a tree on the patch with mismatched margin.
     for (let y = 4; y <= 9; y++) for (let x = 4; x <= 9; x++) setTerrain(state, x, y, TerrainType.Mountain, 1);
     setTerrain(state, 6, 6, TerrainType.Mountain, 2);

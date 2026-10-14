@@ -3,27 +3,29 @@
  * geometry (shape + x1/y1/x2/y2, cx/cy/r, width, nearX/nearY) beside the nested
  * rect/circle/line/cells forms, and both spellings resolve to the same edit.
  * The flat form exists because a guided decoder that compiles the tool schema
- * into a grammar can drop every OPTIONAL compound property (nested object,
+ * into a grammar can drop every optional compound property (nested object,
  * array, free string) from its emissions while optional scalars come through —
  * so the geometry a tool needs must be reachable through required params and
  * optional scalars alone.
  */
 import { describe, it, expect } from 'vitest';
-import { CommandExecutor } from '../../../core/commands/command-executor';
 import { EventBus } from '../../../core/commands/event-bus';
 import { createDefaultRegistry } from '../../../rules';
-import { TerrainType, ItemCategory, type EditorEvents, type GridState } from '../../../core/model/types';
+import { TerrainType, type GridState } from '../../../core/model/types';
+import { type EditorEvents } from '../../../state/editing/events';
 import { getCatalogByCategory } from '../../../state/catalog';
-import { makeState } from '../../rules/_helpers';
-import { executeToolCall, TOOL_SCHEMAS, type AgentToolDeps } from '../../../agent/tools';
-import { describeToolCall } from '../../../agent/describe-call';
+import { makeState } from '../../_support/map-state';
+import { executeToolCall, wireSchemas, type AgentToolDeps } from '../../../agent/tools';
+import { describeToolCall } from '../../../agent/tools/describe';
 import { translateFor } from '../../../i18n/context';
-import { roadLookup } from '../../../state/object-index';
+import { createExecutor } from '../../../state/executor';
+import type { TextKey } from '../../../i18n/keys';
+import { ItemCategory } from '../../../config/catalog/categories';
 
 function setup(w = 20, h = 20) {
   const state = makeState(w, h);
   const bus = new EventBus<EditorEvents>();
-  const exec = new CommandExecutor(state, bus, createDefaultRegistry(), roadLookup(state));
+  const exec = createExecutor(state, createDefaultRegistry(), bus);
   const deps: AgentToolDeps = { getState: () => state, getExecutor: () => exec, getRegion: () => [] };
   return { state, exec, deps };
 }
@@ -136,7 +138,7 @@ describe('flat geometry: both spellings, one edit', () => {
     const { state, deps } = setup();
     const r = await executeToolCall(call('build_road', { catalogId: roadId, x1: 2, y1: 2, x2: 8, y2: 8 }), deps);
     expect(r.isError).toBe(false);
-    // a diagonal LINE of ~7-13 cells, nowhere near the 49-cell rect fill
+    // a diagonal line of ~7-13 cells, nowhere near the 49-cell rect fill
     expect(state.objects.size).toBeLessThan(20);
     expect(state.objects.size).toBeGreaterThan(5);
   });
@@ -216,7 +218,7 @@ describe('flat geometry: the refusal teaches the flat contract', () => {
 describe('flat geometry: the schema stays emittable', () => {
   /** Every name in a `required` list must map to a property a guided decoder
    *  emits under pressure: anything but a nested object. (Required arrays and
-   *  required scalars are proven emittable; OPTIONAL compounds are the ones a
+   *  required scalars are proven emittable; optional compounds are the ones a
    *  guided decoder drops, so a tool's geometry must never hide only there.) */
   function assertNoRequiredObject(schema: Record<string, unknown>, path: string): void {
     const props = schema.properties as Record<string, Record<string, unknown>> | undefined;
@@ -234,11 +236,13 @@ describe('flat geometry: the schema stays emittable', () => {
   }
 
   it('no tool requires a nested object anywhere', () => {
-    for (const t of TOOL_SCHEMAS) assertNoRequiredObject(t.inputSchema, t.name);
+    for (const t of wireSchemas()) assertNoRequiredObject(t.parameters, t.name);
   });
 
   it('every shape-taking tool advertises its flat scalar geometry', () => {
-    const props = (name: string) => (TOOL_SCHEMAS.find((t) => t.name === name)!.inputSchema as { properties: Record<string, Record<string, unknown>> }).properties;
+    const props = (name: string) => (wireSchemas().find((t) => t.name === name)!.parameters as {
+      properties: Record<string, Record<string, unknown>>,
+    }).properties;
     for (const name of ['paint_terrain', 'erase_terrain', 'clear_area']) {
       const p = props(name);
       expect(p.shape?.enum).toEqual(['rect', 'circle', 'line', 'cells']);
@@ -261,7 +265,7 @@ describe('flat geometry: the schema stays emittable', () => {
 });
 
 describe('flat geometry: the approval line reads it', () => {
-  const en = (k: string, p?: Record<string, string | number>) => translateFor('en', k, p);
+  const en = (k: TextKey, p?: Record<string, string | number>) => translateFor('en', k, p);
 
   it('a flat paint_terrain call describes with the same area phrase as the nested one', () => {
     const nested = describeToolCall({ name: 'paint_terrain', input: { rect: { x1: 2, y1: 3, x2: 7, y2: 6 }, terrain: 'mountain', elevation: 2 } }, en);

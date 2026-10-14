@@ -1,33 +1,32 @@
 /**
- * The grid's CELLS as one flat byte buffer, for crossing a worker boundary.
+ * The grid's cells as one flat byte buffer, for crossing a worker boundary.
  *
  * `postMessage` structured-clones a cell grid as ~24k nested objects, and that clone runs on the
- * MAIN thread — tens of milliseconds per job on a real map, paid per press and per preview. Six
+ * Main thread — tens of milliseconds per job on a real map, paid per press and per preview. Six
  * bytes per cell in one `ArrayBuffer` encodes the same facts, is written and read in a linear
- * pass, and crosses as a TRANSFERABLE (zero copy).
+ * pass, and crosses as a transferable (zero copy).
  *
  * The encoding is session-internal wire, not a save format: both ends are always the same build,
- * so there is no version field and no migration story — `io/save-format` owns durable encodings.
+ * so there is no version field and no migration story — `io/save/format` owns durable encodings.
  *
  * Layout per cell: [zone | flag bits, terrain type, elevation, corners low, corners high,
  * patchBase]. Corner trims pack 3 bits each in drawing order.
  */
-import {
-  CellZone, TerrainType,
-  type Corners, type CornerTrim, type GridState, type MacroCell, type MapTemplate, type PlacedObject, type TerrainCell,
-} from './types';
+import { TerrainType, CORNER_TRIMS, type CornerTrim, type GridState, type MacroCell, type MapTemplate, type PlacedObject, type TerrainCell } from './types';
+import { OFF_MAP_ZONE, type CellZone } from '../game/zones';
+import { ZONE_ID_BITS } from '../game/profile';
 
 const STRIDE = 6;
 const HAS_TERRAIN = 1 << 3;
 const PATCH_ONLY = 1 << 4;
 const HAS_PATCH_BASE = 1 << 5;
 const HAS_CORNERS = 1 << 6;
-const ZONE_MASK = 0b111;
+const ZONE_MASK = (1 << ZONE_ID_BITS) - 1;
 
-const TRIMS: readonly CornerTrim[] = ['square', 'fan', 'tri-NW', 'tri-NE', 'tri-SW', 'tri-SE', 'empty'];
+const TRIMS: readonly CornerTrim[] = CORNER_TRIMS;
 const TRIM_INDEX = new Map(TRIMS.map((t, i) => [t, i]));
 
-export interface WireCells {
+interface WireCells {
   width: number;
   height: number;
   /** Transfer this alongside the message: `postMessage(msg, [msg.cells.buffer])`. */
@@ -41,7 +40,7 @@ export function encodeCells(cells: (MacroCell | null)[][], width: number, height
     const row = cells[y];
     for (let x = 0; x < width; x++, o += STRIDE) {
       const cell = row?.[x];
-      if (!cell) continue;   // encoded as Void with no terrain, which is what a missing cell reads as
+      if (!cell) { out[o] = OFF_MAP_ZONE; continue; }   // a missing cell reads as the off-map zone with no terrain
       const t = cell.terrain;
       let flags = cell.zone & ZONE_MASK;
       if (t) {
@@ -86,7 +85,7 @@ export function decodeCells(wire: WireCells): MacroCell[][] {
           terrain.corners = [
             TRIMS[packed & 0b111]!, TRIMS[(packed >> 3) & 0b111]!,
             TRIMS[(packed >> 6) & 0b111]!, TRIMS[(packed >> 9) & 0b111]!,
-          ] as Corners;
+          ];
         }
       }
       row.push({ zone: (flags & ZONE_MASK) as CellZone, terrain });
@@ -114,8 +113,8 @@ export function encodeGridState(state: GridState): WireGridState {
     wire: encodeCells(state.cells, state.template.width, state.template.height),
     objects: [...state.objects.values()],
     lockedLayers: [...state.lockedLayers],
-    cellsVersion: state.cellsVersion ?? 0,
-    objectsVersion: state.objectsVersion ?? 0,
+    cellsVersion: state.cellsVersion,
+    objectsVersion: state.objectsVersion,
   };
 }
 

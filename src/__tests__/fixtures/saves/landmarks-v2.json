@@ -1,0 +1,38 @@
+{
+ "version": 2,
+ "templateId": "tafa",
+ "cells": "15139*_,t1:1,167*_,t1:2,1652*_,t1:1,6699*_",
+ "objects": [
+  {
+   "id": "tree-in",
+   "catalogId": "tree-apple",
+   "x": 97,
+   "y": 88,
+   "rotation": 0,
+   "elevation": 0
+  },
+  {
+   "id": "tree-out",
+   "catalogId": "tree-apple",
+   "x": 60,
+   "y": 104,
+   "rotation": 0,
+   "elevation": 0
+  },
+  {
+   "id": "placed-station",
+   "catalogId": "facility-station",
+   "x": 40,
+   "y": 30,
+   "rotation": 0,
+   "elevation": 0
+  }
+ ],
+ "metadata": {
+  "savedAt": "2026-10-01T00:00:00.000Z"
+ },
+ "history": {
+  "v": 2,
+  "entries": []
+ }
+}

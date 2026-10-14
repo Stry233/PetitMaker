@@ -1,0 +1,3 @@
+{
+  "legal/providers-list.ts -> agent/providers/defaults.ts": "The static legal pages and the Lite alias of providers-list read the roster module itself."
+}

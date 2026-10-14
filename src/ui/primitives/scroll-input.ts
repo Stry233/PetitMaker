@@ -1,4 +1,4 @@
-import { MOTIONS } from '../shell/motion/registry';
+import { MOTIONS } from '../design/motion/registry';
 
 interface WheelInput { deltaX: number; deltaY: number; deltaMode: number; ctrlKey?: boolean }
 interface WheelPush { by: number }
@@ -7,10 +7,21 @@ const GLIDE_TAU_MS = MOTIONS['shelf.row.wheel-glide'].duration * 1000;
 const GLIDE_DT_CAP_MS = 64;
 
 /** Wheel deltas are visual pixels; scrollLeft and page-sized steps use the row's local pixels. */
+function toLocal(delta: number, mode: number, page: number, zoom: number): number {
+  return mode === 2 ? delta * page : delta * (mode === 1 ? WHEEL_LINE : 1) / zoom;
+}
+
+/** A vertical-dominant gesture redirected into sideways travel. */
 export function wheelPush(event: WheelInput, page: number, zoom: number): WheelPush | null {
   if (event.ctrlKey || Math.abs(event.deltaX) >= Math.abs(event.deltaY)) return null;
-  const by = event.deltaMode === 2 ? event.deltaY * page
-    : event.deltaY * (event.deltaMode === 1 ? WHEEL_LINE : 1) / zoom;
+  const by = toLocal(event.deltaY, event.deltaMode, page, zoom);
+  return by === 0 ? null : { by };
+}
+
+/** A sideways-dominant gesture's own travel, for rows that must apply it themselves. */
+export function wheelSideways(event: WheelInput, page: number, zoom: number): WheelPush | null {
+  if (event.ctrlKey || Math.abs(event.deltaX) < Math.abs(event.deltaY)) return null;
+  const by = toLocal(event.deltaX, event.deltaMode, page, zoom);
   return by === 0 ? null : { by };
 }
 

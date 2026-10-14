@@ -10,19 +10,20 @@ import { describe, it, expect } from 'vitest';
 import { traitPlacementRule } from '../../rules/placement';
 import { placementOverlapRule } from '../../rules/placement-overlap';
 import { objectBlocksTerrainRule } from '../../rules/object-blocks-terrain';
-import { CommandType, ItemCategory, TerrainType } from '../../core/model/types';
+import { CommandType, TerrainType } from '../../core/model/types';
 import type { PlaceObjectCommand, PaintTerrainCommand } from '../../core/model/types';
-import { makeState, setTerrain, placeCmd } from './_helpers';
-import { getCatalogItem, registerCatalogItem } from '../../state/catalog';
-import { PLAZA_ID } from '../../core/model/constants';
+import { makeState, setTerrain, placeCmd } from '../_support/map-state';
+import { getCatalogItem, __setCatalogItem } from '../../state/catalog';
 import { hasHalfStep } from '../../state/object-geometry';
+import { ANCHOR_LANDMARK } from '../_support/anchor';
+import { ItemCategory } from '../../config/catalog/categories';
 
-registerCatalogItem({
+__setCatalogItem({
   id: 'hs-pier', category: ItemCategory.Facility, name: { en: 'HalfStep Pier' },
   width: 2, height: 1, loadValue: 0, rotatable: false, placementMode: 'point',
   traits: [{ type: 'halfStep' }, { type: 'noFloat' }],
 });
-registerCatalogItem({
+__setCatalogItem({
   id: 'hs-slab', category: ItemCategory.Facility, name: { en: 'HalfStep Slab' },
   width: 2, height: 1, loadValue: 0, rotatable: false, placementMode: 'point',
   traits: [{ type: 'halfStep' }],
@@ -60,10 +61,12 @@ describe('V-PLACE-TRAIT: off-grid guard', () => {
 });
 
 describe('the plaza anchors on the half-cell grid', () => {
-  const plazaAt = (x: number, y: number) => placeCmd({ id: PLAZA_ID, catalogId: PLAZA_ID, position: { x, y }, width: 3, height: 4, rotation: 0, elevation: 1 });
+  const plazaAt = (x: number, y: number) => placeCmd(
+    { id: ANCHOR_LANDMARK.id, catalogId: ANCHOR_LANDMARK.id, position: { x, y }, width: 3, height: 4, rotation: 0, elevation: 1 },
+  );
 
   it('carries the halfStep trait', () => {
-    expect(hasHalfStep(getCatalogItem(PLAZA_ID)!)).toBe(true);
+    expect(hasHalfStep(getCatalogItem(ANCHOR_LANDMARK.id)!)).toBe(true);
   });
 
   it('passes the off-grid guard at a half-cell position on both axes', () => {
@@ -127,7 +130,7 @@ describe('V-PLACE-OVERLAP: float-rect intersection at a half offset', () => {
 
 describe('V-PLACE-BLOCK: terrain paint under a half-anchored deck', () => {
   function paint(x: number, y: number): PaintTerrainCommand {
-    return { type: CommandType.PaintTerrain, timestamp: 0, cells: [{ x, y }], terrainType: TerrainType.Mountain, elevation: 1 };
+    return { type: CommandType.PaintTerrain, cells: [{ x, y }], terrainType: TerrainType.Mountain, elevation: 1 };
   }
 
   it('blocks paint on the two cells the half-anchored deck actually covers, none beyond', () => {

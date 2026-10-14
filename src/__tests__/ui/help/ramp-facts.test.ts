@@ -11,9 +11,9 @@ vi.mock('../../../state/catalog', async (original) => {
   return catalog;
 });
 
-import { HELP_TABLES } from '../../../i18n/locales/help';
-import { helpFacts } from '../../../ui/chrome/modals/help/facts';
-import type { Locale } from '../../../core/model/types';
+import { HELP_TABLES } from '../../_support/locale-tables';
+import { helpFacts } from '../../../ui/help/facts';
+import type { Locale } from '../../../core/model/locale';
 
 describe('ramp help dimensions', () => {
   it('follows catalog changes and supplies the same measurements to every translation', () => {

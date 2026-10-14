@@ -4,7 +4,7 @@
   "icon": "path-patterned-tile",
   "name": {
     "en": "Patterned Tile Path",
-    "zh": "花砖路",
+    "zh": "锦花砖路",
     "ja": "模様タイルの道",
     "ru": "Узорчатая плиточная дорожка",
     "th": "ทางกระเบื้องลวดลาย",
@@ -24,5 +24,17 @@
     {
       "type": "surfaceCoating"
     }
-  ]
+  ],
+  "roadMaterial": {
+    "feather": 0.035,
+    "edge": {
+      "color": "#ffffff",
+      "pattern": {
+        "kind": "image",
+        "image": "path-patterned-tile",
+        "repeat": 2.5
+      }
+    },
+    "layers": []
+  }
 }

@@ -1,11 +1,11 @@
+// @vitest-environment jsdom
 /** Exit behavior across panel states. Collapse is unconditional, automatic transitions never open
  * the panel, the folded overlay leaves the map interactive, and Back restores the preceding view.
  * Escape closes only the highest open layer on each press. */
 import { describe, it, expect, beforeAll, beforeEach, afterEach, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { MotionConfig } from 'framer-motion';
-// @ts-ignore - node:fs is untyped here (no @types/node)
-import { readFileSync, readdirSync, statSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 
 import { append } from '../../../agent/core/log';
 import { useAgentSession } from '../../../agent/session/store';
@@ -15,8 +15,10 @@ import { I18nProvider } from '../../../i18n/context';
 import { useEditorStore } from '../../../state/store';
 import { TOUR_SEEN_KEY } from '../../../ui/chrome/tour/use-tour';
 import { PanelShell } from '../../../ui/agent/PanelShell';
-import { useAgentPanelSettings } from '../../../ui/agent/settings';
+import { useAgentConnection } from '../../../agent/connection/store';
 import { Shell } from '../../../ui/shell/Shell';
+import { panelProps } from '../../_support/agent-panel';
+import { repoFiles } from '../../_support/source-graph';
 
 const backing = new Map<string, string>();
 Object.defineProperty(globalThis, 'localStorage', {
@@ -53,7 +55,7 @@ const job = (over = {}) => ({
  * `setup.key-entry`, `run.gate` and `error.auth` as the panel sees them: the three states Escape has
  * to fold from, each of which owns the keyboard for something else.
  *
- * `setup.key-entry`'s `connected: false` alone lands on the keyless REST (`DreamOffice`), not the
+ * `setup.key-entry`'s `connected: false` alone lands on the keyless rest (`DreamOffice`), not the
  * key form this id names: Connect stands between the two. `renderPanel` presses it through, so the
  * fixture stands the form itself.
  */
@@ -73,11 +75,11 @@ const STATES: Record<string, { view: PanelView; connected: boolean }> = {
   },
 };
 
-/** The same three seeded into the REAL stores, for the Shell-level half. */
+/** The same three seeded into the real stores, for the Shell-level half. */
 function seedStore(id: string): void {
   const model = Object.fromEntries(PROVIDER_IDS.map((p) => [p, ''])) as Record<ProviderId, string>;
   model.claude = 'claude-sonnet-4-5';
-  useAgentPanelSettings.setState({
+  useAgentConnection.setState({
     provider: 'claude', model, oversight: 'checkpoint', customBaseUrl: '',
     keyed: id === 'setup.key-entry' ? [] : ['claude'], hydrated: true,
   });
@@ -101,7 +103,7 @@ function renderPanel(id: string, onCollapse: () => void) {
   const view_ = render(
     <MotionConfig reducedMotion="always">
       <I18nProvider>
-        <PanelShell view={view} connected={connected} now={0} onCollapse={onCollapse} {...VERBS} />
+        <PanelShell {...panelProps({ view, connected, now: 0, onCollapse, ...VERBS })} />
       </I18nProvider>
     </MotionConfig>,
   );
@@ -118,7 +120,7 @@ function mountShell() {
   );
 }
 
-/** The panel is a lazy chunk, and here `import()` COMPILES the assistant graph rather than fetching
+/** The panel is a lazy chunk, and here `import()` compiles the assistant graph rather than fetching
  *  a built one. Paid once, before anything below is timed (`assistant-entrance.test.tsx` makes the
  *  same argument at greater length). */
 beforeAll(async () => {
@@ -170,7 +172,7 @@ describe('the collapse control never reads session state', () => {
   });
 
   /**
-   * THE FORM ITSELF, standing genuinely rather than assumed: `renderPanel` walks the disconnected
+   * The form itself, standing genuinely rather than assumed: `renderPanel` walks the disconnected
    * desk through Connect for `setup.key-entry`, and this is the tripwire that proves it landed
    * there rather than on the keyless rest the walk starts from — without it a fixture whose id says
    * "setup" tests the welcome screen. Escape folds from the form like every other surface here.
@@ -190,13 +192,14 @@ describe('the collapse control never reads session state', () => {
     const view = render(
       <MotionConfig reducedMotion="always">
         <I18nProvider>
-          <PanelShell
-            view={baseView()}
-            connected
-            managing
-            now={0}
-            onCollapse={() => folded.push(1)}
-            {...VERBS}
+          <PanelShell {...panelProps({
+            view: baseView(),
+            connected: true,
+            initialZone: { kind: 'manage' },
+            now: 0,
+            onCollapse: () => folded.push(1),
+            ...VERBS,
+          })}
           />
         </I18nProvider>
       </MotionConfig>,
@@ -206,7 +209,7 @@ describe('the collapse control never reads session state', () => {
     expect(folded).toEqual([1]);
   });
 
-  /** And from an OPENED PAST RECORD, which is the fifth surface the job zone can be showing. Its
+  /** And from an opened past record, which is the fifth surface the job zone can be showing. Its
    *  own way out is Back; Escape is the way out of the panel, whatever is standing in it. */
   it('folds from an opened past record too', () => {
     const folded: number[] = [];
@@ -214,15 +217,15 @@ describe('the collapse control never reads session state', () => {
     const view = render(
       <MotionConfig reducedMotion="always">
         <I18nProvider>
-          <PanelShell
-            view={baseView({ jobs: [settled] })}
-            connected
-            filed={new Set([7])}
-            openRecord={7}
-            now={0}
-            onCollapse={() => folded.push(1)}
-            onCloseRecord={() => {}}
-            {...VERBS}
+          <PanelShell {...panelProps({
+            view: baseView({ jobs: [settled] }),
+            connected: true,
+            filed: new Set([7]),
+            initialZone: { kind: 'record', seq: 7 },
+            now: 0,
+            onCollapse: () => folded.push(1),
+            ...VERBS,
+          })}
           />
         </I18nProvider>
       </MotionConfig>,
@@ -235,7 +238,7 @@ describe('the collapse control never reads session state', () => {
   });
 
   /**
-   * A FOLD PUTS THE CARD AWAY WITH THE PANEL. `managing` lives in `PanelColumn` and nothing else
+   * A fold puts the card away with the panel. `managing` lives in `PanelColumn` and nothing else
    * clears it, so a user who folded from the settings card came back to the settings card — a
    * surface they had already left, standing over the session they wanted.
    */
@@ -258,7 +261,7 @@ describe('the collapse control never reads session state', () => {
     expect(screen.getByTestId('gate-block')).toBeTruthy();
   }, 40_000);
 
-  /** Escape peels ONE layer per press: the composer's ghost first, then the field, and only a bare
+  /** Escape peels one layer per press: the composer's ghost first, then the field, and only a bare
    *  panel folds. Otherwise one press both cleared the field and put the panel away, which is two
    *  answers to one question. */
   it('lets the composer clear itself before the panel folds', () => {
@@ -266,12 +269,13 @@ describe('the collapse control never reads session state', () => {
     const view = render(
       <MotionConfig reducedMotion="always">
         <I18nProvider>
-          <PanelShell
-            view={baseView({ suggestion: 'Yes, add the bridge' })}
-            connected
-            now={0}
-            onCollapse={() => folded.push(1)}
-            {...VERBS}
+          <PanelShell {...panelProps({
+            view: baseView({ suggestion: 'Yes, add the bridge' }),
+            connected: true,
+            now: 0,
+            onCollapse: () => folded.push(1),
+            ...VERBS,
+          })}
           />
         </I18nProvider>
       </MotionConfig>,
@@ -297,22 +301,17 @@ describe('the collapse control never reads session state', () => {
 
 describe('a machine-initiated advance never writes the open flag', () => {
   /**
-   * A SOURCE SCAN, because the defect is a WRITE that should not exist and no state of the app can
-   * prove the absence of one. Exactly two files may move the flag: the store slice that owns it, and
-   * the shell whose block the user presses. A probe timer, a retry settling or an arriving job
-   * reaching for it would show up here as a third.
+   * A source scan, because the defect is a write that should not exist and no state of the app can
+   * prove the absence of one. Only these files may move the flag: the store slice that owns it, the
+   * shell whose block the user presses, the panel's Escape and the planet session's opening. A probe
+   * timer, a retry settling or an arriving job reaching for it would show up here as another.
    */
   it('is written by the shell and the store slice only', () => {
-    const walk = (dir: string): string[] => (readdirSync(dir) as string[]).flatMap((name) => {
-      const full = `${dir}/${name}`;
-      if (statSync(full).isDirectory()) return walk(full);
-      return /\.tsx?$/.test(name) ? [full] : [];
-    });
-    const writers = walk('src')
-      .filter((path) => !path.includes('/__tests__/'))
+    const writers = repoFiles('src', { skip: ['__tests__'] })
       .filter((path) => /setAssistantOpen|assistantOpen\s*:/.test(readFileSync(path, 'utf8')))
       .sort();
     expect(writers).toEqual([
+      'src/editor/session/context.ts', // a planet session the user opens folds the panel away
       'src/state/slices/shell.ts',     // owns the flag, and persists nothing about it
       'src/ui/agent/PanelColumn.tsx',  // the panel's own Escape, and nothing else in the panel
       'src/ui/shell/Shell.tsx',        // the block the user presses, and the chip that reopens it
@@ -361,11 +360,12 @@ describe('pointer containment', () => {
     const view = render(
       <MotionConfig reducedMotion="always">
         <I18nProvider>
-          <PanelShell
-            view={baseView({ jobs: [job({ outcome: 'done' }), job({ orderSeq: 2, outcome: 'done' })] })}
-            connected
-            now={0}
-            {...VERBS}
+          <PanelShell {...panelProps({
+            view: baseView({ jobs: [job({ outcome: 'done' }), job({ orderSeq: 2, outcome: 'done' })] }),
+            connected: true,
+            now: 0,
+            ...VERBS,
+          })}
           />
         </I18nProvider>
       </MotionConfig>,
@@ -373,7 +373,7 @@ describe('pointer containment', () => {
     const panel = view.getByTestId('panel-shell');
     fireEvent.click(view.getByTestId('history-toggle'));
 
-    // The past-jobs card is a labelled GROUP rather than a menu: its rows carry a roll-back control
+    // The past-jobs card is a labelled group rather than a menu: its rows carry a roll-back control
     // of their own, which a `menuitem` button could not nest.
     const card = document.body.querySelector('[role="group"]') as HTMLElement;
     expect(card).not.toBeNull();
@@ -388,7 +388,7 @@ describe('the opened past record: Back reopens the list', () => {
   function seedConnected(): void {
     const model = Object.fromEntries(PROVIDER_IDS.map((p) => [p, ''])) as Record<ProviderId, string>;
     model.claude = 'claude-sonnet-4-5';
-    useAgentPanelSettings.setState({
+    useAgentConnection.setState({
       provider: 'claude', model, oversight: 'checkpoint', customBaseUrl: '',
       keyed: ['claude'], hydrated: true,
     });

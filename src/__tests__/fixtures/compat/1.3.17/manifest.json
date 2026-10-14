@@ -1,0 +1,3749 @@
+{
+ "release": "1.3.17",
+ "covers": [
+  "1.2.46",
+  "1.3.17"
+ ],
+ "buildNumber": 3794,
+ "saveVersion": 1,
+ "templates": [
+  "hexia",
+  "tafa"
+ ],
+ "cases": [
+  {
+   "id": "annotations-locks",
+   "planet": "hexia",
+   "steps": [
+    {
+     "op": "generate",
+     "kind": "island",
+     "seed": 51,
+     "richness": 50
+    },
+    {
+     "op": "annotate",
+     "customTags": [
+      "Orchard row",
+      "Pier"
+     ]
+    },
+    {
+     "op": "lockLayer",
+     "layer": 2
+    },
+    {
+     "op": "notes",
+     "title": "Harbor town",
+     "description": "A planned harbor with a market street."
+    }
+   ],
+   "log": [
+    "generate island seed 51: placed=4312 removedCells=0 removedObjects=0 cancelled=false"
+   ],
+   "live": {
+    "digest": {
+     "cells": "369829ac38c1055b",
+     "objects": "d36f48b8039587d1",
+     "annotations": "46c313409dbda456",
+     "notes": "835ff351338e93d4",
+     "counts": {
+      "terrainCells": 6226,
+      "objects": 4312,
+      "annotations": 9
+     }
+    },
+    "undoDepth": 1
+   },
+   "exports": {
+    "json-full": {
+     "file": "annotations-locks.json-full.json.gz",
+     "reference": {
+      "status": "imported",
+      "warnings": [],
+      "digest": {
+       "cells": "369829ac38c1055b",
+       "objects": "d36f48b8039587d1",
+       "annotations": "46c313409dbda456",
+       "notes": "835ff351338e93d4",
+       "counts": {
+        "terrainCells": 6226,
+        "objects": 4312,
+        "annotations": 9
+       }
+      },
+      "undoDepth": 1
+     },
+     "current": {
+      "migrations": [
+       "history-before-v3",
+       "landmark-ground",
+       "landmark-layout-v3",
+       "ramp-v1-reanchor"
+      ],
+      "digest": {
+       "cells": "a16e0a94e7b250ec",
+       "objects": "359587c6b28069e5"
+      },
+      "undoDepth": 0,
+      "warnings": [
+       "landmark-cleared"
+      ]
+     }
+    },
+    "json-min": {
+     "file": "annotations-locks.json-min.json.gz",
+     "reference": {
+      "status": "imported",
+      "warnings": [],
+      "digest": {
+       "cells": "369829ac38c1055b",
+       "objects": "d36f48b8039587d1",
+       "annotations": "e3b0c44298fc1c14",
+       "notes": "44136fa355b3678a",
+       "counts": {
+        "terrainCells": 6226,
+        "objects": 4312,
+        "annotations": 0
+       }
+      },
+      "undoDepth": 0
+     },
+     "current": {
+      "migrations": [
+       "landmark-ground",
+       "landmark-layout-v3",
+       "ramp-v1-reanchor"
+      ],
+      "digest": {
+       "cells": "a16e0a94e7b250ec",
+       "objects": "359587c6b28069e5"
+      },
+      "warnings": [
+       "landmark-cleared"
+      ]
+     }
+    },
+    "share": {
+     "payload": "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",
+     "reference": {
+      "status": "imported",
+      "warnings": [],
+      "digest": {
+       "cells": "369829ac38c1055b",
+       "objects": "d36f48b8039587d1",
+       "annotations": "46c313409dbda456",
+       "notes": "835ff351338e93d4",
+       "counts": {
+        "terrainCells": 6226,
+        "objects": 4312,
+        "annotations": 9
+       }
+      }
+     },
+     "current": {
+      "migrations": [
+       "landmark-ground",
+       "landmark-layout-v3",
+       "ramp-v1-reanchor",
+       "share-identity-drift"
+      ],
+      "digest": {
+       "cells": "a16e0a94e7b250ec",
+       "objects": "359587c6b28069e5"
+      },
+      "warnings": [
+       "template-drift",
+       "catalog-drift",
+       "landmark-cleared"
+      ]
+     }
+    },
+    "png": {
+     "file": "annotations-locks.png",
+     "reference": {
+      "status": "imported",
+      "warnings": [],
+      "digest": {
+       "cells": "369829ac38c1055b",
+       "objects": "d36f48b8039587d1",
+       "annotations": "46c313409dbda456",
+       "notes": "835ff351338e93d4",
+       "counts": {
+        "terrainCells": 6226,
+        "objects": 4312,
+        "annotations": 9
+       }
+      },
+      "undoDepth": 0
+     },
+     "current": {
+      "migrations": [
+       "landmark-ground",
+       "landmark-layout-v3",
+       "ramp-v1-reanchor",
+       "share-identity-drift"
+      ],
+      "digest": {
+       "cells": "a16e0a94e7b250ec",
+       "objects": "359587c6b28069e5"
+      },
+      "warnings": [
+       "template-drift",
+       "catalog-drift",
+       "landmark-cleared"
+      ]
+     }
+    }
+   }
+  },
+  {
+   "id": "assistant",
+   "planet": "hexia",
+   "steps": [
+    {
+     "op": "assistant"
+    }
+   ],
+   "log": [
+    "find_bridge_sites: 3/3 placed; Legal bridge-plank anchors (pass x,y straight to place_object): (70,71) rot=90 span=5 elev=2 (84,52) rot=90 span=4 elev=0 (83,52) rot=90 span=4 elev=0 (68,73) rot=0 span=7 elev=2",
+    "agent place_object error: All commands rejected:\n[V-PLACE-OVERLAP] Placement: overlaps with an existing object at footprint (104,67)-(105,71). Hint: Object footprints may not overlap (to",
+    "find_ramp_sites: 2/3 placed; Validated ramp anchors (aim place_object at the anchor cell — the heightDrop snap will orient the ramp): (103,71) ramp-park-steps: elev 1 -> elev 0 (104,71) ramp-park-steps: elev 1 -> elev 0 (105,71) "
+   ],
+   "live": {
+    "digest": {
+     "cells": "9a538e95eb88b052",
+     "objects": "ac71c5f36b35597f",
+     "annotations": "e3b0c44298fc1c14",
+     "notes": "44136fa355b3678a",
+     "counts": {
+      "terrainCells": 583,
+      "objects": 134,
+      "annotations": 0
+     }
+    },
+    "undoDepth": 13
+   },
+   "exports": {
+    "json-full": {
+     "file": "assistant.json-full.json.gz",
+     "reference": {
+      "status": "imported",
+      "warnings": [],
+      "digest": {
+       "cells": "9a538e95eb88b052",
+       "objects": "ac71c5f36b35597f",
+       "annotations": "e3b0c44298fc1c14",
+       "notes": "44136fa355b3678a",
+       "counts": {
+        "terrainCells": 583,
+        "objects": 134,
+        "annotations": 0
+       }
+      },
+      "undoDepth": 13
+     },
+     "current": {
+      "migrations": [
+       "history-before-v3",
+       "landmark-ground",
+       "landmark-layout-v3",
+       "ramp-v1-reanchor"
+      ],
+      "digest": {
+       "cells": "8958977730cd9eed",
+       "objects": "26d95dbc8f197636"
+      },
+      "undoDepth": 0,
+      "warnings": [
+       "landmark-cleared"
+      ]
+     }
+    },
+    "json-min": {
+     "file": "assistant.json-min.json.gz",
+     "reference": {
+      "status": "imported",
+      "warnings": [],
+      "digest": {
+       "cells": "9a538e95eb88b052",
+       "objects": "ac71c5f36b35597f",
+       "annotations": "e3b0c44298fc1c14",
+       "notes": "44136fa355b3678a",
+       "counts": {
+        "terrainCells": 583,
+        "objects": 134,
+        "annotations": 0
+       }
+      },
+      "undoDepth": 0
+     },
+     "current": {
+      "migrations": [
+       "landmark-ground",
+       "landmark-layout-v3",
+       "ramp-v1-reanchor"
+      ],
+      "digest": {
+       "cells": "8958977730cd9eed",
+       "objects": "26d95dbc8f197636"
+      },
+      "warnings": [
+       "landmark-cleared"
+      ]
+     }
+    },
+    "share": {
+     "payload": "UDIEBAEFaGV4aWH9MTTxYIZ2OQ0FAQYxLjMuMTeA0cpq9fdbOOLjJCc1+nu7LbCLTKPAeISsVtuz+PBdIV3QE0sAAAAAAAAABPx2AGOKSPWHG9jTNphsaLyMALlJO+A1JG/x/+TKv5VzTA5BmtQIdq8fbleMTabyqUbASsBBjOy/10i2BZ8+73lsSo8tIiLmDtDpR3Ot/b3RwAkaKydp/RnI9dvPo0Uf/irZ6VtxrpQs5tynjW1BvbzZhlty3d6eUUv7C4PQEMs8X/ePYyn0mU158M+e8ePnV6C+GkxyGIAUKGriPS2cyWHylqCrZwg8WMZeTtXf0bIavZnR8hOwkS1g/tDK0QtbIN+yFo94JK3Yrlz8A8MuFddOXd9/dluCdhZAStO5guxxIIVgt0vkoVmimP4wxjiYAAAAAABh+hVBy4Dfp2VWhcdEJlyGqjZ5uoQ9Tq8OrxXalEeVhv3m5TZSrYUa/IdB1lXBicepH11lEqiHtORNXBVH8YdHtjNyw9VOnPbfOE4yUKwChCKXsHT6xu0YDmOTJbfqk5M1IJmnb8hfJ6Dyn6C7tx/2PeNg0rJCiiwN9EfGGAAA",
+     "reference": {
+      "status": "imported",
+      "warnings": [],
+      "digest": {
+       "cells": "9a538e95eb88b052",
+       "objects": "ac71c5f36b35597f",
+       "annotations": "e3b0c44298fc1c14",
+       "notes": "44136fa355b3678a",
+       "counts": {
+        "terrainCells": 583,
+        "objects": 134,
+        "annotations": 0
+       }
+      }
+     },
+     "current": {
+      "migrations": [
+       "landmark-ground",
+       "landmark-layout-v3",
+       "ramp-v1-reanchor",
+       "share-identity-drift"
+      ],
+      "digest": {
+       "cells": "8958977730cd9eed",
+       "objects": "26d95dbc8f197636"
+      },
+      "warnings": [
+       "template-drift",
+       "catalog-drift",
+       "landmark-cleared"
+      ]
+     }
+    },
+    "autosave": {
+     "file": "assistant.autosave.json.gz",
+     "reference": {
+      "status": "imported",
+      "digest": {
+       "cells": "9a538e95eb88b052",
+       "objects": "ac71c5f36b35597f",
+       "annotations": "e3b0c44298fc1c14",
+       "notes": "44136fa355b3678a",
+       "counts": {
+        "terrainCells": 583,
+        "objects": 134,
+        "annotations": 0
+       }
+      },
+      "history": 13
+     },
+     "current": {
+      "migrations": [
+       "history-before-v3",
+       "landmark-ground",
+       "landmark-layout-v3",
+       "ramp-v1-reanchor"
+      ],
+      "digest": {
+       "cells": "8958977730cd9eed",
+       "objects": "26d95dbc8f197636"
+      },
+      "history": 0,
+      "warnings": [
+       "landmark-cleared"
+      ]
+     }
+    }
+   }
+  },
+  {
+   "id": "edge-objects",
+   "planet": "hexia",
+   "steps": [
+    {
+     "op": "edgeObjects"
+    }
+   ],
+   "log": [
+    "edge objects: 24"
+   ],
+   "live": {
+    "digest": {
+     "cells": "1fd374aa658175ad",
+     "objects": "d551cf72ab62552d",
+     "annotations": "e3b0c44298fc1c14",
+     "notes": "44136fa355b3678a",
+     "counts": {
+      "terrainCells": 0,
+      "objects": 24,
+      "annotations": 0
+     }
+    },
+    "undoDepth": 24
+   },
+   "exports": {
+    "json-full": {
+     "file": "edge-objects.json-full.json.gz",
+     "reference": {
+      "status": "imported",
+      "warnings": [],
+      "digest": {
+       "cells": "1fd374aa658175ad",
+       "objects": "d551cf72ab62552d",
+       "annotations": "e3b0c44298fc1c14",
+       "notes": "44136fa355b3678a",
+       "counts": {
+        "terrainCells": 0,
+        "objects": 24,
+        "annotations": 0
+       }
+      },
+      "undoDepth": 24
+     },
+     "current": {
+      "migrations": [
+       "history-before-v3",
+       "landmark-ground",
+       "landmark-layout-v3"
+      ],
+      "digest": {
+       "cells": "3ed694d0e0034999"
+      },
+      "undoDepth": 0
+     }
+    },
+    "json-min": {
+     "file": "edge-objects.json-min.json.gz",
+     "reference": {
+      "status": "imported",
+      "warnings": [],
+      "digest": {
+       "cells": "1fd374aa658175ad",
+       "objects": "d551cf72ab62552d",
+       "annotations": "e3b0c44298fc1c14",
+       "notes": "44136fa355b3678a",
+       "counts": {
+        "terrainCells": 0,
+        "objects": 24,
+        "annotations": 0
+       }
+      },
+      "undoDepth": 0
+     },
+     "current": {
+      "migrations": [
+       "landmark-ground",
+       "landmark-layout-v3"
+      ],
+      "digest": {
+       "cells": "3ed694d0e0034999"
+      }
+     }
+    },
+    "share": {
+     "payload": "UDIEBAEFaGV4aWH9MTTxYIZ2OQ0EAQYxLjMuMTeA0cpqgwvw5D7mtHitpRksQ/Sbq0thS0+j/VHT8G7xvb2ui7IAAAAAAAAAABFZKhKMVcMhIgKUtPbG/ckMstdTlYbp32iPW6HI+WEN64wCamK9jduLD62HgR/KgJx0eYDG0YgBApWGkoum8dc+ZvVJCO2Kl3ACAAA=",
+     "reference": {
+      "status": "imported",
+      "warnings": [],
+      "digest": {
+       "cells": "1fd374aa658175ad",
+       "objects": "d551cf72ab62552d",
+       "annotations": "e3b0c44298fc1c14",
+       "notes": "44136fa355b3678a",
+       "counts": {
+        "terrainCells": 0,
+        "objects": 24,
+        "annotations": 0
+       }
+      }
+     },
+     "current": {
+      "migrations": [
+       "landmark-ground",
+       "landmark-layout-v3",
+       "share-identity-drift"
+      ],
+      "digest": {
+       "cells": "3ed694d0e0034999"
+      },
+      "warnings": [
+       "template-drift",
+       "catalog-drift"
+      ]
+     }
+    },
+    "autosave": {
+     "file": "edge-objects.autosave.json.gz",
+     "reference": {
+      "status": "imported",
+      "digest": {
+       "cells": "1fd374aa658175ad",
+       "objects": "d551cf72ab62552d",
+       "annotations": "e3b0c44298fc1c14",
+       "notes": "44136fa355b3678a",
+       "counts": {
+        "terrainCells": 0,
+        "objects": 24,
+        "annotations": 0
+       }
+      },
+      "history": 24
+     },
+     "current": {
+      "migrations": [
+       "history-before-v3",
+       "landmark-ground",
+       "landmark-layout-v3"
+      ],
+      "digest": {
+       "cells": "3ed694d0e0034999"
+      },
+      "history": 0
+     }
+    }
+   }
+  },
+  {
+   "id": "everything",
+   "planet": "tafa",
+   "steps": [
+    {
+     "op": "generate",
+     "kind": "island",
+     "seed": 81,
+     "richness": 80
+    },
+    {
+     "op": "terrain"
+    },
+    {
+     "op": "cuts"
+    },
+    {
+     "op": "roads"
+    },
+    {
+     "op": "objects",
+     "perCategory": 1
+    },
+    {
+     "op": "annotate"
+    },
+    {
+     "op": "notes",
+     "title": "Everything",
+     "description": "All features at once."
+    },
+    {
+     "op": "history",
+     "strokes": 20,
+     "undo": 2,
+     "redo": 1
+    }
+   ],
+   "log": [
+    "generate island seed 81: placed=3366 removedCells=0 removedObjects=0 cancelled=false",
+    "terrain ladder: m1 m2",
+    "edge cuts: 40 trims, 12 gammas",
+    "roads: 28 materials",
+    "objects: 3/7",
+    "long history: 16 strokes"
+   ],
+   "live": {
+    "digest": {
+     "cells": "142ff31fd2f0ef77",
+     "objects": "9872e8703d22e3c6",
+     "annotations": "46c313409dbda456",
+     "notes": "c351541e6567ab5f",
+     "counts": {
+      "terrainCells": 9853,
+      "objects": 3409,
+      "annotations": 9
+     }
+    },
+    "undoDepth": 83
+   },
+   "exports": {
+    "json-min": {
+     "file": "everything.json-min.json.gz",
+     "reference": {
+      "status": "imported",
+      "warnings": [],
+      "digest": {
+       "cells": "142ff31fd2f0ef77",
+       "objects": "9872e8703d22e3c6",
+       "annotations": "e3b0c44298fc1c14",
+       "notes": "44136fa355b3678a",
+       "counts": {
+        "terrainCells": 9853,
+        "objects": 3409,
+        "annotations": 0
+       }
+      },
+      "undoDepth": 0
+     },
+     "current": {
+      "migrations": [
+       "landmark-ground",
+       "landmark-layout-v3"
+      ],
+      "digest": {
+       "cells": "334b71fcdc3a1701",
+       "objects": "6aab71f1b9e1b4c4"
+      },
+      "warnings": [
+       "landmark-cleared"
+      ]
+     }
+    },
+    "share": {
+     "payload": "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",
+     "reference": {
+      "status": "imported",
+      "warnings": [],
+      "digest": {
+       "cells": "142ff31fd2f0ef77",
+       "objects": "9872e8703d22e3c6",
+       "annotations": "46c313409dbda456",
+       "notes": "c351541e6567ab5f",
+       "counts": {
+        "terrainCells": 9853,
+        "objects": 3409,
+        "annotations": 9
+       }
+      }
+     },
+     "current": {
+      "migrations": [
+       "landmark-ground",
+       "landmark-layout-v3",
+       "share-identity-drift"
+      ],
+      "digest": {
+       "cells": "334b71fcdc3a1701",
+       "objects": "6aab71f1b9e1b4c4"
+      },
+      "warnings": [
+       "template-drift",
+       "catalog-drift",
+       "landmark-cleared"
+      ]
+     }
+    },
+    "autosave": {
+     "file": "everything.autosave.json.gz",
+     "reference": {
+      "status": "imported",
+      "digest": {
+       "cells": "142ff31fd2f0ef77",
+       "objects": "9872e8703d22e3c6",
+       "annotations": "46c313409dbda456",
+       "notes": "c351541e6567ab5f",
+       "counts": {
+        "terrainCells": 9853,
+        "objects": 3409,
+        "annotations": 9
+       }
+      },
+      "history": 60
+     },
+     "current": {
+      "migrations": [
+       "history-before-v3",
+       "landmark-ground",
+       "landmark-layout-v3"
+      ],
+      "digest": {
+       "cells": "334b71fcdc3a1701",
+       "objects": "6aab71f1b9e1b4c4"
+      },
+      "history": 0,
+      "warnings": [
+       "landmark-cleared"
+      ]
+     }
+    }
+   }
+  },
+  {
+   "id": "full-load",
+   "planet": "tafa",
+   "steps": [
+    {
+     "op": "fullLoad",
+     "limit": 12000
+    }
+   ],
+   "log": [
+    "full load: 3977 objects"
+   ],
+   "live": {
+    "digest": {
+     "cells": "1fd374aa658175ad",
+     "objects": "eca0fc9fb3e05ec1",
+     "annotations": "e3b0c44298fc1c14",
+     "notes": "44136fa355b3678a",
+     "counts": {
+      "terrainCells": 0,
+      "objects": 3977,
+      "annotations": 0
+     }
+    },
+    "undoDepth": 3977
+   },
+   "exports": {
+    "json-min": {
+     "file": "full-load.json-min.json.gz",
+     "reference": {
+      "status": "imported",
+      "warnings": [],
+      "digest": {
+       "cells": "1fd374aa658175ad",
+       "objects": "eca0fc9fb3e05ec1",
+       "annotations": "e3b0c44298fc1c14",
+       "notes": "44136fa355b3678a",
+       "counts": {
+        "terrainCells": 0,
+        "objects": 3977,
+        "annotations": 0
+       }
+      },
+      "undoDepth": 0
+     },
+     "current": {
+      "migrations": [
+       "landmark-ground",
+       "landmark-layout-v3"
+      ],
+      "digest": {
+       "cells": "3ed694d0e0034999",
+       "objects": "edc09309b5dda022"
+      },
+      "warnings": [
+       "landmark-cleared"
+      ]
+     }
+    },
+    "share": {
+     "payload": "UDIEBAEEdGFmYXAOfoZghnY5DQQBBjEuMy4xN4DRymq1ip8B5I/eIW0npE4AAHmVfWFxKT0FLFYvEoQzk3AvBQAAAAAAAAAACK6OUdeerWPzfJekl6ueR2HDCdZysQzRMiUlwyDn5XL4AEeyDjSpUhkscewZcIOJkgd9YP2EltGxuv0NxBXyywxYtdBbOo6BSyqNEdmwdVdQNaVhmTZrVIIjHTsAOPjAy5KJNUDepICTtheXkizLtRWchFBrtb4NHnObhiQm14KfR3qO5GouL/g6/+EDBufvk5EQDL1PNNzUqNn7dpdHryxBPmfIkpwZl+DGXRN1sKQ4U/8qW52D2360PqTTMtZ+J6VrMeFznwmdXMyy3FyyZdtNl+WS/k7RzYrnW6YujduoYfY3MZhxG7YGIwxeywfmjuCo81nWO9WDQKrLfNiZeCSeR+IPTvttnfkXYlKOiqS993n/KIWYCPAPnOx40U/IWuDRPzzhH141gMJBJxB7CCueIwBG02KkezqJxT3sxHmqiPl9CHxgfxUlmfmi4/xXbSWBIb0PvvgQcccY7uTWMuiNrw8q25XK2msGhSefRKMSQP1vKDwFIQRvLLt0pv00rDzEZZnSRljtIbNq4K0ljVMXDAVGHtAoTxzNlRWkVOG3DiwEtjEerQuKIUFo3eLIMKFjovUzndhdMiDxsmGeakdqmSbJuVRweuxM4tJrbAYG/uKBsvKq6UXQnN52/2iKvDtwsfqscP7vw+8w645ECRYGX8DXLJaDJZ1QLnwKUFxy3gEz6cK8D1a2gDuHQ64bSUL84UOOTgITkx1HtObA4DNNzX7i/1vZ92X2nHhLux9drtQpBzvIDtiIB318OtPNtNhBPpkeqevM5iOVQPPHb1zXZDp+pdAR5N4ll2cnm/glYY8AwyLgW81SsN52JwGFlMtF1CHOU3J1wLLxEn+/raaIpvgqouyC4J7jRZXQyieBmQcxORUyb1DsatqjIKcW32ZaosrYx2dfVFWtfsEf0ML1MYAN63B7Ioc/UzmNhRjSXo23niQ50Tv/aPR5vVr1/mPgCtP9POIod3CB196XWZC4MuyAGZz6TWApgA3OCVN7wF5C/AAAAAh9DUjf4xKPV8I+Q4JWRGK8bZktAASnLacsS+6Md7vseZqjdp0lcYBjVqq5/pRzkHtCVF10R0KyU7ekjVoZ0rw2OQ6ABgACPSj2hd7cRzIGhQye4v7FKClW2APL0rZCobjOiefJFf3AmfV7DSaq6QqYgJ94HQ88AS32vMOJpl4WtEGW532FSUTtPFzR1jLLo5CLUKg9e54UfCMMZ3UnX6BazBXMz7CAmm9sOS+/xwO8a6M4fa4loTTXPiqydF1n90KY6Skw0ZD1UyC5jQnVIPYP5RDh13PlVr8mh3z5WfprgNclKJpVqrWT+bvJsGm2Mnq7fWpzsplsmpHgGGopwNF2Sn7e5KsTVOZMeeSjomyCTVrFRKJxoGCqeLdRyXanaTYvQOwXYSo/NGBzPyFnw7YTG5obC9K9DOzB/j6bTWw3zJ7P0SiDongQsQBsmtzaSb1RTibX0tOWVFrdbL2JaCrL9dRgFsV8ezUP2h8qAnJdLlMdh8uv0qNNDJqkjT2lkY+M1h7eByZdPp5mPRLCj/O6iqdfAFMUyvu+S8DWLjnrOK53qROpskMe/niN7EhyfsEd1mASGija3CIL9XSpISQMa8KC6/MMPwZIPTn9NKhC4sXHqxk0IHLHbiYU0qsbo/P0/A==",
+     "reference": {
+      "status": "imported",
+      "warnings": [],
+      "digest": {
+       "cells": "1fd374aa658175ad",
+       "objects": "eca0fc9fb3e05ec1",
+       "annotations": "e3b0c44298fc1c14",
+       "notes": "44136fa355b3678a",
+       "counts": {
+        "terrainCells": 0,
+        "objects": 3977,
+        "annotations": 0
+       }
+      }
+     },
+     "current": {
+      "migrations": [
+       "landmark-ground",
+       "landmark-layout-v3",
+       "share-identity-drift"
+      ],
+      "digest": {
+       "cells": "3ed694d0e0034999",
+       "objects": "edc09309b5dda022"
+      },
+      "warnings": [
+       "template-drift",
+       "catalog-drift",
+       "landmark-cleared"
+      ]
+     }
+    }
+   }
+  },
+  {
+   "id": "hexia-designed-11-r0",
+   "planet": "hexia",
+   "steps": [
+    {
+     "op": "generate",
+     "kind": "island",
+     "seed": 11,
+     "richness": 0
+    }
+   ],
+   "log": [
+    "generate island seed 11: placed=4187 removedCells=0 removedObjects=0 cancelled=false"
+   ],
+   "live": {
+    "digest": {
+     "cells": "971a2c898677fc99",
+     "objects": "670845c519d031a5",
+     "annotations": "e3b0c44298fc1c14",
+     "notes": "44136fa355b3678a",
+     "counts": {
+      "terrainCells": 5281,
+      "objects": 4187,
+      "annotations": 0
+     }
+    },
+    "undoDepth": 1
+   },
+   "exports": {
+    "json-min": {
+     "file": "hexia-designed-11-r0.json-min.json.gz",
+     "reference": {
+      "status": "imported",
+      "warnings": [],
+      "digest": {
+       "cells": "971a2c898677fc99",
+       "objects": "670845c519d031a5",
+       "annotations": "e3b0c44298fc1c14",
+       "notes": "44136fa355b3678a",
+       "counts": {
+        "terrainCells": 5281,
+        "objects": 4187,
+        "annotations": 0
+       }
+      },
+      "undoDepth": 0
+     },
+     "current": {
+      "migrations": [
+       "landmark-ground",
+       "landmark-layout-v3"
+      ],
+      "digest": {
+       "cells": "6ef7524fd257d810",
+       "objects": "a748e486d5f9415f"
+      },
+      "warnings": [
+       "landmark-cleared"
+      ]
+     }
+    },
+    "share": {
+     "payload": "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",
+     "reference": {
+      "status": "imported",
+      "warnings": [],
+      "digest": {
+       "cells": "971a2c898677fc99",
+       "objects": "670845c519d031a5",
+       "annotations": "e3b0c44298fc1c14",
+       "notes": "44136fa355b3678a",
+       "counts": {
+        "terrainCells": 5281,
+        "objects": 4187,
+        "annotations": 0
+       }
+      }
+     },
+     "current": {
+      "migrations": [
+       "landmark-ground",
+       "landmark-layout-v3",
+       "share-identity-drift"
+      ],
+      "digest": {
+       "cells": "6ef7524fd257d810",
+       "objects": "a748e486d5f9415f"
+      },
+      "warnings": [
+       "template-drift",
+       "catalog-drift",
+       "landmark-cleared"
+      ]
+     }
+    }
+   }
+  },
+  {
+   "id": "hexia-designed-12-r35",
+   "planet": "hexia",
+   "steps": [
+    {
+     "op": "generate",
+     "kind": "island",
+     "seed": 12,
+     "richness": 35
+    }
+   ],
+   "log": [
+    "generate island seed 12: placed=4250 removedCells=0 removedObjects=0 cancelled=false"
+   ],
+   "live": {
+    "digest": {
+     "cells": "bf25510d50f4f5ab",
+     "objects": "6b7bfcc75543e2dd",
+     "annotations": "e3b0c44298fc1c14",
+     "notes": "44136fa355b3678a",
+     "counts": {
+      "terrainCells": 6467,
+      "objects": 4250,
+      "annotations": 0
+     }
+    },
+    "undoDepth": 1
+   },
+   "exports": {
+    "json-min": {
+     "file": "hexia-designed-12-r35.json-min.json.gz",
+     "reference": {
+      "status": "imported",
+      "warnings": [],
+      "digest": {
+       "cells": "bf25510d50f4f5ab",
+       "objects": "6b7bfcc75543e2dd",
+       "annotations": "e3b0c44298fc1c14",
+       "notes": "44136fa355b3678a",
+       "counts": {
+        "terrainCells": 6467,
+        "objects": 4250,
+        "annotations": 0
+       }
+      },
+      "undoDepth": 0
+     },
+     "current": {
+      "migrations": [
+       "landmark-ground",
+       "landmark-layout-v3",
+       "ramp-v1-reanchor"
+      ],
+      "digest": {
+       "cells": "052df8bfb995fcef",
+       "objects": "a11673a2ea90b412"
+      },
+      "warnings": [
+       "landmark-cleared"
+      ]
+     }
+    },
+    "share": {
+     "payload": "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",
+     "reference": {
+      "status": "imported",
+      "warnings": [],
+      "digest": {
+       "cells": "bf25510d50f4f5ab",
+       "objects": "6b7bfcc75543e2dd",
+       "annotations": "e3b0c44298fc1c14",
+       "notes": "44136fa355b3678a",
+       "counts": {
+        "terrainCells": 6467,
+        "objects": 4250,
+        "annotations": 0
+       }
+      }
+     },
+     "current": {
+      "migrations": [
+       "landmark-ground",
+       "landmark-layout-v3",
+       "ramp-v1-reanchor",
+       "share-identity-drift"
+      ],
+      "digest": {
+       "cells": "052df8bfb995fcef",
+       "objects": "a11673a2ea90b412"
+      },
+      "warnings": [
+       "template-drift",
+       "catalog-drift",
+       "landmark-cleared"
+      ]
+     }
+    }
+   }
+  },
+  {
+   "id": "hexia-designed-13-r70",
+   "planet": "hexia",
+   "steps": [
+    {
+     "op": "generate",
+     "kind": "island",
+     "seed": 13,
+     "richness": 70
+    }
+   ],
+   "log": [
+    "generate island seed 13: placed=3990 removedCells=0 removedObjects=0 cancelled=false"
+   ],
+   "live": {
+    "digest": {
+     "cells": "fd96b53d15c37f78",
+     "objects": "6ee5dfaf316348de",
+     "annotations": "e3b0c44298fc1c14",
+     "notes": "44136fa355b3678a",
+     "counts": {
+      "terrainCells": 6996,
+      "objects": 3990,
+      "annotations": 0
+     }
+    },
+    "undoDepth": 1
+   },
+   "exports": {
+    "json-min": {
+     "file": "hexia-designed-13-r70.json-min.json.gz",
+     "reference": {
+      "status": "imported",
+      "warnings": [],
+      "digest": {
+       "cells": "fd96b53d15c37f78",
+       "objects": "6ee5dfaf316348de",
+       "annotations": "e3b0c44298fc1c14",
+       "notes": "44136fa355b3678a",
+       "counts": {
+        "terrainCells": 6996,
+        "objects": 3990,
+        "annotations": 0
+       }
+      },
+      "undoDepth": 0
+     },
+     "current": {
+      "migrations": [
+       "landmark-ground",
+       "landmark-layout-v3"
+      ],
+      "digest": {
+       "cells": "08c98daf2fe9d436",
+       "objects": "006dc5b22ce9812a"
+      },
+      "warnings": [
+       "landmark-cleared"
+      ]
+     }
+    },
+    "share": {
+     "payload": "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",
+     "reference": {
+      "status": "imported",
+      "warnings": [],
+      "digest": {
+       "cells": "fd96b53d15c37f78",
+       "objects": "6ee5dfaf316348de",
+       "annotations": "e3b0c44298fc1c14",
+       "notes": "44136fa355b3678a",
+       "counts": {
+        "terrainCells": 6996,
+        "objects": 3990,
+        "annotations": 0
+       }
+      }
+     },
+     "current": {
+      "migrations": [
+       "landmark-ground",
+       "landmark-layout-v3",
+       "share-identity-drift"
+      ],
+      "digest": {
+       "cells": "08c98daf2fe9d436",
+       "objects": "006dc5b22ce9812a"
+      },
+      "warnings": [
+       "template-drift",
+       "catalog-drift",
+       "landmark-cleared"
+      ]
+     }
+    },
+    "png": {
+     "file": "hexia-designed-13-r70.png",
+     "reference": {
+      "status": "imported",
+      "warnings": [],
+      "digest": {
+       "cells": "fd96b53d15c37f78",
+       "objects": "6ee5dfaf316348de",
+       "annotations": "e3b0c44298fc1c14",
+       "notes": "44136fa355b3678a",
+       "counts": {
+        "terrainCells": 6996,
+        "objects": 3990,
+        "annotations": 0
+       }
+      },
+      "undoDepth": 0
+     },
+     "current": {
+      "migrations": [
+       "landmark-ground",
+       "landmark-layout-v3",
+       "share-identity-drift"
+      ],
+      "digest": {
+       "cells": "08c98daf2fe9d436",
+       "objects": "006dc5b22ce9812a"
+      },
+      "warnings": [
+       "template-drift",
+       "catalog-drift",
+       "landmark-cleared"
+      ]
+     }
+    }
+   }
+  },
+  {
+   "id": "hexia-designed-14-r100",
+   "planet": "hexia",
+   "steps": [
+    {
+     "op": "generate",
+     "kind": "island",
+     "seed": 14,
+     "richness": 100
+    }
+   ],
+   "log": [
+    "generate island seed 14: placed=2649 removedCells=0 removedObjects=0 cancelled=false"
+   ],
+   "live": {
+    "digest": {
+     "cells": "49cfb7e0ecf9de30",
+     "objects": "b02ff7291794c2ae",
+     "annotations": "e3b0c44298fc1c14",
+     "notes": "44136fa355b3678a",
+     "counts": {
+      "terrainCells": 14657,
+      "objects": 2649,
+      "annotations": 0
+     }
+    },
+    "undoDepth": 1
+   },
+   "exports": {
+    "json-min": {
+     "file": "hexia-designed-14-r100.json-min.json.gz",
+     "reference": {
+      "status": "imported",
+      "warnings": [],
+      "digest": {
+       "cells": "49cfb7e0ecf9de30",
+       "objects": "b02ff7291794c2ae",
+       "annotations": "e3b0c44298fc1c14",
+       "notes": "44136fa355b3678a",
+       "counts": {
+        "terrainCells": 14657,
+        "objects": 2649,
+        "annotations": 0
+       }
+      },
+      "undoDepth": 0
+     },
+     "current": {
+      "migrations": [
+       "landmark-ground",
+       "landmark-layout-v3"
+      ],
+      "digest": {
+       "cells": "ff041213be60ef0a",
+       "objects": "afa762e62e169c88"
+      },
+      "warnings": [
+       "landmark-cleared"
+      ]
+     }
+    },
+    "share": {
+     "payload": "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",
+     "reference": {
+      "status": "imported",
+      "warnings": [],
+      "digest": {
+       "cells": "49cfb7e0ecf9de30",
+       "objects": "b02ff7291794c2ae",
+       "annotations": "e3b0c44298fc1c14",
+       "notes": "44136fa355b3678a",
+       "counts": {
+        "terrainCells": 14657,
+        "objects": 2649,
+        "annotations": 0
+       }
+      }
+     },
+     "current": {
+      "migrations": [
+       "landmark-ground",
+       "landmark-layout-v3",
+       "share-identity-drift"
+      ],
+      "digest": {
+       "cells": "ff041213be60ef0a",
+       "objects": "afa762e62e169c88"
+      },
+      "warnings": [
+       "template-drift",
+       "catalog-drift",
+       "landmark-cleared"
+      ]
+     }
+    }
+   }
+  },
+  {
+   "id": "hexia-empty",
+   "planet": "hexia",
+   "steps": [],
+   "log": [],
+   "live": {
+    "digest": {
+     "cells": "1fd374aa658175ad",
+     "objects": "e3b0c44298fc1c14",
+     "annotations": "e3b0c44298fc1c14",
+     "notes": "44136fa355b3678a",
+     "counts": {
+      "terrainCells": 0,
+      "objects": 0,
+      "annotations": 0
+     }
+    },
+    "undoDepth": 0
+   },
+   "exports": {
+    "json-full": {
+     "file": "hexia-empty.json-full.json.gz",
+     "reference": {
+      "status": "imported",
+      "warnings": [],
+      "digest": {
+       "cells": "1fd374aa658175ad",
+       "objects": "e3b0c44298fc1c14",
+       "annotations": "e3b0c44298fc1c14",
+       "notes": "44136fa355b3678a",
+       "counts": {
+        "terrainCells": 0,
+        "objects": 0,
+        "annotations": 0
+       }
+      },
+      "undoDepth": 0
+     },
+     "current": {
+      "migrations": [
+       "landmark-ground",
+       "landmark-layout-v3"
+      ],
+      "digest": {
+       "cells": "3ed694d0e0034999"
+      }
+     }
+    },
+    "json-min": {
+     "file": "hexia-empty.json-min.json.gz",
+     "reference": {
+      "status": "imported",
+      "warnings": [],
+      "digest": {
+       "cells": "1fd374aa658175ad",
+       "objects": "e3b0c44298fc1c14",
+       "annotations": "e3b0c44298fc1c14",
+       "notes": "44136fa355b3678a",
+       "counts": {
+        "terrainCells": 0,
+        "objects": 0,
+        "annotations": 0
+       }
+      },
+      "undoDepth": 0
+     },
+     "current": {
+      "migrations": [
+       "landmark-ground",
+       "landmark-layout-v3"
+      ],
+      "digest": {
+       "cells": "3ed694d0e0034999"
+      }
+     }
+    },
+    "share": {
+     "payload": "UDIEAAEFaGV4aWH9MTTxYIZ2OQ0EAQYxLjMuMTeA0cpqImORXyjzweenS9Daf97mj015JNQfV7RQbP0gTTWuQwUAAAAAAAAAAAAAAAAAAAA=",
+     "reference": {
+      "status": "imported",
+      "warnings": [],
+      "digest": {
+       "cells": "1fd374aa658175ad",
+       "objects": "e3b0c44298fc1c14",
+       "annotations": "e3b0c44298fc1c14",
+       "notes": "44136fa355b3678a",
+       "counts": {
+        "terrainCells": 0,
+        "objects": 0,
+        "annotations": 0
+       }
+      }
+     },
+     "current": {
+      "migrations": [
+       "landmark-ground",
+       "landmark-layout-v3",
+       "share-identity-drift"
+      ],
+      "digest": {
+       "cells": "3ed694d0e0034999"
+      },
+      "warnings": [
+       "template-drift",
+       "catalog-drift"
+      ]
+     }
+    }
+   }
+  },
+  {
+   "id": "hexia-image-flora",
+   "planet": "hexia",
+   "steps": [
+    {
+     "op": "generate",
+     "kind": "image",
+     "seed": 42,
+     "fill": "flora"
+    }
+   ],
+   "log": [
+    "generate image seed 42: placed=13800 removedCells=0 removedObjects=0 cancelled=false"
+   ],
+   "live": {
+    "digest": {
+     "cells": "1fd374aa658175ad",
+     "objects": "68493adf3a018ecb",
+     "annotations": "e3b0c44298fc1c14",
+     "notes": "44136fa355b3678a",
+     "counts": {
+      "terrainCells": 0,
+      "objects": 13800,
+      "annotations": 0
+     }
+    },
+    "undoDepth": 1
+   },
+   "exports": {
+    "json-min": {
+     "file": "hexia-image-flora.json-min.json.gz",
+     "reference": {
+      "status": "imported",
+      "warnings": [],
+      "digest": {
+       "cells": "1fd374aa658175ad",
+       "objects": "68493adf3a018ecb",
+       "annotations": "e3b0c44298fc1c14",
+       "notes": "44136fa355b3678a",
+       "counts": {
+        "terrainCells": 0,
+        "objects": 13800,
+        "annotations": 0
+       }
+      },
+      "undoDepth": 0
+     },
+     "current": {
+      "migrations": [
+       "landmark-ground",
+       "landmark-layout-v3"
+      ],
+      "digest": {
+       "cells": "3ed694d0e0034999",
+       "objects": "46255b2066fe38db"
+      },
+      "warnings": [
+       "landmark-cleared"
+      ]
+     }
+    },
+    "share": {
+     "payload": "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",
+     "reference": {
+      "status": "imported",
+      "warnings": [],
+      "digest": {
+       "cells": "1fd374aa658175ad",
+       "objects": "68493adf3a018ecb",
+       "annotations": "e3b0c44298fc1c14",
+       "notes": "44136fa355b3678a",
+       "counts": {
+        "terrainCells": 0,
+        "objects": 13800,
+        "annotations": 0
+       }
+      }
+     },
+     "current": {
+      "migrations": [
+       "landmark-ground",
+       "landmark-layout-v3",
+       "share-identity-drift"
+      ],
+      "digest": {
+       "cells": "3ed694d0e0034999",
+       "objects": "46255b2066fe38db"
+      },
+      "warnings": [
+       "template-drift",
+       "catalog-drift",
+       "landmark-cleared"
+      ]
+     }
+    }
+   }
+  },
+  {
+   "id": "hexia-image-road",
+   "planet": "hexia",
+   "steps": [
+    {
+     "op": "generate",
+     "kind": "image",
+     "seed": 43,
+     "fill": "road"
+    }
+   ],
+   "log": [
+    "generate image seed 43: placed=13800 removedCells=0 removedObjects=0 cancelled=false"
+   ],
+   "live": {
+    "digest": {
+     "cells": "1fd374aa658175ad",
+     "objects": "8c8913034ff275d9",
+     "annotations": "e3b0c44298fc1c14",
+     "notes": "44136fa355b3678a",
+     "counts": {
+      "terrainCells": 0,
+      "objects": 13800,
+      "annotations": 0
+     }
+    },
+    "undoDepth": 1
+   },
+   "exports": {
+    "json-min": {
+     "file": "hexia-image-road.json-min.json.gz",
+     "reference": {
+      "status": "imported",
+      "warnings": [],
+      "digest": {
+       "cells": "1fd374aa658175ad",
+       "objects": "8c8913034ff275d9",
+       "annotations": "e3b0c44298fc1c14",
+       "notes": "44136fa355b3678a",
+       "counts": {
+        "terrainCells": 0,
+        "objects": 13800,
+        "annotations": 0
+       }
+      },
+      "undoDepth": 0
+     },
+     "current": {
+      "migrations": [
+       "landmark-ground",
+       "landmark-layout-v3"
+      ],
+      "digest": {
+       "cells": "3ed694d0e0034999",
+       "objects": "011d30da0f58de4e"
+      },
+      "warnings": [
+       "landmark-cleared"
+      ]
+     }
+    },
+    "share": {
+     "payload": "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",
+     "reference": {
+      "status": "imported",
+      "warnings": [],
+      "digest": {
+       "cells": "1fd374aa658175ad",
+       "objects": "8c8913034ff275d9",
+       "annotations": "e3b0c44298fc1c14",
+       "notes": "44136fa355b3678a",
+       "counts": {
+        "terrainCells": 0,
+        "objects": 13800,
+        "annotations": 0
+       }
+      }
+     },
+     "current": {
+      "migrations": [
+       "landmark-ground",
+       "landmark-layout-v3",
+       "share-identity-drift"
+      ],
+      "digest": {
+       "cells": "3ed694d0e0034999",
+       "objects": "011d30da0f58de4e"
+      },
+      "warnings": [
+       "template-drift",
+       "catalog-drift",
+       "landmark-cleared"
+      ]
+     }
+    }
+   }
+  },
+  {
+   "id": "hexia-image-terrain",
+   "planet": "hexia",
+   "steps": [
+    {
+     "op": "generate",
+     "kind": "image",
+     "seed": 41,
+     "fill": "mountain"
+    }
+   ],
+   "log": [
+    "generate image seed 41: placed=33947 removedCells=0 removedObjects=0 cancelled=false"
+   ],
+   "live": {
+    "digest": {
+     "cells": "b4f67a8c505fe029",
+     "objects": "e3b0c44298fc1c14",
+     "annotations": "e3b0c44298fc1c14",
+     "notes": "44136fa355b3678a",
+     "counts": {
+      "terrainCells": 13738,
+      "objects": 0,
+      "annotations": 0
+     }
+    },
+    "undoDepth": 1
+   },
+   "exports": {
+    "json-min": {
+     "file": "hexia-image-terrain.json-min.json.gz",
+     "reference": {
+      "status": "imported",
+      "warnings": [],
+      "digest": {
+       "cells": "b4f67a8c505fe029",
+       "objects": "e3b0c44298fc1c14",
+       "annotations": "e3b0c44298fc1c14",
+       "notes": "44136fa355b3678a",
+       "counts": {
+        "terrainCells": 13738,
+        "objects": 0,
+        "annotations": 0
+       }
+      },
+      "undoDepth": 0
+     },
+     "current": {
+      "migrations": [
+       "landmark-ground",
+       "landmark-layout-v3"
+      ],
+      "digest": {
+       "cells": "1e41f8db6d13ccd7"
+      },
+      "warnings": [
+       "landmark-cleared"
+      ]
+     }
+    },
+    "share": {
+     "payload": "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",
+     "reference": {
+      "status": "imported",
+      "warnings": [],
+      "digest": {
+       "cells": "b4f67a8c505fe029",
+       "objects": "e3b0c44298fc1c14",
+       "annotations": "e3b0c44298fc1c14",
+       "notes": "44136fa355b3678a",
+       "counts": {
+        "terrainCells": 13738,
+        "objects": 0,
+        "annotations": 0
+       }
+      }
+     },
+     "current": {
+      "migrations": [
+       "landmark-ground",
+       "landmark-layout-v3",
+       "share-identity-drift"
+      ],
+      "digest": {
+       "cells": "1e41f8db6d13ccd7"
+      },
+      "warnings": [
+       "template-drift",
+       "catalog-drift",
+       "landmark-cleared"
+      ]
+     }
+    }
+   }
+  },
+  {
+   "id": "hexia-maze-w1",
+   "planet": "hexia",
+   "steps": [
+    {
+     "op": "generate",
+     "kind": "maze",
+     "seed": 21,
+     "corridorWidth": 1,
+     "maxElevation": 3
+    }
+   ],
+   "log": [
+    "generate maze seed 21: placed=23250 removedCells=0 removedObjects=0 cancelled=false"
+   ],
+   "live": {
+    "digest": {
+     "cells": "5132a68c23679ebe",
+     "objects": "e3b0c44298fc1c14",
+     "annotations": "e3b0c44298fc1c14",
+     "notes": "44136fa355b3678a",
+     "counts": {
+      "terrainCells": 7750,
+      "objects": 0,
+      "annotations": 0
+     }
+    },
+    "undoDepth": 1
+   },
+   "exports": {
+    "json-min": {
+     "file": "hexia-maze-w1.json-min.json.gz",
+     "reference": {
+      "status": "imported",
+      "warnings": [],
+      "digest": {
+       "cells": "5132a68c23679ebe",
+       "objects": "e3b0c44298fc1c14",
+       "annotations": "e3b0c44298fc1c14",
+       "notes": "44136fa355b3678a",
+       "counts": {
+        "terrainCells": 7750,
+        "objects": 0,
+        "annotations": 0
+       }
+      },
+      "undoDepth": 0
+     },
+     "current": {
+      "migrations": [
+       "landmark-ground",
+       "landmark-layout-v3"
+      ],
+      "digest": {
+       "cells": "73e0a0a0f550984c"
+      },
+      "warnings": [
+       "landmark-cleared"
+      ]
+     }
+    },
+    "share": {
+     "payload": "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",
+     "reference": {
+      "status": "imported",
+      "warnings": [],
+      "digest": {
+       "cells": "5132a68c23679ebe",
+       "objects": "e3b0c44298fc1c14",
+       "annotations": "e3b0c44298fc1c14",
+       "notes": "44136fa355b3678a",
+       "counts": {
+        "terrainCells": 7750,
+        "objects": 0,
+        "annotations": 0
+       }
+      }
+     },
+     "current": {
+      "migrations": [
+       "landmark-ground",
+       "landmark-layout-v3",
+       "share-identity-drift"
+      ],
+      "digest": {
+       "cells": "73e0a0a0f550984c"
+      },
+      "warnings": [
+       "template-drift",
+       "catalog-drift",
+       "landmark-cleared"
+      ]
+     }
+    }
+   }
+  },
+  {
+   "id": "hexia-maze-w3",
+   "planet": "hexia",
+   "steps": [
+    {
+     "op": "generate",
+     "kind": "maze",
+     "seed": 22,
+     "corridorWidth": 3,
+     "maxElevation": 2
+    }
+   ],
+   "log": [
+    "generate maze seed 22: placed=7654 removedCells=0 removedObjects=0 cancelled=false"
+   ],
+   "live": {
+    "digest": {
+     "cells": "7a7608e7510fc785",
+     "objects": "e3b0c44298fc1c14",
+     "annotations": "e3b0c44298fc1c14",
+     "notes": "44136fa355b3678a",
+     "counts": {
+      "terrainCells": 3827,
+      "objects": 0,
+      "annotations": 0
+     }
+    },
+    "undoDepth": 1
+   },
+   "exports": {
+    "json-min": {
+     "file": "hexia-maze-w3.json-min.json.gz",
+     "reference": {
+      "status": "imported",
+      "warnings": [],
+      "digest": {
+       "cells": "7a7608e7510fc785",
+       "objects": "e3b0c44298fc1c14",
+       "annotations": "e3b0c44298fc1c14",
+       "notes": "44136fa355b3678a",
+       "counts": {
+        "terrainCells": 3827,
+        "objects": 0,
+        "annotations": 0
+       }
+      },
+      "undoDepth": 0
+     },
+     "current": {
+      "migrations": [
+       "landmark-ground",
+       "landmark-layout-v3"
+      ],
+      "digest": {
+       "cells": "1ac088c5c2e13639"
+      },
+      "warnings": [
+       "landmark-cleared"
+      ]
+     }
+    },
+    "share": {
+     "payload": "UDIEBQEFaGV4aWH9MTTxYIZ2OQ0GAQYxLjMuMTeA0cpqIFFkocNOgt5rB8eaJ/luEFdA846lSbcnt8Zk7rtcvQxtAHsiYWxnb3JpdGhtIjoibWF6ZSIsIm1vZGUiOiJtaXhlZCIsImNvcnJpZG9yV2lkdGgiOjMsIm1heEVsZXZhdGlvbiI6Miwic2VlZCI6MjIsInJlZ2lvbiI6bnVsbCwicmljaG5lc3MiOjAuN30AAAAl9wQ+DtAXaVv/NV9JKzBMrcN5cPkoygof0BgAItFKeFN8Hg4/UK3hPV2EIFsl3//BZ+XhqsoKbHqsoeV4U3p+7dVg5rf+Or+bMyeXh1aj6ORD2GQGSD4ZMo4xX9Wr0qHwSUBsqyUnGwZAwkinhoqiNZ8C8DQMRZ2NIGSFQz5uDOCHn9n83vxrY8+fjXm69X48OKdz+FVzI87Lm9E8PuRZRWHHYNIqjy+kEvel1ZIzS2OYQ2g5JET7VyhbMHrSVoNdmeCKtLQ1MMCUxoZDfCnpRZrw+OAm41X9UafB1qc1g7XpL5/SM8IFyM5SRx9L0ieiIA6eMxF2RkfIO0yAv69I3MEfZ2wutkJLy3Qymu1L4Q3LLwATMaZvCJEFuGaekBIDwlEM7Zap2yVVq5Smn36UtliypkUYBn+CEJ1+BZEJElDikTkcKuwc6zmxnjnrss9Ver2VNXyZ0z39jwa2O4gjmTU4hQmrhhuy4zZ9eZnXGwxGC50RS1+eGFT0BzauHMoJM0Xxrth9Dse7NOuZby3EYlkN+08tax/DYgTcfeso3OJ2Ykkwl2g47gcoB0ifww+V2+VA7js5UBg/Wosi5ibVkgpNqdCFEM3UGQykLvp+fb63asCuvnVJi1z6CiQ9JHPKvAjBqsMTI1OwwociPghcEBMu8eqHiPZpJRb63b6FclB/a42/fSsW8t203kOrLCVBNCjjfTj9Xo1GkkaaAavDvhecFfAfdxCBEsZWLsmZqneD956EDCpgzWrhxn+Y3xweUqSiGK8e1vZ+Lf06wN8sGVO/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==",
+     "reference": {
+      "status": "imported",
+      "warnings": [],
+      "digest": {
+       "cells": "7a7608e7510fc785",
+       "objects": "e3b0c44298fc1c14",
+       "annotations": "e3b0c44298fc1c14",
+       "notes": "44136fa355b3678a",
+       "counts": {
+        "terrainCells": 3827,
+        "objects": 0,
+        "annotations": 0
+       }
+      }
+     },
+     "current": {
+      "migrations": [
+       "landmark-ground",
+       "landmark-layout-v3",
+       "share-identity-drift"
+      ],
+      "digest": {
+       "cells": "1ac088c5c2e13639"
+      },
+      "warnings": [
+       "template-drift",
+       "catalog-drift",
+       "landmark-cleared"
+      ]
+     }
+    }
+   }
+  },
+  {
+   "id": "hexia-text-mountain",
+   "planet": "hexia",
+   "steps": [
+    {
+     "op": "generate",
+     "kind": "text",
+     "seed": 31,
+     "text": "PM"
+    }
+   ],
+   "log": [
+    "generate text seed 31: placed=3498 removedCells=0 removedObjects=0 cancelled=false"
+   ],
+   "live": {
+    "digest": {
+     "cells": "53ef5b6b34f3b47d",
+     "objects": "e3b0c44298fc1c14",
+     "annotations": "e3b0c44298fc1c14",
+     "notes": "44136fa355b3678a",
+     "counts": {
+      "terrainCells": 3679,
+      "objects": 0,
+      "annotations": 0
+     }
+    },
+    "undoDepth": 1
+   },
+   "exports": {
+    "json-min": {
+     "file": "hexia-text-mountain.json-min.json.gz",
+     "reference": {
+      "status": "imported",
+      "warnings": [],
+      "digest": {
+       "cells": "53ef5b6b34f3b47d",
+       "objects": "e3b0c44298fc1c14",
+       "annotations": "e3b0c44298fc1c14",
+       "notes": "44136fa355b3678a",
+       "counts": {
+        "terrainCells": 3679,
+        "objects": 0,
+        "annotations": 0
+       }
+      },
+      "undoDepth": 0
+     },
+     "current": {
+      "migrations": [
+       "landmark-ground",
+       "landmark-layout-v3"
+      ],
+      "digest": {
+       "cells": "e0391074e8e03dbb"
+      }
+     }
+    },
+    "share": {
+     "payload": "UDIEAAEFaGV4aWH9MTTxYIZ2OQ0GAQYxLjMuMTeA0cpqKRnYTqsdQiD9C8oFkQQPMkA2FlUcTrHHZPIzZUI9qKgAAAAAAAAAoAUTTFOfFpA0fnEm1al+6C9SuXmLZov4QRqO1khS/vpUciCku3ovoW9HT58ldJVoaEWtB0WX4H4DtA0X++hqJ75utdfFJxJSbERhp4pPnuCgWONKgrHD0iIPt/vZ+jAWHj3mQ/JB31w6D1Z7Oq/2HmhzpyvqgC/dVr2FCzSrD9Fzr0b1izWJ2kkCmDK8HAA1cZ2xoiquCC/65i1w3EqstB1r393JjzYZLz1NsoOlCDmj1/RB6+RI8tyeZ6BVuCVajiA8SIygUA6htAkWAGaO/rmVTep1FdE4BLIJbSQu3Htk9mrRQd8hj6+p0xYcPkZcyWRWo/d+WwNA8odQF3va6UTjXhrKlRlkDU8x2PWNd3HhFlHPkmMxMPztf6VOiIezm4E68dKBrAi88G1hyNoX9lXkzX0uknrgOu+fnjI1Ckw1C+P+56yLCtRQDLi1w0Q9GDmSe5OyEL/QQltsuN+Q7PjXV68rCHwiXaysBx9o+kh6TIu0zmLHIhx1Gjo3JpI5TiWZEa1KfpSZnAFywbwQOAnbNY3u0zDnKeJlMPmKc+rDtT1W20sEYFGZ5Qv9hUM9M3a3wzCGASr4AuMnFusaXU5pGLBIIysQuvXIDhgdZzo3Zdx2v8amgSPszGplz2DCr5uGt1Jjif46JRxz6wIJtFDNvoS8nWtVGlHXEXfFATWNwOlGfGDy18MRkQk0iNgYkOgNRpH+WkUCDACtmmQUfYD0sbiW0drRe6nuTRSrFZCsxpd0vuKbgxMiMqPOfAJhhcsHPT1vs6Qk9lshQ/5bq/Qkpo2XSm+Wd1VUitcIl6ZiXSrGN5GXm9jQrnHqJJm98bW1O3N/c8jOSZgAo1m1yTEKjExYfS+uGxrrLHLH6AAAAA==",
+     "reference": {
+      "status": "imported",
+      "warnings": [],
+      "digest": {
+       "cells": "53ef5b6b34f3b47d",
+       "objects": "e3b0c44298fc1c14",
+       "annotations": "e3b0c44298fc1c14",
+       "notes": "44136fa355b3678a",
+       "counts": {
+        "terrainCells": 3679,
+        "objects": 0,
+        "annotations": 0
+       }
+      }
+     },
+     "current": {
+      "migrations": [
+       "landmark-ground",
+       "landmark-layout-v3",
+       "share-identity-drift"
+      ],
+      "digest": {
+       "cells": "e0391074e8e03dbb"
+      },
+      "warnings": [
+       "template-drift",
+       "catalog-drift"
+      ]
+     }
+    }
+   }
+  },
+  {
+   "id": "hexia-text-water",
+   "planet": "hexia",
+   "steps": [
+    {
+     "op": "generate",
+     "kind": "text",
+     "seed": 32,
+     "sample": "G",
+     "fill": "water"
+    }
+   ],
+   "log": [
+    "generate text seed 32: placed=4174 removedCells=0 removedObjects=0 cancelled=false"
+   ],
+   "live": {
+    "digest": {
+     "cells": "914dfdd472ed8b53",
+     "objects": "e3b0c44298fc1c14",
+     "annotations": "e3b0c44298fc1c14",
+     "notes": "44136fa355b3678a",
+     "counts": {
+      "terrainCells": 4331,
+      "objects": 0,
+      "annotations": 0
+     }
+    },
+    "undoDepth": 1
+   },
+   "exports": {
+    "json-min": {
+     "file": "hexia-text-water.json-min.json.gz",
+     "reference": {
+      "status": "imported",
+      "warnings": [],
+      "digest": {
+       "cells": "914dfdd472ed8b53",
+       "objects": "e3b0c44298fc1c14",
+       "annotations": "e3b0c44298fc1c14",
+       "notes": "44136fa355b3678a",
+       "counts": {
+        "terrainCells": 4331,
+        "objects": 0,
+        "annotations": 0
+       }
+      },
+      "undoDepth": 0
+     },
+     "current": {
+      "migrations": [
+       "landmark-ground",
+       "landmark-layout-v3"
+      ],
+      "digest": {
+       "cells": "1183ac47026532ac"
+      },
+      "warnings": [
+       "landmark-cleared"
+      ]
+     }
+    },
+    "share": {
+     "payload": "UDIEBAEFaGV4aWH9MTTxYIZ2OQ0GAQYxLjMuMTeA0cpq4Bep4ODJaM3RrHTnM8IiFElDsCHtnNB+v8OPhb3rT+YAAAAAAEH//Cb5i6OUjlM5hCfmwY3p0ENhtBaAUBmGDlMWa5ZIg+Kl1arpRAx1rOTMDEwvNFD1IXoBUATTNoSDCc+OC624MmfixtMcMxzlX3pJq3ThHlytXxwc7uzf0g+qajmEv1TCytwrqUPK8XmMI6/a/8K+bVNJPE6fvMYjMXphLR+4/Wx70RiAxz1cBE5eQHhZibWIL58+TbOkRk552PFnAOHOy32wTGQ+U0lAOdHy/RP8pFZ8gsRIomI6PsajsZHcel5oS6itFVffaiQ8xR3QrBSjsQxsNVI6ALcod6ktK+EQIjs/DB7LxKESYY15JXAXhPkT4l0oNJtPfcFSUDixxGFEguVAC1HETXi8KPmdswHIosByT08QNOEfvvrFQE14fEt6PPv8IVViIdv6FOfcicXJDZVAFUP382w5gkxJw34qU9DYrx0PqXmmM/i0SeHEs31sPRTZHn2WzLGEGjNfddpavn9sUxITybX9CaIo/QUMTdXt4fqUmPWdfHJFFuaPtxPbBq4HcInjEgCG5AqIaOVH+DQ+fOLV+fxmPv0Svs7afddAxp60/0gdx2Lu/QQCE6q5HOsHIyEj3MVM6OPJevpIAgFGopBVzPHcnDyHIqxeIZRr/uIawjzsxbHYqnVVxhFuFP+x2LLFmXabJfa4D0MZAkddh+dLvVy2nBvj9ehoMWUGAJ2r2FIVQVZM1mZfvv3YQgAAAAA=",
+     "reference": {
+      "status": "imported",
+      "warnings": [],
+      "digest": {
+       "cells": "914dfdd472ed8b53",
+       "objects": "e3b0c44298fc1c14",
+       "annotations": "e3b0c44298fc1c14",
+       "notes": "44136fa355b3678a",
+       "counts": {
+        "terrainCells": 4331,
+        "objects": 0,
+        "annotations": 0
+       }
+      }
+     },
+     "current": {
+      "migrations": [
+       "landmark-ground",
+       "landmark-layout-v3",
+       "share-identity-drift"
+      ],
+      "digest": {
+       "cells": "1183ac47026532ac"
+      },
+      "warnings": [
+       "template-drift",
+       "catalog-drift",
+       "landmark-cleared"
+      ]
+     }
+    }
+   }
+  },
+  {
+   "id": "macros",
+   "planet": "hexia",
+   "steps": [
+    {
+     "op": "generate",
+     "kind": "island",
+     "seed": 71,
+     "richness": 20
+    },
+    {
+     "op": "macro",
+     "id": "raise",
+     "seed": 7
+    },
+    {
+     "op": "macro",
+     "id": "stream",
+     "seed": 7
+    },
+    {
+     "op": "macro",
+     "id": "road-link",
+     "seed": 7
+    },
+    {
+     "op": "macro",
+     "id": "roads",
+     "seed": 7
+    },
+    {
+     "op": "macro",
+     "id": "patch-tree",
+     "seed": 7
+    },
+    {
+     "op": "macro",
+     "id": "patch-flora",
+     "seed": 7
+    }
+   ],
+   "log": [
+    "generate island seed 71: placed=4212 removedCells=0 removedObjects=0 cancelled=false",
+    "macro raise: {\"changes\":27,\"peak\":2}",
+    "macro stream: {\"changes\":0,\"reason\":\"no complete river can be built here\",\"code\":\"river-blocked\",\"blocked\":[{\"x\":51,\"y\":62},{\"x\":51,\"y",
+    "macro road-link: {\"changes\":1,\"ends\":[{\"x\":51,\"y\":62},{\"x\":51,\"y\":62}],\"offers\":[\"short\"]}",
+    "macro roads: {\"changes\":0,\"reason\":\"every building here already meets the network: this is the plan, nothing to add\",\"code\":\"already-",
+    "macro patch-tree: {\"changes\":8}",
+    "macro patch-flora: {\"changes\":4}"
+   ],
+   "live": {
+    "digest": {
+     "cells": "6f5de91364b687c6",
+     "objects": "bfe94c7a4caa5f7d",
+     "annotations": "e3b0c44298fc1c14",
+     "notes": "44136fa355b3678a",
+     "counts": {
+      "terrainCells": 5974,
+      "objects": 4225,
+      "annotations": 0
+     }
+    },
+    "undoDepth": 5
+   },
+   "exports": {
+    "json-min": {
+     "file": "macros.json-min.json.gz",
+     "reference": {
+      "status": "imported",
+      "warnings": [],
+      "digest": {
+       "cells": "6f5de91364b687c6",
+       "objects": "bfe94c7a4caa5f7d",
+       "annotations": "e3b0c44298fc1c14",
+       "notes": "44136fa355b3678a",
+       "counts": {
+        "terrainCells": 5974,
+        "objects": 4225,
+        "annotations": 0
+       }
+      },
+      "undoDepth": 0
+     },
+     "current": {
+      "migrations": [
+       "landmark-ground",
+       "landmark-layout-v3",
+       "ramp-v1-reanchor"
+      ],
+      "digest": {
+       "cells": "28c912ce13d52fcb",
+       "objects": "1ea4b2966bad7772"
+      },
+      "warnings": [
+       "landmark-cleared"
+      ]
+     }
+    },
+    "share": {
+     "payload": "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",
+     "reference": {
+      "status": "imported",
+      "warnings": [],
+      "digest": {
+       "cells": "6f5de91364b687c6",
+       "objects": "bfe94c7a4caa5f7d",
+       "annotations": "e3b0c44298fc1c14",
+       "notes": "44136fa355b3678a",
+       "counts": {
+        "terrainCells": 5974,
+        "objects": 4225,
+        "annotations": 0
+       }
+      }
+     },
+     "current": {
+      "migrations": [
+       "landmark-ground",
+       "landmark-layout-v3",
+       "ramp-v1-reanchor",
+       "share-identity-drift"
+      ],
+      "digest": {
+       "cells": "28c912ce13d52fcb",
+       "objects": "1ea4b2966bad7772"
+      },
+      "warnings": [
+       "template-drift",
+       "catalog-drift",
+       "landmark-cleared"
+      ]
+     }
+    }
+   }
+  },
+  {
+   "id": "manual-objects",
+   "planet": "tafa",
+   "steps": [
+    {
+     "op": "terrain"
+    },
+    {
+     "op": "objects",
+     "perCategory": 3
+    }
+   ],
+   "log": [
+    "terrain ladder: m1 m2 m3 m4 m5 m6 m7 m8 w0 w1 w3 w7",
+    "objects: 10/20"
+   ],
+   "live": {
+    "digest": {
+     "cells": "542ad06654f9fef9",
+     "objects": "b0c4ef144d15486c",
+     "annotations": "e3b0c44298fc1c14",
+     "notes": "44136fa355b3678a",
+     "counts": {
+      "terrainCells": 1044,
+      "objects": 10,
+      "annotations": 0
+     }
+    },
+    "undoDepth": 22
+   },
+   "exports": {
+    "json-full": {
+     "file": "manual-objects.json-full.json.gz",
+     "reference": {
+      "status": "imported",
+      "warnings": [],
+      "digest": {
+       "cells": "542ad06654f9fef9",
+       "objects": "b0c4ef144d15486c",
+       "annotations": "e3b0c44298fc1c14",
+       "notes": "44136fa355b3678a",
+       "counts": {
+        "terrainCells": 1044,
+        "objects": 10,
+        "annotations": 0
+       }
+      },
+      "undoDepth": 22
+     },
+     "current": {
+      "migrations": [
+       "history-before-v3",
+       "landmark-ground",
+       "landmark-layout-v3"
+      ],
+      "digest": {
+       "cells": "4b6f65e72299e75b"
+      },
+      "undoDepth": 0,
+      "warnings": [
+       "landmark-cleared"
+      ]
+     }
+    },
+    "json-min": {
+     "file": "manual-objects.json-min.json.gz",
+     "reference": {
+      "status": "imported",
+      "warnings": [],
+      "digest": {
+       "cells": "542ad06654f9fef9",
+       "objects": "b0c4ef144d15486c",
+       "annotations": "e3b0c44298fc1c14",
+       "notes": "44136fa355b3678a",
+       "counts": {
+        "terrainCells": 1044,
+        "objects": 10,
+        "annotations": 0
+       }
+      },
+      "undoDepth": 0
+     },
+     "current": {
+      "migrations": [
+       "landmark-ground",
+       "landmark-layout-v3"
+      ],
+      "digest": {
+       "cells": "4b6f65e72299e75b"
+      },
+      "warnings": [
+       "landmark-cleared"
+      ]
+     }
+    },
+    "share": {
+     "payload": "UDIEBAEEdGFmYXAOfoZghnY5DQQBBjEuMy4xN4DRymr3vJ8dwN1i4uPakDzCai0UnaiYXtqFKxAIhqP+1b7SvAAAAAAAAAACt8PAMaxdvKu51vBxNPMzM6jonbGqW86cOQbNKuNAFjbFUTkyaZIpgZYY7sV7bB/nrXNCrn+1hrjxmrTACCRSCSU3Kz5Kc48wDRzS7UBR3v1pfugTUFGF0gkpL8G2lvECm2ghhnxUh0+ObYLfdJlT7wgAoGcR405rhK9hbK0zKeDl3fvCZ9a3h9nBH+/TV6tH9peUu6mDcfe1lsrz8iS7dgonsZLETW2fTsBJeyEtQ18s8XLvoZFYdW80ZA3khLiAojoHa6a7Ite09KGxRUYDJiJCqOGIXUztR0e2MyVW86SN3GCaxFiBA+4pjJFUHw62roicnXW8qIuVQbNbux5ExxJnQxVaYxOWcB4LWc0dVgluAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAS4e4RIPNzQhdA2kMxBPo101k6KzDVKMIaLIQLtaqGltbQA",
+     "reference": {
+      "status": "imported",
+      "warnings": [],
+      "digest": {
+       "cells": "542ad06654f9fef9",
+       "objects": "b0c4ef144d15486c",
+       "annotations": "e3b0c44298fc1c14",
+       "notes": "44136fa355b3678a",
+       "counts": {
+        "terrainCells": 1044,
+        "objects": 10,
+        "annotations": 0
+       }
+      }
+     },
+     "current": {
+      "migrations": [
+       "landmark-ground",
+       "landmark-layout-v3",
+       "share-identity-drift"
+      ],
+      "digest": {
+       "cells": "4b6f65e72299e75b"
+      },
+      "warnings": [
+       "template-drift",
+       "catalog-drift",
+       "landmark-cleared"
+      ]
+     }
+    },
+    "autosave": {
+     "file": "manual-objects.autosave.json.gz",
+     "reference": {
+      "status": "imported",
+      "digest": {
+       "cells": "542ad06654f9fef9",
+       "objects": "b0c4ef144d15486c",
+       "annotations": "e3b0c44298fc1c14",
+       "notes": "44136fa355b3678a",
+       "counts": {
+        "terrainCells": 1044,
+        "objects": 10,
+        "annotations": 0
+       }
+      },
+      "history": 22
+     },
+     "current": {
+      "migrations": [
+       "history-before-v3",
+       "landmark-ground",
+       "landmark-layout-v3"
+      ],
+      "digest": {
+       "cells": "4b6f65e72299e75b"
+      },
+      "history": 0,
+      "warnings": [
+       "landmark-cleared"
+      ]
+     }
+    }
+   }
+  },
+  {
+   "id": "manual-roads",
+   "planet": "hexia",
+   "steps": [
+    {
+     "op": "roads"
+    }
+   ],
+   "log": [
+    "roads: 28 materials"
+   ],
+   "live": {
+    "digest": {
+     "cells": "1fd374aa658175ad",
+     "objects": "e7daa1fab4a1fdab",
+     "annotations": "e3b0c44298fc1c14",
+     "notes": "44136fa355b3678a",
+     "counts": {
+      "terrainCells": 0,
+      "objects": 201,
+      "annotations": 0
+     }
+    },
+    "undoDepth": 29
+   },
+   "exports": {
+    "json-full": {
+     "file": "manual-roads.json-full.json.gz",
+     "reference": {
+      "status": "imported",
+      "warnings": [],
+      "digest": {
+       "cells": "1fd374aa658175ad",
+       "objects": "e7daa1fab4a1fdab",
+       "annotations": "e3b0c44298fc1c14",
+       "notes": "44136fa355b3678a",
+       "counts": {
+        "terrainCells": 0,
+        "objects": 201,
+        "annotations": 0
+       }
+      },
+      "undoDepth": 29
+     },
+     "current": {
+      "migrations": [
+       "history-before-v3",
+       "landmark-ground",
+       "landmark-layout-v3"
+      ],
+      "digest": {
+       "cells": "3ed694d0e0034999"
+      },
+      "undoDepth": 0
+     }
+    },
+    "json-min": {
+     "file": "manual-roads.json-min.json.gz",
+     "reference": {
+      "status": "imported",
+      "warnings": [],
+      "digest": {
+       "cells": "1fd374aa658175ad",
+       "objects": "e7daa1fab4a1fdab",
+       "annotations": "e3b0c44298fc1c14",
+       "notes": "44136fa355b3678a",
+       "counts": {
+        "terrainCells": 0,
+        "objects": 201,
+        "annotations": 0
+       }
+      },
+      "undoDepth": 0
+     },
+     "current": {
+      "migrations": [
+       "landmark-ground",
+       "landmark-layout-v3"
+      ],
+      "digest": {
+       "cells": "3ed694d0e0034999"
+      }
+     }
+    },
+    "share": {
+     "payload": "UDIEBAEFaGV4aWH9MTTxYIZ2OQ0FAQYxLjMuMTeA0cpqM6HWDbzf5BFnmMupY8lpnJAxK4/ssTJuzglKqW6k76MAAAAAAAAAAAOdmtXNQ61d6xfT3bNVIAnNQdFzEfFBj9XA34iOfKQXneV22UiS3dPGQIV6ZjNi3awolVs0oKwjjxG1BI09n22G/mppRjjh8cQTAITHstXQrdY9auohpzL+Lzty7375dJZLb+JqEAKrXVrEBEz5YiwLLAYNKmC1xooByhCnvrqBbRN1PPj9KU7+sjVDhLPI0CTk57Gi5QPJCTKJ2qIRBo6ZawYRqLRNBiovwrkyO1eloiOvchqTEHeNEBJbVZj7zj8AAAAA",
+     "reference": {
+      "status": "imported",
+      "warnings": [],
+      "digest": {
+       "cells": "1fd374aa658175ad",
+       "objects": "e7daa1fab4a1fdab",
+       "annotations": "e3b0c44298fc1c14",
+       "notes": "44136fa355b3678a",
+       "counts": {
+        "terrainCells": 0,
+        "objects": 201,
+        "annotations": 0
+       }
+      }
+     },
+     "current": {
+      "migrations": [
+       "landmark-ground",
+       "landmark-layout-v3",
+       "share-identity-drift"
+      ],
+      "digest": {
+       "cells": "3ed694d0e0034999"
+      },
+      "warnings": [
+       "template-drift",
+       "catalog-drift"
+      ]
+     }
+    },
+    "autosave": {
+     "file": "manual-roads.autosave.json.gz",
+     "reference": {
+      "status": "imported",
+      "digest": {
+       "cells": "1fd374aa658175ad",
+       "objects": "e7daa1fab4a1fdab",
+       "annotations": "e3b0c44298fc1c14",
+       "notes": "44136fa355b3678a",
+       "counts": {
+        "terrainCells": 0,
+        "objects": 201,
+        "annotations": 0
+       }
+      },
+      "history": 29
+     },
+     "current": {
+      "migrations": [
+       "history-before-v3",
+       "landmark-ground",
+       "landmark-layout-v3"
+      ],
+      "digest": {
+       "cells": "3ed694d0e0034999"
+      },
+      "history": 0
+     }
+    }
+   }
+  },
+  {
+   "id": "manual-terrain-cuts",
+   "planet": "hexia",
+   "steps": [
+    {
+     "op": "terrain"
+    },
+    {
+     "op": "cuts"
+    },
+    {
+     "op": "notes",
+     "title": "Terraces",
+     "description": "Every height up to the top, with trimmed corners."
+    }
+   ],
+   "log": [
+    "terrain ladder: m1 m2 m3 m4 m5 m6 m7 m8 w0 w1 w3 w7",
+    "edge cuts: 40 trims, 12 gammas"
+   ],
+   "live": {
+    "digest": {
+     "cells": "04614ff573686883",
+     "objects": "e3b0c44298fc1c14",
+     "annotations": "e3b0c44298fc1c14",
+     "notes": "c0a48ef469865feb",
+     "counts": {
+      "terrainCells": 1044,
+      "objects": 0,
+      "annotations": 0
+     }
+    },
+    "undoDepth": 64
+   },
+   "exports": {
+    "json-full": {
+     "file": "manual-terrain-cuts.json-full.json.gz",
+     "reference": {
+      "status": "imported",
+      "warnings": [],
+      "digest": {
+       "cells": "04614ff573686883",
+       "objects": "e3b0c44298fc1c14",
+       "annotations": "e3b0c44298fc1c14",
+       "notes": "c0a48ef469865feb",
+       "counts": {
+        "terrainCells": 1044,
+        "objects": 0,
+        "annotations": 0
+       }
+      },
+      "undoDepth": 64
+     },
+     "current": {
+      "migrations": [
+       "history-before-v3",
+       "landmark-ground",
+       "landmark-layout-v3"
+      ],
+      "digest": {
+       "cells": "c571a8f46bfb0a25"
+      },
+      "undoDepth": 0,
+      "warnings": [
+       "landmark-cleared"
+      ]
+     }
+    },
+    "json-min": {
+     "file": "manual-terrain-cuts.json-min.json.gz",
+     "reference": {
+      "status": "imported",
+      "warnings": [],
+      "digest": {
+       "cells": "04614ff573686883",
+       "objects": "e3b0c44298fc1c14",
+       "annotations": "e3b0c44298fc1c14",
+       "notes": "44136fa355b3678a",
+       "counts": {
+        "terrainCells": 1044,
+        "objects": 0,
+        "annotations": 0
+       }
+      },
+      "undoDepth": 0
+     },
+     "current": {
+      "migrations": [
+       "landmark-ground",
+       "landmark-layout-v3"
+      ],
+      "digest": {
+       "cells": "c571a8f46bfb0a25"
+      },
+      "warnings": [
+       "landmark-cleared"
+      ]
+     }
+    },
+    "share": {
+     "payload": "UDIFBAEFaGV4aWH9MTTxYIZ2OQ0EAQYxLjMuMTeA0cpqGLKiRlWiaoAScgMYrUn9FI6eqO14PF607mKb4S0429sAAAAAPQAIAFRlcnJhY2VzMQBFdmVyeSBoZWlnaHQgdXAgdG8gdGhlIHRvcCwgd2l0aCB0cmltbWVkIGNvcm5lcnMuAAAABbLWSIAIBwrPIkUFNlSR6tH2e+HE8QAlDDX/aIUN+l3b6/7cRnrIjnUcnPfnvOqIfE0kxolOo6K8MURQgsf7eeOwUI3MVXlvEOhmRjTqbbU7z00XrHE/VWurEG3rVf5DRCqMY7Q4YUu4dlCnghQ9PUQNB4kcC/lhBcJyzNUxmS97Gsah2J6Zq7etRp8+oR84vKUpc2mhPN8fL/xfADbo1olvc/sfu6rOE4/vNAItT/Oo/d5QSjm2VYkffYuPRbx4uD6K67XJyIoRbl/1ArwSrd88MiFrKStlPPp/R9jBj4k8CTis8oGbYvWYcLEHO9Xg8gI2T997gsBCjgcbkGRQWi5vY9XfcIfVmJsK9S6aBPA9hRwfdgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+     "reference": {
+      "status": "imported",
+      "warnings": [],
+      "digest": {
+       "cells": "04614ff573686883",
+       "objects": "e3b0c44298fc1c14",
+       "annotations": "e3b0c44298fc1c14",
+       "notes": "c0a48ef469865feb",
+       "counts": {
+        "terrainCells": 1044,
+        "objects": 0,
+        "annotations": 0
+       }
+      }
+     },
+     "current": {
+      "migrations": [
+       "landmark-ground",
+       "landmark-layout-v3",
+       "share-identity-drift"
+      ],
+      "digest": {
+       "cells": "c571a8f46bfb0a25"
+      },
+      "warnings": [
+       "template-drift",
+       "catalog-drift",
+       "landmark-cleared"
+      ]
+     }
+    },
+    "png": {
+     "file": "manual-terrain-cuts.png",
+     "reference": {
+      "status": "imported",
+      "warnings": [],
+      "digest": {
+       "cells": "04614ff573686883",
+       "objects": "e3b0c44298fc1c14",
+       "annotations": "e3b0c44298fc1c14",
+       "notes": "c0a48ef469865feb",
+       "counts": {
+        "terrainCells": 1044,
+        "objects": 0,
+        "annotations": 0
+       }
+      },
+      "undoDepth": 0
+     },
+     "current": {
+      "migrations": [
+       "landmark-ground",
+       "landmark-layout-v3",
+       "share-identity-drift"
+      ],
+      "digest": {
+       "cells": "c571a8f46bfb0a25"
+      },
+      "warnings": [
+       "template-drift",
+       "catalog-drift",
+       "landmark-cleared"
+      ]
+     }
+    },
+    "autosave": {
+     "file": "manual-terrain-cuts.autosave.json.gz",
+     "reference": {
+      "status": "imported",
+      "digest": {
+       "cells": "04614ff573686883",
+       "objects": "e3b0c44298fc1c14",
+       "annotations": "e3b0c44298fc1c14",
+       "notes": "c0a48ef469865feb",
+       "counts": {
+        "terrainCells": 1044,
+        "objects": 0,
+        "annotations": 0
+       }
+      },
+      "history": 60
+     },
+     "current": {
+      "migrations": [
+       "history-before-v3",
+       "landmark-ground",
+       "landmark-layout-v3"
+      ],
+      "digest": {
+       "cells": "c571a8f46bfb0a25"
+      },
+      "history": 0,
+      "warnings": [
+       "landmark-cleared"
+      ]
+     }
+    }
+   }
+  },
+  {
+   "id": "region-history",
+   "planet": "tafa",
+   "steps": [
+    {
+     "op": "generate",
+     "kind": "island",
+     "seed": 61,
+     "richness": 60
+    },
+    {
+     "op": "generate",
+     "kind": "island",
+     "seed": 62,
+     "richness": 90,
+     "region": [
+      40,
+      40,
+      70,
+      60
+     ]
+    },
+    {
+     "op": "history",
+     "strokes": 70,
+     "undo": 6,
+     "redo": 3
+    }
+   ],
+   "log": [
+    "generate island seed 61: placed=3186 removedCells=0 removedObjects=0 cancelled=false",
+    "generate island seed 62: placed=217 removedCells=0 removedObjects=0 cancelled=false",
+    "long history: 29 strokes"
+   ],
+   "live": {
+    "digest": {
+     "cells": "1e2b674bd959cd85",
+     "objects": "831f0585cd2629cc",
+     "annotations": "e3b0c44298fc1c14",
+     "notes": "44136fa355b3678a",
+     "counts": {
+      "terrainCells": 14800,
+      "objects": 3102,
+      "annotations": 0
+     }
+    },
+    "undoDepth": 35
+   },
+   "exports": {
+    "json-full": {
+     "file": "region-history.json-full.json.gz",
+     "reference": {
+      "status": "imported",
+      "warnings": [],
+      "digest": {
+       "cells": "1e2b674bd959cd85",
+       "objects": "831f0585cd2629cc",
+       "annotations": "e3b0c44298fc1c14",
+       "notes": "44136fa355b3678a",
+       "counts": {
+        "terrainCells": 14800,
+        "objects": 3102,
+        "annotations": 0
+       }
+      },
+      "undoDepth": 35
+     },
+     "current": {
+      "migrations": [
+       "history-before-v3",
+       "landmark-ground",
+       "landmark-layout-v3",
+       "ramp-v1-reanchor"
+      ],
+      "digest": {
+       "cells": "a4755ad52b1d7002",
+       "objects": "ec13a52884dca921"
+      },
+      "undoDepth": 0,
+      "warnings": [
+       "landmark-cleared"
+      ]
+     }
+    },
+    "json-min": {
+     "file": "region-history.json-min.json.gz",
+     "reference": {
+      "status": "imported",
+      "warnings": [],
+      "digest": {
+       "cells": "1e2b674bd959cd85",
+       "objects": "831f0585cd2629cc",
+       "annotations": "e3b0c44298fc1c14",
+       "notes": "44136fa355b3678a",
+       "counts": {
+        "terrainCells": 14800,
+        "objects": 3102,
+        "annotations": 0
+       }
+      },
+      "undoDepth": 0
+     },
+     "current": {
+      "migrations": [
+       "landmark-ground",
+       "landmark-layout-v3",
+       "ramp-v1-reanchor"
+      ],
+      "digest": {
+       "cells": "a4755ad52b1d7002",
+       "objects": "ec13a52884dca921"
+      },
+      "warnings": [
+       "landmark-cleared"
+      ]
+     }
+    },
+    "share": {
+     "payload": "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",
+     "reference": {
+      "status": "imported",
+      "warnings": [],
+      "digest": {
+       "cells": "1e2b674bd959cd85",
+       "objects": "831f0585cd2629cc",
+       "annotations": "e3b0c44298fc1c14",
+       "notes": "44136fa355b3678a",
+       "counts": {
+        "terrainCells": 14800,
+        "objects": 3102,
+        "annotations": 0
+       }
+      }
+     },
+     "current": {
+      "migrations": [
+       "landmark-ground",
+       "landmark-layout-v3",
+       "ramp-v1-reanchor",
+       "share-identity-drift"
+      ],
+      "digest": {
+       "cells": "a4755ad52b1d7002",
+       "objects": "ec13a52884dca921"
+      },
+      "warnings": [
+       "template-drift",
+       "catalog-drift",
+       "landmark-cleared"
+      ]
+     }
+    }
+   }
+  },
+  {
+   "id": "tafa-designed-11-r0",
+   "planet": "tafa",
+   "steps": [
+    {
+     "op": "generate",
+     "kind": "island",
+     "seed": 11,
+     "richness": 0
+    }
+   ],
+   "log": [
+    "generate island seed 11: placed=4137 removedCells=0 removedObjects=0 cancelled=false"
+   ],
+   "live": {
+    "digest": {
+     "cells": "057387adbd85e747",
+     "objects": "e1b5f1ab03ce471b",
+     "annotations": "e3b0c44298fc1c14",
+     "notes": "44136fa355b3678a",
+     "counts": {
+      "terrainCells": 5414,
+      "objects": 4137,
+      "annotations": 0
+     }
+    },
+    "undoDepth": 1
+   },
+   "exports": {
+    "json-min": {
+     "file": "tafa-designed-11-r0.json-min.json.gz",
+     "reference": {
+      "status": "imported",
+      "warnings": [],
+      "digest": {
+       "cells": "057387adbd85e747",
+       "objects": "e1b5f1ab03ce471b",
+       "annotations": "e3b0c44298fc1c14",
+       "notes": "44136fa355b3678a",
+       "counts": {
+        "terrainCells": 5414,
+        "objects": 4137,
+        "annotations": 0
+       }
+      },
+      "undoDepth": 0
+     },
+     "current": {
+      "migrations": [
+       "landmark-ground",
+       "landmark-layout-v3"
+      ],
+      "digest": {
+       "cells": "88aa1784fe379116",
+       "objects": "c951b8298e852ea4"
+      },
+      "warnings": [
+       "landmark-cleared"
+      ]
+     }
+    },
+    "share": {
+     "payload": "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",
+     "reference": {
+      "status": "imported",
+      "warnings": [],
+      "digest": {
+       "cells": "057387adbd85e747",
+       "objects": "e1b5f1ab03ce471b",
+       "annotations": "e3b0c44298fc1c14",
+       "notes": "44136fa355b3678a",
+       "counts": {
+        "terrainCells": 5414,
+        "objects": 4137,
+        "annotations": 0
+       }
+      }
+     },
+     "current": {
+      "migrations": [
+       "landmark-ground",
+       "landmark-layout-v3",
+       "share-identity-drift"
+      ],
+      "digest": {
+       "cells": "88aa1784fe379116",
+       "objects": "c951b8298e852ea4"
+      },
+      "warnings": [
+       "template-drift",
+       "catalog-drift",
+       "landmark-cleared"
+      ]
+     }
+    }
+   }
+  },
+  {
+   "id": "tafa-designed-12-r35",
+   "planet": "tafa",
+   "steps": [
+    {
+     "op": "generate",
+     "kind": "island",
+     "seed": 12,
+     "richness": 35
+    }
+   ],
+   "log": [
+    "generate island seed 12: placed=4241 removedCells=0 removedObjects=0 cancelled=false"
+   ],
+   "live": {
+    "digest": {
+     "cells": "21ff1fcfdd33d937",
+     "objects": "161cacf10670486c",
+     "annotations": "e3b0c44298fc1c14",
+     "notes": "44136fa355b3678a",
+     "counts": {
+      "terrainCells": 5442,
+      "objects": 4241,
+      "annotations": 0
+     }
+    },
+    "undoDepth": 1
+   },
+   "exports": {
+    "json-min": {
+     "file": "tafa-designed-12-r35.json-min.json.gz",
+     "reference": {
+      "status": "imported",
+      "warnings": [],
+      "digest": {
+       "cells": "21ff1fcfdd33d937",
+       "objects": "161cacf10670486c",
+       "annotations": "e3b0c44298fc1c14",
+       "notes": "44136fa355b3678a",
+       "counts": {
+        "terrainCells": 5442,
+        "objects": 4241,
+        "annotations": 0
+       }
+      },
+      "undoDepth": 0
+     },
+     "current": {
+      "migrations": [
+       "landmark-ground",
+       "landmark-layout-v3"
+      ],
+      "digest": {
+       "cells": "9fae35cc6260e174",
+       "objects": "051857165ff676c6"
+      },
+      "warnings": [
+       "landmark-cleared"
+      ]
+     }
+    },
+    "share": {
+     "payload": "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",
+     "reference": {
+      "status": "imported",
+      "warnings": [],
+      "digest": {
+       "cells": "21ff1fcfdd33d937",
+       "objects": "161cacf10670486c",
+       "annotations": "e3b0c44298fc1c14",
+       "notes": "44136fa355b3678a",
+       "counts": {
+        "terrainCells": 5442,
+        "objects": 4241,
+        "annotations": 0
+       }
+      }
+     },
+     "current": {
+      "migrations": [
+       "landmark-ground",
+       "landmark-layout-v3",
+       "share-identity-drift"
+      ],
+      "digest": {
+       "cells": "9fae35cc6260e174",
+       "objects": "051857165ff676c6"
+      },
+      "warnings": [
+       "template-drift",
+       "catalog-drift",
+       "landmark-cleared"
+      ]
+     }
+    }
+   }
+  },
+  {
+   "id": "tafa-designed-13-r70",
+   "planet": "tafa",
+   "steps": [
+    {
+     "op": "generate",
+     "kind": "island",
+     "seed": 13,
+     "richness": 70
+    }
+   ],
+   "log": [
+    "generate island seed 13: placed=3713 removedCells=0 removedObjects=0 cancelled=false"
+   ],
+   "live": {
+    "digest": {
+     "cells": "c97ead3c870bd5e9",
+     "objects": "058ce2864afabb2d",
+     "annotations": "e3b0c44298fc1c14",
+     "notes": "44136fa355b3678a",
+     "counts": {
+      "terrainCells": 8479,
+      "objects": 3713,
+      "annotations": 0
+     }
+    },
+    "undoDepth": 1
+   },
+   "exports": {
+    "json-min": {
+     "file": "tafa-designed-13-r70.json-min.json.gz",
+     "reference": {
+      "status": "imported",
+      "warnings": [],
+      "digest": {
+       "cells": "c97ead3c870bd5e9",
+       "objects": "058ce2864afabb2d",
+       "annotations": "e3b0c44298fc1c14",
+       "notes": "44136fa355b3678a",
+       "counts": {
+        "terrainCells": 8479,
+        "objects": 3713,
+        "annotations": 0
+       }
+      },
+      "undoDepth": 0
+     },
+     "current": {
+      "migrations": [
+       "landmark-ground",
+       "landmark-layout-v3",
+       "ramp-v1-reanchor"
+      ],
+      "digest": {
+       "cells": "7858a7c1b7aa5ec5",
+       "objects": "766c33046b916852"
+      },
+      "warnings": [
+       "landmark-cleared"
+      ]
+     }
+    },
+    "share": {
+     "payload": "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",
+     "reference": {
+      "status": "imported",
+      "warnings": [],
+      "digest": {
+       "cells": "c97ead3c870bd5e9",
+       "objects": "058ce2864afabb2d",
+       "annotations": "e3b0c44298fc1c14",
+       "notes": "44136fa355b3678a",
+       "counts": {
+        "terrainCells": 8479,
+        "objects": 3713,
+        "annotations": 0
+       }
+      }
+     },
+     "current": {
+      "migrations": [
+       "landmark-ground",
+       "landmark-layout-v3",
+       "ramp-v1-reanchor",
+       "share-identity-drift"
+      ],
+      "digest": {
+       "cells": "7858a7c1b7aa5ec5",
+       "objects": "766c33046b916852"
+      },
+      "warnings": [
+       "template-drift",
+       "catalog-drift",
+       "landmark-cleared"
+      ]
+     }
+    }
+   }
+  },
+  {
+   "id": "tafa-designed-14-r100",
+   "planet": "tafa",
+   "steps": [
+    {
+     "op": "generate",
+     "kind": "island",
+     "seed": 14,
+     "richness": 100
+    }
+   ],
+   "log": [
+    "generate island seed 14: placed=2924 removedCells=0 removedObjects=0 cancelled=false"
+   ],
+   "live": {
+    "digest": {
+     "cells": "1801a6d8345f5fd9",
+     "objects": "a86227b9f5bc590b",
+     "annotations": "e3b0c44298fc1c14",
+     "notes": "44136fa355b3678a",
+     "counts": {
+      "terrainCells": 15079,
+      "objects": 2924,
+      "annotations": 0
+     }
+    },
+    "undoDepth": 1
+   },
+   "exports": {
+    "json-min": {
+     "file": "tafa-designed-14-r100.json-min.json.gz",
+     "reference": {
+      "status": "imported",
+      "warnings": [],
+      "digest": {
+       "cells": "1801a6d8345f5fd9",
+       "objects": "a86227b9f5bc590b",
+       "annotations": "e3b0c44298fc1c14",
+       "notes": "44136fa355b3678a",
+       "counts": {
+        "terrainCells": 15079,
+        "objects": 2924,
+        "annotations": 0
+       }
+      },
+      "undoDepth": 0
+     },
+     "current": {
+      "migrations": [
+       "landmark-ground",
+       "landmark-layout-v3",
+       "ramp-v1-reanchor"
+      ],
+      "digest": {
+       "cells": "555977fbcbf9f24a",
+       "objects": "7a0cf42cc1bb1b2d"
+      },
+      "warnings": [
+       "landmark-cleared"
+      ]
+     }
+    },
+    "share": {
+     "payload": "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",
+     "reference": {
+      "status": "imported",
+      "warnings": [],
+      "digest": {
+       "cells": "1801a6d8345f5fd9",
+       "objects": "a86227b9f5bc590b",
+       "annotations": "e3b0c44298fc1c14",
+       "notes": "44136fa355b3678a",
+       "counts": {
+        "terrainCells": 15079,
+        "objects": 2924,
+        "annotations": 0
+       }
+      }
+     },
+     "current": {
+      "migrations": [
+       "landmark-ground",
+       "landmark-layout-v3",
+       "ramp-v1-reanchor",
+       "share-identity-drift"
+      ],
+      "digest": {
+       "cells": "555977fbcbf9f24a",
+       "objects": "7a0cf42cc1bb1b2d"
+      },
+      "warnings": [
+       "template-drift",
+       "catalog-drift",
+       "landmark-cleared"
+      ]
+     }
+    }
+   }
+  },
+  {
+   "id": "tafa-empty",
+   "planet": "tafa",
+   "steps": [],
+   "log": [],
+   "live": {
+    "digest": {
+     "cells": "1fd374aa658175ad",
+     "objects": "e3b0c44298fc1c14",
+     "annotations": "e3b0c44298fc1c14",
+     "notes": "44136fa355b3678a",
+     "counts": {
+      "terrainCells": 0,
+      "objects": 0,
+      "annotations": 0
+     }
+    },
+    "undoDepth": 0
+   },
+   "exports": {
+    "json-full": {
+     "file": "tafa-empty.json-full.json.gz",
+     "reference": {
+      "status": "imported",
+      "warnings": [],
+      "digest": {
+       "cells": "1fd374aa658175ad",
+       "objects": "e3b0c44298fc1c14",
+       "annotations": "e3b0c44298fc1c14",
+       "notes": "44136fa355b3678a",
+       "counts": {
+        "terrainCells": 0,
+        "objects": 0,
+        "annotations": 0
+       }
+      },
+      "undoDepth": 0
+     },
+     "current": {
+      "migrations": [
+       "landmark-ground",
+       "landmark-layout-v3"
+      ],
+      "digest": {
+       "cells": "3ed694d0e0034999"
+      }
+     }
+    },
+    "json-min": {
+     "file": "tafa-empty.json-min.json.gz",
+     "reference": {
+      "status": "imported",
+      "warnings": [],
+      "digest": {
+       "cells": "1fd374aa658175ad",
+       "objects": "e3b0c44298fc1c14",
+       "annotations": "e3b0c44298fc1c14",
+       "notes": "44136fa355b3678a",
+       "counts": {
+        "terrainCells": 0,
+        "objects": 0,
+        "annotations": 0
+       }
+      },
+      "undoDepth": 0
+     },
+     "current": {
+      "migrations": [
+       "landmark-ground",
+       "landmark-layout-v3"
+      ],
+      "digest": {
+       "cells": "3ed694d0e0034999"
+      }
+     }
+    },
+    "share": {
+     "payload": "UDIEAAEEdGFmYXAOfoZghnY5DQQBBjEuMy4xN4DRymoWNuOSPqiWGOZexg8hN3PaNBjrlmrCRoTDAXavhtGy/wAAAAAAAAAAAAAAAAAAAA==",
+     "reference": {
+      "status": "imported",
+      "warnings": [],
+      "digest": {
+       "cells": "1fd374aa658175ad",
+       "objects": "e3b0c44298fc1c14",
+       "annotations": "e3b0c44298fc1c14",
+       "notes": "44136fa355b3678a",
+       "counts": {
+        "terrainCells": 0,
+        "objects": 0,
+        "annotations": 0
+       }
+      }
+     },
+     "current": {
+      "migrations": [
+       "landmark-ground",
+       "landmark-layout-v3",
+       "share-identity-drift"
+      ],
+      "digest": {
+       "cells": "3ed694d0e0034999"
+      },
+      "warnings": [
+       "template-drift",
+       "catalog-drift"
+      ]
+     }
+    }
+   }
+  },
+  {
+   "id": "tafa-image-terrain",
+   "planet": "tafa",
+   "steps": [
+    {
+     "op": "generate",
+     "kind": "image",
+     "seed": 41,
+     "fill": "mountain"
+    }
+   ],
+   "log": [
+    "generate image seed 41: placed=35231 removedCells=0 removedObjects=0 cancelled=false"
+   ],
+   "live": {
+    "digest": {
+     "cells": "4d225b0081f8fabf",
+     "objects": "e3b0c44298fc1c14",
+     "annotations": "e3b0c44298fc1c14",
+     "notes": "44136fa355b3678a",
+     "counts": {
+      "terrainCells": 14038,
+      "objects": 0,
+      "annotations": 0
+     }
+    },
+    "undoDepth": 1
+   },
+   "exports": {
+    "json-min": {
+     "file": "tafa-image-terrain.json-min.json.gz",
+     "reference": {
+      "status": "imported",
+      "warnings": [],
+      "digest": {
+       "cells": "4d225b0081f8fabf",
+       "objects": "e3b0c44298fc1c14",
+       "annotations": "e3b0c44298fc1c14",
+       "notes": "44136fa355b3678a",
+       "counts": {
+        "terrainCells": 14038,
+        "objects": 0,
+        "annotations": 0
+       }
+      },
+      "undoDepth": 0
+     },
+     "current": {
+      "migrations": [
+       "landmark-ground",
+       "landmark-layout-v3"
+      ],
+      "digest": {
+       "cells": "b9a6cbdc7a89aa1e"
+      },
+      "warnings": [
+       "landmark-cleared"
+      ]
+     }
+    },
+    "share": {
+     "payload": "UDIEAAEEdGFmYXAOfoZghnY5DQYBBjEuMy4xN4DRymqHRzpJ/B+q7Y/dvaupZ6qFCgXU/HzMVSkAs6o3avc4MwAAAAAACrDktOf0/j/wPjRtLu003vK12DgAVyyRY9h5O+XPuGJTHZFpJDcvfPzhTKS698m6L2iMV0TeIey3sCvWlUVQIqi8/ZNZotdYf6wLpM4JFClX5ZVwwFxLe1LfEYs0YU/PzdAPdkJCtynJpfniZggO19NcS0ZZ3RNpHvIzMretckIVfWYKy4H2rKo/MuPw302k64cWIVp/oAckZwhpEhexpJtFNG4a/nKHG9b1Cigst5eKfI+zAUJzrGnutxcH6U8bRqf0mU115LK/7WjSnGNxluGjfPCqIEd9HIakTAWCiQfTKXjnspgz1s89NKDgkdWNHi83zPnnwEW+uzjQFv+bnFyFM2bEJh9iR0T0yFk7qFld5veuBQdB44eacvxwtldMQ5lrMmVTpMe50E0ZMRt0AOehmrPhxWjupbO/MpyVRTcmfva2ZP6o1QXT7YcZ08mfSvjTwD0pEEJIS7x9aluendS/RvHrYAlU6NFegmyGbe90X6x+ing49w5wyggNyyzf2/xd8URSc3mqWlLVLrAZLankI8Y4RGqd+YjSNWK2O2pf9WlFKSRBI4rMkzUrmHMHcSxYhrMQIodcTQ6P6I7JA0QWWBSgCIlmhr1+JVuCSKsrSGZB91LLcGIEMDekY8y1uWJ93+Wt3jAzToC52BfdJEp6iDGnvJjVXjdfGX6t1t93U7B/hL2odXzmAKYuP8kLjz9jmf+ZDPJwiPZ3md+zy1tlqKozB4UkhPntg/TgRFKnmMubG1eLA6RX7RWnbnkLWua2EzygQtE5l+hOL8vDEMLZtEx1M6Z37KeLcF5wouJ9NlNUn7BaFND0Yg+iUbwNXy77L2B0LMNLgJQlCu0IDuV20ni0BtQHDT+Rb49ukjIPdw6aNr6zI4QSXdkhYbg302OqlX1K4SnlFjKJZcIVqvCGIUA6LN604XlEiL3jon3z/S0Sq3nj/oOLj+UPDUPZmiGMAacl+zLftw357LOB5wrHqlqIrB9dylsJgq8XCcYMduhTRjISnVerC5Qw9mazl57++PnFQ+OZogDTGAOWUwksqPb57SFpQebfeDQXvdyNiYbXSOi1RO2U+0CbYMfX8EWVo7dyX4LTsIJwhOVkXT85/pkMB3mLLT4cBc9U9ykQ3FXKIHfwCfeB98fn7KzmFiV0Kb1NWV1yRkyEpwmrIaE9I3nQ/4zVY2ayk0GCWxvOIMJbJulJWouQOXVxlIIQCO1i3hC/3B994OuXFv0yui4lycDJgVsIXRMSBt0zhMXZCHFi5teCndHt+SlqeH0t9xoWJi3s02o5FywnEjjLBgM2X3pJDoZ12QxJAwqx+8qFUXMvgdCvT0XvZX0JxYoRBbLQaeGo4aLBTcMBp1xUyVWKA0Glm1EFd1p5sJg0VCVddEk2y+2JOUxVlwmTeJ/6WsOEA7BopxKBILp2fS/Z/d+FNWPu738DVR+5HBZeXltV03eGt8ErA5hsf93nOawrS6NhYqOUDR3Oodq6/O1qIfQcxRqIgQWE1DcFcj5xNCGkGnhSO6TA/MFZcaNrXgGK20+JjgETUK3UPgfbZTRQUTFfvhkQzU0GtL4EQM1eminaF3V+J5n1IfmrXjiWP20b7haH3YbAXgEtWmCs7aowbC7oZ6UZMqjrsqUM9yOhhUQ6DG7LPadiA+EF3n4X86NPaCzw8fpriZeMU2qQoT9DlRfYSutV1cn4KnZhIXpf2spSlDLHs4VgajxZmBLFqKRKh5zcfJacmNKBpyxn/I98DNthS0Q/9P8bt+WJs6GIDEjaq+CcdH31XIdhniMrx3EYVQZiMWWnbRq7ms4DARVxw0YR6ijNTMrerr5YuQ2PLRL5D+t3H9ZfGv57HKDqV73aFCJsVG9fa9zcBbu6gw6008RdnUkuyLP0vNeunWGi8v/X3iBECQIZzpjq8HwyCB3xRPz61J30zEPwlbxss+mOIa/YCQPvWwj+BDRx32AdxfHXa59h7Vr4Mo20AXjxcc2gNNXyI9sAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAez+vqCxqbxcBlgUp79CHKcklomUfnwYQh5RZZyHckm0vVIGKYiAuehTc2ImwoyQYAAAAA",
+     "reference": {
+      "status": "imported",
+      "warnings": [],
+      "digest": {
+       "cells": "4d225b0081f8fabf",
+       "objects": "e3b0c44298fc1c14",
+       "annotations": "e3b0c44298fc1c14",
+       "notes": "44136fa355b3678a",
+       "counts": {
+        "terrainCells": 14038,
+        "objects": 0,
+        "annotations": 0
+       }
+      }
+     },
+     "current": {
+      "migrations": [
+       "landmark-ground",
+       "landmark-layout-v3",
+       "share-identity-drift"
+      ],
+      "digest": {
+       "cells": "b9a6cbdc7a89aa1e"
+      },
+      "warnings": [
+       "template-drift",
+       "catalog-drift",
+       "landmark-cleared"
+      ]
+     }
+    }
+   }
+  },
+  {
+   "id": "tafa-maze-w1",
+   "planet": "tafa",
+   "steps": [
+    {
+     "op": "generate",
+     "kind": "maze",
+     "seed": 21,
+     "corridorWidth": 1,
+     "maxElevation": 3
+    }
+   ],
+   "log": [
+    "generate maze seed 21: placed=23388 removedCells=0 removedObjects=0 cancelled=false"
+   ],
+   "live": {
+    "digest": {
+     "cells": "49e754ec6e5f8fe3",
+     "objects": "e3b0c44298fc1c14",
+     "annotations": "e3b0c44298fc1c14",
+     "notes": "44136fa355b3678a",
+     "counts": {
+      "terrainCells": 7796,
+      "objects": 0,
+      "annotations": 0
+     }
+    },
+    "undoDepth": 1
+   },
+   "exports": {
+    "json-min": {
+     "file": "tafa-maze-w1.json-min.json.gz",
+     "reference": {
+      "status": "imported",
+      "warnings": [],
+      "digest": {
+       "cells": "49e754ec6e5f8fe3",
+       "objects": "e3b0c44298fc1c14",
+       "annotations": "e3b0c44298fc1c14",
+       "notes": "44136fa355b3678a",
+       "counts": {
+        "terrainCells": 7796,
+        "objects": 0,
+        "annotations": 0
+       }
+      },
+      "undoDepth": 0
+     },
+     "current": {
+      "migrations": [
+       "landmark-ground",
+       "landmark-layout-v3"
+      ],
+      "digest": {
+       "cells": "9b018eceeac86bfc"
+      },
+      "warnings": [
+       "landmark-cleared"
+      ]
+     }
+    },
+    "share": {
+     "payload": "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",
+     "reference": {
+      "status": "imported",
+      "warnings": [],
+      "digest": {
+       "cells": "49e754ec6e5f8fe3",
+       "objects": "e3b0c44298fc1c14",
+       "annotations": "e3b0c44298fc1c14",
+       "notes": "44136fa355b3678a",
+       "counts": {
+        "terrainCells": 7796,
+        "objects": 0,
+        "annotations": 0
+       }
+      }
+     },
+     "current": {
+      "migrations": [
+       "landmark-ground",
+       "landmark-layout-v3",
+       "share-identity-drift"
+      ],
+      "digest": {
+       "cells": "9b018eceeac86bfc"
+      },
+      "warnings": [
+       "template-drift",
+       "catalog-drift",
+       "landmark-cleared"
+      ]
+     }
+    }
+   }
+  },
+  {
+   "id": "tafa-maze-w3",
+   "planet": "tafa",
+   "steps": [
+    {
+     "op": "generate",
+     "kind": "maze",
+     "seed": 22,
+     "corridorWidth": 3,
+     "maxElevation": 2
+    }
+   ],
+   "log": [
+    "generate maze seed 22: placed=7766 removedCells=0 removedObjects=0 cancelled=false"
+   ],
+   "live": {
+    "digest": {
+     "cells": "96e872a4085bc750",
+     "objects": "e3b0c44298fc1c14",
+     "annotations": "e3b0c44298fc1c14",
+     "notes": "44136fa355b3678a",
+     "counts": {
+      "terrainCells": 3883,
+      "objects": 0,
+      "annotations": 0
+     }
+    },
+    "undoDepth": 1
+   },
+   "exports": {
+    "json-min": {
+     "file": "tafa-maze-w3.json-min.json.gz",
+     "reference": {
+      "status": "imported",
+      "warnings": [],
+      "digest": {
+       "cells": "96e872a4085bc750",
+       "objects": "e3b0c44298fc1c14",
+       "annotations": "e3b0c44298fc1c14",
+       "notes": "44136fa355b3678a",
+       "counts": {
+        "terrainCells": 3883,
+        "objects": 0,
+        "annotations": 0
+       }
+      },
+      "undoDepth": 0
+     },
+     "current": {
+      "migrations": [
+       "landmark-ground",
+       "landmark-layout-v3"
+      ],
+      "digest": {
+       "cells": "cd0c696cc632a44a"
+      },
+      "warnings": [
+       "landmark-cleared"
+      ]
+     }
+    },
+    "share": {
+     "payload": "UDIEBQEEdGFmYXAOfoZghnY5DQYBBjEuMy4xN4DRymoe/ruyhvGA23onfeWV522/QjABreYGzfVrPZ0bVPQOH20AeyJhbGdvcml0aG0iOiJtYXplIiwibW9kZSI6Im1peGVkIiwiY29ycmlkb3JXaWR0aCI6MywibWF4RWxldmF0aW9uIjoyLCJzZWVkIjoyMiwicmVnaW9uIjpudWxsLCJyaWNobmVzcyI6MC43fQAAAArPSZbB1Pw9hKaRo0E95t0fNaxtUASZW5yabul2TiIVTC8OYd/a8o8/8IdQJcXUpwwcH9hDhDvktCwpbB7LJAPTlpaM1ngLBEepifnlyrP47GulDRdhd6YEI+yMNwJDafMO+L4lhb4adXrSRd7sqP6jNYVOq2QYKPJueMLipeC2Ir7wuQo8MJ9Do0FWxRucdKtaOszljOndB7aVHSfhWH1byo4bQkK7rSp5uCa4md5ob6skeifxlmuKfblR1gC3NhnMSWP0MAI/YJtARoV0Ob76gG59p5HacSWxYPDkQg8Czrw8uY/ugLzbyMRsAy8NroGE1ODbc9bjVQO232W1BA8/flo8rzQfLgwAI88KduqGAz8OtQI27b1Wsq6ObQqIRsmPKZsU9+LEFQzxQtjLq3yTW8xhfl7nbuMkgTeEKHMxqWrPIsH497L8DhMCWnDu9Gkb/pNSVUvnUXKZ+nzMPkBJRXC1Huj0IuUJd1uWDsbugwKxzo0TMbD0mlXZj6U/jtav+hIKpnnT8/BIr/QijVF0slUbxQkYcS43c+dA9TNrSA8xsvFA1LEfG+OG2VwqXhh8RewA3aXRUTIT5VBLx5kVfra2LNSzrMr3cmmJSdCSxMYPQAlQ3P/1mG8+MKI6IRU3BBBFwsSgc3J08dLa+ofjTZLIEIfJju4bMfJU6uy8vnzfVJJ0TeGYBcYpc0cyuH1D+59KOE1h/Wnrpa3UWBGrM/8LDxGXv4BoOkNonPqdeRMRNft3ehKD71jbG91XAa1gpEwrSXqa0s8D0PNZNJhuOCN3AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+     "reference": {
+      "status": "imported",
+      "warnings": [],
+      "digest": {
+       "cells": "96e872a4085bc750",
+       "objects": "e3b0c44298fc1c14",
+       "annotations": "e3b0c44298fc1c14",
+       "notes": "44136fa355b3678a",
+       "counts": {
+        "terrainCells": 3883,
+        "objects": 0,
+        "annotations": 0
+       }
+      }
+     },
+     "current": {
+      "migrations": [
+       "landmark-ground",
+       "landmark-layout-v3",
+       "share-identity-drift"
+      ],
+      "digest": {
+       "cells": "cd0c696cc632a44a"
+      },
+      "warnings": [
+       "template-drift",
+       "catalog-drift",
+       "landmark-cleared"
+      ]
+     }
+    }
+   }
+  },
+  {
+   "id": "tafa-text-mountain",
+   "planet": "tafa",
+   "steps": [
+    {
+     "op": "generate",
+     "kind": "text",
+     "seed": 31,
+     "text": "PM"
+    }
+   ],
+   "log": [
+    "generate text seed 31: placed=3492 removedCells=0 removedObjects=0 cancelled=false"
+   ],
+   "live": {
+    "digest": {
+     "cells": "78fd92ec24338d06",
+     "objects": "e3b0c44298fc1c14",
+     "annotations": "e3b0c44298fc1c14",
+     "notes": "44136fa355b3678a",
+     "counts": {
+      "terrainCells": 3674,
+      "objects": 0,
+      "annotations": 0
+     }
+    },
+    "undoDepth": 1
+   },
+   "exports": {
+    "json-min": {
+     "file": "tafa-text-mountain.json-min.json.gz",
+     "reference": {
+      "status": "imported",
+      "warnings": [],
+      "digest": {
+       "cells": "78fd92ec24338d06",
+       "objects": "e3b0c44298fc1c14",
+       "annotations": "e3b0c44298fc1c14",
+       "notes": "44136fa355b3678a",
+       "counts": {
+        "terrainCells": 3674,
+        "objects": 0,
+        "annotations": 0
+       }
+      },
+      "undoDepth": 0
+     },
+     "current": {
+      "migrations": [
+       "landmark-ground",
+       "landmark-layout-v3"
+      ],
+      "digest": {
+       "cells": "c54b9ea8ccd33ca0"
+      }
+     }
+    },
+    "share": {
+     "payload": "UDIEAAEEdGFmYXAOfoZghnY5DQYBBjEuMy4xN4DRympgPhO6QQ7sfvaMjnOXfUUNZYhhLoSgsd9HGi5LWLthKAAAAAAAAADN2uNhuqSG5Z5xYRxsL/R9PP5CJYcHeJvopYwV+mx8f6DvIcvhKPIhXh/FAGhO9c3knKzqVuoiyooe0geQLirwT5iBbUncZMXzPwV+N7WkS/6d4YMG3NXGaqk1V0U8jNV7adAA+LkvD9fpd/Z1jXBlwrfvqnqu+89mN9avjdoRvbAjGOIPT3a1sgE6+jXA8tm9jh9ZXCXqU5wWSCee4hPB8kyPc+k0B4K9n5cnQpIhEIuv2uk/nVPtzB7VQexw1nOb21Hzji690DG693W7aOsQrU/9i4PswSyzRYvzQsYYTRbboBWJnI+oI5yT3dISrjexgEAIy0krBFVV8qs37yMPM5mYfjDzbeMiMRN+2eiNJUQ5u2EDKFR2BvsF9EuY2vqZ8U01nrDjDm+ZVFB2FTJE0Q1Dvu6RE63/HP61scO5+0leuoOt3OskbiwqH1hzFXpgvKwF079cRDgTeKYMYioxkqcC2Q/vLZ+9zE3Htxb+4rUAkR8ZIzO2shUoqFs5+TufupeF9FUIhOKnJAAi7uvie1JnioVY+x3NExBIQziQrARb0d7b3ipXKANh/ksqwqUNus0kB64Pm+nrh4tEQWwhdBbWZfl2wawD3oeffbofzTJQVTmfI0NRqUxGBIiEagE7VOCe3W6MpqDCeJF9fjkawgohssoEcatxWQ/tTBvzX53A9gcQFGFoCELXzspNVNlvmmC+gfH60FyVCWT9FfxLVrqfNXj9cdFeuh7dK4TSzHCoNtex3REOCs7ti0gGNH3evMAskdkQwiNZIED9dQUHdQHzJ3/sht38DgMpBnY0oKUQMrlSG9mlZWPxe78vKwihzRxcSrjO43nyhwlbXpZqBb27vV+zVjT2Uj0pc0vMOLklAAAA",
+     "reference": {
+      "status": "imported",
+      "warnings": [],
+      "digest": {
+       "cells": "78fd92ec24338d06",
+       "objects": "e3b0c44298fc1c14",
+       "annotations": "e3b0c44298fc1c14",
+       "notes": "44136fa355b3678a",
+       "counts": {
+        "terrainCells": 3674,
+        "objects": 0,
+        "annotations": 0
+       }
+      }
+     },
+     "current": {
+      "migrations": [
+       "landmark-ground",
+       "landmark-layout-v3",
+       "share-identity-drift"
+      ],
+      "digest": {
+       "cells": "c54b9ea8ccd33ca0"
+      },
+      "warnings": [
+       "template-drift",
+       "catalog-drift"
+      ]
+     }
+    }
+   }
+  },
+  {
+   "id": "tafa-text-water",
+   "planet": "tafa",
+   "steps": [
+    {
+     "op": "generate",
+     "kind": "text",
+     "seed": 32,
+     "sample": "G",
+     "fill": "water"
+    }
+   ],
+   "log": [
+    "generate text seed 32: placed=4311 removedCells=0 removedObjects=0 cancelled=false"
+   ],
+   "live": {
+    "digest": {
+     "cells": "3ebdf95ce6d81552",
+     "objects": "e3b0c44298fc1c14",
+     "annotations": "e3b0c44298fc1c14",
+     "notes": "44136fa355b3678a",
+     "counts": {
+      "terrainCells": 4475,
+      "objects": 0,
+      "annotations": 0
+     }
+    },
+    "undoDepth": 1
+   },
+   "exports": {
+    "json-min": {
+     "file": "tafa-text-water.json-min.json.gz",
+     "reference": {
+      "status": "imported",
+      "warnings": [],
+      "digest": {
+       "cells": "3ebdf95ce6d81552",
+       "objects": "e3b0c44298fc1c14",
+       "annotations": "e3b0c44298fc1c14",
+       "notes": "44136fa355b3678a",
+       "counts": {
+        "terrainCells": 4475,
+        "objects": 0,
+        "annotations": 0
+       }
+      },
+      "undoDepth": 0
+     },
+     "current": {
+      "migrations": [
+       "landmark-ground",
+       "landmark-layout-v3"
+      ],
+      "digest": {
+       "cells": "b4b34483a355756b"
+      },
+      "warnings": [
+       "landmark-cleared"
+      ]
+     }
+    },
+    "share": {
+     "payload": "UDIEAAEEdGFmYXAOfoZghnY5DQYBBjEuMy4xN4DRymqJP063P4Fb0PH5RNCeKaDSwMXVSJjyzCORZkEu3NIP8gAAAAAABiDkaH8GoYWmh5ZUQmISTKE+mJPaB1+rPSRJ+J9pZD8NjQKmxyqtQppTCa6xZju+eXQlADyeqjZivGyhZBtQGoEzfwKxVDRSTYhjbo7/37gcjpRB78eeWmWG6SX3OxrBYub0Ii5EdMCtFfeenxeB/RPBWMYTNE+a725JdepbWgvC8gXHCkEpiwnlGABeggJRrYfa0fiGJUS3s2bBOYnY6r9vybV+18SZDn7LRGz95cRDyrXiqYNybM1Cvy3JTIWaAhbmWcWPsDnPs3Ke00BI0VJQygm6SNhGeIh6MfMu15lJrz0QNll43O88JffllQX0RHHwKFY+/T5pbAXvTldUZ5xI63vb/BQGrR8FmtNUDu0YKEcgwsWEN1GeZkcaclwwKCF553GEESwbUYV2rvevuuWLEPCoy34AyN8QHBAvo8F+6dvJiUzN1zSZeV7dDc63bHRysoM5GcZJe4Gbi3sUkkDQvGVge2k+mq30AHdgdN07QLLHSf7y1hgE42uq6MvGybZIzhcS+Rc92MOGP99GCymW8LBFrdNY/ant6OJMX4hApAAFZ/fgFishpqKMJGjHJ5lYAccVfif6Ox+bzUtDV8pIKl8XQRz4MaOoA1Tvf592D1sEUmnEs+p+f9rCvCwqbaD1rEgQTd6CUJZBC1ZsWSNXH1Ll25oBv0bY5sisbPSO9f8hDDZeiTtylYYM6IMyvY5cYZWUCBC4P8qkeruvTB+avczm1oh4PBB4IZN2/Ite/NNTm9si+2kAAAAA",
+     "reference": {
+      "status": "imported",
+      "warnings": [],
+      "digest": {
+       "cells": "3ebdf95ce6d81552",
+       "objects": "e3b0c44298fc1c14",
+       "annotations": "e3b0c44298fc1c14",
+       "notes": "44136fa355b3678a",
+       "counts": {
+        "terrainCells": 4475,
+        "objects": 0,
+        "annotations": 0
+       }
+      }
+     },
+     "current": {
+      "migrations": [
+       "landmark-ground",
+       "landmark-layout-v3",
+       "share-identity-drift"
+      ],
+      "digest": {
+       "cells": "b4b34483a355756b"
+      },
+      "warnings": [
+       "template-drift",
+       "catalog-drift",
+       "landmark-cleared"
+      ]
+     }
+    }
+   }
+  }
+ ]
+}

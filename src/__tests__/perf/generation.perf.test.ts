@@ -10,23 +10,24 @@
 import { describe, it } from 'vitest';
 import { PERF, perfSuite } from './_harness';
 import { cloneWorld, denseIsland, islandConfig, templateWorld } from './_fixtures';
-import { clearAllObjects, clearAllTerrain, generateTerrain } from '../../tools/generation/terrain-generator';
-import { evaluateMap } from '../../tools/generation/designer/eval';
-import { detachCommand, mapFingerprint } from '../../tools/macros';
+import { clearAllObjects, clearAllTerrain, generateTerrain } from '../../tools/generation';
+import { evaluateMap } from '../_support/design-eval';
+import { mapFingerprint } from '../../core/model/fingerprint';
 import { encodeCells, decodeCells } from '../../core/model/grid-wire';
-import type { Command, GenerateConfig, MacroCoord } from '../../core/model/types';
+import type { Command, MacroCoord } from '../../core/model/types';
+import type { GenerateConfig } from '../../tools/generation/recipe';
 import type { World } from './_fixtures';
 
 const s = perfSuite('generation');
 
 function runGeneration(world: World, config: GenerateConfig): Command[] {
   const commands: Command[] = [];
-  const start = world.executor.getUndoStackSize();
-  generateTerrain(config, world.state, (c) => {
+  const start = world.executor.beginStroke();
+  generateTerrain({ state: world.state, execute: (c) => {
     commands.push(c);
     return world.executor.execute(c);
-  }, world.executor.getRegistry());
-  world.executor.commitStroke(start);
+  }, reg: world.executor.getRegistry() }, config);
+  start.commit();
   return commands;
 }
 
@@ -46,9 +47,9 @@ describe.runIf(PERF)('perf: generation', () => {
     const commands = runGeneration(templateWorld(), islandConfig());
     let world = templateWorld();
     await s.bench('designed/replay-apply', () => {
-      const start = world.executor.getUndoStackSize();
+      const start = world.executor.beginStroke();
       for (const c of commands) world.executor.execute(c);
-      world.executor.commitStroke(start);
+      start.commit();
     }, {
       setup: () => { world = templateWorld(); },
       minSamples: 3, maxSamples: 10, budgetMs: 6000,
@@ -104,10 +105,10 @@ describe.runIf(PERF)('perf: generation', () => {
     const replay = runGeneration(templateWorld(), islandConfig(777));
     let world = cloneWorld(island);
     await s.bench('landing/clear-built', () => {
-      const start = world.executor.getUndoStackSize();
-      clearAllObjects(world.state, (c) => world.executor.execute(c));
-      clearAllTerrain(world.state, (c) => world.executor.execute(c));
-      world.executor.commitStroke(start);
+      const start = world.executor.beginStroke();
+      clearAllObjects({ state: world.state, execute: (c) => world.executor.execute(c) });
+      clearAllTerrain({ state: world.state, execute: (c) => world.executor.execute(c) });
+      start.commit();
     }, {
       setup: () => { world = cloneWorld(island); },
       minSamples: 5, maxSamples: 20, budgetMs: 4000,
@@ -115,16 +116,16 @@ describe.runIf(PERF)('perf: generation', () => {
     });
     let cleared = cloneWorld(island);
     const clearOn = (w: World): void => {
-      const start = w.executor.getUndoStackSize();
-      clearAllObjects(w.state, (c) => w.executor.execute(c));
-      clearAllTerrain(w.state, (c) => w.executor.execute(c));
-      w.executor.commitStroke(start);
+      const start = w.executor.beginStroke();
+      clearAllObjects({ state: w.state, execute: (c) => w.executor.execute(c) });
+      clearAllTerrain({ state: w.state, execute: (c) => w.executor.execute(c) });
+      start.commit();
     };
     clearOn(cleared);
     await s.bench('landing/replay-on-cleared', () => {
-      const start = cleared.executor.getUndoStackSize();
-      for (const c of replay) cleared.executor.execute(detachCommand(c));
-      cleared.executor.commitStroke(start);
+      const start = cleared.executor.beginStroke();
+      for (const c of replay) cleared.executor.execute(c);
+      start.commit();
     }, {
       setup: () => { cleared = cloneWorld(island); clearOn(cleared); },
       minSamples: 5, maxSamples: 20, budgetMs: 4000,

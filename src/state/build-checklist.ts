@@ -6,28 +6,30 @@
  * per-layer cell counts from `map-stats.ts`, both memoized per GridState. A second walk over
  * `state.objects` here would be a second answer to a question those two already answer.
  *
- * COMPLETENESS IS THE POINT — someone builds from this, so an item silently missing is worse than
+ * Completeness is the point — someone builds from this, so an item silently missing is worse than
  * no list at all. Every entry of `countByCatalog` therefore lands somewhere: in its category's
- * list, in the plaza count, or in `unresolved`, and `objectTotal` is the sum of the three. The
+ * list, the roads, the landmarks or `unresolved`, and `objectTotal` is the sum of the four. The
  * catalog's authored order fixes the order within a category (the same order the item shelf shows),
  * and anything placed that the authored list does not carry is appended rather than dropped.
  */
-import { ItemCategory, type GridState, type LocalizedName, type Locale, type Translate } from '../core/model/types';
-import { getCatalogByCategory, getCatalogItem } from './catalog';
+import type { GridState, CategoryId } from '../core/model/types';
+import { isCoatingItem } from '../core/model/traits';
+import { type LocalizedName, type Locale } from '../core/model/locale';
+import type { Translate, I18nKey } from '../i18n/keys';
+import { getAllItems, getCatalogByCategory, getCatalogItem, landmarkItems } from './catalog';
 import { getMapStats } from './map-stats';
 import { getObjectIndex } from './object-index';
 import { placedCategories } from '../config/catalog/categories';
-import { isLandmarkItem } from '../core/model/grid-model';
 
 const CHECKLIST = placedCategories('checklistRank');
 
 /** The categories a player places one by one, in the order the checklist reads them. Roads are kept
  *  apart: they are a surface laid by the brush, not a thing set down. */
-export const CHECKLIST_CATEGORIES: readonly ItemCategory[] = CHECKLIST.map((c) => c.id);
+const CHECKLIST_CATEGORIES: readonly CategoryId[] = CHECKLIST.map((c) => c.id);
 
 /** The i18n key each category's card header reads under: the item shelf's own tab name, so a
  *  category is called the same thing wherever the app names it. */
-export const CATEGORY_LABEL: Readonly<Record<string, string>> = Object.fromEntries(CHECKLIST.map((c) => [c.id, c.placement.tabKey]));
+export const CATEGORY_LABEL: Readonly<Record<string, I18nKey>> = Object.fromEntries(CHECKLIST.map((c) => [c.id, c.placement.tabKey]));
 
 export interface ChecklistItem {
   catalogId: string;
@@ -43,7 +45,7 @@ export interface ChecklistItem {
 }
 
 export interface ChecklistGroup {
-  category: ItemCategory;
+  category: CategoryId;
   items: ChecklistItem[];
   /** Objects in this group, summed. */
   total: number;
@@ -68,11 +70,12 @@ export interface BuildChecklist {
   /** Lowest layer first, which is the order the game requires: nothing stands on nothing. Only
    *  layers that carry something appear. */
   layers: ChecklistLayer[];
-  /** Every object counted, the plaza and the unresolved included. */
+  /** Every object counted, the landmarks and the unresolved included. */
   objectTotal: number;
-  /** Whether the map carries the locked central plaza, which is part of the map rather than
-   *  something a player puts down. */
-  hasPlaza: boolean;
+  /** The map's landmarks, in profile order: structures the game lays on the planet rather than
+   *  items a player puts down. */
+  landmarks: ChecklistItem[];
+  landmarkTotal: number;
   /** Objects whose catalogId this build does not know. Zero for any map the loader accepted (it
    *  drops unknown ids), so a non-zero count means the list cannot name something that is there. */
   unresolved: number;
@@ -84,30 +87,31 @@ export function buildChecklist(state: GridState): BuildChecklist {
   let objectTotal = 0;
   for (const n of counts.values()) objectTotal += n;
 
-  const listFor = (category: ItemCategory): ChecklistItem[] => {
+  const listOf = (catalog: Iterable<{ id: string; name: LocalizedName; icon?: string; color?: string }>): ChecklistItem[] => {
     const items: ChecklistItem[] = [];
-    for (const item of getCatalogByCategory(category)) {
+    for (const item of catalog) {
       const count = counts.get(item.id) ?? 0;
-      if (count === 0) continue;
+      if (count === 0 || consumed.has(item.id)) continue;
       consumed.add(item.id);
       items.push({ catalogId: item.id, name: item.name, count, icon: item.icon, color: item.color });
     }
     return items;
   };
+  const listFor = (category: CategoryId): ChecklistItem[] => listOf(getCatalogByCategory(category));
+
+  const landmarks = listOf(landmarkItems());
 
   const groups: ChecklistGroup[] = CHECKLIST_CATEGORIES.map((category) => ({
     category, items: listFor(category), total: 0,
   }));
-  const roads = listFor(ItemCategory.Road);
+  const roads = listOf(getAllItems().filter(isCoatingItem));
 
-  let hasPlaza = false;
   let unresolved = 0;
   for (const [id, count] of counts) {
     if (consumed.has(id)) continue;
-    if (isLandmarkItem(id)) { hasPlaza = true; continue; }
     const item = getCatalogItem(id);
     const group = item ? groups.find((g) => g.category === item.category) : undefined;
-    if (item && item.category === ItemCategory.Road) {
+    if (item && isCoatingItem(item)) {
       roads.push({ catalogId: id, name: item.name, count, icon: item.icon, color: item.color });
     } else if (item && group) {
       group.items.push({ catalogId: id, name: item.name, count, icon: item.icon, color: item.color });
@@ -118,6 +122,7 @@ export function buildChecklist(state: GridState): BuildChecklist {
 
   for (const group of groups) group.total = group.items.reduce((n, i) => n + i.count, 0);
   const roadTotal = roads.reduce((n, i) => n + i.count, 0);
+  const landmarkTotal = landmarks.reduce((n, i) => n + i.count, 0);
 
   const stats = getMapStats(state);
   const layers: ChecklistLayer[] = [];
@@ -127,17 +132,12 @@ export function buildChecklist(state: GridState): BuildChecklist {
     if (blocks > 0 || water > 0) layers.push({ layer, blocks, water });
   }
 
-  return { groups, roads, roadTotal, layers, objectTotal, hasPlaza, unresolved };
+  return { groups, roads, roadTotal, layers, objectTotal, landmarks, landmarkTotal, unresolved };
 }
-
-/** A translate-like function: `state/` sits below `i18n/` in the import ladder (see
- *  `__tests__/import-direction.test.ts`), so this module cannot reach for `i18n/context.ts`
- *  itself. The caller (a component holding `useT()`, or a test binding `translateFor` to a fixed
- *  locale) supplies one. */
 
 /**
  * The checklist as a flat text sheet, for the "copy as text" button: a header line with the total,
- * one section per category card with its items as `  {count}x {name}`, roads with cell counts, and
+ * the landmarks, one section per category card with its items as `  {count}x {name}`, roads with cell counts, and
  * terrain as one indented line per layer. Sections with nothing are omitted, same as the panel.
  *
  * Pure: everything it prints comes from `list` + `locale` + `t`, so a fixed `BuildChecklist`
@@ -151,17 +151,23 @@ export function buildChecklistText(list: BuildChecklist, locale: Locale, t: Tran
 
   const lines: string[] = [`${t('share.tab_game')}: ${t('checklist.total', { n: placedTotal })}`];
 
+  if (list.landmarks.length > 0) {
+    lines.push('', `${t('checklist.sec_landmarks')} (${list.landmarkTotal})`);
+    for (const item of list.landmarks) lines.push(`  ${item.count}x ${nameOf(item.name)}`);
+  }
+
   if (groupsWithItems.length > 0) {
     lines.push('', `${t('checklist.sec_objects')} (${placedTotal})`);
     for (const group of groupsWithItems) {
-      lines.push('', `${t(CATEGORY_LABEL[group.category] ?? group.category)} (${group.total})`);
+      const label = CATEGORY_LABEL[group.category];
+      lines.push('', `${label ? t(label) : group.category} (${group.total})`);
       for (const item of group.items) lines.push(`  ${item.count}x ${nameOf(item.name)}`);
     }
   }
 
   if (list.roads.length > 0) {
-    lines.push('', `${t('checklist.sec_roads')} (${t('checklist.cells', { n: list.roadTotal })})`);
-    for (const item of list.roads) lines.push(`  ${nameOf(item.name)}: ${t('checklist.cells', { n: item.count })}`);
+    lines.push('', `${t('checklist.sec_roads')} (${t('units.cells', { n: list.roadTotal })})`);
+    for (const item of list.roads) lines.push(`  ${nameOf(item.name)}: ${t('units.cells', { n: item.count })}`);
   }
 
   if (list.layers.length > 0) {
@@ -169,7 +175,7 @@ export function buildChecklistText(list: BuildChecklist, locale: Locale, t: Tran
     for (const layer of list.layers) {
       const label = layer.layer === 0 ? t('export.layer_ground') : t('export.layer_level', { n: layer.layer });
       const bits: string[] = [];
-      if (layer.blocks > 0) bits.push(t('checklist.cells', { n: layer.blocks }));
+      if (layer.blocks > 0) bits.push(t('units.cells', { n: layer.blocks }));
       if (layer.water > 0) bits.push(t('checklist.water_part', { n: layer.water }));
       lines.push(`  ${label} ${bits.join(', ')}`);
     }

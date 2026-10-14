@@ -1,12 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useEditorStore } from '../../../../../state/store';
-import { reviewMap, type MapReview } from '../../../../../io/moderation/map/reviewer';
-import { captureReviewViews } from './map-capture';
+import { MAP_REVIEW_UNAVAILABLE, reviewLiveMap, type MapReview } from '../../../../../editor/review/map-review';
 import { useStylizeVersions } from '../stylize/use-stylize-versions';
-import { useUiPreview } from '../../../../primitives/ui-preview';
-import { useMapRevision } from '../../../../hooks/use-map-revision';
+import { useUiPreview } from '../../../../design/preview';
+import { useMapRevision } from '../../../../session/use-map-revision';
 
-const EMPTY: MapReview = { status: 'unavailable' };
+const EMPTY = MAP_REVIEW_UNAVAILABLE;
 const CLEAR: MapReview = { status: 'clear' };
 
 export function useMapReview(open: boolean, automatic: boolean, illustration: boolean, includeAnnotations = true) {
@@ -32,14 +31,9 @@ export function useMapReview(open: boolean, automatic: boolean, illustration: bo
     setPending(true);
     const promise = (async () => {
       try {
-        const views = await captureReviewViews(illustration, includeAnnotations);
-        const verdict = await reviewMap(views, controller.signal);
-        if (controller.signal.aborted) throw new DOMException('Cancelled', 'AbortError');
+        const verdict = await reviewLiveMap({ illustration, annotations: includeAnnotations }, controller.signal);
         setSnapshot({ map, key, result: verdict });
         return verdict;
-      } catch (error) {
-        if (controller.signal.aborted) throw error;
-        setSnapshot({ map, key, result: EMPTY }); return EMPTY;
       } finally {
         if (active.current?.controller === controller) { active.current = null; setPending(false); }
       }

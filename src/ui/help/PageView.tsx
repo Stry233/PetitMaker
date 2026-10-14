@@ -1,0 +1,344 @@
+/*
+ * One help page rendered from its descriptor.
+ *
+ * Everything textual arrives as an i18n key and is resolved with the live fact params
+ * (`facts.ts`), so a page never holds a number the source already declares. Key tables resolve
+ * their command ids through the live keymap (`resolveTokenSpecs`), which is what keeps a rebind
+ * and its documentation the same fact.
+ */
+import { SUPPORTS_EXTERNAL_LINKS } from '../../platform/build/edition';
+import { providerName } from '../../i18n/providers';
+import { Fragment, memo, useEffect, useId, useRef, type CSSProperties, type ReactNode } from 'react';
+import { useEditorStore } from '../../state/store';
+import { startTour } from '../chrome/tour/use-tour';
+import { useLocale, useT } from '../../i18n/context';
+import { useKeybinds } from '../../state/keymap/store';
+import { resolveTokenSpecs } from './hints/catalogue';
+import { HintTokens } from './hints/hint-marks';
+import { roleWeight, roleFont, LINE_HEIGHT } from '../design/text-weight';
+import { ACTIVE, INK, INSET, LINE, MUTED, PLATE, PLATE_INK, TEXT_PRIMARY, rgbaOf } from '../design/tokens';
+import { cursors, radii } from '../design/styles';
+import { ActionButton } from '../primitives/ActionButton';
+import { Pill } from '../primitives/Pill';
+import { BrandLockup } from '../chrome/BrandLockup';
+import { LoadDiscSvg } from '../shell/controls/LoadMeter';
+import { inlineArt, type InlineArt } from './inline-art';
+import { helpFacts } from './facts';
+import { HELP_SCENES } from './figures/scenes';
+import { HelpDemo } from './figures/HelpDemo';
+import { HELP_SURFACES, helpProvider } from './edition-help';
+import { FigureReadyContext } from './figures/figure-ready';
+import { useInView } from './figures/use-in-view';
+import type { HelpPage, HelpPageId, HelpSection } from './page-schema';
+import { HELP_GROUP_TITLES, HELP_PAGES } from './catalog';
+import type { TextKey } from '../../i18n/keys';
+
+/** One box for every inline art: the same height and baseline whatever the kind, so a sentence's
+ *  icons sit level with each other and with the text. */
+const ART_H = '1.15em';
+const ART_VA = '-0.22em';
+/** The same air on both sides of an inline icon, so one jammed against the character before it
+ *  and spaced from the one after does not read as a typo. */
+const ART_MARGIN = '0 0.15em';
+
+/** A composed control drawn inline: the owner's own layered parts, scaled to text height. */
+function InlineGlyph({ glyph, flip }: { glyph: NonNullable<Extract<InlineArt, { kind: 'glyph' }>['glyph']>; flip?: boolean }) {
+  return (
+    <span
+      aria-hidden
+      style={{
+        display: 'inline-block', position: 'relative',
+        height: ART_H, width: `${(1.15 * glyph.w) / glyph.h}em`,
+        verticalAlign: ART_VA, margin: ART_MARGIN,
+        transform: flip ? 'scaleX(-1)' : undefined,
+      }}
+    >
+      {glyph.parts.map((p, i) => (
+        <img
+          key={i}
+          src={p.src}
+          alt=""
+          draggable={false}
+          style={{
+            position: 'absolute',
+            left: `${(p.x / glyph.w) * 100}%`, top: `${(p.y / glyph.h) * 100}%`,
+            width: `${(p.w / glyph.w) * 100}%`, height: `${(p.h / glyph.h) * 100}%`,
+          }}
+        />
+      ))}
+    </span>
+  );
+}
+
+/** The load meter's disc at text height, drawn by the meter's own SVG. */
+function InlineDisc() {
+  const id = useId().replace(/:/g, '');
+  return (
+    <span aria-hidden style={{ display: 'inline-block', height: ART_H, width: ART_H, verticalAlign: ART_VA, margin: ART_MARGIN }}>
+      <LoadDiscSvg fill={0.66} maskId={`inline-load-${id}`} style={{ width: '100%', height: '100%', display: 'block' }} />
+    </span>
+  );
+}
+
+/** `[[name]]` in a body string becomes the named art, inline at text height — the icon the words
+ *  are pointing at (a mode block, a rail button, a tool cell), so the reader can find it on
+ *  screen by its face. */
+function inlineIcons(text: string, keyBase: string): ReactNode[] {
+  const parts = text.split(/\[\[([a-z0-9-]+)\]\]/g);
+  return parts.map((part, i) => {
+    if (i % 2 === 0) return <Fragment key={`${keyBase}-${i}`}>{part}</Fragment>;
+    const art = inlineArt(part);
+    if (!art) return <Fragment key={`${keyBase}-${i}`} />;
+    if (art.kind === 'glyph') return <InlineGlyph key={`${keyBase}-${i}`} glyph={art.glyph} flip={art.flip} />;
+    if (art.kind === 'disc') return <InlineDisc key={`${keyBase}-${i}`} />;
+    const image = (
+      <img
+        src={art.src}
+        alt=""
+        draggable={false}
+        style={{ height: art.plate ? '1em' : ART_H, verticalAlign: art.plate ? undefined : ART_VA, display: art.plate ? 'block' : 'inline' }}
+      />
+    );
+    // Cream art on the cream page needs a soft backing to read as a control at all.
+    return art.plate ? (
+      <span
+        key={`${keyBase}-${i}`}
+        aria-hidden
+        style={{
+          display: 'inline-block', background: rgbaOf(TEXT_PRIMARY, 0.14), borderRadius: '0.3em',
+          padding: '0.075em 0.12em', lineHeight: 0, margin: ART_MARGIN, verticalAlign: ART_VA,
+        }}
+      >
+        {image}
+      </span>
+    ) : (
+      <span key={`${keyBase}-${i}`} style={{ margin: ART_MARGIN }}>{image}</span>
+    );
+  });
+}
+
+/** `**bold**` in a body string becomes the ink weight; `[[name]]` becomes the named art. */
+function emphasize(text: string): ReactNode {
+  const parts = text.split('**');
+  return parts.map((part, i) => (i % 2 === 1
+    ? <b key={i} style={{ fontWeight: roleWeight('head'), color: INK }}>{inlineIcons(part, `b${i}`)}</b>
+    : <Fragment key={i}>{inlineIcons(part, `t${i}`)}</Fragment>));
+}
+
+/** An outbound link beside a step group's provider name: note-sized, underlined, in the page's brown. */
+const STEP_LINK: CSSProperties = {
+  ...roleFont('note'), color: MUTED, textDecoration: 'underline', textUnderlineOffset: 3,
+  cursor: cursors.clickable, whiteSpace: 'nowrap',
+};
+
+function SectionView({ section }: { section: HelpSection }) {
+  const t = useT();
+  const overrides = useKeybinds((s) => s.overrides);
+  const facts = helpFacts(useLocale());
+  if (section.kind === 'callout') {
+    return (
+      <div style={{ background: rgbaOf(ACTIVE, 0.28), borderRadius: radii.md, padding: '12px 16px', marginTop: 14 }}>
+        <p style={{ ...roleFont('reading'), color: PLATE_INK, lineHeight: 1.7, margin: 0 }}>{emphasize(t(section.bodyKey, facts))}</p>
+      </div>
+    );
+  }
+  const heading = (
+    <h3 id={`help-${section.anchor}`} style={{ ...roleFont('lead'), color: INK, margin: '28px 0 8px', scrollMarginTop: 16 }}>
+      {t(section.titleKey, facts)}
+    </h3>
+  );
+  if (section.kind === 'steps') {
+    return (
+      <section>
+        {heading}
+        {section.bodyKeys?.map((key) => (
+          <p key={key} style={{ ...roleFont('reading'), color: PLATE_INK, lineHeight: 1.75, marginTop: 6 }}>{emphasize(t(key, facts))}</p>
+        ))}
+        {section.groups.map((group) => {
+          const meta = helpProvider(group.provider);
+          if (!meta) return null;
+          // A provider with two consoles links both; the mainland one is `keyUrl` (see ProviderMeta).
+          const links = meta.keyUrlIntl
+            ? [{ href: meta.keyUrl, label: t('help.steps.link_cn') }, { href: meta.keyUrlIntl, label: t('help.steps.link_intl') }]
+            : [{ href: meta.keyUrl, label: t('help.steps.link') }];
+          return (
+            <div key={group.provider} data-provider={group.provider} style={{ marginTop: 18 }}>
+              <h4 style={{ ...roleFont('head'), color: INK, margin: '0 0 4px', display: 'flex', alignItems: 'baseline', gap: 12, flexWrap: 'wrap' }}>
+                <span>{providerName(group.provider, t)}</span>
+                {SUPPORTS_EXTERNAL_LINKS && links.map((link) => (
+                  <a key={link.href} href={link.href} target="_blank" rel="noopener noreferrer" style={STEP_LINK}>
+                    {link.label} <span aria-hidden>↗</span>
+                  </a>
+                ))}
+              </h4>
+              <ul style={{ margin: 0, paddingLeft: 20, ...roleFont('reading'), color: PLATE_INK, lineHeight: 1.7 }}>
+                {group.stepKeys.map((key) => <li key={key} style={{ marginTop: 4 }}>{emphasize(t(key, facts))}</li>)}
+              </ul>
+            </div>
+          );
+        })}
+      </section>
+    );
+  }
+  if (section.kind === 'keys') {
+    return (
+      <section>
+        {heading}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 10 }}>
+          {section.rows.map((row) => {
+            const tokens = resolveTokenSpecs(row.tokens, overrides, section.anchor.startsWith('notes-') ? 'notes-zone' : 'terrain');
+            if (!tokens) return null;
+            return (
+              <div key={row.doKey} style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                <span style={{ ...roleFont('reading'), color: PLATE_INK, marginRight: 'auto' }}>{t(row.doKey, facts)}</span>
+                <HintTokens tokens={tokens} />
+              </div>
+            );
+          })}
+        </div>
+        {section.afterKeys?.map((key) => (
+          <p key={key} style={{ ...roleFont('reading'), color: PLATE_INK, lineHeight: 1.75, marginTop: 8 }}>{emphasize(t(key, facts))}</p>
+        ))}
+      </section>
+    );
+  }
+  return (
+    <section>
+      {heading}
+      {section.bodyKeys.map((key) => (
+        <p key={key} style={{ ...roleFont('reading'), color: PLATE_INK, lineHeight: 1.75, marginTop: 6 }}>{emphasize(t(key, facts))}</p>
+      ))}
+      {section.figure && <Figure fig={section.figure} />}
+    </section>
+  );
+}
+
+function Figure({ fig }: { fig: HelpPage['figure'] }) {
+  const t = useT();
+  const facts = helpFacts(useLocale());
+  const ref = useRef<HTMLElement>(null);
+  const ready = useInView(ref);
+  if (!fig) return null;
+  let body: ReactNode = null;
+  if (fig.kind === 'demo') {
+    const scene = HELP_SCENES[fig.scene];
+    body = scene ? <HelpDemo scene={scene} /> : null;
+  } else if (fig.kind === 'demos') {
+    body = (
+      <div style={{ display: 'flex', gap: 14, justifyContent: 'center', flexWrap: 'wrap' }}>
+        {fig.scenes.map(({ scene, labelKey }) => {
+          const sc = HELP_SCENES[scene];
+          return sc ? (
+            <div key={scene} style={{ background: PLATE, borderRadius: radii.field, padding: '10px 12px 8px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
+              <HelpDemo scene={sc} />
+              <span style={{ ...roleFont('note'), color: PLATE_INK }}>{t(labelKey, facts)}</span>
+            </div>
+          ) : null;
+        })}
+      </div>
+    );
+  } else {
+    const Mock = HELP_SURFACES[fig.surface];
+    body = Mock ? <Mock /> : null;
+  }
+  if (!body) return null;
+  // A demo narrates itself with its animated caption; only a surface carries a static one.
+  return (
+    <figure ref={ref} style={{ background: rgbaOf(INSET, 0.42), borderRadius: radii.card, padding: '18px 18px 12px', margin: '16px 0 4px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, overflowX: 'auto' }}>
+      <FigureReadyContext.Provider value={ready}>{body}</FigureReadyContext.Provider>
+      {fig.kind === 'surface' && (
+        <figcaption style={{ ...roleFont('note'), color: MUTED, textAlign: 'center', lineHeight: 1.5, paddingBottom: 4 }}>
+          {t(fig.captionKey, facts)}
+        </figcaption>
+      )}
+    </figure>
+  );
+}
+
+function QaRow({ qKey, aKey, facts, t }: { qKey: TextKey; aKey: TextKey; facts: ReturnType<typeof helpFacts>; t: ReturnType<typeof useT> }) {
+  return (
+    <div style={{ borderTop: `1px solid ${LINE}`, padding: '14px 0' }}>
+      <h4 style={{ ...roleFont('head'), color: INK, margin: '0 0 6px' }}>{t(qKey, facts)}</h4>
+      <p style={{ ...roleFont('reading'), color: PLATE_INK, lineHeight: 1.7, margin: 0 }}>{emphasize(t(aKey, facts))}</p>
+    </div>
+  );
+}
+
+function PageAction({ action }: { action: NonNullable<HelpPage['action']> }) {
+  const t = useT();
+  const setModal = useEditorStore((s) => s.setModal);
+  // The tour walks the map's interface, which a planet session has set aside.
+  const inSession = useEditorStore((s) => s.planetSession !== null);
+  const unavailable = action.kind === 'replay-tour' && inSession;
+  const run = () => {
+    // Either action opens something the help window would otherwise stand in front of, so the
+    // help steps aside first; it keeps the reader's place for the way back.
+    setModal('help', false);
+    if (action.kind === 'open-keyboard') { setModal('keyboard', true); return; }
+    startTour();
+  };
+  return (
+    <div style={{ display: 'flex', justifyContent: 'center', marginTop: 12 }}>
+      <ActionButton appearance="centered" disabled={unavailable} onClick={run}>
+        {t(action.labelKey)}
+      </ActionButton>
+    </div>
+  );
+}
+
+/** Memoized on its props: the window re-renders on every search keystroke, and an unchanged page
+ *  standing behind the dropdown can hold a dozen live demo figures — locale and keymap changes
+ *  still arrive through the hooks' own subscriptions. */
+export const PageView = memo(function PageView(
+  { page, onGo, onReady }: { page: HelpPage; onGo: (id: HelpPageId, anchor?: string) => void; onReady?: (page: HelpPageId) => void | (() => void) },
+) {
+  useEffect(() => onReady?.(page.id), [onReady, page.id]);
+  const t = useT();
+  const facts = helpFacts(useLocale());
+  return (
+    <article style={{ padding: '24px 32px 40px', maxWidth: 730 }}>
+      {page.hero ? (
+        <header style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', gap: 10, margin: '6px 0 4px' }}>
+          <BrandLockup size={64} logoOnly />
+          <h2 style={{ ...roleFont('title'), color: INK, lineHeight: LINE_HEIGHT.snug, margin: 0 }}>{t(page.titleKey, facts)}</h2>
+        </header>
+      ) : (
+        <>
+          <div style={{ ...roleFont('note'), color: MUTED, marginBottom: 6 }}>{t(HELP_GROUP_TITLES[page.group])}</div>
+          <h2 style={{ ...roleFont('title'), color: INK, lineHeight: LINE_HEIGHT.snug, margin: 0 }}>{t(page.titleKey)}</h2>
+        </>
+      )}
+      <div style={{ margin: '14px 0 20px' }}>
+        <p style={{ ...roleFont('caption'), color: MUTED, margin: '0 0 6px' }}>{t('help.summary_label')}</p>
+        <p style={{ ...roleFont('reading'), color: PLATE_INK, lineHeight: 1.65, margin: '0 0 8px' }}>{emphasize(t(page.ledeKey, facts))}</p>
+        <p style={{ ...roleFont('reading'), color: PLATE_INK, lineHeight: 1.65, margin: 0 }}>{emphasize(t(page.entryKey, facts))}</p>
+      </div>
+      <Figure fig={page.figure} />
+      {page.action && <PageAction action={page.action} />}
+      {page.sections.map((section, i) => <SectionView key={i} section={section} />)}
+      {page.qa.length > 0 && (
+        <>
+          <h3 style={{ ...roleFont('lead'), color: INK, margin: '28px 0 8px' }}>{t('help.qa_title')}</h3>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {page.qa.map((qa) => (
+              <QaRow key={qa.qKey} qKey={qa.qKey} aKey={qa.aKey} facts={facts} t={t} />
+            ))}
+          </div>
+        </>
+      )}
+      {page.seeAlso.length > 0 && (
+        <>
+          <h3 style={{ ...roleFont('lead'), color: INK, margin: '28px 0 8px' }}>{t('help.see_also')}</h3>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 10 }}>
+            {page.seeAlso.map((id) => (
+              <Pill key={id} hoverFill={ACTIVE} onClick={() => onGo(id)}>
+                {t(HELP_PAGES[id].titleKey)}
+              </Pill>
+            ))}
+          </div>
+        </>
+      )}
+      <span aria-hidden style={{ display: 'block', height: 2, background: LINE, opacity: 0, marginTop: 8 }} />
+    </article>
+  );
+});

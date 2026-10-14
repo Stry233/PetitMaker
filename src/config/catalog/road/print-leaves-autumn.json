@@ -1,0 +1,34 @@
+{
+  "id": "print-leaves-autumn",
+  "category": "road",
+  "icon": "print-leaves-autumn",
+  "name": {
+    "en": "Autumn Leaves Print",
+    "zh": "随秋之叶印花",
+    "ja": "秋の葉模様",
+    "ru": "Узор осенних листьев",
+    "th": "ลายใบไม้ฤดูใบไม้ร่วง",
+    "id": "Motif Daun Musim Gugur",
+    "fr": "Motif de feuilles automnales"
+  },
+  "color": "#d9915f",
+  "width": 1,
+  "height": 1,
+  "loadValue": 0,
+  "rotatable": true,
+  "placementMode": "brush",
+  "traits": [
+    {
+      "type": "flat"
+    },
+    {
+      "type": "surfaceCoating",
+      "layer": 1
+    }
+  ],
+  "surfacePrint": {
+    "kind": "image",
+    "image": "print-leaves-autumn",
+    "repeat": 1
+  }
+}

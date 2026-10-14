@@ -1,15 +1,30 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { encodeMapPayload, decodeMapPayload } from '../../../../io/share/codec/payload';
-import { canonicalize, canonicalBytes } from '../../../../io/share/canonical';
-import { sha256 } from '../../../../io/share/crypto/sha256';
+import { canonicalize, canonicalBytes } from '../../../../io/save/canonical';
+import { sha256 } from '../../../../core/base/sha256';
 import { CompressionMethod, deflate, inflate } from '../../../../io/share/raster/zlib';
-import { createGridState } from '../../../../core/model/planet';
-import { makeState } from '../../../rules/_helpers';
+import { createGridState } from '../../../../core/model/template';
+import { makeState } from '../../../_support/map-state';
 import { getMapTemplate, MAP_TEMPLATES } from '../../../../config/maps';
-import { CellZone, TerrainType } from '../../../../core/model/types';
+import { TerrainType } from '../../../../core/model/types';
+import { CellZone } from '../../../../core/game/zones';
 import { MODEL_VARIANTS } from '../../../../io/share/codec/map-coder';
 import type { GridState } from '../../../../core/model/types';
 import type { AnnotationsState } from '../../../../core/model/annotations';
+import { defaultConfig, type GenerateConfig } from '../../../../tools/generation/recipe';
+
+// A reader fault on demand: template resolution throws an ordinary TypeError while `fault.on` holds.
+const fault = vi.hoisted(() => ({ on: false }));
+vi.mock('../../../../config/maps/resolve', async (importOriginal) => {
+  const real = await importOriginal<typeof import('../../../../config/maps/resolve')>();
+  return {
+    ...real,
+    resolveTemplate: (...args: Parameters<typeof real.resolveTemplate>) => {
+      if (fault.on) throw new TypeError('reader fault');
+      return real.resolveTemplate(...args);
+    },
+  };
+});
 
 // Register each synthetic test template so codec lookups use its current dimensions.
 function registerSynthetic(state: GridState): GridState {
@@ -32,6 +47,13 @@ function annotations(): AnnotationsState {
     visible: false,
     locked: true,
   };
+}
+
+/** A fresh Hexia as maps were encoded before the mountain under its plaza was map terrain. */
+function bareHexia(): GridState {
+  const state = createGridState(getMapTemplate('hexia'));
+  for (const row of state.cells) for (const cell of row) cell.terrain = null;
+  return state;
 }
 
 /** Convert an annotation-free frame 4 payload into the frame 3 layout and hash contract. */
@@ -77,12 +99,12 @@ describe('payload frame', () => {
     const bytes = await encodeMapPayload(state, null, oldCallerMeta);
     expect(bytes).toEqual(await encodeMapPayload(state, null, meta));
     expect(bytes[2]).toBe(4);
-    expect(bytes.length).toBe(95 - 1 - new TextEncoder().encode(oldCallerMeta.title).length);
+    expect(bytes.length).toBe(170 - 1 - new TextEncoder().encode(oldCallerMeta.title).length);
     expect((await decodeMapPayload(bytes)).provenance).toEqual({ ...meta, aiUsed: false, proceduralUsed: false });
   });
 
   it.each([3, 4])('reads titles in older frame %i records without changing the imported map', async version => {
-    const state = createGridState(getMapTemplate('hexia'));
+    const state = bareHexia();
     const frozen = Uint8Array.from(atob(TITLED_FRAME), char => char.charCodeAt(0));
     const bytes = version === 3 ? await asFrame3(frozen, state) : frozen;
     const decoded = await decodeMapPayload(bytes);
@@ -112,10 +134,20 @@ describe('payload frame', () => {
     await expect(decodeMapPayload(tampered)).rejects.toMatchObject({ code: 'corrupt' });
   });
 
-  it('empty map round-trips tiny (< 150 B) and hash-exact', async () => {
+  it('lets a fault in the decoder through instead of reporting it as a refused input', async () => {
+    const bytes = await encodeMapPayload(createGridState(getMapTemplate('hexia')), null, META);
+    fault.on = true;
+    try {
+      await expect(decodeMapPayload(bytes)).rejects.toBeInstanceOf(TypeError);
+    } finally {
+      fault.on = false;
+    }
+  });
+
+  it('fresh map, its plaza on its mountain, round-trips tiny (< 160 B) and hash-exact', async () => {
     const state = createGridState(getMapTemplate('hexia'));
     const bytes = await encodeMapPayload(state, null, META);
-    expect(bytes.length).toBeLessThan(150);
+    expect(bytes.length).toBeLessThan(160);
     const dec = await decodeMapPayload(bytes);
     expect(canonicalBytes(dec.canonical)).toEqual(canonicalBytes(canonicalize(state)));
   });
@@ -204,7 +236,8 @@ describe('payload frame', () => {
 
   it('an ordinary generation recipe rides as the note', async () => {
     const state = registerSynthetic(makeState(24, 24));
-    state.generation = { algorithm: 'designed', mode: 'earth', corridorWidth: 1, maxElevation: 6, seed: 11, region: null };
+    const recipe: GenerateConfig = defaultConfig('designed', { mode: 'earth', maxElevation: 6, seed: 11 });
+    state.generation = recipe;
     const dec = await decodeMapPayload(await encodeMapPayload(state, null, META));
     expect(dec.generation?.seed).toBe(11);
   });
@@ -216,14 +249,12 @@ describe('payload frame', () => {
     for (let y = 8; y < 8 + H; y += 2) for (let x = 8; x < 8 + W; x += 3) {
       state.cells[y]![x]!.terrain = { type: TerrainType.Mountain, elevation: 1 + ((x + y) % 4) };
     }
-    state.generation = {
-      algorithm: 'stencil', mode: 'earth', corridorWidth: 1, maxElevation: 8, seed: 7, region: null,
-      stencilPlan: {
+    const recipe: GenerateConfig = defaultConfig('stencil', { maxElevation: 8, seed: 7, stencilPlan: {
         read: 'color',
         stencil: { width: W, height: H, coverage: new Uint8Array(W * H).fill(255), color: new Uint32Array(W * H).fill(0xe74c3c) },
         origin: { x: 8, y: 8 },
-      },
-    };
+      } });
+    state.generation = recipe;
     const bytes = await encodeMapPayload(state, null, META);
     expect(bytes.length).toBeLessThan(4096);
     const dec = await decodeMapPayload(bytes);
@@ -235,7 +266,8 @@ describe('payload frame', () => {
     const state = registerSynthetic(makeState(64, 64));
     const region = [] as { x: number; y: number }[];
     for (let y = 0; y < 64; y++) for (let x = 0; x < 64; x++) region.push({ x, y });
-    state.generation = { algorithm: 'designed', mode: 'earth', corridorWidth: 1, maxElevation: 6, seed: 3, region };
+    const recipe: GenerateConfig = defaultConfig('designed', { mode: 'earth', maxElevation: 6, seed: 3, region });
+    state.generation = recipe;
     const dec = await decodeMapPayload(await encodeMapPayload(state, null, META));
     expect(dec.generation).toBeUndefined();
   });

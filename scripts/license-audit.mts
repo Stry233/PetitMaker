@@ -1,10 +1,10 @@
 // License-audit CLI: lockfile prod-dependency closure + shipped-bundle refinement →
 // THIRD_PARTY_NOTICES.md + licenses/<pkg>/LICENSE (+NOTICE).
 //
-// This file is CLI-ONLY (side-effecting: reads package-lock.json off disk, writes files, may set
+// This file is CLI-only (side-effecting: reads package-lock.json off disk, writes files, may set
 // process.exitCode) and unconditionally runs `main()` at the bottom — it is never imported for
 // its exports. The pure/testable core (computeClosure, auditPackages, renderNoticesMarkdown, …)
-// lives in ./license-audit-core.mts, which src/__tests__/legal/license-audit.test.ts imports
+// lives in ./license-audit-core.mts, which src/__tests__/scripts/license-audit.test.ts imports
 // directly instead of this file.
 //
 // (A main-module guard — `import.meta.url === file://${process.argv[1]}` — cannot host both
@@ -18,11 +18,8 @@
 //   vite-node scripts/license-audit.mts --check     drift mode: regenerate to a temp dir, diff
 //                                                    against committed, exit 1 on drift
 
-// @ts-ignore - node:fs is untyped here (no @types/node)
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync } from 'node:fs';
-// @ts-ignore - node:os is untyped here (no @types/node)
 import { tmpdir } from 'node:os';
-// @ts-ignore - node:path is untyped here (no @types/node)
 import { dirname, join } from 'node:path';
 import {
   auditPackages,
@@ -35,10 +32,7 @@ import {
   writeTextFile,
   type LockJson,
 } from './license-audit-core.mts';
-
-// Minimal ambient shape for the pieces of `process` this script uses — this repo declares the node
-// globals it uses locally, per file, rather than adding an @types/node dependency.
-declare const process: { argv: string[]; cwd(): string; exitCode?: number };
+import { BUNDLE_PACKAGES_PATH } from './bundle-report-plugin.mts';
 
 async function main(): Promise<void> {
   const check = process.argv.includes('--check');
@@ -47,7 +41,7 @@ async function main(): Promise<void> {
   const lock: LockJson = JSON.parse(readFileSync(join(rootDir, 'package-lock.json'), 'utf8'));
   const closure = computeClosure(lock);
 
-  const bundlePath = join(rootDir, '.bundle-packages.json');
+  const bundlePath = join(rootDir, BUNDLE_PACKAGES_PATH);
   if (existsSync(bundlePath)) {
     const bundleNames: string[] = JSON.parse(readFileSync(bundlePath, 'utf8'));
     const closureNames = new Set(closure.map((c) => c.name));
@@ -69,7 +63,7 @@ async function main(): Promise<void> {
     }
   } else {
     console.warn(
-      '[license-audit] no .bundle-packages.json found — run `npm run build` first to cross-check the ' +
+      `[license-audit] no ${BUNDLE_PACKAGES_PATH} found — run \`npm run build\` first to cross-check the ` +
         'shipped bundle; proceeding with the lockfile closure alone.'
     );
   }

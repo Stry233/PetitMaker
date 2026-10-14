@@ -1,26 +1,31 @@
 /*
  * The Help figures' claims held to the rules: every scene's timeline runs headless against its own
- * real world (`DemoWorld` on a real planet template), and what a demo SHOWS is asserted to be what
- * the editor DOES — the builds land, the ghosts' validity answers come from the registry, and the
+ * real world (`SandboxWorld` on a real planet template), and what a demo shows is asserted to be what
+ * the editor does — the builds land, the ghosts' validity answers come from the registry, and the
  * two refusal demos refuse with exactly the error the caption stands beside. The `DemoView` seam is
  * a recorder here; in the app it is the real overlay layer.
  */
 import { describe, expect, it } from 'vitest';
-import { HELP_SCENES, type DemoCtx, type DemoView, type HelpScene, type SceneStep } from '../../../ui/chrome/modals/help/figures/scenes';
-import { DemoWorld } from '../../../ui/chrome/modals/help/figures/demo-world';
+import { holdsTemplateTerrain } from '../../../core/model/template';
+import { HELP_SCENES, type DemoCtx, type DemoView, type HelpScene, type SceneStep } from '../../../ui/help/figures/scenes';
+import { SandboxWorld } from '../../../editor/sandbox/demo-world';
 import { TerrainType, type MacroCoord } from '../../../core/model/types';
-import { detectWaterfalls } from '../../../core/model/waterfall-geometry';
-import { isBuildableZone } from '../../../core/model/grid-model';
-import { PLAZA_ID } from '../../../core/model/constants';
-import { INNER_TRI, OUTER_TRI } from '../../../core/edge-cut/cut-validator';
-import { CORNER_INDEX } from '../../../core/edge-cut/corner-index';
-import { CANONICAL_ROAD_STATES } from '../../../core/edge-cut/road-cut-states';
-import { splineCells, type CurveAnchor } from '../../../tools/paint/shapes';
-import { brushCells } from '../../../tools/paint/drawing-tool';
-import { measureDrawing } from '../../../core/model/annotation-dimensions';
+import { detectWaterfalls } from '../../../core/domain/terrain/waterfall-geometry';
+import { isBuildableZone } from '../../../core/game/zones';
+import { INNER_TRI, OUTER_TRI } from '../../../core/domain/edge-cut/cut-validator';
+import { CORNER_INDEX } from '../../../core/model/corners';
+import { CANONICAL_ROAD_STATES } from '../../../core/domain/edge-cut/road-cut-states';
+import { splineCells } from '../../../core/grid/shapes';
+import { type CurveAnchor } from '../../../core/base/spline';
+import { brushCells } from '../../../core/grid/shapes';
+import { measureDrawing } from '../../../core/model/annotation/dimensions';
+import { ANCHOR_LANDMARK } from '../../_support/anchor';
+import { HEADLESS_OVERLAY } from '../../../tools/pointer/runtime/host';
+import { mapPoint } from '../../../core/grid/grids';
 
 interface Recorded {
-  ghostOks: boolean[];
+  /** The last region mark the view was shown, before any clear. */
+  region: Array<{ x: number; y: number }>;
   marks: number;
   routeMax: number;
   gauges: number[];
@@ -30,16 +35,15 @@ interface Recorded {
 }
 
 function recorder(): { view: DemoView; rec: Recorded } {
-  const rec: Recorded = { ghostOks: [], marks: 0, routeMax: 0, gauges: [], plops: 0, spins: [], groupSpins: 0 };
+  const rec: Recorded = { region: [], marks: 0, routeMax: 0, gauges: [], plops: 0, spins: [], groupSpins: 0 };
   const view: DemoView = {
-    ghost: (_c, _x, _y, _r, ok) => { rec.ghostOks.push(ok); },
     clearGhost: () => {},
     groupGhost: () => {},
     selection: () => {},
     clearSelection: () => {},
     band: () => {},
     paintGhost: () => {},
-    region: () => {},
+    region: (cells) => { if (cells) rec.region = cells; },
     route: (cells) => { if (cells) rec.routeMax = Math.max(rec.routeMax, cells.length); },
     marks: (m) => { rec.marks = Math.max(rec.marks, m.length); },
     gauge: (v) => { rec.gauges.push(v); },
@@ -53,11 +57,11 @@ function recorder(): { view: DemoView; rec: Recorded } {
   return { view, rec };
 }
 
-interface Run { world: DemoWorld; rec: Recorded; steps: SceneStep[]; refusalAtRelease: string | null }
+interface Run { world: SandboxWorld; rec: Recorded; steps: SceneStep[]; refusalAtRelease: string | null }
 
 /** Play a scene the way the player's reduced-motion path does: every step settled in order. */
 function play(scene: HelpScene): Run {
-  const world = new DemoWorld(scene.template);
+  const world = new SandboxWorld(scene.template);
   const { view, rec } = recorder();
   const ctx: DemoCtx = { world, view };
   const steps = scene.run(ctx, (key) => key);
@@ -81,7 +85,7 @@ function objectCount(run: Run, catalogId: string): number {
 
 describe('the demo world finishes a stroke the way the live tool does', () => {
   it('sweeps the committed stroke with the visitor\'s auto-trim setting', () => {
-    const world = new DemoWorld();
+    const world = new SandboxWorld();
     world.autoTrim = 'round';
     world.beginStroke();
     world.paint([{ x: 70, y: 100 }, { x: 71, y: 100 }, { x: 70, y: 101 }, { x: 71, y: 101 }], TerrainType.Mountain, 1);
@@ -92,11 +96,34 @@ describe('the demo world finishes a stroke the way the live tool does', () => {
   });
 
   it('leaves the stroke square when the setting is off, the app default', () => {
-    const world = new DemoWorld();
+    const world = new SandboxWorld();
     world.beginStroke();
     world.paint([{ x: 70, y: 100 }, { x: 71, y: 100 }], TerrainType.Mountain, 1);
     world.commit();
     expect(world.state.cells[100]?.[70]?.terrain?.corners).toBeUndefined();
+  });
+});
+
+describe("a follow-ghost's press", () => {
+  it.each(Object.keys(HELP_SCENES))('%s: lands where the placement tool would, or is refused where its ghost is red', (name) => {
+    const scene = HELP_SCENES[name]!;
+    const world = new SandboxWorld(scene.template);
+    const { view } = recorder();
+    const ctx: DemoCtx = { world, view };
+    let follow: { catalogId: string; rotation?: 0 | 90 | 180 | 270 } | null = null;
+    let at: readonly [number, number] | null = null;
+    for (const step of scene.run(ctx, (key) => key)) {
+      if (Array.isArray(step.move)) at = step.move;
+      if (follow && at && step.press && step.on) {
+        const plan = world.hoverPlacement({ ...HEADLESS_OVERLAY }, follow.catalogId, mapPoint({ x: at[0], y: at[1] }), follow.rotation ?? 0)!;
+        const before = new Set(world.state.objects.keys());
+        step.on(ctx);
+        const placed = [...world.state.objects.values()].filter((o) => !before.has(o.id) && o.catalogId === follow!.catalogId);
+        expect(placed.map((o) => o.position), `${name} at ${at.join(',')}`).toEqual(plan.valid ? [plan.cells[0]] : []);
+      } else step.on?.(ctx);
+      step.during?.(ctx, 1);
+      if (step.follow !== undefined) follow = step.follow;
+    }
   });
 });
 
@@ -114,7 +141,7 @@ describe('help demo scenes are proofs: the real commands land on the real templa
 
   it('camera authors its base scene by the plaza', () => {
     const run = play(HELP_SCENES.camera!);
-    expect(terrainAt(run, 74, 88)?.type).toBe(TerrainType.Mountain);
+    expect(terrainAt(run, 76, 94)?.type).toBe(TerrainType.Mountain);
     expect(objectCount(run, 'building-forest-cabin')).toBe(1);
   });
 
@@ -132,7 +159,7 @@ describe('help demo scenes are proofs: the real commands land on the real templa
 
   it('trim: the block stands and its corner cycles fan, tri, square through the real command', () => {
     const scene = HELP_SCENES.trim!;
-    const world = new DemoWorld(scene.template);
+    const world = new SandboxWorld(scene.template);
     const { view } = recorder();
     const ctx: DemoCtx = { world, view };
     const steps = scene.run(ctx, (key) => key);
@@ -144,14 +171,14 @@ describe('help demo scenes are proofs: the real commands land on the real templa
     }
     expect(world.state.cells[100]?.[71]?.terrain).toMatchObject({ elevation: 2 });
     expect(cornersAfter).toContain('fan');
-    // The tri step must be the BR corner's OWN outer triangle, the same table the live tool cycles.
+    // The tri step must be the BR corner's own outer triangle, the same table the live tool cycles.
     expect(cornersAfter).toContain(OUTER_TRI[CORNER_INDEX.BR]);
     expect(cornersAfter[cornersAfter.length - 1] ?? 'square').toBe('square');
   });
 
   it('objects: the pond stands, the follow-ghost answers come from the registry, the pieces land', () => {
     const scene = HELP_SCENES.objects!;
-    const world = new DemoWorld(scene.template);
+    const world = new SandboxWorld(scene.template);
     const { view } = recorder();
     const ctx: DemoCtx = { world, view };
     const steps = scene.run(ctx, (key) => key);
@@ -186,7 +213,7 @@ describe('help demo scenes are proofs: the real commands land on the real templa
 
   it('roadtrim: each click lands a road-layer trim command and walks the canonical cycle', () => {
     const scene = HELP_SCENES.roadtrim!;
-    const world = new DemoWorld(scene.template);
+    const world = new SandboxWorld(scene.template);
     const { view } = recorder();
     const ctx: DemoCtx = { world, view };
     const steps = scene.run(ctx, (key) => key);
@@ -209,7 +236,7 @@ describe('help demo scenes are proofs: the real commands land on the real templa
 
   it('trimmulti: one click at the pinch governs both corners, and the clicks walk distinct combinations', () => {
     const scene = HELP_SCENES.trimmulti!;
-    const world = new DemoWorld(scene.template);
+    const world = new SandboxWorld(scene.template);
     const { view } = recorder();
     const ctx: DemoCtx = { world, view };
     const steps = scene.run(ctx, (key) => key);
@@ -238,7 +265,7 @@ describe('help demo scenes are proofs: the real commands land on the real templa
 
   it('trimnotch: the click fillets the taller block and leaves the hollow a patch, never solid ground', () => {
     const scene = HELP_SCENES.trimnotch!;
-    const world = new DemoWorld(scene.template);
+    const world = new SandboxWorld(scene.template);
     const { view } = recorder();
     const ctx: DemoCtx = { world, view };
     const steps = scene.run(ctx, (key) => key);
@@ -247,11 +274,11 @@ describe('help demo scenes are proofs: the real commands land on the real templa
     expect(world.state.cells[100]?.[73]?.terrain?.patchOnly).toBeFalsy();
     for (const step of steps) { step.on?.(ctx); step.during?.(ctx, 1); }
     const hollow = world.state.cells[100]?.[73]?.terrain;
-    // What the click left stands at the TALLER tier and is a patch: cosmetic, carrying no support,
+    // What the click left stands at the taller tier and is a patch: cosmetic, carrying no support,
     // which is what "it does not fill the hollow with solid terrain" means in the data.
     expect(hollow?.elevation).toBe(2);
     expect(hollow?.patchOnly).toBe(true);
-    // A wrapped corner's bevel is the INNER triangle, the shape the gamma path lays.
+    // A wrapped corner's bevel is the inner triangle, the shape the gamma path lays.
     expect(hollow?.corners?.[CORNER_INDEX.TL]).toBe(INNER_TRI[CORNER_INDEX.TL]);
     // The L itself was not repainted: its own cells keep their square corners.
     expect(world.state.cells[99]?.[73]?.terrain?.corners).toBeUndefined();
@@ -280,7 +307,7 @@ describe('help demo scenes are proofs: the real commands land on the real templa
       expect(r, `${c.x},${c.y}`).toBeLessThan(4.6);
     }
     expect(ringCells.some((c) => Math.round(c.x) === Math.round(cx) && Math.round(c.y) === Math.round(cy))).toBe(false);
-    // The heart: two colourways of ONE species, which is what makes it one shape in two colours.
+    // The heart: two colourways of one species, which is what makes it one shape in two colours.
     const pair = [...bySpecies.keys()].filter((id) => !id.endsWith('-white'));
     expect(pair.length).toBe(2);
     const [a, b] = [...pair].sort((p, q) => p.length - q.length) as [string, string];
@@ -315,7 +342,7 @@ describe('help demo scenes are proofs: the real commands land on the real templa
 
   it('smartpatch: each press plants a varied stand through the real macro, and the two differ', () => {
     const scene = HELP_SCENES.smartpatch!;
-    const world = new DemoWorld(scene.template);
+    const world = new SandboxWorld(scene.template);
     const { view } = recorder();
     const ctx: DemoCtx = { world, view };
     const steps = scene.run(ctx, (key) => key);
@@ -357,7 +384,7 @@ describe('help demo scenes are proofs: the real commands land on the real templa
 
   it('locked: the group delete keeps the plaza and counts it, and deleting it alone is refused', () => {
     const scene = HELP_SCENES.locked!;
-    const world = new DemoWorld(scene.template);
+    const world = new SandboxWorld(scene.template);
     const { view } = recorder();
     scene.run({ world, view }, (key) => key);
     // The two trees the band is about genuinely stand before a step runs.
@@ -366,10 +393,11 @@ describe('help demo scenes are proofs: the real commands land on the real templa
     // Both trees the band caught are gone; the plaza and the cabin standing outside it are not.
     expect(objectCount(run, 'tree-apple')).toBe(0);
     expect(objectCount(run, 'building-forest-cabin')).toBe(1);
-    expect(run.world.state.objects.get(PLAZA_ID)?.locked).toBe(true);
-    // The count the demo's toast claims is what actually survived locked.
-    const survivedLocked = [...run.world.state.objects.values()].filter((o) => o.locked).length;
-    const claim = run.steps.find((s) => s.toastKey === 'toast.group_delete_kept_one');
+    expect(run.world.state.objects.get(ANCHOR_LANDMARK.id)?.locked).toBe(true);
+    // The count the demo's toast claims is what actually survived locked of what the band caught:
+    // the plaza, and none of the planet's other landmarks.
+    const survivedLocked = [...run.world.state.objects.values()].filter((o) => o.locked && o.id === ANCHOR_LANDMARK.id).length;
+    const claim = run.steps.find((s) => s.toastKey === 'toast.group_delete_kept');
     expect(claim?.toastParams).toEqual({ n: survivedLocked });
     // The refusal is the lock rule's own, word for word.
     expect(run.refusalAtRelease).toBe('error.locked_immutable');
@@ -468,14 +496,17 @@ describe('help demo scenes are proofs: the real commands land on the real templa
 
   it('scope: the region-scoped designed run lands only inside the mark', () => {
     const run = play(HELP_SCENES.scope!);
-    // The mark the scene drags out; the whole planet outside it must come back untouched.
-    const inMark = (x: number, y: number) => x >= 58 && x <= 85 && y >= 94 && y <= 122;
+    // The mark the scene drags out, as the view drew it; the whole planet outside it must come back
+    // untouched.
+    const mark = new Set(run.rec.region.map((c) => `${c.x},${c.y}`));
+    expect(mark.size).toBeGreaterThan(20);
+    const inMark = (x: number, y: number) => mark.has(`${x},${y}`);
     let inside = 0;
     for (let y = 0; y < run.world.state.cells.length; y++) {
       const rowCells = run.world.state.cells[y]!;
       for (let x = 0; x < rowCells.length; x++) {
         const cell = rowCells[x]?.terrain;
-        if (!cell || cell.type === TerrainType.None) continue;
+        if (!cell || cell.type === TerrainType.None || holdsTemplateTerrain(run.world.state.template, x, y, rowCells[x]!)) continue;
         expect(inMark(x, y), `terrain at ${x},${y}`).toBe(true);
         inside++;
       }
@@ -489,7 +520,7 @@ describe('help demo scenes are proofs: the real commands land on the real templa
 
   it('ground: the region wash answers with the brush eligibility rule, cell for cell', () => {
     const scene = HELP_SCENES.ground!;
-    const world = new DemoWorld(scene.template);
+    const world = new SandboxWorld(scene.template);
     const { view } = recorder();
     let lastWash: Array<{ x: number; y: number }> = [];
     view.region = (cells) => { if (cells) lastWash = cells; };
@@ -646,7 +677,7 @@ describe('help demo scenes are proofs: the real commands land on the real templa
 
   it('lineridge: nothing lands while dragging, only the release paints the causeway', () => {
     const scene = HELP_SCENES.lineridge!;
-    const world = new DemoWorld(scene.template);
+    const world = new SandboxWorld(scene.template);
     const { view } = recorder();
     const ctx: DemoCtx = { world, view };
     const steps = scene.run(ctx, (key) => key);
@@ -664,7 +695,7 @@ describe('help demo scenes are proofs: the real commands land on the real templa
 
   it('curvebank: nothing lands until the finishing double click, and the handle drag relays through the moved anchor', () => {
     const scene = HELP_SCENES.curvebank!;
-    const world = new DemoWorld(scene.template);
+    const world = new SandboxWorld(scene.template);
     const { view } = recorder();
     const ctx: DemoCtx = { world, view };
     const steps = scene.run(ctx, (key) => key);
@@ -708,7 +739,7 @@ describe('help demo scenes are proofs: the real commands land on the real templa
 
   it('rectpad: nothing lands while dragging, only the release lays the whole platform', () => {
     const scene = HELP_SCENES.rectpad!;
-    const world = new DemoWorld(scene.template);
+    const world = new SandboxWorld(scene.template);
     const { view } = recorder();
     const ctx: DemoCtx = { world, view };
     const steps = scene.run(ctx, (key) => key);
@@ -733,7 +764,7 @@ describe('help demo scenes are proofs: the real commands land on the real templa
 
   it('circlepond: nothing lands while dragging, only the release lays the whole pond', () => {
     const scene = HELP_SCENES.circlepond!;
-    const world = new DemoWorld(scene.template);
+    const world = new SandboxWorld(scene.template);
     const { view } = recorder();
     const ctx: DemoCtx = { world, view };
     const steps = scene.run(ctx, (key) => key);

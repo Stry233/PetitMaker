@@ -2,24 +2,19 @@
  * The perf tier's measurement harness.
  *
  * The perf suites (`*.perf.test.ts`, this directory) time the app's operation layer — generation,
- * commands, indexes, codecs, geometry builders — as plain functions, no browser. They are SKIPPED
- * by default (the `PETIT_DUMP` harnesses' own gate pattern) and run with:
- *
- *   PETIT_PERF=1 npx vitest run --no-file-parallelism src/__tests__/perf
- *
- * `--no-file-parallelism` matters: numbers taken while sibling workers saturate the cores measure
- * the scheduler, not the code. Each suite writes `<suite>.json` into PETIT_PERF_OUT (default
+ * commands, indexes, codecs, geometry builders — as plain functions, no browser. They form the
+ * `perf` Vitest project and are skipped unless PETIT_PERF=1; `npm run test:perf` sets it and adds
+ * `--no-file-parallelism`, which matters: numbers taken while sibling workers saturate the cores
+ * measure the scheduler, not the code. Each suite writes `<suite>.json` into PETIT_PERF_OUT (default
  * /tmp/petit-perf), one BenchRecord per operation; `scripts` tooling folds two such directories
  * into a before/after table. Run outputs are not committed.
  *
- * METHODOLOGY. Each bench auto-calibrates: one untimed warmup pass, then enough samples to fill a
+ * Methodology. Each bench auto-calibrates: one untimed warmup pass, then enough samples to fill a
  * time budget (bounded both ways), reporting median/p95 — median for the headline (stable against
  * GC pauses), p95 for the stutter a user actually feels. An op that mutates its input takes a
  * `setup` callback, run untimed before every sample, so every sample measures the same work.
  */
 import { afterAll } from 'vitest';
-
-declare const process: { env: Record<string, string | undefined>; version: string };
 
 export const PERF = process.env.PETIT_PERF === '1';
 
@@ -82,11 +77,8 @@ export function perfSuite(suite: string): PerfSuite {
 
   afterAll(async () => {
     if (!PERF || records.length === 0) return;
-    // @ts-ignore dev-only harness — node builtins are untyped in this tree (no @types/node)
     const { mkdirSync, writeFileSync } = await import('node:fs');
-    // @ts-ignore dev-only harness — node builtins are untyped in this tree (no @types/node)
     const { join } = await import('node:path');
-    // @ts-ignore dev-only harness — node builtins are untyped in this tree (no @types/node)
     const os = await import('node:os');
     const dir = process.env.PETIT_PERF_OUT ?? '/tmp/petit-perf';
     mkdirSync(dir, { recursive: true });

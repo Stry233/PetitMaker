@@ -1,36 +1,51 @@
+// @vitest-environment jsdom
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, fireEvent, cleanup, act } from '@testing-library/react';
 import { createElement, createRef, useRef, useState, type RefObject } from 'react';
 import { MotionConfig } from 'framer-motion';
-import { fadeMask, measureFade, SCROLL_FADE, useScrollFade } from '../../../ui/primitives/scroll-fade';
+import { fadeMask, SCROLL_FADE, useScrollFade } from '../../../ui/primitives/scroll-fade';
 
-const el = (pos: number, size: number, client: number) => ({
-  scrollLeft: pos, scrollTop: pos,
-  scrollWidth: size, scrollHeight: size,
-  clientWidth: client, clientHeight: client,
-}) as unknown as HTMLElement;
+type FadeAt = (el: HTMLElement, edge: number, atEnd: boolean) => number;
 
-describe('measureFade', () => {
+function FadeProbe({ axis, fadeAt }: { axis: 'x' | 'y'; fadeAt?: FadeAt }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const style = useScrollFade(ref, axis, fadeAt ? { fadeAt } : undefined);
+  return createElement('div', { ref, style, 'data-testid': 'fade' });
+}
+
+/** The mask a box at `pos` of `size` content in a `client` window wears, settled at once. */
+function maskOf(pos: number, size: number, client: number, axis: 'x' | 'y', fadeAt?: FadeAt): string | undefined {
+  const { getByTestId, unmount } = render(createElement(MotionConfig, { reducedMotion: 'always' }, createElement(FadeProbe, { axis, fadeAt })));
+  const box = getByTestId('fade');
+  const [at, scroll, view] = axis === 'x' ? ['scrollLeft', 'scrollWidth', 'clientWidth'] : ['scrollTop', 'scrollHeight', 'clientHeight'];
+  Object.defineProperty(box, at, { value: pos, configurable: true });
+  Object.defineProperty(box, scroll, { value: size, configurable: true });
+  Object.defineProperty(box, view, { value: client, configurable: true });
+  fireEvent.scroll(box);
+  const mask = box.style.maskImage || undefined;
+  unmount();
+  return mask;
+}
+
+describe('the fade a scroller measures', () => {
   it('reports no travel for a fitted box, both ends mid-scroll, and one end at each stop', () => {
-    expect(measureFade(el(0, 100, 100), 'x')).toEqual({ start: 0, end: 0 });
-    expect(measureFade(el(50, 300, 100), 'y')).toEqual({ start: SCROLL_FADE, end: SCROLL_FADE });
-    expect(measureFade(el(0, 300, 100), 'x')).toEqual({ start: 0, end: SCROLL_FADE });
-    expect(measureFade(el(200, 300, 100), 'x')).toEqual({ start: SCROLL_FADE, end: 0 });
+    expect(maskOf(0, 100, 100, 'x')).toBe(fadeMask('x', { start: 0, end: 0 }));
+    expect(maskOf(50, 300, 100, 'y')).toBe(fadeMask('y', { start: SCROLL_FADE, end: SCROLL_FADE }));
+    expect(maskOf(0, 300, 100, 'x')).toBe(fadeMask('x', { start: 0, end: SCROLL_FADE }));
+    expect(maskOf(200, 300, 100, 'x')).toBe(fadeMask('x', { start: SCROLL_FADE, end: 0 }));
   });
   it('treats a spare half pixel as rounding, not room', () => {
-    expect(measureFade(el(0, 100.5, 100), 'x')).toEqual({ start: 0, end: 0 });
+    expect(maskOf(0, 100.5, 100, 'x')).toBeUndefined();
   });
   it('clears the fade within a hair of either stop, where zoomed metrics overstate the room', () => {
     // Under a CSS zoom the browser's real maximum offset sits a couple of px short of
     // scrollWidth - clientWidth, so a fully-scrolled row reports phantom travel at its end.
-    expect(measureFade(el(198, 300, 100), 'x')).toEqual({ start: SCROLL_FADE, end: 0 });
-    expect(measureFade(el(2, 300, 100), 'y')).toEqual({ start: 0, end: SCROLL_FADE });
+    expect(maskOf(198, 300, 100, 'x')).toBe(fadeMask('x', { start: SCROLL_FADE, end: 0 }));
+    expect(maskOf(2, 300, 100, 'y')).toBe(fadeMask('y', { start: 0, end: SCROLL_FADE }));
   });
   it('lets a custom fadeAt set per-edge widths', () => {
-    const t = measureFade(el(50, 300, 100), 'x', (_el, _edge, atEnd) => (atEnd ? 40 : 10));
-    expect(t).toEqual({ start: 10, end: 40 });
+    expect(maskOf(50, 300, 100, 'x', (_el, _edge, atEnd) => (atEnd ? 40 : 10))).toBe(fadeMask('x', { start: 10, end: 40 }));
   });
-
 });
 
 describe('fadeMask', () => {
@@ -39,9 +54,9 @@ describe('fadeMask', () => {
   });
   it('fades only the end that has travel, on the right axis', () => {
     expect(fadeMask('x', { start: 0, end: 24 }))
-      .toBe('linear-gradient(to right, #000 0, #000 calc(100% - 24px), transparent 100%)');
+      .toBe('linear-gradient(to right, black 0, black calc(100% - 24px), transparent 100%)');
     expect(fadeMask('y', { start: 24, end: 0 }))
-      .toBe('linear-gradient(to bottom, transparent 0, #000 24px, #000 100%)');
+      .toBe('linear-gradient(to bottom, transparent 0, black 24px, black 100%)');
   });
 });
 
@@ -105,7 +120,7 @@ describe('useScrollFade', () => {
 });
 
 /**
- * Nothing pops: a measurement only ever moves the TARGET, and a settle loop chases the shown width
+ * Nothing pops: a measurement only ever moves the target, and a settle loop chases the shown width
  * toward it, so both arriving and leaving take several frames rather than one.
  */
 describe('useScrollFade transitions instead of popping', () => {
@@ -119,7 +134,7 @@ describe('useScrollFade transitions instead of popping', () => {
     fireEvent.scroll(el); // start stays at its stop (pos=0); the end gains SCROLL_FADE of travel
 
     // One frame in: the shade is already showing, but not yet at its full width — a fractional
-    // px value in the gradient IS the transition, not a rounding artifact to tolerate.
+    // px value in the gradient is the transition, not a rounding artifact to tolerate.
     act(() => pump());
     const early = /calc\(100% - ([\d.]+)px\)/.exec(el.style.maskImage);
     expect(early, 'the fade should already be under way, not popped in whole').not.toBeNull();
@@ -169,7 +184,7 @@ describe('useScrollFade under reduced motion', () => {
 });
 
 /** Mounts nothing until `mount` flips true, so the ref the hook was given goes null -> an
- *  overflowing element across a LATER render, with no `dep` passed. */
+ *  overflowing element across a later render, with no `dep` passed. */
 function LateMount({ mount }: { mount: boolean }) {
   const ref = useRef<HTMLDivElement | null>(null);
   const style = useScrollFade(ref, 'x');
@@ -233,10 +248,10 @@ describe('useScrollFade on a scroller that mounts on a later render', () => {
 });
 
 /**
- * THE MID-TWEEN TRAP, which is what a shade standing over content that is all showing comes
- * from: the surface a scroller lives in TWEENS its own height (the panel does, to its new
+ * The mid-tween trap, which is what a shade standing over content that is all showing comes
+ * from: the surface a scroller lives in tweens its own height (the panel does, to its new
  * content height), so for the length of that tween the box is shorter than it is about to be and the
- * metrics say the content scrolls. A reading LATCHED there leaves a shade standing over a record
+ * metrics say the content scrolls. A reading latched there leaves a shade standing over a record
  * that is all showing, with nothing left to scroll — which is why the answer is re-derived on every
  * resize rather than kept.
  */
@@ -249,7 +264,7 @@ describe('useScrollFade while the box it lives in is being tweened taller', () =
     Object.defineProperty(box, 'scrollTop', { value: 0, configurable: true });
 
     // Mid-tween: the panel is on its way to a taller height, so the zone is still short of its
-    // content and there IS travel to report.
+    // content and there is travel to report.
     Object.defineProperty(box, 'clientHeight', { value: 150, configurable: true });
     fireEvent.scroll(box);
     pumpUntil(() => box.style.maskImage.includes('linear-gradient(to bottom,'));

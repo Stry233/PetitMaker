@@ -1,0 +1,34 @@
+{
+  "id": "print-leaves-summer",
+  "category": "road",
+  "icon": "print-leaves-summer",
+  "name": {
+    "en": "Summer Leaves Print",
+    "zh": "观夏之叶印花",
+    "ja": "夏の葉模様",
+    "ru": "Узор летних листьев",
+    "th": "ลายใบไม้ฤดูร้อน",
+    "id": "Motif Daun Musim Panas",
+    "fr": "Motif de feuilles estivales"
+  },
+  "color": "#74b59b",
+  "width": 1,
+  "height": 1,
+  "loadValue": 0,
+  "rotatable": true,
+  "placementMode": "brush",
+  "traits": [
+    {
+      "type": "flat"
+    },
+    {
+      "type": "surfaceCoating",
+      "layer": 1
+    }
+  ],
+  "surfacePrint": {
+    "kind": "image",
+    "image": "print-leaves-summer",
+    "repeat": 1
+  }
+}

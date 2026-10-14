@@ -7,9 +7,9 @@
  * Every cursor outside the canvas goes through the `cursors` tokens in ui/design/styles (which resolve to
  * the custom properties ui/design/cursors/cursor-vars writes onto <html>) or, where a component genuinely
  * needs a canvas cursor, through `cursorCss(id)`. The canvas surface itself is exempt by
- * construction: `canvas/interaction/cursor-controller` is the one writer of `style.cursor`, and it
+ * construction: `view/interaction/cursor-controller` is the one writer of `style.cursor`, and it
  * is not under these roots. Nothing else is exempt, `ui/design/cursors` included: the keywords its
- * sheet spells out are the FALLBACKS of `var(--pw-cursor-*, keyword)`, which is a form the scan
+ * sheet spells out are the fallbacks of `var(--pw-cursor-*, keyword)`, which is a form the scan
  * reads as legitimate wherever it appears.
  *
  * The scan covers all three ways a value can be produced — the declaration in a stylesheet or an
@@ -17,24 +17,22 @@
  * declaration to the end of its value so multiline and ternary expressions are covered.
  */
 import { describe, it, expect } from 'vitest';
-// @ts-ignore - node:fs is untyped here (no @types/node)
-import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { readFileSync, statSync } from 'node:fs';
 import { cursors } from '../../../ui/design/styles';
+import { repoFiles } from '../../_support/source-graph';
 
-// Minimal ambient shape for `process.cwd()` — this repo's convention for node globals in tests
-// (see legal/repo-hygiene.test.ts). Vitest runs from the repo root.
-declare const process: { cwd(): string };
+// Vitest runs from the repo root.
 
 const REPO = process.cwd();
 
 /** Everywhere the app renders DOM. Both canvas views are here because both render React around
  *  their surface; only the surface itself is the controller's, and the controller lives elsewhere. */
-const ROOTS = ['src/ui', 'src/legal', 'src/canvas/map2d', 'src/canvas/map3d'];
+const ROOTS = ['src/ui', 'src/legal', 'src/view/map2d', 'src/view/map3d'];
 
 /**
  * Every CSS cursor keyword that makes the OS draw the pointer, and the token that replaces it.
  * `null` means the catalogue has no equivalent yet: naming the keyword is still the bug, and the
- * fix is a new id in `core/runtime/cursor-spec`, not a literal at the call site.
+ * fix is a new id in `assets/cursors/cursor-spec`, not a literal at the call site.
  */
 const REPLACEMENT: Record<string, keyof typeof cursors | null> = {
   pointer: 'clickable',
@@ -78,13 +76,8 @@ const REPLACEMENT: Record<string, keyof typeof cursors | null> = {
 const KEYWORDS = Object.keys(REPLACEMENT);
 
 /** Repo-relative POSIX paths of every source file under `dir`. */
-function walk(dir: string, out: string[] = []): string[] {
-  for (const name of readdirSync(dir) as string[]) {
-    const rel = `${dir}/${name}`;
-    if (statSync(`${REPO}/${rel}`).isDirectory()) walk(rel, out);
-    else if (/\.(ts|tsx|css)$/.test(name)) out.push(rel);
-  }
-  return out;
+function walk(dir: string, out: string[]): void {
+  out.push(...repoFiles(dir, { accept: /\.(ts|tsx|css)$/ }));
 }
 
 function sources(): string[] {
@@ -97,7 +90,7 @@ function sources(): string[] {
 }
 
 /**
- * The three ways a cursor value is produced. Each pattern matches only up TO the value, which
+ * The three ways a cursor value is produced. Each pattern matches only up to the value, which
  * `valueEnd` then delimits.
  */
 const STARTS: readonly { re: RegExp; label: string }[] = [
@@ -153,7 +146,7 @@ export function scanSource(file: string, src: string): string[] {
           `${file}:${line} ${label} ${isCss ? keyword : `'${keyword}'`} — `
           + (token
             ? `use cursors.${token} from ui/design/styles`
-            : '../../../core/runtime/cursor-spec')
+            : '../../../assets/cursors/cursor-spec')
           + ' (a keyword hands this control back to the OS cursor).',
         );
       }
@@ -168,10 +161,10 @@ describe('cursors come from the tokens, never from a keyword', () => {
     expect(files.length).toBeGreaterThan(40);
     expect(files.filter((f) => readFileSync(`${REPO}/${f}`, 'utf8').includes('cursor:')).length)
       .toBeGreaterThan(20);
-    // Two files outside the obvious roots, named so a future narrowing of ROOTS fails here rather
+    // Two files outside the obvious roots, named so a future narrowing of `ROOTS` fails here rather
     // than silently shrinking the sweep.
     expect(files).toContain('src/ui/design/styles.ts');
-    expect(files).toContain('src/canvas/map2d/PixiCanvas.tsx');
+    expect(files).toContain('src/view/map2d/PixiCanvas.tsx');
   });
 
   it('catches the shapes a keyword actually comes back in', () => {

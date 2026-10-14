@@ -1,69 +1,49 @@
 /**
- * Stage C of the designer pipeline (districts and places, the two scales): DISTRICTS TAKE A
- * TREATMENT, and each one subdivides into the composed PLACES the kits fill.
+ * Stage C of the designer pipeline: districts take a treatment, and each subdivides into the
+ * composed places the kits fill. Every block gets an anchor region with its buildings, one theme, or
+ * the quiet treatment, then is cut into places (`PLACE_SIDE`). The district carries the theme, so a
+ * block reads as a block from across the map.
  *
- * Stage A tiles the planet with terrace plates and stage B cuts it into districts with straight
- * streets. This stage is what makes a district a PLACE rather than a leftover: it hands every block
- * a treatment — an anchor region with its buildings, one theme, or the quiet ground a block gets
- * where nothing else claims it — and then cuts the block into composed places (`PLACE_SIDE`, whose
- * scale is set from the RUN it leaves rather than from the lot). The district carries the theme, so
- * every place inside it composes in one style: both references read one theme per block, and it is
- * what makes a block read as a block from across the map.
+ * A block no street reaches or no theme wanted gets the quiet treatment (sparse planting with an
+ * edged border) rather than nothing: quiet ground at map scale is a place too, not a gap.
  *
- * NO NO-MAN'S LAND. A block no street reaches, and a block no theme wanted, both get the quiet
- * treatment rather than nothing: sparse planting with an edged border, the bordered blocks the
- * garden town draws its plots with. The style target does the same thing at map scale — its wall
- * band is a third of the planet at under 1% object cover — so quiet ground is a composition here,
- * not a gap.
- *
- * The output is a `DesignPlan`, so everything downstream of a plan (anchor placement, the kits, the
- * landmark, the sculptor's reservations) reads one model whichever stage drew it. A lot is CUT OUT of
- * a district the streets already outlined rather than packed onto open ground and routed to.
- *
- * Pure and deterministic per (seed, template, composition, streets, richness): data in, data out,
- * no state, no commands, no browser API, so it runs inside the worker pool.
+ * The output is a `DesignPlan`, so everything downstream reads one model. A lot is cut out of a
+ * district the streets already outlined. Pure and deterministic per (seed, template, composition,
+ * streets, richness), with no browser API, so it runs in the worker pool.
  */
-import { flatIndex, isBuildableZone, rectContains } from '../../../../core/model/grid-model';
-import { makeRng, type Rng } from '../../../../core/model/rng';
-import type { CatalogItem, MapTemplate, Rect } from '../../../../core/model/types';
-import { plazaRect, cellTiers, type CompositionPlan } from '../composition/composition';
+import { DIR_OFFSETS, OPPOSITE_DIR } from '../../../../core/grid/directions';
+import { flatIndex, inflateRect, rectContains, rectsOverlap } from '../../../../core/grid/rect';
+import { clamp01, lerpClamped } from '../../../../core/base/math';
+import { fnv1a32 } from '../../../../core/base/hash';
+import { makeRng, type Rng, mix } from '../../../../core/base/rng';
+import type { MapTemplate } from '../../../../core/model/types';
+import type { Rect } from '../../../../core/grid/rect';
+import type { CompositionPlan } from '../composition/composition';
+import { cellTiers, levelWindows, hubRect } from '../planet';
 
 import type { MovementLine, MovementStop } from '../composition/movement-line';
 import { planRegionList } from './region-list';
-import type { District, StreetPlan } from '../streets/streets';
+import { FALLBACK_THEME, isSetPieceTheme, QUIET_THEME, themeRef, WATER_THEMES } from '../themes';
+import type { District, StreetPlan } from '../streets/model';
 import {
-  OPPOSITE, STEP,
-  type DesignPlan, type Direction, type RegionPlan, type RegionSpec, type ThemeId,
+  directionOf,
+  type AnchorRegionSpec, type DesignInput, type DesignPlan, type Direction, type RegionPlan, type RegionSpec, type ThemeRegionSpec,
 } from '../types';
 
 // --- tunables ------------------------------------------------------------------------------------
 
 /**
- * The composed place's own scale, in cells.
- *
- * THE LOT IS NOT THE RUN IT LEAVES. A place is drawn at this side and the sculptor raises its
- * INTERIOR one tier (`terrain-sculpt.ts:terracePlaces`, inset by one), so what the evaluator segments
- * — open land at one elevation — is a rectangle two cells smaller on each axis, cut further by
- * whatever the kits, the lots and the water take out of it. Drawn at the references' own measured
- * 7x7-to-10x10, the runs come out at a median of 28 to 42 cells against their 48 and 260: a 30-cell
- * bed lands clipped and a mirrored composition is read over half a place, because the figure the
- * references are measured at is the RUN and not the lot.
- *
- * So the side is set from the run it produces. Over ten seeds at full richness on both templates:
- * 7-10 reads a median of 30-40 (hexia) and 25-37 (tafa), 12-17 reads 49-79 and 41-73, and 11-15 reads
- * 46-76 and 50-76 — inside the references' band, close to the terraced target's own 48, with district
- * legibility going from 0.38-0.90 to 0.66-1.00.
- *
- * THE TOP OF THE BAND IS NOT THE BEST PLACE IN IT. Drawn at 12-17 the runs come out larger still and
- * the reference DISTANCE gets worse, because `d(region)` is measured against the terraced target's
- * median alone: over the same batch, 11-15 reads 0.214 and 0.207 against 12-17's 0.229 and 0.230, and
- * region symmetry — the scorecard's weakest dimension — reads 0.62 and 0.58 against 0.58 and 0.55.
+ * The composed place's own scale, in cells, set from the run it leaves rather than from the lot.
+ * The sculptor raises a place's interior one tier (`terrain/places-ground.ts:terracePlaces`, inset
+ * by one), so the planted run is two cells smaller on each axis and cut further by kits, lots and
+ * water. Drawn at a smaller lot size the runs come out too small to hold a bed; this band lands them
+ * near a terraced planet's run size, and a larger top end would make runs larger than its places.
  */
 const PLACE_SIDE = { min: 11, max: 15 } as const;
-/** The composed place a SET-PIECE stop on the movement line is drawn at. The style target's own
- *  segmentation runs from 20 cells to 956, and the big end of that spread is what a walk stops at;
+/** The composed place a set-piece stop on the movement line is drawn at. A planet's places run from
+ *  20 cells to almost a thousand, and the big end of that spread is what a walk stops at;
  *  a map cut at one scale everywhere reads as a lattice however well each cell of it is composed.
- *  It is carried a fixed margin above `PLACE_SIDE`, so the scale CONTRAST between a stop and the
+ *  It is carried a fixed margin above `PLACE_SIDE`, so the scale contrast between a stop and the
  *  ordinary ground around it survives either scale moving. */
 const SET_PIECE_SIDE = { min: 17, max: 22 } as const;
 /** How far from a stop's own cell its block is looked for. */
@@ -87,18 +67,11 @@ const DISTRICT_MIN_CELLS = 40;
 /**
  * Districts given the water treatment, as a share of the treated ones, at richness 0 and 1.
  *
- * The style target spends 25.9% of its land on water and the flat reference 15.3%, and neither
- * spreads it evenly: the water is GATHERED into whole places — water gardens, shaped pools, flooded
- * fields. A share of districts rather than a share of cells is what gathers it.
+ * A terraced planet spends about a quarter of its land on water and a flat one about a sixth, and
+ * neither spreads it evenly: the water is gathered into whole places, such as water gardens, shaped
+ * pools and flooded fields. A share of districts rather than a share of cells is what gathers it.
  */
 const WATER_DISTRICT_SHARE = { low: 0.1, high: 0.34 } as const;
-
-/** The themes whose own kit already wants water, so a water district prefers them: the treatment
- *  then reads as the theme's own material rather than as flooding dropped on top of it. */
-const WATER_THEMES: ReadonlySet<ThemeId> = new Set<ThemeId>([
-  'lake-fountain', 'waterside-deck', 'seaside-dining', 'mountain-water', 'park', 'garden',
-  'bamboo-court', 'canyon',
-]);
 
 // --- what a district plan is ---------------------------------------------------------------------
 
@@ -117,7 +90,7 @@ export interface DistrictAssignment {
   water: boolean;
 }
 
-interface DistrictPlan {
+export interface DistrictPlan {
   /** The plan every later stage reads: the places as regions, the plaza, and the high ground. */
   design: DesignPlan;
   assignments: DistrictAssignment[];
@@ -125,88 +98,138 @@ interface DistrictPlan {
 
 // --- entry point -----------------------------------------------------------------------------
 
-/**
- * Hands every district a treatment and cuts it into places.
- *
- * @param catalog the placeable Buildings and Facilities the anchor regions must cover; defaults to
- *        the live catalog's, exactly as the region list's own default does.
- */
+/** Hands every district a treatment and cuts it into places, meeting the walk's stops first. The
+ *  anchor regions cover the live catalog's placeable Buildings and Facilities. */
 export function planDistricts(
-  seed: number, template: MapTemplate, composition: CompositionPlan, streets: StreetPlan,
-  richness = composition.seedInfo.richness, catalog?: readonly CatalogItem[], line?: MovementLine,
+  { seed, template, composition, streets, richness, line }:
+    DesignInput & { composition: CompositionPlan; streets: StreetPlan; line: MovementLine },
 ): DistrictPlan {
   const r = clamp01(richness);
-  const rng = makeRng(mix(seed, 0x1d15721c));
-  const W = template.width, H = template.height;
-  const hub = plazaRect(template);
-  const centre = { x: hub.x + hub.w / 2, y: hub.y + hub.h / 2 };
+  const stage = openStage(seed, template, composition, streets);
 
-  const paved = new Uint8Array(W * H);
-  for (const c of streets.cells) paved[flatIndex(c.x, c.y, W)] = 1;
-  // ONE tier field for the stage: `cellTiers` walks a distance field over the whole map, and the
-  // pavable mask and the last-resort lot both need it.
-  const tiers = cellTiers(template, composition);
-  const pavable = pavableGround(template, tiers);
-
-  const specs = planRegionList(seed, catalog, r);
-  // BIGGEST LOT FIRST. The shop's complex and the museum's forecourt are the roomiest anchors on the
+  const specs = planRegionList(seed, r);
+  // Biggest lot first. The shop's complex and the museum's forecourt are the roomiest anchors on the
   // map and the fewest blocks can hold them; asked for after nine homes have taken the large blocks,
   // the shop goes unplaced, which breaks the hard rule that every building is placed.
-  const anchorSpecs = specs.filter((s) => s.kind !== 'theme')
+  const anchorSpecs = specs.filter((s): s is AnchorRegionSpec => s.kind !== 'theme')
     .sort((a, b) => b.size.w * b.size.h - a.size.w * a.size.h || a.id.localeCompare(b.id));
-  const themeSpecs = specs.filter((s) => s.kind === 'theme');
+  const themeSpecs = specs.filter((s): s is ThemeRegionSpec => s.kind === 'theme');
 
-  // THE WALK'S STOPS CLAIM THEIR BLOCKS FIRST, so a visitor meets the districts in the order the
-  // movement line planned them. Let another treatment take a stop's block and the map reads as an
-  // unordered field of places rather than as a sequence.
-  const onLine = stopBlocks(streets.districts, line, W, H);
-  const blocks = streets.districts
+  const blocks = treatableBlocks(stage, streets.districts, line);
+  const { picks, spent, unplaced } = pickAnchorLots(stage, blocks, anchorSpecs, composition, template);
+  cutAnchorBlocks(stage, picks, themeSpecs);
+  treatRemainingBlocks(stage, blocks, spent, themeSpecs, r);
+
+  return {
+    design: {
+      seedInfo: { seed, richness: r, templateId: template.id },
+      hubArea: stage.hub,
+      backingBand: highGround(composition),
+      regions: stage.regions,
+      unplaced,
+    },
+    assignments: stage.assignments,
+  };
+}
+
+/** What every step of the stage reads and writes: the map readings it judges lots on, the cells the
+ *  lots have claimed, and the regions and assignments it has made so far. */
+interface DistrictStage {
+  rng: Rng;
+  W: number;
+  H: number;
+  hub: Rect;
+  centre: { x: number; y: number };
+  /** The street plan's pavement, 1 per paved cell. */
+  paved: Uint8Array;
+  tiers: Int8Array;
+  pavable: Uint8Array;
+  /** Cells a lot or a place already claimed. */
+  taken: Set<number>;
+  regions: RegionPlan[];
+  assignments: DistrictAssignment[];
+}
+
+function openStage(
+  seed: number, template: MapTemplate, composition: CompositionPlan, streets: StreetPlan,
+): DistrictStage {
+  const rng = makeRng(mix(seed, 0x1d15721c));
+  const W = template.width, H = template.height;
+  const hub = hubRect(template);
+  const centre = { x: hub.x + hub.w / 2, y: hub.y + hub.h / 2 };
+  const paved = new Uint8Array(W * H);
+  for (const c of streets.cells) paved[flatIndex(c.x, c.y, W)] = 1;
+  // One tier field for the stage: `cellTiers` walks a distance field over the whole map, and the
+  // pavable mask and the last-resort lot both need it.
+  const tiers = cellTiers(template, composition);
+  const pavable = levelWindows(template, tiers);
+  return { rng, W, H, hub, centre, paved, tiers, pavable, taken: new Set(), regions: [], assignments: [] };
+}
+
+/** The districts large enough for a treatment, each with the walk's stop it holds. The walk's stops
+ *  claim their blocks first, so a visitor meets the districts in the order the movement line planned
+ *  them. Let another treatment take a stop's block and the map reads as an unordered field of places
+ *  rather than as a sequence. */
+function treatableBlocks(stage: DistrictStage, districts: readonly District[], line: MovementLine): Block[] {
+  const onLine = stopBlocks(districts, line, stage.W, stage.H);
+  return districts
     .filter((d) => d.cells.length >= DISTRICT_MIN_CELLS)
     .map((d) => ({
-      d, cells: new Set(d.cells), dist: distanceTo(centre, d.rect),
+      d, cells: new Set(d.cells), dist: distanceTo(stage.centre, d.rect),
       ...(onLine.get(d.id) ? { stop: onLine.get(d.id)! } : {}),
     }));
+}
+
+interface AnchorPick { spec: AnchorRegionSpec; block: Block | null; lot: Rect; entry: Direction }
+
+/**
+ * The anchors first, spread over the planet. A planet's buildings stand 13 to 70 cells from the
+ * plaza, near and far, so the choice is farthest-point over the blocks that can hold the
+ * lot rather than the nearest ones that fit.
+ *
+ * Every lot is chosen before any block is cut up, so only the lot itself is claimed here and the
+ * places around it are cut once every anchor has landed. Cutting a block into places as each
+ * anchor takes it marks the whole block as spoken for, which stops two anchors ever sharing one
+ * and starves the last homes on the list, breaking the hard rule that every building is placed.
+ */
+function pickAnchorLots(
+  stage: DistrictStage, blocks: readonly Block[], anchorSpecs: readonly AnchorRegionSpec[],
+  composition: CompositionPlan, template: MapTemplate,
+): { picks: AnchorPick[]; spent: Set<number>; unplaced: string[] } {
+  const { W, taken } = stage;
   const open = blocks.filter((b) => b.d.served).sort((a, b) => a.dist - b.dist || a.d.id - b.d.id);
-
-  const regions: RegionPlan[] = [];
-  const assignments: DistrictAssignment[] = [];
+  const anchorBlocks = new Map<string, Block>();
+  const picks: AnchorPick[] = [];
   const unplaced: string[] = [];
-  const taken = new Set<number>();
-
-  // THE ANCHORS FIRST, spread over the planet. The target's twelve buildings stand 13 to 70 cells
-  // from the plaza, near and far, so the choice is farthest-point over the blocks that can hold the
-  // lot rather than the nearest ones that fit.
-  //
-  // EVERY LOT IS CHOSEN BEFORE ANY BLOCK IS CUT UP, so only the lot itself is claimed here and the
-  // places around it are cut once every anchor has landed. Cutting a block into places as each
-  // anchor takes it marks the WHOLE block as spoken for, which stops two anchors ever sharing one
-  // and starves the last homes on the list, breaking the hard rule that every building is placed.
-  const anchorBlocks = new Map<string, typeof open[number]>();
-  const picks: { spec: RegionSpec; block: Block | null; lot: Rect; entry: Direction }[] = [];
   for (const spec of anchorSpecs) {
     // Loosening in the order that costs the least: a block of its own among the ones a street
     // reaches, then a block already spoken for, then any block at all, and finally the plaza's own
     // plate — ground the composition guarantees is level, buildable and beside the hub, so the last
     // fallback cannot itself be refused.
-    const pick = pickAnchorBlock(open, anchorBlocks, spec, paved, pavable, W, H, taken)
-      ?? pickAnchorBlock(open, new Map(), spec, paved, pavable, W, H, taken)
-      ?? pickAnchorBlock(blocks, new Map(), spec, paved, pavable, W, H, taken);
-    const found = pick
-      ?? hubLot(spec, composition, template, tiers, pavable, taken, centre, W, H);
+    const pick = pickAnchorBlock(stage, open, anchorBlocks, spec)
+      ?? pickAnchorBlock(stage, open, new Map(), spec)
+      ?? pickAnchorBlock(stage, blocks, new Map(), spec);
+    const found = pick ?? hubLot(stage, spec, composition, template);
     if (!found) { unplaced.push(spec.id); continue; }
     if (found.block) anchorBlocks.set(spec.id, found.block);
     picks.push({ spec, block: found.block, lot: found.lot, entry: found.entry });
     for (const i of rectCells(found.lot, W)) taken.add(i);
   }
+  return { picks, spent: new Set([...anchorBlocks.values()].map((b) => b.d.id)), unplaced };
+}
 
-  // Now the ground around them. A block holding two anchors is cut once, so its places are the ones
-  // left between both lots rather than two overlapping readings of the same block.
+/** Now the ground around the anchors. A block holding two anchors is cut once, so its places are the
+ *  ones left between both lots rather than two overlapping readings of the same block. */
+function cutAnchorBlocks(
+  stage: DistrictStage, picks: readonly AnchorPick[], themeSpecs: readonly ThemeRegionSpec[],
+): void {
+  const { rng, paved, centre, W, H, taken, regions, assignments } = stage;
   const cutFor = new Set<number>();
   for (const { spec, block, lot, entry } of picks) {
     const region = anchorRegion(spec, lot, entry);
     regions.push(region);
     const rest = block && !cutFor.has(block.d.id)
-      ? cutPlaces(block.cells, block.d, taken, rng, W)
+      ? cutPlaces(block.cells, block.d, { taken, rng, W })
       : [];
     if (block) cutFor.add(block.d.id);
     const ids = [region.id, ...rest.map((p, k) => {
@@ -227,18 +250,23 @@ export function planDistricts(
       });
     }
   }
+}
 
-  // Then a theme per remaining served block, and the quiet treatment for what is left. Both are cut
-  // into places the same way: a block is one theme so its places compose in one style.
-  const spent = new Set([...anchorBlocks.values()].map((b) => b.d.id));
-  const waterQuota = Math.round(lerp(WATER_DISTRICT_SHARE.low, WATER_DISTRICT_SHARE.high, r)
+/** Then a theme per remaining served block, and the quiet treatment for what is left. Both are cut
+ *  into places the same way: a block is one theme so its places compose in one style. */
+function treatRemainingBlocks(
+  stage: DistrictStage, blocks: readonly Block[], spent: ReadonlySet<number>,
+  themeSpecs: readonly ThemeRegionSpec[], r: number,
+): void {
+  const { rng, paved, centre, W, H, taken, regions, assignments } = stage;
+  const waterQuota = Math.round(lerpClamped(WATER_DISTRICT_SHARE.low, WATER_DISTRICT_SHARE.high, r)
     * Math.max(0, blocks.length - spent.size));
   let watered = 0;
   let themeAt = 0;
-  // THE LANDMARK GOES TO THE BIGGEST BLOCK LEFT. Its phrase wants a panel of about 21x15, and a
+  // The landmark goes to the biggest block left. Its phrase wants a panel of about 21x15, and a
   // block drawn at random is as likely as not to be a strip half that wide — the set piece then
   // never appears, which is a theme the map cannot draw rather than a taste choice.
-  const landmark = themeSpecs.find((t) => t.themeId === 'landmark-text');
+  const landmark = themeSpecs.find((t) => isSetPieceTheme(t.themeId));
   const landmarkBlock = landmark
     ? blocks.filter((b) => !spent.has(b.d.id) && b.d.served)
       .reduce<Block | null>((big, b) => (!big || b.d.cells.length > big.d.cells.length ? b : big), null)
@@ -251,18 +279,18 @@ export function planDistricts(
       : block === landmarkBlock && landmark
         ? landmark
         : themed ? nextTheme(themeSpecs, themeAt++, landmark) : null;
-    // A WATERSIDE STOP IS WET WHATEVER THE QUOTA SAYS. The walk asked for water there and the
+    // A waterside stop is wet whatever the quota says. The walk asked for water there and the
     // sculptor cut the lake it skirts; a dry block around it would read as a lake nobody built for.
     const water = block.stop?.role === 'waterside'
       || (spec !== null && watered < waterQuota
-        && (WATER_THEMES.has(spec.themeId as ThemeId) || rng.float() < 0.35));
+        && (WATER_THEMES.has(spec.themeId) || rng.float() < 0.35));
     if (water) watered++;
-    // A LANDMARK IS A SET PIECE AT DISTRICT SCALE. Its phrase wants a panel of about 21x15 and a
+    // A landmark is a set piece at district scale. Its phrase wants a panel of about 21x15 and a
     // composed place is 7x7 to 10x10, so the block that draws it is kept whole rather than cut into
     // places that could each hold two letters.
-    const places = spec?.themeId === 'landmark-text'
+    const places = isSetPieceTheme(spec?.themeId)
       ? ([shrinkToFit({ ...block.d.rect }, block.cells, taken, W)].filter((r): r is Rect => !!r))
-      : cutPlaces(block.cells, block.d, taken, rng, W, block.stop?.setPiece === true);
+      : cutPlaces(block.cells, block.d, { taken, rng, W, setPiece: block.stop?.setPiece === true });
     const ids: string[] = [];
     for (const [k, place] of places.entries()) {
       const id = `d${block.d.id}-p${k}`;
@@ -277,17 +305,6 @@ export function planDistricts(
       tier: block.d.tier, served: block.d.served, water,
     });
   }
-
-  return {
-    design: {
-      seedInfo: { seed, richness: r, templateId: template.id },
-      plazaHub: hub,
-      backingBand: highGround(composition),
-      regions,
-      unplaced,
-    },
-    assignments,
-  };
 }
 
 // --- the anchor's lot ------------------------------------------------------------------------
@@ -297,10 +314,9 @@ interface Block { d: District; cells: Set<number>; dist: number; stop?: Movement
 /** Which block each of the walk's stops stands in. A stop that fell on pavement or on a block too
  *  small to compose in claims nothing, and the walk simply passes through it. */
 function stopBlocks(
-  districts: readonly District[], line: MovementLine | undefined, W: number, H: number,
+  districts: readonly District[], line: MovementLine, W: number, H: number,
 ): Map<number, MovementStop> {
   const out = new Map<number, MovementStop>();
-  if (!line) return out;
   const owner = new Map<number, number>();
   for (const d of districts) for (const i of d.cells) owner.set(i, d.id);
   for (const stop of line.stops) {
@@ -326,26 +342,24 @@ function stopBlocks(
 /**
  * The block one anchor region takes, and the lot inside it.
  *
- * A lot must stand with its ENTRY EDGE against pavement, because that is what makes every door open
+ * A lot must stand with its entry edge against pavement, because that is what makes every door open
  * onto a street: `anchors.ts` stands the buildings flush along that edge and reads their doorstep
  * one cell beyond it. So the search is over the four ways a lot can face, and a lot that cannot find
  * a paved edge anywhere is not placed on that block at all.
  */
 function pickAnchorBlock(
-  blocks: readonly Block[], used: ReadonlyMap<string, Block>, spec: RegionSpec,
-  paved: Uint8Array, pavable: Uint8Array, W: number, H: number,
-  taken: ReadonlySet<number>,
+  stage: DistrictStage, blocks: readonly Block[], used: ReadonlyMap<string, Block>, spec: RegionSpec,
 ): { block: Block; lot: Rect; entry: Direction } | null {
   const spent = new Set([...used.values()].map((b) => b.d.id));
   let best: { block: Block; lot: Rect; entry: Direction; score: number } | null = null;
   for (const block of blocks) {
     if (spent.has(block.d.id)) continue;
-    const lot = frontedLot(block, spec, paved, pavable, W, H, taken);
+    const lot = frontedLot(stage, block, spec);
     if (!lot) continue;
     // Farthest from the blocks already spoken for, so the buildings spread coast to coast rather
-    // than crowding the plaza's own ring. A block the WALK stops at is worth a bonus: a home met on
-    // the movement line is a home the map introduces, and it is the arrangement the reference reads
-    // as — a house per place, each with its own garden, rather than a housing estate.
+    // than crowding the plaza's own ring. A block the walk stops at is worth a bonus: a home met on
+    // the movement line is a home the map introduces: a house per place, each with its own garden,
+    // rather than a housing estate.
     let spread = Infinity;
     for (const other of used.values()) {
       spread = Math.min(spread, distanceTo(
@@ -368,12 +382,9 @@ function pickAnchorBlock(
  * any door the third pass leaves short, which is what keeps the loosening honest — the rule is that
  * every door opens on a road, not that every lot happens to find a paved edge.
  */
-function frontedLot(
-  block: Block, spec: RegionSpec, paved: Uint8Array, pavable: Uint8Array,
-  W: number, H: number, taken: ReadonlySet<number>,
-): { rect: Rect; entry: Direction } | null {
+function frontedLot(stage: DistrictStage, block: Block, spec: RegionSpec): { rect: Rect; entry: Direction } | null {
   const floor = spec.minSize ?? spec.size;
-  const free = freeArea(block, taken, W);
+  const free = freeArea(block, stage.taken, stage.W);
   for (const need of ['edge', 'touch', 'any'] as const) {
     // The shrink ladder's rounding repeats sizes (every step, for a fixed-size spec), and a size
     // already scanned under this need answers the same for the same block.
@@ -386,7 +397,7 @@ function frontedLot(
       if (tried.has(size)) continue;
       tried.add(size);
       for (const entry of ['south', 'north', 'east', 'west'] as const) {
-        const found = lotAgainstPavement(block, w, h, entry, paved, pavable, need, W, H, free);
+        const found = lotAgainstPavement(stage, block, { w, h, entry, need }, free);
         if (found) return { rect: found, entry };
       }
     }
@@ -395,28 +406,23 @@ function frontedLot(
 }
 
 /**
- * A w x h lot inside the block whose `entry` edge meets pavement to the degree `need` asks for.
- *
- * `free` (see `freeArea` below) answers both rect questions — is the lot inside the block, does it
- * stand on ground another region took — in one subtraction each. The frontage reads the same way:
- * the doorstep run one cell past the entry edge comes whole out of `frontageSums`, so a candidate
- * position costs three subtractions however long its edge. A DOORSTEP MUST BE GROUND A ROAD CAN BE
- * LAID ON, whether or not a street already runs there: the pipeline paves what the lot's own
- * frontage does not provide, and it can only pave a cell whose whole dual-grid window stands at one
- * tier. The column immediately west or north of a terrace step never does, so a lot facing one has
- * doors that can never open on a road — that is the `open` run's test, with paved cells counting
- * as open ground a street already covers.
+ * A w x h lot inside the block whose `entry` edge meets pavement to the degree `need` asks. `free`
+ * (`freeArea`) answers inside-the-block and taken-ground in one subtraction each, and the doorstep
+ * run comes whole out of `frontageSums`, so a candidate costs three subtractions. A doorstep must be
+ * pavable: its dual-grid window at one tier, which the column just west or north of a terrace step
+ * never is. That is the `open` run's test, with paved cells counting as open.
  */
 function lotAgainstPavement(
-  block: Block, w: number, h: number, entry: Direction, paved: Uint8Array, pavable: Uint8Array,
-  need: 'edge' | 'touch' | 'any', W: number, H: number, free: FreeArea,
+  stage: DistrictStage, block: Block,
+  { w, h, entry, need }: { w: number; h: number; entry: Direction; need: 'edge' | 'touch' | 'any' }, free: FreeArea,
 ): Rect | null {
+  const { paved, pavable, W, H } = stage;
   const { rect } = block.d;
   const sums = frontageSums(paved, pavable, W, H);
   const horizontal = entry === 'north' || entry === 'south';
   for (let y = rect.y; y + h <= rect.y + rect.h; y++) {
     for (let x = rect.x; x + w <= rect.x + rect.w; x++) {
-      // The MARGIN is the dual grid: an object validates its footprint plus one column right and one
+      // The margin is the dual grid: an object validates its footprint plus one column right and one
       // row below, so a building flush against the block's east or south edge is judged partly on the
       // next terrace down and the placement is refused.
       if (free.count(x, y, w + 1, h + 1) !== (w + 1) * (h + 1)) continue;
@@ -490,26 +496,19 @@ function edgeCells(lot: Rect, side: Direction): { x: number; y: number }[] {
 }
 
 /**
- * THE LAST RESORT: a lot on the plaza's own plate.
- *
- * Every fallback above searches the blocks the streets cut, and on a terraced seed those can all be
- * claimed or too small, which would leave a home unplaced and break the hard rule that every building
- * is placed. This searches the plaza's plate directly instead: the composition holds it at tier 0 by
- * construction (`assignTiers` floors it), so any rectangle of its pavable ground is level, buildable
- * and beside the hub. The lot comes back with no block, so nothing is cut up around it; the pipeline
- * paves the approach to its door exactly as it does for a lot whose frontage a street did not reach.
- *
- * The scan walks OUTWARD from the plaza, so the home that ends up here is a neighbour of the hub
- * rather than a building dropped at the map's edge.
+ * The last resort: a lot on the plaza's own plate. On a terraced seed every block can be claimed or
+ * too small, which would break the rule that every building is placed. The plaza's plate stands at
+ * the anchor's tier by construction (`assignTiers`), so any rectangle of its pavable ground is level
+ * and buildable. The lot has no block, and the pipeline paves the approach to its door. The scan
+ * walks outward from the plaza, so the home lands beside the hub.
  */
 function hubLot(
-  spec: RegionSpec, composition: CompositionPlan, template: MapTemplate, tiers: Int8Array,
-  pavable: Uint8Array, taken: ReadonlySet<number>, centre: { x: number; y: number },
-  W: number, H: number,
+  stage: DistrictStage, spec: RegionSpec, composition: CompositionPlan, template: MapTemplate,
 ): { block: null; lot: Rect; entry: Direction } | null {
-  const plate = composition.plates[composition.plazaPlateId];
+  const { tiers, pavable, taken, centre, W, H } = stage;
+  const plate = composition.plates[composition.hubPlateId];
   if (!plate) return null;
-  const plaza = plazaRect(template);
+  const hubArea = hubRect(template);
   const own = new Set(plate.cells);
   const floor = spec.minSize ?? spec.size;
   const cells = [...plate.cells].sort((a, b) =>
@@ -519,7 +518,7 @@ function hubLot(
     const x = start % W, y = (start / W) | 0;
     const lot = { x, y, w: floor.w, h: floor.h };
     if (x + lot.w + 1 >= W || y + lot.h + 1 >= H) continue;
-    if (rectContains(plaza, x, y) || rectsMeet(plaza, lot)) continue;
+    if (rectContains(hubArea, x, y) || rectsMeet(hubArea, lot)) continue;
     // The lot plus its dual-grid margin, all on the plate at one tier and unclaimed.
     let ok = true;
     const level = tiers[start]!;
@@ -532,7 +531,7 @@ function hubLot(
     if (!ok) continue;
     // The doorstep: a cell a road may be laid on, so the pipeline's approach can reach the door.
     for (const entry of ['south', 'north', 'east', 'west'] as const) {
-      const step = STEP[entry];
+      const step = DIR_OFFSETS[entry];
       const door = edgeCells(lot, entry)
         .map((c) => ({ x: c.x + step.dx, y: c.y + step.dy }))
         .every((c) => c.x >= 0 && c.y >= 0 && c.x < W && c.y < H && !!pavable[flatIndex(c.x, c.y, W)]);
@@ -542,8 +541,7 @@ function hubLot(
   return null;
 }
 
-const rectsMeet = (a: Rect, b: Rect): boolean =>
-  a.x - 1 < b.x + b.w && b.x < a.x + a.w + 1 && a.y - 1 < b.y + b.h && b.y < a.y + a.h + 1;
+const rectsMeet = (a: Rect, b: Rect): boolean => rectsOverlap(inflateRect(a, 1), b);
 
 /**
  * The block's own unclaimed ground, as a summed-area table over its box plus the dual-grid margin.
@@ -578,48 +576,23 @@ function freeArea(block: Block, taken: ReadonlySet<number>, W: number): FreeArea
   };
 }
 
-/** Where a road tile could be laid on the composition's own ground: the cells whose whole dual-grid
- *  window stands on the planet at one tier. The same window `streets.ts` lays its pavement by and
- *  the `flat` trait validates a coating over. */
-function pavableGround(template: MapTemplate, tiers: Int8Array): Uint8Array {
-  const W = template.width, H = template.height;
-  const land = new Uint8Array(W * H);
-  for (let y = 0; y < H; y++) {
-    for (let x = 0; x < W; x++) {
-      if (isBuildableZone(template.zones[y]?.[x])) land[flatIndex(x, y, W)] = 1;
-    }
-  }
-  const out = new Uint8Array(W * H);
-  for (let y = 0; y + 1 < H; y++) {
-    for (let x = 0; x + 1 < W; x++) {
-      const i = flatIndex(x, y, W);
-      const t = tiers[i]!;
-      if (land[i] && land[flatIndex(x + 1, y, W)] && land[flatIndex(x, y + 1, W)] && land[flatIndex(x + 1, y + 1, W)]
-        && tiers[flatIndex(x + 1, y, W)] === t && tiers[flatIndex(x, y + 1, W)] === t
-        && tiers[flatIndex(x + 1, y + 1, W)] === t) out[i] = 1;
-    }
-  }
-  return out;
-}
-
 // --- the places ----------------------------------------------------------------------------------
 
 /**
  * Cuts a district into composed places: a lattice of `PLACE_SIDE` boxes, each one shrunk to the
  * largest rectangle actually inside the block.
  *
- * A place is a RECTANGLE because a composition needs an axis to be mirrored about and a border to
- * be edged along, and because the references' own places are rectangles cut by streets and terrace
- * steps. What the lattice cannot square off — a coastline eating a corner, the ground an anchor lot
+ * A place is a rectangle because a composition needs an axis to be mirrored about and a border to
+ * be edged along, and because a planet's places are rectangles cut by streets and terrace steps. What the lattice cannot square off — a coastline eating a corner, the ground an anchor lot
  * took — is left between the places, which is where the district's own ground shows through.
  */
 function cutPlaces(
-  cells: ReadonlySet<number>, district: District, taken: Set<number>, rng: Rng, W: number,
-  setPiece = false,
+  cells: ReadonlySet<number>, district: District,
+  { taken, rng, W, setPiece = false }: { taken: Set<number>; rng: Rng; W: number; setPiece?: boolean },
 ): Rect[] {
-  // A SET PIECE IS DRAWN AT DISTRICT SCALE. The walk alternates its stops between a big composed
-  // place and a quieter block of ordinary ones, which is the scale contrast the references carry at
-  // one pavement share and a uniform lattice of places cannot.
+  // A set piece is drawn at district scale. The walk alternates its stops between a big composed
+  // place and a quieter block of ordinary ones, which is a scale contrast a uniform lattice of places
+  // cannot carry.
   const side = setPiece
     ? SET_PIECE_SIDE.min + rng.int(SET_PIECE_SIDE.max - SET_PIECE_SIDE.min + 1)
     : PLACE_SIDE.min + rng.int(PLACE_SIDE.max - PLACE_SIDE.min + 1);
@@ -675,7 +648,7 @@ function shrinkToFit(
 
 // --- regions ---------------------------------------------------------------------------------
 
-function anchorRegion(spec: RegionSpec, lot: Rect, entry: Direction): RegionPlan {
+function anchorRegion(spec: AnchorRegionSpec, lot: Rect, entry: Direction): RegionPlan {
   return {
     ...spec,
     lot: [lot],
@@ -685,12 +658,11 @@ function anchorRegion(spec: RegionSpec, lot: Rect, entry: Direction): RegionPlan
   };
 }
 
-function themeRegion(id: string, spec: RegionSpec, lot: Rect, entry: Direction): RegionPlan {
+function themeRegion(id: string, spec: ThemeRegionSpec, lot: Rect, entry: Direction): RegionPlan {
   return {
     id,
     kind: 'theme',
-    ...(spec.themeId ? { themeId: spec.themeId } : {}),
-    ...(spec.family ? { family: spec.family } : {}),
+    ...themeRef(spec.themeId),
     anchors: [],
     size: { w: lot.w, h: lot.h },
     tags: spec.tags,
@@ -707,8 +679,7 @@ function quietRegion(id: string, lot: Rect, entry: Direction): RegionPlan {
   return {
     id,
     kind: 'theme',
-    themeId: 'park',
-    family: 'nature',
+    ...themeRef(QUIET_THEME),
     anchors: [],
     size: { w: lot.w, h: lot.h },
     tags: [],
@@ -721,13 +692,12 @@ function quietRegion(id: string, lot: Rect, entry: Direction): RegionPlan {
 
 /** The theme a stop on the walk is met as, as a spec the rest of this stage reads like any other.
  *  The movement line drew it against the stop's place in the sequence; nothing here second-guesses
- *  that, since the sequence IS the story. */
-function stopSpec(stop: MovementStop): RegionSpec {
+ *  that, since the sequence is the story. */
+function stopSpec(stop: MovementStop): ThemeRegionSpec {
   return {
     id: `stop-${stop.index}`,
     kind: 'theme',
-    themeId: stop.themeId,
-    family: stop.family,
+    ...themeRef(stop.themeId),
     anchors: [],
     size: { w: SET_PIECE_SIDE.max, h: SET_PIECE_SIDE.max },
     tags: [],
@@ -736,22 +706,24 @@ function stopSpec(stop: MovementStop): RegionSpec {
 
 /** The next theme in the cycle, skipping the landmark: it holds the biggest block already, and a
  *  second block drawing it would write the phrase twice. */
-function nextTheme(themes: readonly RegionSpec[], at: number, landmark: RegionSpec | undefined): RegionSpec | null {
+function nextTheme(
+  themes: readonly ThemeRegionSpec[], at: number, landmark: ThemeRegionSpec | undefined,
+): ThemeRegionSpec | null {
   const pool = landmark ? themes.filter((t) => t !== landmark) : themes;
   return pool.length ? pool[at % pool.length]! : null;
 }
 
 /** A theme for one place of an anchor district: the specs are cycled by the anchor's own id, so two
  *  residential blocks are not dressed identically. */
-function themeFor(themes: readonly RegionSpec[], rng: Rng, anchorId: string, k: number): RegionSpec {
+function themeFor(themes: readonly ThemeRegionSpec[], rng: Rng, anchorId: string, k: number): ThemeRegionSpec {
   if (themes.length === 0) {
-    return { id: anchorId, kind: 'theme', themeId: 'garden', family: 'nature', anchors: [], size: { w: 8, h: 8 }, tags: [] };
+    return { id: anchorId, kind: 'theme', ...themeRef(FALLBACK_THEME), anchors: [], size: { w: 8, h: 8 }, tags: [] };
   }
-  return themes[(hash(anchorId) + k + rng.int(2)) % themes.length]!;
+  return themes[(fnv1a32(anchorId) + k + rng.int(2)) % themes.length]!;
 }
 
 function backingOf(lot: Rect, entry: Direction): Rect | null {
-  const back = OPPOSITE[entry];
+  const back = OPPOSITE_DIR[entry];
   const depth = Math.min(BACKING_DEPTH, Math.floor((back === 'north' || back === 'south' ? lot.h : lot.w) / 2));
   if (depth < 1) return null;
   switch (back) {
@@ -770,7 +742,7 @@ function lookOut(
   const cx = lot.x + lot.w / 2, cy = lot.y + lot.h / 2;
   let best: { dir: Direction; d: number } | null = null;
   for (const dir of ['north', 'south', 'east', 'west'] as const) {
-    const step = STEP[dir];
+    const step = DIR_OFFSETS[dir];
     for (let k = 1; k <= ENTRY_REACH; k++) {
       const x = Math.round(cx + step.dx * (k + (dir === 'east' || dir === 'west' ? lot.w / 2 : 0)));
       const y = Math.round(cy + step.dy * (k + (dir === 'north' || dir === 'south' ? lot.h / 2 : 0)));
@@ -781,15 +753,14 @@ function lookOut(
     }
   }
   if (best) return best.dir;
-  const dx = centre.x - cx, dy = centre.y - cy;
-  return Math.abs(dx) >= Math.abs(dy) ? (dx >= 0 ? 'east' : 'west') : (dy >= 0 ? 'south' : 'north');
+  return directionOf(centre.x - cx, centre.y - cy)!;
 }
 
 // --- the high ground --------------------------------------------------------------------------
 
 /** The bounding rect of the composition's own high ground: the plates standing within one tier of its
  *  peak. The landmark asks a plan for one, and the composition is what decides where the mass sits, so
- *  this REPORTS the mass rather than dictating it. A planet with no relief reports an empty rect. */
+ *  this reports the mass rather than dictating it. A planet with no relief reports an empty rect. */
 function highGround(composition: CompositionPlan): Rect {
   const peak = composition.plates.reduce((m, p) => Math.max(m, p.tier), 0);
   if (peak <= 0) return { x: 0, y: 0, w: 0, h: 0 };
@@ -815,19 +786,4 @@ function* rectCells(rect: Rect, W: number): Generator<number> {
 const distanceTo = (from: { x: number; y: number }, rect: Rect): number =>
   Math.hypot(rect.x + rect.w / 2 - from.x, rect.y + rect.h / 2 - from.y);
 
-const clamp01 = (v: number): number => (v < 0 ? 0 : v > 1 ? 1 : v);
-const lerp = (a: number, b: number, t: number): number => a + (b - a) * clamp01(t);
 
-function hash(s: string): number {
-  let h = 0x811c9dc5;
-  for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 0x01000193) >>> 0;
-  return h >>> 0;
-}
-
-/** Avalanche of two integers into one: neighbouring seeds must not draw neighbouring plans. */
-function mix(a: number, b: number): number {
-  let h = (Math.imul(a ^ b, 0x27d4eb2d) + 0x9e3779b9) >>> 0;
-  h = Math.imul(h ^ (h >>> 15), 0x85ebca6b) >>> 0;
-  h = Math.imul(h ^ (h >>> 13), 0xc2b2ae35) >>> 0;
-  return (h ^ (h >>> 16)) >>> 0;
-}

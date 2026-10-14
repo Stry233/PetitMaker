@@ -1,54 +1,48 @@
 /**
- * A RUN CONFINED TO A REGION, AND THE GROUND AROUND IT.
+ * A run confined to a region, and the ground around it.
  *
  * The reported symptom: build a picture over the whole planet, paint a region across part of it,
  * generate into the region — and nothing happens, however many times it is pressed.
  *
- * The cause is at the SEAM. The terrain outside the region leans on the cells inside it: a mountain
+ * The cause is at the seam. The terrain outside the region leans on the cells inside it: a mountain
  * one cell beyond the boundary at layer 6 wants a full 3x3 of mass at layer 3 under it, and some of
  * those nine cells are inside; an elevated pond is capped by mountain at exactly its own layer, and a
  * cap can be inside. The run's own clearing takes them, so the map is illegal at a cell the run never
- * touched — a POST-stroke violation, which unwinds the stroke until the state is clean, which means
+ * touched — a post-stroke violation, which unwinds the stroke until the state is clean, which means
  * unwinding the clearing itself. The whole run is handed back, and the map is exactly as it was.
  *
- * `core/seam.ts` settles that before the commit by giving the outside its ground back, so these tests
- * hold two things at once: the run LANDS (the region changed), and the map around it is untouched and
+ * `terrain-plan/seam.ts` settles that before the commit by giving the outside its ground back, so these tests
+ * hold two things at once: the run lands (the region changed), and the map around it is untouched and
  * legal.
  */
 import { describe, it, expect } from 'vitest';
-// @ts-ignore - node:fs is untyped here (no @types/node)
 import { readFileSync } from 'node:fs';
 import { CommandExecutor } from '../../../core/commands/command-executor';
-import { EventBus } from '../../../core/commands/event-bus';
 import { createDefaultRegistry } from '../../../rules/index';
-import {
-  createGrid, createPlazaObject, getCell, isBuildableZone,
-} from '../../../core/model/grid-model';
+import { getCell } from '../../../core/model/grid-model';
+import { templateLandmarkObjects } from '../../../core/model/landmarks';
+import { isBuildableZone } from '../../../core/game/zones';
+import { createGridState } from '../../../core/model/template';
 import { TerrainType } from '../../../core/model/types';
-import type {
-  EditorEvents, GenerateConfig, GridState, MacroCoord, MapTemplate, PlacedObject, Stencil,
-} from '../../../core/model/types';
-import { roadLookup } from '../../../state/object-index';
-import {
-  __resetCandidateCache, clearGenerated, forgetGenerationScope, generateCandidate, generateMap,
-} from '../../../kit/operations/generate';
-import { readRegionBase, repairRegionSeam } from '../../../tools/generation/core';
-import { clearAllTerrain } from '../../../tools/generation/terrain-generator';
-import type { KitContext } from '../../../kit/context';
-import { makeState, setTerrain } from '../../rules/_helpers';
+import type { GridState, MacroCoord, MapTemplate, PlacedObject } from '../../../core/model/types';
+import { defaultConfig, type GenerateConfig, type Stencil } from '../../../tools/generation/recipe';
+import { __resetCandidateCache, generateCandidate } from '../../../tools/generation/run/candidates';
+import { clearGenerated, generateMap } from '../../../editor/operations/generate';
+import { readRegionBase, repairRegionSeam } from '../../../tools/generation/terrain-plan';
+import { clearAllTerrain } from '../../../tools/generation';
+import type { EditContext } from '../../../core/commands/edit-context';
+import { makeState, setTerrain, makeExecutor } from '../../_support/map-state';
 
 function realState(): GridState {
   const template = JSON.parse(readFileSync('src/config/maps/hexia.json', 'utf8')) as MapTemplate;
   const objects = new Map<string, PlacedObject>();
-  const plaza = createPlazaObject(template);
+  const plaza = (templateLandmarkObjects(template)[0] ?? null);
   if (plaza) objects.set(plaza.id, plaza);
-  return { template, cells: createGrid(template), objects, lockedLayers: new Set() };
+  return { template, cells: createGridState(template).cells, objects, objectsVersion: 0, cellsVersion: 0, lockedLayers: new Set() };
 }
 
-function ctxOf(state: GridState): KitContext {
-  const executor = new CommandExecutor(
-    state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state),
-  );
+function ctxOf(state: GridState): EditContext {
+  const executor = makeExecutor(state);
   return { state, executor, registry: executor.getRegistry() };
 }
 
@@ -68,12 +62,9 @@ function bandStencil(w: number, h: number): Stencil {
 
 function pictureRecipe(state: GridState): GenerateConfig {
   const { width, height } = state.template;
-  return {
-    algorithm: 'stencil', mode: 'mixed', maxElevation: 8, seed: 1, region: null,
-    stencilPlan: {
+  return defaultConfig('stencil', { maxElevation: 8, seed: 1, stencilPlan: {
       read: 'color', origin: { x: 0, y: 0 }, stencil: bandStencil(width, height), water: 'none',
-    },
-  } as unknown as GenerateConfig;
+    } });
 }
 
 /** The buildable cells of a square centred on (cx, cy). */
@@ -105,7 +96,6 @@ const centreRegion = (state: GridState, half: number): MacroCoord[] =>
 describe('a region run over ground the outside leans on', () => {
   it('lands its planet instead of reverting, and leaves the map around it alone', async () => {
     __resetCandidateCache();
-    forgetGenerationScope();
     const state = realState();
     const ctx = ctxOf(state);
     await generateMap(ctx, { config: pictureRecipe(state), region: null });
@@ -118,9 +108,7 @@ describe('a region run over ground the outside leans on', () => {
     };
 
     const outcome = await generateMap(ctx, {
-      config: {
-        algorithm: 'designed', mode: 'mixed', maxElevation: 8, richness: 0.7, seed: 42, region,
-      } as GenerateConfig,
+      config: defaultConfig('designed', { maxElevation: 8, richness: 0.7, seed: 42, region }),
       region,
     });
 
@@ -135,13 +123,10 @@ describe('a region run over ground the outside leans on', () => {
 
   it('holds for a planet of the generator\'s own, water and all', async () => {
     __resetCandidateCache();
-    forgetGenerationScope();
     const state = realState();
     const ctx = ctxOf(state);
     await generateMap(ctx, {
-      config: {
-        algorithm: 'designed', mode: 'mixed', maxElevation: 8, richness: 1, seed: 7, region: null,
-      } as GenerateConfig,
+      config: defaultConfig('designed', { maxElevation: 8, richness: 1, seed: 7 }),
       region: null,
     });
 
@@ -150,9 +135,7 @@ describe('a region run over ground the outside leans on', () => {
     const beforeOut = terrainOf(state, (x, y) => !inside.has(`${x},${y}`));
 
     const outcome = await generateMap(ctx, {
-      config: {
-        algorithm: 'designed', mode: 'mixed', maxElevation: 8, richness: 0.7, seed: 42, region,
-      } as GenerateConfig,
+      config: defaultConfig('designed', { maxElevation: 8, richness: 0.7, seed: 42, region }),
       region,
     });
 
@@ -163,14 +146,11 @@ describe('a region run over ground the outside leans on', () => {
   }, 240000);
 
   it('lands the same map whether the run is replayed from a candidate or built again', async () => {
-    const recipe = (region: MacroCoord[]): GenerateConfig => ({
-      algorithm: 'designed', mode: 'mixed', maxElevation: 8, richness: 0.7, seed: 42, region,
-    } as GenerateConfig);
+    const recipe = (region: MacroCoord[]): GenerateConfig => defaultConfig('designed', { maxElevation: 8, richness: 0.7, seed: 42, region });
 
     const landed: string[] = [];
     for (const viaCandidate of [false, true]) {
       __resetCandidateCache();
-      forgetGenerationScope();
       const state = realState();
       const ctx = ctxOf(state);
       await generateMap(ctx, { config: pictureRecipe(state), region: null });
@@ -187,7 +167,6 @@ describe('a region run over ground the outside leans on', () => {
 
   it('takes a Clear back without the map outside its scope reverting it', async () => {
     __resetCandidateCache();
-    forgetGenerationScope();
     const state = realState();
     const ctx = ctxOf(state);
     await generateMap(ctx, { config: pictureRecipe(state), region: null });
@@ -206,7 +185,7 @@ describe('a region run over ground the outside leans on', () => {
 });
 
 /**
- * A SCOPED RUN THAT BUILDS NOTHING SAYS WHY.
+ * A scoped run that builds nothing says why.
  *
  * Two presses look identical on screen and mean different things. A region painted deep inside a tall
  * massif is ground the terrain around it stands on: the seam claims every cell of it, hands it back,
@@ -214,7 +193,7 @@ describe('a region run over ground the outside leans on', () => {
  * was free to build on, where the design happened to put nothing, is the quiet case it always was.
  * `Outcome.scopeEmpty` names which, and only the first reaches the user as a notice.
  *
- * The recipe here is the picture path because the classification is the SEAM's reading, not any one
+ * The recipe here is the picture path because the classification is the seam's reading, not any one
  * generator's: what it needs is a run that clears its scope and tries.
  */
 describe('what a region run reports when it built nothing', () => {
@@ -233,22 +212,18 @@ describe('what a region run reports when it built nothing', () => {
     const xs = region.map((c) => c.x), ys = region.map((c) => c.y);
     const origin = { x: Math.min(...xs), y: Math.min(...ys) };
     const w = Math.max(...xs) - origin.x + 1, h = Math.max(...ys) - origin.y + 1;
-    return {
-      algorithm: 'stencil', mode: 'mixed', maxElevation: 8, seed: 3, region,
-      stencilPlan: {
+    return defaultConfig('stencil', { maxElevation: 8, seed: 3, region, stencilPlan: {
         read: 'color', origin, water: 'none',
         stencil: {
           width: w, height: h,
           coverage: new Uint8Array(w * h).fill(covered ? 255 : 0),
           color: new Uint32Array(w * h).fill(0x404040),
         },
-      },
-    } as unknown as GenerateConfig;
+      } });
   }
 
   it('names the ground when the region was owed to the terrain around it', async () => {
     __resetCandidateCache();
-    forgetGenerationScope();
     const state = makeState(30, 30);
     plateau(state, 8, 8, 21, 21);
     const ctx = ctxOf(state);
@@ -264,7 +239,6 @@ describe('what a region run reports when it built nothing', () => {
     // The same recipe on ground nothing leans on builds, and says nothing: what the massif changed is
     // the ground, not the press.
     __resetCandidateCache();
-    forgetGenerationScope();
     const free = makeState(30, 30);
     const freeCtx = ctxOf(free);
     const built = await generateMap(freeCtx, { config: picture(region, true), region });
@@ -274,11 +248,10 @@ describe('what a region run reports when it built nothing', () => {
 
   it('ties the notice to what stands, on a real planet run inside a massif', async () => {
     // The massif is not the test: what a designed run manages on ground like this is the generator's
-    // business and may change (today it terraces the top down and puts a pond on it, which IS
+    // business and may change (today it terraces the top down and puts a pond on it, which is
     // something built). What must hold either way is that the notice follows the map — silent while
     // anything of the run stands in the region, and the ground's own reason when nothing does.
     __resetCandidateCache();
-    forgetGenerationScope();
     const state = realState();
     const ctx = ctxOf(state);
     const at = { x: 0, y: 0 };
@@ -302,9 +275,7 @@ describe('what a region run reports when it built nothing', () => {
       return [`${c.x},${c.y}`, t ? `${t.type}:${t.elevation}` : '-'] as const;
     }));
     const outcome = await generateMap(ctx, {
-      config: {
-        algorithm: 'designed', mode: 'mixed', maxElevation: 8, richness: 0.7, seed: 42, region,
-      } as GenerateConfig,
+      config: defaultConfig('designed', { maxElevation: 8, richness: 0.7, seed: 42, region }),
       region,
     });
     expect(outcome.violations).toEqual([]);
@@ -322,7 +293,6 @@ describe('what a region run reports when it built nothing', () => {
 
   it('reads a region the run was free to build in and did not as the quiet case', async () => {
     __resetCandidateCache();
-    forgetGenerationScope();
     const state = makeState(30, 30);
     const ctx = ctxOf(state);
 
@@ -339,16 +309,12 @@ describe('repairRegionSeam', () => {
 
   /** A run's clearing, as the operations do it: erase the terrain in scope. */
   function clearRegion(state: GridState, region: MacroCoord[]): void {
-    const exec = new CommandExecutor(
-      state, new EventBus<EditorEvents>(), reg, roadLookup(state),
-    );
-    clearAllTerrain(state, (cmd) => exec.execute(cmd), region);
+    const exec = makeExecutor(state, reg);
+    clearAllTerrain({ state, execute: (cmd) => exec.execute(cmd) }, { region });
   }
 
   function executorOf(state: GridState): CommandExecutor {
-    return new CommandExecutor(
-      state, new EventBus<EditorEvents>(), reg, roadLookup(state),
-    );
+    return makeExecutor(state, reg);
   }
 
   it('gives back the 3x3 base of a mountain standing just outside the region', () => {
@@ -378,7 +344,7 @@ describe('repairRegionSeam', () => {
   it('gives back the cap an elevated channel outside the region stands behind', () => {
     // A channel of water at tier 2 running east across a tier-2 plateau, with the ground north of it
     // one tier lower: every water cell faces that drop, so the rule wants a mountain at exactly tier 2
-    // at each END of the channel (the perpendicular axis). The region is painted over the east end,
+    // at each end of the channel (the perpendicular axis). The region is painted over the east end,
     // which is where the cap stands.
     const state = makeState(20, 20);
     for (let y = 7; y <= 12; y++) for (let x = 6; x <= 13; x++) setTerrain(state, x, y, TerrainType.Mountain, 2);
@@ -400,7 +366,7 @@ describe('repairRegionSeam', () => {
   });
 
   it('edits nothing outside the region, even when the region has nothing to give', () => {
-    // A lone tier-8 spike OUTSIDE the region is illegal on its own, and no ground inside the region
+    // A lone tier-8 spike outside the region is illegal on its own, and no ground inside the region
     // can support it. The repair must leave it alone rather than reach across the boundary.
     const state = makeState(20, 20);
     for (let y = 1; y <= 3; y++) for (let x = 1; x <= 3; x++) setTerrain(state, x, y, TerrainType.Mountain, 8);

@@ -1,10 +1,12 @@
 // Minimal, dependency-free PNG raster codec for the pixel-payload carrier: decode an 8-bit
 // truecolor PNG (color type 2 = RGB or 6 = RGBA, no interlace) to straight RGBA, and encode
 // straight RGBA back to a type-6 PNG. Enough to read/write the pixels a browser canvas emits.
-// IDAT uses zlib (DEFLATE with a zlib header) per the PNG spec → CompressionMethod.Deflate.
-import { ShareError, type ShareLimits, DEFAULT_LIMITS } from '../errors';
+// IDAT uses zlib (deflate with a zlib header) per the PNG spec → CompressionMethod.Deflate.
+import { type ShareLimits, DEFAULT_LIMITS } from '../errors';
+import { ImportError } from '../../save/import-error';
 import { CompressionMethod, deflate, inflate } from './zlib';
 import { readChunks, buildChunk, PNG_SIGNATURE } from './png-chunks';
+import { concatBytes } from '../../../core/base/bytes';
 
 export interface RasterImage { width: number; height: number; data: Uint8Array } // RGBA, length w*h*4
 
@@ -14,20 +16,20 @@ function paeth(a: number, b: number, c: number): number {
   return pa <= pb && pa <= pc ? a : pb <= pc ? b : c;
 }
 
-/** Decode an 8-bit, non-interlaced, RGB/RGBA PNG to straight RGBA. Throws ShareError on an
+/** Decode an 8-bit, non-interlaced, RGB/RGBA PNG to straight RGBA. Throws ImportError on an
  *  unsupported format (the importer treats that as "no pixel payload", not a crash). */
 export async function decodePng(bytes: Uint8Array, limits: ShareLimits = DEFAULT_LIMITS): Promise<RasterImage> {
   const chunks = readChunks(bytes); // validates signature + per-chunk CRC
   const ihdr = chunks.find((c) => c.type === 'IHDR');
-  if (!ihdr || ihdr.data.length < 13) throw new ShareError('decode-failed', 'PNG missing IHDR.');
+  if (!ihdr || ihdr.data.length < 13) throw new ImportError('decode-failed', 'PNG missing IHDR.');
   const dv = new DataView(ihdr.data.buffer, ihdr.data.byteOffset, ihdr.data.byteLength);
   const width = dv.getUint32(0, false), height = dv.getUint32(4, false);
   const bitDepth = ihdr.data[8]!, colorType = ihdr.data[9]!, interlace = ihdr.data[12]!;
   if (bitDepth !== 8 || interlace !== 0 || (colorType !== 2 && colorType !== 6)) {
-    throw new ShareError('decode-failed', `Unsupported PNG format (bitDepth ${bitDepth}, colorType ${colorType}, interlace ${interlace}).`);
+    throw new ImportError('decode-failed', `Unsupported PNG format (bitDepth ${bitDepth}, colorType ${colorType}, interlace ${interlace}).`);
   }
   if (width <= 0 || height <= 0 || width * height > (limits.maxRasterPixels ?? 64 * 1024 * 1024)) {
-    throw new ShareError('corrupt', 'PNG dimensions out of range.');
+    throw new ImportError('corrupt', 'PNG dimensions out of range.');
   }
   const bpp = colorType === 6 ? 4 : 3;
   const stride = width * bpp;
@@ -39,7 +41,7 @@ export async function decodePng(bytes: Uint8Array, limits: ShareLimits = DEFAULT
 
   const rawMax = height * (1 + stride) + 64;
   const raw = await inflate(idat, CompressionMethod.Deflate, { maxBytes: Math.min(rawMax, limits.maxCanonicalBytes), maxRatio: limits.maxInflateRatio });
-  if (raw.length < height * (1 + stride)) throw new ShareError('corrupt', 'PNG raster underflow.');
+  if (raw.length < height * (1 + stride)) throw new ImportError('corrupt', 'PNG raster underflow.');
 
   // Unfilter scanlines in place into `cur`.
   const out = new Uint8Array(width * height * 4);
@@ -59,7 +61,7 @@ export async function decodePng(bytes: Uint8Array, limits: ShareLimits = DEFAULT
       else if (filter === 2) v = (v + b) & 0xff;
       else if (filter === 3) v = (v + ((a + b) >> 1)) & 0xff;
       else if (filter === 4) v = (v + paeth(a, b, c)) & 0xff;
-      else if (filter !== 0) throw new ShareError('corrupt', `Unknown PNG filter ${filter}.`);
+      else if (filter !== 0) throw new ImportError('corrupt', `Unknown PNG filter ${filter}.`);
       cur[i] = v;
     }
     const row = y * width * 4;
@@ -91,8 +93,5 @@ export async function encodePng(img: RasterImage): Promise<Uint8Array> {
   dv.setUint32(0, width, false); dv.setUint32(4, height, false);
   ihdr[8] = 8; ihdr[9] = 6; ihdr[10] = 0; ihdr[11] = 0; ihdr[12] = 0;
   const parts = [new Uint8Array(PNG_SIGNATURE), buildChunk('IHDR', ihdr), buildChunk('IDAT', idat), buildChunk('IEND', new Uint8Array(0))];
-  let total = 0; for (const part of parts) total += part.length;
-  const outBytes = new Uint8Array(total); let o = 0;
-  for (const part of parts) { outBytes.set(part, o); o += part.length; }
-  return outBytes;
+  return concatBytes(parts);
 }

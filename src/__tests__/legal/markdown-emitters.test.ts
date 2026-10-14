@@ -1,8 +1,9 @@
+// @vitest-environment jsdom
 import { describe, it, expect } from 'vitest';
 import { createElement } from 'react';
 import { render } from '@testing-library/react';
 import { renderHtml } from '../../legal/markdown-html';
-import { LegalMarkdown } from '../../legal/LegalMarkdown';
+import { LegalMarkdown } from '../../ui/primitives/LegalMarkdown';
 import { parseLegalMarkdown } from '../../legal/markdown';
 import type { MdNode } from '../../legal/markdown';
 

@@ -1,126 +1,85 @@
-import { useContextHelp } from '../../chrome/modals/help/use-context-help';
-import { Suspense, lazy, useCallback, useEffect, useRef, useState } from 'react';
+import { Suspense, lazy, useCallback } from 'react';
 import type { MapTemplate } from '../../../core/model/types';
-import type { PlanetEntry } from '../../../io/planet-library';
-import { startPlanetEditing } from '../planet/planet-editing';
-import type { PlanetDraft } from '../../../kit/operations/planet-session';
-import { currentKit } from '../../../kit/context';
-import { newMap, transferMap } from '../../../kit/operations';
+import type { PlanetEntry } from '../../../io/storage/planet-library';
+import { useCanStartPlanetEditing } from '../planet/use-planet-session';
+import { startPlanetEditing } from '../../../editor/session/planet-editing';
+import { assistantJobRunning, loadHelpModal, loadWhatsThisLayer, useContextHelp } from '../edition-surfaces';
+import type { PlanetDraft } from '../../../editor/operations/planet-session';
+import { switchPlanet, type PlanetChange } from '../../../editor/session/planet-switch';
 import { useEditorStore } from '../../../state/store';
 import { ChunkBoundary } from '../../primitives/ChunkBoundary';
-import { AboutModal } from '../../chrome/modals/AboutModal';
+import { ChunkNotice } from '../../chrome/guards/ChunkNotice';
+import { AboutModal } from '../../chrome/modals/about/AboutModal';
 import { KeyboardModal } from '../../chrome/modals/keyboard/KeyboardModal';
-import { ChangePlanetModal } from '../../chrome/modals/ChangePlanetModal';
-import { SettingsModal } from '../../chrome/modals/SettingsModal';
+import { ChangePlanetModal } from '../../chrome/modals/planet/ChangePlanetModal';
+import { SettingsModal } from '../../chrome/modals/settings/SettingsModal';
 import { AnnotationDiscardModal } from '../../chrome/modals/AnnotationDiscardModal';
-import { ChunkLoadWindow } from './ChunkLoadWindow';
+import { ChunkLoadWindow } from '../../chrome/modals/load/ChunkLoadWindow';
+import { useLatch } from '../../primitives/use-latch';
+import { loadPreview3D } from '../../chrome/loaders';
 
-const Preview3D = lazy(() => import('../../chrome/modals/export/Preview3D').then(m => ({ default: m.Preview3D })));
-const HelpModal = lazy(() => import('../../chrome/modals/help/HelpModal').then(m => ({ default: m.HelpModal })));
-const WhatsThisLayer = lazy(() => import('../../chrome/modals/help/WhatsThisLayer').then(m => ({ default: m.WhatsThisLayer })));
+const Preview3D = lazy(() => loadPreview3D().then(m => ({ default: m.Preview3D })));
+const HelpModal = lazy(() => loadHelpModal().then(m => ({ default: m.HelpModal })));
+const WhatsThisLayer = lazy(() => loadWhatsThisLayer().then(m => ({ default: m.WhatsThisLayer })));
 
-export type PlanetChange = ReturnType<typeof transferMap> | null;
+export type { PlanetChange };
 
 /** Shared window wiring; each host owns its transfer feedback and delivery surfaces. */
 export function EditorWindows({ onPlanetChanged }: { onPlanetChanged: (outcome: PlanetChange) => void }) {
   useContextHelp();
   const modals = useEditorStore((s) => s.modals);
   const setModal = useEditorStore((s) => s.setModal);
-  const setEditMode = useEditorStore((s) => s.setEditMode);
   const whatsThis = useEditorStore((s) => s.whatsThis);
   // Keep Help mounted after its first use so closing can finish the card animation.
-  const helpEver = useRef(false);
-  if (modals.help || whatsThis) helpEver.current = true;
-  const helpMounted = helpEver.current;
+  const helpMounted = useLatch(modals.help || whatsThis);
 
-  const locale = useEditorStore((s) => s.locale);
-  const setLocale = useEditorStore((s) => s.setLocale);
-  const showGrid = useEditorStore((s) => s.showGrid);
-  const setShowGrid = useEditorStore((s) => s.setShowGrid);
-  const showChunkBounds = useEditorStore((s) => s.showChunkBounds);
-  const setShowChunkBounds = useEditorStore((s) => s.setShowChunkBounds);
-  const motionPref = useEditorStore((s) => s.motionPref);
-  const setMotionPref = useEditorStore((s) => s.setMotionPref);
-  const systemCursors = useEditorStore((s) => s.systemCursors);
-  const setSystemCursors = useEditorStore((s) => s.setSystemCursors);
-  const quality3d = useEditorStore((s) => s.quality3d);
-  const setQuality3d = useEditorStore((s) => s.setQuality3d);
 
   const onSwitchPlanet = useCallback((target: string | MapTemplate, carry: boolean) => {
-    const kit = carry ? currentKit() : null;
-    const outcome = kit ? transferMap(kit, { target, carry: true }) : null;
-    if (!outcome) newMap(target);
-    setEditMode({ mode: null });
+    const outcome = switchPlanet(target, carry);
     setModal('newProject', false);
     onPlanetChanged(outcome);
-  }, [setEditMode, setModal, onPlanetChanged]);
+  }, [setModal, onPlanetChanged]);
 
   // A refused entry leaves the window standing.
   const onEditPlanet = useCallback((entry: PlanetEntry | PlanetDraft | null) => {
-    startPlanetEditing(entry);
-    if (useEditorStore.getState().planetSession) setModal('newProject', false);
+    if (startPlanetEditing(entry, assistantJobRunning())) setModal('newProject', false);
   }, [setModal]);
 
+  const canEditPlanet = useCanStartPlanetEditing();
+
   // Leaving or finishing a planet session comes back to Change Planet with that planet chosen.
-  const planetReturn = useEditorStore((s) => s.planetReturn);
-  const planetSession = useEditorStore((s) => s.planetSession);
-  const setPlanetReturn = useEditorStore((s) => s.setPlanetReturn);
-  const [returnChosen, setReturnChosen] = useState<string | undefined>(undefined);
-  useEffect(() => {
-    if (!planetReturn || planetSession) return;
-    setReturnChosen(planetReturn.chosen ?? undefined);
-    setPlanetReturn(null);
-    setModal('newProject', true);
-  }, [planetReturn, planetSession, setPlanetReturn, setModal]);
-  useEffect(() => { if (!modals.newProject) setReturnChosen(undefined); }, [modals.newProject]);
+  const returnChosen = useEditorStore((s) => s.planetReturn?.chosen ?? undefined);
 
   return (
     <>
       <ChangePlanetModal
-        open={modals.newProject}
         onSwitch={onSwitchPlanet}
         onEditPlanet={onEditPlanet}
+        canEditPlanet={canEditPlanet}
         takesHandedFiles
-        onClose={() => setModal('newProject', false)}
         {...(returnChosen ? { initialChosen: returnChosen } : {})}
       />
 
-      <SettingsModal
-        open={modals.settings}
-        locale={locale}
-        showGrid={showGrid}
-        showChunks={showChunkBounds}
-        motionPref={motionPref}
-        systemCursors={systemCursors}
-        quality3d={quality3d}
-        onLocaleChange={setLocale}
-        onShowGridChange={setShowGrid}
-        onShowChunksChange={setShowChunkBounds}
-        onMotionPrefChange={setMotionPref}
-        onSystemCursorsChange={setSystemCursors}
-        onQuality3dChange={setQuality3d}
-        onAbout={() => setModal('about', true)}
-        onClose={() => setModal('settings', false)}
-      />
+      <SettingsModal />
 
-      <KeyboardModal open={modals.keyboard} onClose={() => setModal('keyboard', false)} />
+      <KeyboardModal />
 
       {helpMounted && (
-        <ChunkBoundary resetKey={modals.help || whatsThis}>
+        <ChunkBoundary resetKey={modals.help || whatsThis} fallback={<ChunkNotice />}>
           <Suspense fallback={null}>
-            <HelpModal open={modals.help} onClose={() => setModal('help', false)} />
+            <HelpModal />
             <WhatsThisLayer />
           </Suspense>
         </ChunkBoundary>
       )}
 
-      <AboutModal open={modals.about} onClose={() => setModal('about', false)} />
+      <AboutModal />
 
       <ChunkLoadWindow />
       <AnnotationDiscardModal />
 
       {modals.preview3d && (
-        <ChunkBoundary resetKey={modals.preview3d}>
+        <ChunkBoundary resetKey={modals.preview3d} fallback={<ChunkNotice />}>
           <Suspense fallback={null}>
             <Preview3D onClose={() => setModal('preview3d', false)} />
           </Suspense>

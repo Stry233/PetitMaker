@@ -40,4 +40,13 @@ import plant_gardenia from './plant-gardenia.json';
 import plant_azalea from './plant-azalea.json';
 import plant_agave from './plant-agave.json';
 
-export const flora: CatalogItem[] = [flower_sunflower, flower_sunflower_red, flower_sunflower_green, flower_rose, flower_rose_cyan, flower_rose_blue, flower_lily, flower_lily_yellow, flower_lily_cyan, flower_daisy, flower_daisy_yellow, flower_daisy_cyan, flower_bellflower, flower_bellflower_cyan, flower_bellflower_yellow, flower_violet, flower_violet_pink, flower_violet_cyan, flower_dahlia, flower_dahlia_orange, flower_dahlia_cyan, flower_protea, flower_protea_purple, flower_protea_red, flower_amaryllis, flower_amaryllis_white, flower_amaryllis_orange, flower_canna_yellow, flower_canna_red, flower_canna_gold, flower_portulaca_white, flower_portulaca_purple, flower_portulaca_yellow, flower_agapanthus, flower_agapanthus_white, flower_agapanthus_blue, shrub, plant_gardenia, plant_azalea, plant_agave] as CatalogItem[];
+export const flora: CatalogItem[] = [
+  flower_sunflower, flower_sunflower_red, flower_sunflower_green, flower_rose, flower_rose_cyan,
+  flower_rose_blue, flower_lily, flower_lily_yellow, flower_lily_cyan, flower_daisy, flower_daisy_yellow,
+  flower_daisy_cyan, flower_bellflower, flower_bellflower_cyan, flower_bellflower_yellow, flower_violet,
+  flower_violet_pink, flower_violet_cyan, flower_dahlia, flower_dahlia_orange, flower_dahlia_cyan, flower_protea,
+  flower_protea_purple, flower_protea_red, flower_amaryllis, flower_amaryllis_white, flower_amaryllis_orange,
+  flower_canna_yellow, flower_canna_red, flower_canna_gold, flower_portulaca_white, flower_portulaca_purple,
+  flower_portulaca_yellow, flower_agapanthus, flower_agapanthus_white, flower_agapanthus_blue, shrub,
+  plant_gardenia, plant_azalea, plant_agave,
+] as CatalogItem[];

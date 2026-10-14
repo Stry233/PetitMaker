@@ -1,6 +1,6 @@
 /**
  * Frame surfaces that stand over the map at one of its edges mark themselves, so controls anchored
- * to something on the map (which draw UNDER the frame) can keep to the map area left clear.
+ * to something on the map (which draw under the frame) can keep to the map area left clear.
  */
 import { visualRect } from '../design/visual-rect';
 

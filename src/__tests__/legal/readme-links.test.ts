@@ -1,12 +1,11 @@
 import { describe, it, expect } from 'vitest';
-// @ts-ignore - node:fs is untyped here (no @types/node)
 import { readFileSync } from 'node:fs';
 import { LEGAL } from '../../legal/config';
 
-import { DEPLOY_TARGETS } from '../../legal/deploy-targets';
+import { DEPLOY_TARGETS } from '../../platform/build/deploy-targets';
 import { canonicalPagePath } from '../../legal/site-paths';
 
-// README links must name canonical production pages on either deployment.
+// Readme links must name canonical production pages on either deployment.
 const read = (p: string) => readFileSync(p, 'utf8');
 const README_EN = read('README.md');
 const README_ZH = read('docs/README.zh-CN.md');

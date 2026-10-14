@@ -1,12 +1,13 @@
+import { useWindow } from '../modals/use-window';
 import { windowTitle, windowPrimary } from '../../design/window-skin';
 /*
  * The tour's send-off: a short congratulation, a fall of confetti, and one button back to the map.
  *
- * It opens only when the tour is FINISHED, never when it is skipped: someone who skipped asked to
+ * It opens only when the tour is finished, never when it is skipped: someone who skipped asked to
  * be left alone, and celebrating that would be the tour talking back.
  *
- * What makes a fall read as CONFETTI rather than as objects dropping is that every piece differs
- * from every other and that the pieces are PAPER: thin, light, and turning as they go. So each one
+ * What makes a fall read as confetti rather than as objects dropping is that every piece differs
+ * from every other and that the pieces are paper: thin, light, and turning as they go. So each one
  * draws its own fall speed, sway, spin, tumble and start delay, and the tumble is a `scaleX` swung
  * through negative values — a flat strip seen edge-on is exactly `scaleX: 0`, which is paper
  * turning over without a scrap of perspective. Nothing glows, nothing blurs, nothing leaves the
@@ -14,18 +15,18 @@ import { windowTitle, windowPrimary } from '../../design/window-skin';
  *
  * The pieces are plain divs driven by the Web Animations API rather than 70-odd framer components:
  * WAAPI takes independent per-piece keyframes cheaply and composites them off the main thread.
- * That also puts them OUTSIDE both automatic reduced-motion gates (framer's, and the stylesheet's
+ * That also puts them outside both automatic reduced-motion gates (framer's, and the stylesheet's
  * `[data-reduced-motion="1"]` rule), so this file reads the preference itself and renders no pieces
  * at all — the message, the button and the focus behaviour are identical either way.
  */
 import { useEffect, useRef } from 'react';
 import { motion, useReducedMotionConfig } from 'framer-motion';
-import { makeRng } from '../../../core/model/rng';
+import { makeRng } from '../../../core/base/rng';
 import { useT } from '../../../i18n/context';
-import { useEditorStore } from '../../../state/store';
-import { colors, font, radii, buttonMotion } from '../../design/styles';
+import { font, radii, buttonMotion } from '../../design/styles';
 import { Wavy } from '../../primitives/Wavy';
 import { ModalShell } from '../../primitives/ModalShell';
+import { ACTIVE, TILE_GREEN, TILE_PALE_YELLOW, TILE_DEEP_GREEN, MUTED } from '../../design/tokens';
 
 const CARD_W = 360;
 
@@ -33,10 +34,10 @@ const CARD_W = 360;
  *  card's own cream and plain white are deliberately not in the set: a piece the colour of what it
  *  falls on is not a piece. */
 const PIECE_COLORS = [
-  colors.tileYellow,
-  colors.tileGreen,
-  colors.tilePaleYellow,
-  colors.tileDeepGreen,
+  ACTIVE,
+  TILE_GREEN,
+  TILE_PALE_YELLOW,
+  TILE_DEEP_GREEN,
 ];
 
 /** Enough that the fall stops reading as countable objects. */
@@ -169,21 +170,20 @@ function Confetti() {
 
 export function TourDoneModal() {
   const t = useT();
-  const open = useEditorStore((s) => s.modals.tourDone);
-  const setModal = useEditorStore((s) => s.setModal);
-  const close = () => setModal('tourDone', false);
+  const { open, close } = useWindow('tourDone');
 
   return (
     <ModalShell helpTarget={{ page: 'tour' }}
       open={open}
       onClose={close}
+      size="confirm"
       width={CARD_W}
-      maxVwPct={92}
+      cap={{ w: 92 }}
       ariaLabel={`${t('tour.done_title_a')}${t('tour.done_title_b')}`}
       cardStyle={{
         position: 'relative',
         overflow: 'hidden',
-        padding: '30px 28px 24px',
+        padding: '28px 28px 24px',
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'center',
@@ -198,7 +198,7 @@ export function TourDoneModal() {
         {t('tour.done_title_a')}
         <Wavy>{t('tour.done_title_b')}</Wavy>
       </div>
-      <div style={{ ...font.body, color: colors.brownText, position: 'relative' }}>{t('tour.done_body')}</div>
+      <div style={{ ...font.body, color: MUTED, position: 'relative' }}>{t('tour.done_body')}</div>
       <motion.button
         type="button"
         onClick={close}

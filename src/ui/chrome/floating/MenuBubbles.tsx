@@ -1,4 +1,6 @@
-import { effectiveCombo, prettyCombo, useKeybinds } from '../../../core/runtime/keybindings';
+import { effectiveCombo } from '../../../state/keymap/resolve';
+import { prettyCombo } from '../../../platform/input/combo';
+import { useKeybinds } from '../../../state/keymap/store';
 /**
  * What the menu button says on arrival: a pointer to Help as the tour ends, then on a touch device
  * the invitation into immersive mode. Both wait behind the splash, the portrait guard, the tour and
@@ -9,7 +11,7 @@ import { AnimatePresence } from 'framer-motion';
 import { useT } from '../../../i18n/context';
 import { useEditorStore } from '../../../state/store';
 import { useTouchPrimary } from '../../design/scale';
-import { useFullscreen } from '../../hooks/useFullscreen';
+import { useFullscreen } from '../../primitives/use-fullscreen';
 import { hasSeenTour } from '../tour/use-tour';
 import { arrivalOpens } from './arrival-gate';
 import { SpeechBubble } from './SpeechBubble';

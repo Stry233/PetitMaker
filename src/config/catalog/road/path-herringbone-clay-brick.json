@@ -4,7 +4,7 @@
   "icon": "path-herringbone-clay-brick",
   "name": {
     "en": "Herringbone Clay Brick Path",
-    "zh": "人字纹陶砖路",
+    "zh": "波纹陶土砖路",
     "ja": "ヘリンボーン土レンガの道",
     "ru": "Кирпичная дорожка «ёлочка»",
     "th": "ทางอิฐดินเผาลายก้างปลา",
@@ -24,5 +24,17 @@
     {
       "type": "surfaceCoating"
     }
-  ]
+  ],
+  "roadMaterial": {
+    "feather": 0.035,
+    "edge": {
+      "color": "#ffffff",
+      "pattern": {
+        "kind": "image",
+        "image": "path-herringbone-clay-brick",
+        "repeat": 2.5
+      }
+    },
+    "layers": []
+  }
 }

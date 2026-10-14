@@ -1,0 +1,35 @@
+{
+  "id": "print-field-corner",
+  "category": "road",
+  "icon": "print-field-corner",
+  "name": {
+    "en": "Field Corner Print",
+    "zh": "绿茵倒角印花",
+    "ja": "フィールドの角模様",
+    "ru": "Угловая разметка поля",
+    "th": "ลายมุมสนาม",
+    "id": "Motif Sudut Lapangan",
+    "fr": "Marquage d’angle de terrain"
+  },
+  "color": "#f0eedb",
+  "width": 1,
+  "height": 1,
+  "loadValue": 0,
+  "rotatable": true,
+  "placementMode": "brush",
+  "traits": [
+    {
+      "type": "flat"
+    },
+    {
+      "type": "surfaceCoating",
+      "layer": 1
+    }
+  ],
+  "surfacePrint": {
+    "kind": "image",
+    "image": "print-field-corner",
+    "repeat": 1
+  },
+  "strokeConnections": 6
+}

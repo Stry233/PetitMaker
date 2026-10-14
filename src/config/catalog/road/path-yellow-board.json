@@ -3,13 +3,13 @@
   "category": "road",
   "icon": "path-yellow-board",
   "name": {
-    "en": "Yellow Board Path",
-    "zh": "黄色木板路",
-    "ja": "黄色い板の道",
-    "ru": "Жёлтая дощатая дорожка",
-    "th": "ทางไม้กระดานสีเหลือง",
-    "id": "Jalan Papan Kuning",
-    "fr": "Chemin de planches jaune"
+    "en": "Yellow Gameboard Path",
+    "zh": "黄色棋格路",
+    "ja": "黄色のボードゲームの道",
+    "ru": "Жёлтая дорожка для настольной игры",
+    "th": "ทางกระดานเกมสีเหลือง",
+    "id": "Jalan Papan Permainan Kuning",
+    "fr": "Chemin de plateau de jeu jaune"
   },
   "color": "#e0a76d",
   "width": 1,
@@ -24,5 +24,17 @@
     {
       "type": "surfaceCoating"
     }
-  ]
+  ],
+  "roadMaterial": {
+    "feather": 0.035,
+    "edge": {
+      "color": "#ffffff",
+      "pattern": {
+        "kind": "image",
+        "image": "path-yellow-board",
+        "repeat": 1
+      }
+    },
+    "layers": []
+  }
 }

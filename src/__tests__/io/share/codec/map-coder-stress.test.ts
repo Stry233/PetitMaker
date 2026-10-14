@@ -6,10 +6,10 @@ import { encodeMap, decodeMap, MODEL_VARIANTS } from '../../../../io/share/codec
 import { tokenOf, type CellFields } from '../../../../io/share/codec/grid-io';
 import { getMapTemplate } from '../../../../config/maps';
 import { SHARE_CATALOG_ORDER } from '../../../../io/share/codec/catalog-order';
-import { CellZone } from '../../../../core/model/types';
-import type { SaveObject } from '../../../../io/save-format';
+import type { SaveObject } from '../../../../io/save/format';
 import type { MapTemplate } from '../../../../core/model/types';
-import { ELEVATION_MAX } from '../../../../core/model/game-profile';
+import { ELEVATION_MAX } from '../../../../core/game/profile';
+import { frozenTemplateMask } from '../../../../io/share/codec/template-mask';
 
 const CORNERS = [...'SF1234E'];
 const template = getMapTemplate('hexia');
@@ -138,14 +138,9 @@ describe('map coder — extremes of the representable', () => {
           trip(cells, objects, v);
           continue;
         }
-        const maskedCells = cells.map((cell, index) => {
-          const x = index % template.width;
-          const y = Math.floor(index / template.width);
-          return template.zones[y]?.[x] === CellZone.Grass ? cell : null;
-        });
-        const maskedObjects = objects.filter((object) => (
-          template.zones[Math.floor(object.y)]?.[Math.floor(object.x)] === CellZone.Grass
-        ));
+        const mask = frozenTemplateMask(template, model.templateMask)!;
+        const maskedCells = cells.map((cell, index) => (mask[index] === 1 ? cell : null));
+        const maskedObjects = objects.filter((object) => mask[Math.floor(object.y) * template.width + Math.floor(object.x)] === 1);
         trip(maskedCells, maskedObjects, v);
       }
     }

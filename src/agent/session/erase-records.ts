@@ -1,6 +1,7 @@
 import { append, createLog, deepFreeze, eventsOf, type SessionLog } from '../core/log';
-import { isCallResolved, isJobActive } from '../core/loop';
-import { jobEvents } from '../core/governor';
+import { isCallResolved, isJobActive } from '../core/job-reads';
+import { jobEvents } from '../core/job-reads';
+import { clearedWhilePending } from '../core/nudges';
 
 /** Resuming must re-plan interrupted operations rather than replay decisions made with erased context. */
 function retirePendingCalls(log: SessionLog): void {
@@ -18,7 +19,7 @@ function retirePendingCalls(log: SessionLog): void {
     }
     append(log, {
       kind: 'toolResult', callId: part.callId, name: part.name, turnSeq: last.seq, isError: true, write: false,
-      content: 'Conversation history was cleared while this operation was pending. Its outcome is unknown. Inspect the current map before planning further changes; do not repeat the operation without checking its effects.',
+      content: clearedWhilePending(),
       detail: { damper: true },
     });
   }

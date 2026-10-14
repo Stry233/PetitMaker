@@ -6,9 +6,9 @@
  * so the same picture answers the same hands the same way on each.
  */
 import { cssMotion } from '../../../design/motion';
-import { clientPoint } from '../../../../core/runtime/viewport-space';
+import { clientPoint } from '../../../../platform/device/viewport-space';
 import { useEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type WheelEvent as ReactWheelEvent } from 'react';
-import { clamp } from '../../../../core/model/math';
+import { clamp } from '../../../../core/base/math';
 import { useCursorCss } from '../../../design/cursors/cursor-vars';
 
 /** How long a quiet spell (no pan/zoom) must last before the reset hint fades back out. */
@@ -27,7 +27,7 @@ interface PanZoom {
   /** True mid-drag; the picture's transform transition turns off so it tracks the hand exactly. */
   dragging: () => boolean;
   /** Spread onto the stage element. The cursor is the map views' own pan hand, and it lives on the
-   *  STAGE because the pointer is captured there for the whole drag: an image-only cursor reverts
+   *  Stage because the pointer is captured there for the whole drag: an image-only cursor reverts
    *  to the arrow the moment the drag starts. */
   stageProps: {
     onWheel: (e: ReactWheelEvent) => void;
@@ -73,9 +73,21 @@ export function usePanZoom({ onTap }: PanZoomOptions = {}): PanZoom {
     view,
     dragging: () => drag.current !== null,
     stageProps: {
-      onWheel: (e) => { const f = e.deltaY < 0 ? ZOOM_STEP : 1 / ZOOM_STEP; setView((v) => ({ ...v, scale: clamp(v.scale * f, SCALE_MIN, SCALE_MAX) })); noteInteraction(); },
-      onPointerDown: (e) => { drag.current = { x: clientPoint(e).x, y: clientPoint(e).y, tx: view.tx, ty: view.ty }; (e.currentTarget as Element).setPointerCapture?.(e.pointerId); },
-      onPointerMove: (e) => { const d = drag.current; if (!d) return; setView((v) => ({ ...v, tx: d.tx + (clientPoint(e).x - d.x), ty: d.ty + (clientPoint(e).y - d.y) })); noteInteraction(); },
+      onWheel: (e) => {
+        const f = e.deltaY < 0 ? ZOOM_STEP : 1 / ZOOM_STEP;
+        setView((v) => ({ ...v, scale: clamp(v.scale * f, SCALE_MIN, SCALE_MAX) }));
+        noteInteraction();
+      },
+      onPointerDown: (e) => {
+        drag.current = { x: clientPoint(e).x, y: clientPoint(e).y, tx: view.tx, ty: view.ty };
+        (e.currentTarget as Element).setPointerCapture?.(e.pointerId);
+      },
+      onPointerMove: (e) => {
+        const d = drag.current;
+        if (!d) return;
+        setView((v) => ({ ...v, tx: d.tx + (clientPoint(e).x - d.x), ty: d.ty + (clientPoint(e).y - d.y) }));
+        noteInteraction();
+      },
       onPointerUp: (e) => {
         const d = drag.current;
         drag.current = null;

@@ -1,0 +1,4 @@
+{
+  "src/ui/agent/character/": "The pose table: its keyframes are a drawing's own choreography, declared per pose rather than per motion, and it predates the registry.",
+  "src/ui/agent/sketchbook/sketch-motion.ts": "The idle dressings are loops whose beats are only meaningful against each other, so registry entries would spread one piece of timing over a dozen ids; both loops are ambient and dropped whole under reduced motion."
+}

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ItemCategory } from '../../core/model/types';
+import { ItemCategory } from '../../config/catalog/categories';
 import { isBridge, isCoatingItem, isCrossing, isRamp, rampDropLayers, findTrait } from '../../core/model/traits';
 import { getKnownItems, landmarkItem } from '../../state/catalog';
 

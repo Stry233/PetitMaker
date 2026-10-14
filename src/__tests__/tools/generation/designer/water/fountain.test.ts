@@ -1,26 +1,26 @@
-// THE FOUNTAIN COURT: the grammar first, then what it puts on the ground.
+// The fountain court: the grammar first, then what it puts on the ground.
 //
-// The GRAMMAR claims are the ones that make a court read as artificial rather than as a pond: a
+// The grammar claims are the ones that make a court read as artificial rather than as a pond: a
 // regular outline, bands that alternate wet and dry from the outside in, a figure the innermost water
 // encloses, and mirror symmetry about both axes whatever the seed drew. They are read off the pure
 // spec and cell functions.
 //
-// The GROUND claims are read off a synthetic flat terrace with a street beside it: the court stands
-// on ONE tier, keeps its dry court, is composed against pavement, and commits through the LIVE rules
+// The ground claims are read off a synthetic flat terrace with a street beside it: the court stands
+// on one tier, keeps its dry court, is composed against pavement, and commits through the live rules
 // with no violation — the figure is a mountain standing in water, and that is a claim about a
 // finished map.
 import { describe, it, expect } from 'vitest';
 import { MAP_TEMPLATES } from '../../../../../config/maps';
-import { flatIndex } from '../../../../../core/model/grid-model';
+import { flatIndex } from '../../../../../core/grid/rect';
 import type { MacroCoord, MapTemplate } from '../../../../../core/model/types';
 import { createDefaultRegistry } from '../../../../../rules';
-import { applyPlanToScratch } from '../../../../../tools/generation/core/repair';
-import type { TerrainPlan } from '../../../../../tools/generation/core/types';
-import { paintableMask } from '../../../../../tools/generation/designer/composition/composition';
+import { applyPlanToScratch } from '../../../../../tools/generation/terrain-plan/repair';
+import type { TerrainPlan } from '../../../../../tools/generation/terrain-plan/types';
+import { paintableMask } from '../../../../../tools/generation/designer/planet';
+import { carveFountains, type FountainCourt } from '../../../../../tools/generation/designer/water/fountain';
 import {
-  carveFountains, fountainCells, fountainSpec, outlineMetric,
-  type FountainCourt, type FountainOutline, type FountainSpec,
-} from '../../../../../tools/generation/designer/water/fountain';
+  fountainCells, fountainSpec, outlineMetric, type FountainOutline, type FountainSpec,
+} from '../../../../../tools/generation/designer/water/fountain-grammar';
 import type { DesignPlan, RegionPlan } from '../../../../../tools/generation/designer/types';
 
 const HEXIA = MAP_TEMPLATES['hexia']!;
@@ -39,7 +39,7 @@ function waterRegion(id: string, rect: { x: number; y: number; w: number; h: num
 function plan(template: MapTemplate, regions: RegionPlan[]): DesignPlan {
   return {
     seedInfo: { seed: 0, richness: 1, templateId: template.id },
-    plazaHub: { x: 80, y: 66, w: 8, h: 8 },
+    hubArea: { x: 80, y: 66, w: 8, h: 8 },
     backingBand: { x: 0, y: 0, w: 0, h: 0 },
     regions, unplaced: [],
   };
@@ -101,10 +101,10 @@ describe('the fountain grammar', () => {
           expect(band.water, `seed ${seed} r${r} band ${k}`).toBe(k % 2 === 0);
           expect(band.width).toBeGreaterThan(0);
         }
-        // The bands cover the levels the FIGURE does not: it takes 0 to `figure` and they take the
+        // The bands cover the levels the figure does not: it takes 0 to `figure` and they take the
         // rest out to the radius.
         expect(spec.bands.reduce((a, b) => a + b.width, 0)).toBe(r - spec.figure);
-        // NO WATER BAND IS ONE LEVEL DEEP. A one-level ring of these metrics meets itself only at its
+        // No water band is one level deep. A one-level ring of these metrics meets itself only at its
         // diagonals, so a 4-connected decomposition — which is what every reading downstream takes —
         // sees fragments rather than a moat.
         for (const band of spec.bands) if (band.water) expect(band.width, `seed ${seed} r${r}`).toBeGreaterThanOrEqual(2);
@@ -127,7 +127,7 @@ describe('the fountain grammar', () => {
   });
 
   it('stands a centre figure at every nesting depth, and the water encloses it', () => {
-    // THE FIGURE IS THE INNERMOST THING, so a nesting of even depth stands it on its platform rather
+    // The figure is the innermost thing, so a nesting of even depth stands it on its platform rather
     // than coming back with nothing in the middle. What the water ledger asks of it is not that the
     // figure's own neighbours are wet but that the figure cannot reach the composition's edge without
     // crossing water: that is the hole test, and it is what makes the court read as a court.
@@ -171,7 +171,7 @@ describe('the fountain grammar', () => {
   it('keeps every band of a cross 4-CONNECTED, so a reading can see the court (I5.3)', () => {
     // `waterBodies` decomposes 4-connected, so a band that skips a rung as it turns the corner between
     // two arms shatters into four annuli, each thinner than the accent floor — which leaves three of
-    // the eighteen gate maps carrying a large court INVISIBLE to `isCourt`, to the
+    // the eighteen gate maps carrying a large court invisible to `isCourt`, to the
     // one-main-fountain rule and to the arrival reading. The flare is what governs it.
     for (let r = 5; r <= 9; r++) {
       for (const seed of SEEDS) {
@@ -179,7 +179,7 @@ describe('the fountain grammar', () => {
         const cross = { ...spec, outline: 'cross' as const };
         const { water } = fountainCells(cross, { x: 40, y: 40 });
         if (water.length === 0) continue;
-        // ONE PIECE PER WATER BAND is the claim: a court of two moats is two bodies by design, and the
+        // One piece per water band is the claim: a court of two moats is two bodies by design, and the
         // failure mode is each of them falling into the four arcs between the cross's arms.
         const own = new Set(water.map((c) => `${c.x},${c.y}`));
         const seen = new Set<string>();
@@ -272,7 +272,7 @@ describe('the courts on the ground', () => {
             && c.y >= court.rect.y && c.y < court.rect.y + court.rect.h, `${key} inside the court`).toBe(true);
           expect(t.tier[flatIndex(c.x, c.y, t.width)], `${key} tier`).toBe(court.tier);
         }
-        // A BORDER, not a scatter: the band is one piece, so paving it draws a ring rather than
+        // A border, not a scatter: the band is one piece, so paving it draws a ring rather than
         // dropping pavement at four corners of the composition.
         expect(arcCount(court.frame), `seed ${seed} ${court.regionId} frame pieces`).toBe(1);
       }
@@ -280,8 +280,8 @@ describe('the courts on the ground', () => {
   });
 
   it('offers the large court to a place where the plaza cannot stand it, and not to every planet', () => {
-    // TWO CLAIMS. With the plaza's own ground taken the court moves to a PLACE rather than the planet
-    // losing it — and a planet is OFFERED a large court only on a seeded roll, because a form met on
+    // Two claims. With the plaza's own ground taken the court moves to a place rather than the planet
+    // losing it — and a planet is offered a large court only on a seeded roll, because a form met on
     // every map reads as predefined however well it is composed. So the claim is that the offer lands
     // wherever it is made, not that it is made every time.
     let offered = 0;

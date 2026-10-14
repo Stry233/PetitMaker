@@ -1,27 +1,25 @@
 /**
- * A painted region is a boundary the agent cannot cross, on EVERY write path. `runStroke` checks
- * each command as it applies; `runStrokeBody` — the callback variant `build_road`/`scatter_objects`/
- * `rotate_object` and the four director tools use — reads the commands back off the executor once
- * its body settles and checks the same list against the same test. One rule, two entry points.
+ * A painted region is a boundary the agent cannot cross, on every write path. `runStroke` and
+ * `runStrokeBody` (the callback variant `build_road`, `scatter_objects`, `rotate_object` and the four
+ * director tools use) both read every applied command back off the stroke once its body settles and
+ * check that list against the same test. One rule, two entry points.
  *
- * The check reads commands AS APPLIED — the bridge and ramp traits snap position during
+ * The check reads commands as applied — the bridge and ramp traits snap position during
  * validation, so where a command finally lands is only knowable once it has run.
  *
  * `build_road_network` and `frame_crossing` plan from a whole-map terrain analysis, so for them the
- * region is also an INPUT: confined to it, they design inside it instead of designing island-wide
+ * region is also an input: confined to it, they design inside it instead of designing island-wide
  * and being refused. Their cases below assert the containment rather than a refusal.
  */
 import { describe, it, expect } from 'vitest';
-import { commandCells, runStroke } from '../../../agent/tools/tools-common';
-import { CommandExecutor } from '../../../core/commands/command-executor';
-import { EventBus } from '../../../core/commands/event-bus';
-import { createDefaultRegistry } from '../../../rules/index';
-import { CellZone, CommandType, ItemCategory, TerrainType } from '../../../core/model/types';
-import type { Command, EditorEvents, GridState, MacroCoord, PlacedObject } from '../../../core/model/types';
+import { runStroke } from '../../../agent/tools/stroke';
+import { CommandType, TerrainType } from '../../../core/model/types';
+import { CellZone } from '../../../core/game/zones';
+import type { Command, GridState, MacroCoord, PlacedObject } from '../../../core/model/types';
 import { executeToolCall, type AgentToolDeps } from '../../../agent/tools';
 import { getCatalogByCategory } from '../../../state/catalog';
-import { makeState, setTerrain, setZone } from '../../rules/_helpers';
-import { roadLookup } from '../../../state/object-index';
+import { makeState, setTerrain, setZone, makeExecutor } from '../../_support/map-state';
+import { ItemCategory } from '../../../config/catalog/categories';
 
 /** A 4x4 region in the top-left of a 12x12 map. */
 const REGION: MacroCoord[] = [];
@@ -29,7 +27,7 @@ for (let y = 1; y <= 4; y++) for (let x = 1; x <= 4; x++) REGION.push({ x, y });
 
 function world(region: MacroCoord[], w = 12, h = 12) {
   const state = makeState(w, h);
-  const executor = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
+  const executor = makeExecutor(state);
   const deps = {
     getState: () => state, getExecutor: () => executor, getRegion: () => region,
   } as unknown as AgentToolDeps;
@@ -37,7 +35,7 @@ function world(region: MacroCoord[], w = 12, h = 12) {
 }
 
 const paint = (...cells: MacroCoord[]): Command => ({
-  type: CommandType.PaintTerrain, timestamp: 0, cells, terrainType: TerrainType.Mountain, elevation: 1,
+  type: CommandType.PaintTerrain, cells, terrainType: TerrainType.Mountain, elevation: 1,
 });
 
 describe('with no region painted', () => {
@@ -60,12 +58,12 @@ describe('with a region painted', () => {
   it('refuses an edit that reaches outside, and applies NOTHING', () => {
     // All-or-nothing on purpose: a half-applied edit makes undo restore a state the user never saw.
     const { state, executor, deps } = world(REGION);
-    const before = executor.getUndoStackSize();
+    const before = executor.historyDepth();
     const r = runStroke(deps, [paint({ x: 2, y: 2 }, { x: 9, y: 9 })], (n) => `ok ${n}`);
     expect(r.isError).toBe(true);
     expect(state.cells[2]![2]!.terrain).toBeNull();
     expect(state.cells[9]![9]!.terrain).toBeNull();
-    expect(executor.getUndoStackSize()).toBe(before);
+    expect(executor.historyDepth()).toBe(before);
   });
 
   it('rolls back EARLIER commands in the same call when a later one strays', () => {
@@ -73,6 +71,19 @@ describe('with a region painted', () => {
     const r = runStroke(deps, [paint({ x: 2, y: 2 }), paint({ x: 8, y: 2 })], (n) => `ok ${n}`);
     expect(r.isError).toBe(true);
     expect(state.cells[2]![2]!.terrain).toBeNull();
+  });
+
+  it('checks the commands afterApply adds, and rolls the whole call back when one strays', () => {
+    const { state, executor, deps } = world(REGION);
+    const before = executor.historyDepth();
+    const r = runStroke(deps, [paint({ x: 2, y: 2 })], (n) => `ok ${n}`, { afterApply: (exec) => {
+      exec.execute(paint({ x: 8, y: 8 }));
+    } });
+    expect(r.detail?.regionBlocked).toBe(true);
+    expect(r.content).toContain('(8,8)');
+    expect(state.cells[2]![2]!.terrain).toBeNull();
+    expect(state.cells[8]![8]!.terrain).toBeNull();
+    expect(executor.historyDepth()).toBe(before);
   });
 
   it('tells the model where it strayed and what the bounds are, so it can re-plan', () => {
@@ -84,53 +95,47 @@ describe('with a region painted', () => {
   });
 });
 
-describe('commandCells', () => {
-  const obj = (x: number, y: number): PlacedObject => ({
+describe('objects are measured by their footprint', () => {
+  const cabin = (x: number, y: number): PlacedObject => ({
     id: 'o1', catalogId: 'building-bamboo-cabin', position: { x, y }, rotation: 0, elevation: 0,
   });
+  /** A grass map, so a cabin stands wherever the region lets it. */
+  function grassWorld(region: MacroCoord[]) {
+    const made = world(region);
+    for (let y = 0; y < 12; y++) for (let x = 0; x < 12; x++) setZone(made.state, x, y, CellZone.Grass);
+    return made;
+  }
+  const strays = (content: string) => [...content.matchAll(/\((\d+),(\d+)\)/g)].map((m) => ({ x: Number(m[1]), y: Number(m[2]) }));
 
-  it('counts an object by its whole FOOTPRINT, not its anchor', () => {
+  it('refuses an object whose anchor is inside but whose body is outside', () => {
     // A building whose corner is inside and whose body is outside is outside.
-    const cells = commandCells({
-      type: CommandType.PlaceObject, timestamp: 0, object: obj(4, 4),
-    } as Command);
-    expect(cells.length).toBeGreaterThan(1);
-    expect(cells).toContainEqual({ x: 4, y: 4 });
-    expect(cells.some((c) => c.x > 4 || c.y > 4)).toBe(true);
+    const free = grassWorld([]);
+    expect(runStroke(free.deps, [{ type: CommandType.PlaceObject, object: cabin(4, 4) }], (n) => `ok ${n}`).isError, 'the cabin stands there unconfined').toBe(false);
+
+    const { state, deps } = grassWorld(REGION);
+    const r = runStroke(deps, [{ type: CommandType.PlaceObject, object: cabin(4, 4) }], (n) => `ok ${n}`);
+    expect(r.isError).toBe(true);
+    expect(r.content).toContain('OUT OF REGION');
+    expect(strays(r.content).some((c) => c.x > 4 || c.y > 4)).toBe(true);
+    expect(state.objects.size).toBe(0);
   });
 
-  it('counts a removal by footprint too, so the agent cannot reach out and delete', () => {
-    const cells = commandCells({
-      type: CommandType.RemoveObject, timestamp: 0, objectId: 'o1', removedObject: obj(6, 6),
-    } as Command);
-    expect(cells).toContainEqual({ x: 6, y: 6 });
-  });
+  it('refuses a removal outside it by footprint too, so the agent cannot reach out and delete', () => {
+    const { state, deps } = grassWorld([]);
+    expect(runStroke(deps, [{ type: CommandType.PlaceObject, object: cabin(6, 6) }], (n) => `ok ${n}`).isError).toBe(false);
 
-  it('reads terrain commands as their own cell list', () => {
-    expect(commandCells(paint({ x: 1, y: 2 }, { x: 3, y: 4 })))
-      .toEqual([{ x: 1, y: 2 }, { x: 3, y: 4 }]);
-  });
-
-  it('covers a half-anchored (halfStep) footprint by its actual integer cells, not position + offset', () => {
-    // ramp-teak-stair is 2 wide x 2 tall; a half x-anchor covers 3 columns (floor/ceil expansion),
-    // never a fractional key like "7.5,5" — `position.x + dx` would produce exactly that, and no
-    // integer-keyed region-membership set would ever match it.
-    const halfObj: PlacedObject = {
-      id: 'r1', catalogId: 'ramp-teak-stair', position: { x: 7.5, y: 5 }, rotation: 0, elevation: 1,
-    };
-    const cells = commandCells({
-      type: CommandType.PlaceObject, timestamp: 0, object: halfObj,
-    } as Command);
-    expect(cells).toHaveLength(3 * 2);
-    expect(cells.every((c) => Number.isInteger(c.x) && Number.isInteger(c.y))).toBe(true);
-    expect(cells).toContainEqual({ x: 7, y: 5 });
-    expect(cells).toContainEqual({ x: 9, y: 6 });
+    const confined = { ...deps, getRegion: () => REGION } as AgentToolDeps;
+    const r = runStroke(confined, [{ type: CommandType.RemoveObject, objectId: 'o1' }], (n) => `ok ${n}`);
+    expect(r.isError).toBe(true);
+    expect(r.content).toContain('OUT OF REGION');
+    expect(r.content).toContain('(6,6)');
+    expect(state.objects.has('o1')).toBe(true);
   });
 });
 
 describe('a half-anchored ramp partially over the region boundary', () => {
   // The plateau/shoulder/water lane from half-step-detection.test.ts's case (a): a ramp anchored
-  // at (4.5, 10) can ONLY snap at the half x-anchor, landing at { x: 4.5, y: 9 } — width 2 (covers
+  // at (4.5, 10) can only snap at the half x-anchor, landing at { x: 4.5, y: 9 } — width 2 (covers
   // x = 4, 5, 6), height 2 (covers y = 9..10).
   function rampMap(size = 20): GridState {
     const state = makeState(size, size);
@@ -143,12 +148,11 @@ describe('a half-anchored ramp partially over the region boundary', () => {
     return state;
   }
   const rampCmd = (): Command => ({
-    type: CommandType.PlaceObject, timestamp: 0,
-    object: { id: 'r1', catalogId: 'ramp-teak-stair', position: { x: 4.5, y: 10 }, rotation: 0, elevation: 0 },
+    type: CommandType.PlaceObject,     object: { id: 'r1', catalogId: 'ramp-teak-stair', position: { x: 4.5, y: 10 }, rotation: 0, elevation: 0 },
   });
   function place(region: MacroCoord[]) {
     const state = rampMap();
-    const executor = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
+    const executor = makeExecutor(state);
     const deps = { getState: () => state, getExecutor: () => executor, getRegion: () => region } as unknown as AgentToolDeps;
     return { state, executor, deps };
   }
@@ -159,12 +163,12 @@ describe('a half-anchored ramp partially over the region boundary', () => {
     const region: MacroCoord[] = [];
     for (let y = 1; y <= 12; y++) for (let x = 1; x <= 5; x++) region.push({ x, y });
     const { state, executor, deps } = place(region);
-    const before = executor.getUndoStackSize();
+    const before = executor.historyDepth();
     const r = runStroke(deps, [rampCmd()], (n) => `ok ${n}`);
     expect(r.isError).toBe(true);
     expect(r.content).toContain('OUT OF REGION');
     expect(state.objects.size).toBe(0);
-    expect(executor.getUndoStackSize()).toBe(before);
+    expect(executor.historyDepth()).toBe(before);
   });
 
   it('applies once the region covers the whole half-anchored footprint', () => {
@@ -197,13 +201,13 @@ const rotatableBuilding = () => getCatalogByCategory(ItemCategory.Building)
 describe('build_road', () => {
   it('refuses a path that leaves the region, and lays nothing', async () => {
     const { state, executor, deps } = world(REGION);
-    const before = executor.getUndoStackSize();
+    const before = executor.historyDepth();
     const r = await executeToolCall(call('build_road', { line: { x1: 2, y1: 2, x2: 9, y2: 2 } }), deps);
     expect(r.isError).toBe(true);
     expect(r.content).toContain('OUT OF REGION');
     expect(r.content).toContain('(1,1)-(4,4)');
     expect(state.objects.size).toBe(0);
-    expect(executor.getUndoStackSize()).toBe(before);
+    expect(executor.historyDepth()).toBe(before);
   });
 
   it('lays the same kind of path when it stays inside', async () => {
@@ -227,12 +231,12 @@ describe('scatter_objects', () => {
 
   it('refuses the same rect once the user has painted elsewhere', async () => {
     const { state, executor, deps } = world(REGION);
-    const before = executor.getUndoStackSize();
+    const before = executor.historyDepth();
     const r = await executeToolCall(call('scatter_objects', { ...scatter, catalogIds: [floraId()] }), deps);
     expect(r.isError).toBe(true);
     expect(r.content).toContain('OUT OF REGION');
     expect(state.objects.size).toBe(0);
-    expect(executor.getUndoStackSize()).toBe(before);
+    expect(executor.historyDepth()).toBe(before);
   });
 });
 
@@ -242,12 +246,12 @@ describe('rotate_object', () => {
     state.objects.set('o1', {
       id: 'o1', catalogId: rotatableBuilding().id, position: { x: 8, y: 8 }, rotation: 0, elevation: 0,
     });
-    const before = executor.getUndoStackSize();
+    const before = executor.historyDepth();
     const r = await executeToolCall(call('rotate_object', { objectId: 'o1', rotation: 90 }), deps);
     expect(r.isError).toBe(true);
     expect(r.content).toContain('OUT OF REGION');
     expect(state.objects.get('o1')?.rotation).toBe(0);
-    expect(executor.getUndoStackSize()).toBe(before);
+    expect(executor.historyDepth()).toBe(before);
   });
 
   it('turns one standing inside it', async () => {
@@ -274,13 +278,13 @@ describe('decorate_zone', () => {
   it('refuses the same rect once the user has painted elsewhere', async () => {
     const region = rect(1, 1, 6, 6);
     const { state, executor, deps } = world(region, 32, 32);
-    const before = executor.getUndoStackSize();
+    const before = executor.historyDepth();
     const r = await executeToolCall(call('decorate_zone', far), deps);
     expect(r.isError).toBe(true);
     expect(r.content).toContain('OUT OF REGION');
     expect(r.content).toContain('(1,1)-(6,6)');
     expect(state.objects.size).toBe(0);
-    expect(executor.getUndoStackSize()).toBe(before);
+    expect(executor.historyDepth()).toBe(before);
   });
 });
 
@@ -297,13 +301,13 @@ describe('plant_forest', () => {
   it('refuses the same rect once the user has painted elsewhere', async () => {
     const region = rect(25, 25, 30, 30);
     const { state, executor, deps } = world(region, 32, 32);
-    const before = executor.getUndoStackSize();
+    const before = executor.historyDepth();
     const r = await executeToolCall(call('plant_forest', far), deps);
     expect(r.isError).toBe(true);
     expect(r.content).toContain('OUT OF REGION');
     expect(r.content).toContain('(25,25)-(30,30)');
     expect(state.objects.size).toBe(0);
-    expect(executor.getUndoStackSize()).toBe(before);
+    expect(executor.historyDepth()).toBe(before);
   });
 });
 

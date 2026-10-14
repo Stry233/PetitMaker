@@ -1,13 +1,16 @@
 import { helpAttributes, type HelpTarget } from '../../primitives/help-target';
-import { useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import { ActionButton } from '../../primitives/ActionButton';
+import { MapCaption } from './MapCaption';
+import { CAPTION_TOP } from './ToolPill';
+import { useRef, useState, type ReactNode } from 'react';
 import { motion, useIsPresent } from 'framer-motion';
-import { btnReset, buttonMotion, cursors, UNAVAILABLE, radii } from '../../design/styles';
+import { btnReset, cursors, UNAVAILABLE, radii } from '../../design/styles';
 import { INK, INSET, PLATE } from '../../design/tokens';
-import { useMotion } from '../motion/use-motion';
+import { useTransition } from '../../design/motion/use-motion';
 import { SCALE, TEXT } from '../units';
 import { BarText, ShortcutBadge } from './bar-atoms';
-import { CELL_BOX } from './ToolCell';
-import { PILL_H, PLATE_PAD } from './terrain-cells';
+import { PILL_H, CELL_BOX } from './terrain-cells';
+import { useObservedSize } from '../../primitives/use-observed-size';
 
 type Option<T> = { value: T; label: string; glyph: ReactNode; title?: string };
 const ICON_WIDTH = 108 * SCALE;
@@ -23,21 +26,14 @@ export function OptionPill<T extends string>({ value, options, label, commandId,
   const present = useIsPresent();
   const inactive = disabled || !present;
   // The registry follows preference changes; Framer's positional gate is fixed at mount.
-  const transition = { ...useMotion('tool.option.select'), reduceMotion: false };
+  const transition = { ...useTransition('tool.option.select'), reduceMotion: false };
   const words = useRef<(HTMLSpanElement | null)[]>([]);
   const [widths, setWidths] = useState<number[]>([]);
   const measured = widths.length === options.length;
   const labels = options.map(option => option.label).join('\0');
-  useLayoutEffect(() => {
-    const measure = () => {
-      const next = words.current.map(word => word?.offsetWidth ?? 0);
-      setWidths(current => current.length === next.length && current.every((width, i) => width === next[i]) ? current : next);
-    };
-    measure();
-    if (typeof ResizeObserver === 'undefined') return;
-    const observer = new ResizeObserver(measure);
-    words.current.forEach(word => { if (word) observer.observe(word); });
-    return () => observer.disconnect();
+  useObservedSize(() => words.current, () => {
+    const next = words.current.map(word => word?.offsetWidth ?? 0);
+    setWidths(current => current.length === next.length && current.every((width, i) => width === next[i]) ? current : next);
   }, [labels, measured]);
   const selected = options.findIndex(option => option.value === value);
 
@@ -49,7 +45,7 @@ export function OptionPill<T extends string>({ value, options, label, commandId,
         style={{ position: 'absolute', left: PAD, top: PAD, bottom: PAD, borderRadius: radii.pill, background: INSET, pointerEvents: 'none' }}/>}
       {options.map((option, index) => {
         const active = value === option.value;
-        return <motion.button key={option.value} type="button" {...(inactive ? {} : buttonMotion)} disabled={inactive}
+        return <ActionButton key={option.value} interaction="action" dim="caller" disabled={inactive}
           aria-label={option.label} aria-pressed={active} title={option.title ?? option.label} onClick={() => { if (!inactive) onChange(option.value); }}
           style={{ ...btnReset, position: 'relative', display: 'flex', alignItems: 'center', height: PILL_H - 2 * PAD,
             borderRadius: radii.pill, color: INK, pointerEvents: 'auto', cursor: inactive ? cursors.blocked : cursors.clickable }}>
@@ -61,13 +57,12 @@ export function OptionPill<T extends string>({ value, options, label, commandId,
             <BarText size={TEXT.label} style={{ flex: 'none' }}><span ref={element => { words.current[index] = element; }}
               style={{ display: 'block', whiteSpace: 'nowrap' }}>{option.label}</span></BarText>
           </motion.span>
-        </motion.button>;
+        </ActionButton>;
       })}
     </div>
     {commandId && <ShortcutBadge commandId={commandId} grown/>}
-    <span data-option-caption style={{ position: 'absolute', top: CELL_BOX.h + PLATE_PAD.y + 5,
-      left: '50%', transform: 'translateX(-50%)', whiteSpace: 'nowrap', pointerEvents: 'none' }}>
+    <MapCaption data-option-caption top={CAPTION_TOP}>
       <BarText onMap size={TEXT.label}>{label}</BarText>
-    </span>
+    </MapCaption>
   </div>;
 }

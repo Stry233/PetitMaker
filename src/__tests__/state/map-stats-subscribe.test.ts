@@ -5,9 +5,12 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { bumpCellsVersion, getCell } from '../../core/model/grid-model';
 import { EventBus } from '../../core/commands/event-bus';
-import { TerrainType, type EditorEvents, type GridState } from '../../core/model/types';
+import { TerrainType, type GridState } from '../../core/model/types';
+import { type EditorEvents } from '../../state/editing/events';
 import { getMapStats, subscribeMapStats } from '../../state/map-stats';
-import { makeState } from '../rules/_helpers';
+import { makeState } from '../_support/map-state';
+import { cellSet } from '../../core/grid/grids';
+import { TERRAIN_GRID } from '../../core/game/profile';
 
 function raise(state: GridState, x: number, y: number, elevation: number): void {
   const cell = getCell(state.cells, x, y)!;
@@ -47,9 +50,9 @@ describe('subscribeMapStats', () => {
     const unsub = subscribeMapStats(bus, () => state, (stats) => received.push(stats.cellsByLayer[1] ?? 0));
 
     raise(state, 1, 1, 1);
-    bus.emit('cells-changed', { cells: [{ x: 1, y: 1 }] });
+    bus.emit('cells-changed', { cells: [cellSet(TERRAIN_GRID, [{ x: 1, y: 1 }])] });
     raise(state, 2, 2, 1);
-    bus.emit('cells-changed', { cells: [{ x: 2, y: 2 }] });
+    bus.emit('cells-changed', { cells: [cellSet(TERRAIN_GRID, [{ x: 2, y: 2 }])] });
     raise(state, 3, 3, 1);
     bus.emit('objects-changed', {});
 
@@ -85,7 +88,7 @@ describe('subscribeMapStats', () => {
     const replacement = makeState();
     raise(replacement, 5, 5, 2);
     state = replacement; // simulates initMap/loadMap installing a new grid mid-subscription
-    bus.emit('cells-changed', { cells: [{ x: 5, y: 5 }] });
+    bus.emit('cells-changed', { cells: [cellSet(TERRAIN_GRID, [{ x: 5, y: 5 }])] });
     flush();
 
     expect(seen).toEqual([1]); // reflects the replacement grid's raised cell, not the original (empty) one
@@ -112,10 +115,10 @@ describe('subscribeMapStats', () => {
     const unsubB = subscribeMapStats(bus, () => state, () => {});
 
     raise(state, 4, 4, 2);
-    bus.emit('cells-changed', { cells: [{ x: 4, y: 4 }] });
+    bus.emit('cells-changed', { cells: [cellSet(TERRAIN_GRID, [{ x: 4, y: 4 }])] });
     expect(queue.size).toBe(2); // each subscription runs its own independent rAF
 
-    // Count derivation WORK directly: walkTerrain reads one row per map height. A Proxy over
+    // Count derivation work directly: walkTerrain reads one row per map height. A Proxy over
     // `cells` counts those reads, so a second walk inside the same frame would double the tally
     // no matter which subscriber's rAF callback runs first.
     let rowReads = 0;

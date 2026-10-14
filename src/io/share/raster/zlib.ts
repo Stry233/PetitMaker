@@ -1,22 +1,20 @@
 // Zlib/DEFLATE compression and decompression via the browser's Compression Streams API.
-import { ShareError } from '../errors';
+import { ImportError } from '../../save/import-error';
+import { concatBytes } from '../../../core/base/bytes';
 
 /** Append-only. The manifest records the exact method so the algorithm is swappable. */
 export enum CompressionMethod { Store = 0, DeflateRaw = 1, Deflate = 2, Gzip = 3 }
 
-function streamFormat(m: CompressionMethod): 'deflate' | 'deflate-raw' | 'gzip' {
+/** The Compression Streams format name of a compressed method. */
+export type StreamFormat = 'deflate' | 'deflate-raw' | 'gzip';
+
+function streamFormat(m: CompressionMethod): StreamFormat {
   switch (m) {
     case CompressionMethod.Deflate: return 'deflate';
     case CompressionMethod.DeflateRaw: return 'deflate-raw';
     case CompressionMethod.Gzip: return 'gzip';
-    default: throw new ShareError('decode-failed', `Unknown compression method ${m}.`);
+    default: throw new ImportError('decode-failed', `Unknown compression method ${m}.`);
   }
-}
-
-function concat(chunks: Uint8Array[], total: number): Uint8Array {
-  const out = new Uint8Array(total); let o = 0;
-  for (const c of chunks) { out.set(c, o); o += c.length; }
-  return out;
 }
 
 export async function deflate(bytes: Uint8Array, method: CompressionMethod): Promise<Uint8Array> {
@@ -24,7 +22,7 @@ export async function deflate(bytes: Uint8Array, method: CompressionMethod): Pro
   const format = streamFormat(method);
   let cs: CompressionStream;
   try { cs = new CompressionStream(format); }
-  catch { return (await import('./compression-fallback')).compress(bytes, method); }
+  catch { return (await import('./compression-fallback')).compress(bytes, format); }
   const w = cs.writable.getWriter();
   // Capture the write+close chain so a later cancel can't surface as an unhandled rejection.
   const pump = w.write(bytes as Uint8Array<ArrayBuffer>).then(() => w.close()).catch(() => {});
@@ -32,16 +30,30 @@ export async function deflate(bytes: Uint8Array, method: CompressionMethod): Pro
   const chunks: Uint8Array[] = []; let total = 0;
   for (;;) { const { done, value } = await reader.read(); if (done) break; if (value) { chunks.push(value); total += value.length; } }
   await pump;
-  return concat(chunks, total);
+  return concatBytes(chunks, total);
 }
 
+/** Decompresses untrusted bytes; a stream the decompressor rejects is `ImportError('corrupt')`. */
 export async function inflate(
   bytes: Uint8Array,
   method: CompressionMethod,
   opts: { maxBytes: number; maxRatio: number },
 ): Promise<Uint8Array> {
+  try {
+    return await inflateBounded(bytes, method, opts);
+  } catch (e) {
+    if (e instanceof ImportError) throw e;
+    throw new ImportError('corrupt', 'Malformed compressed data.');
+  }
+}
+
+async function inflateBounded(
+  bytes: Uint8Array,
+  method: CompressionMethod,
+  opts: { maxBytes: number; maxRatio: number },
+): Promise<Uint8Array> {
   if (method === CompressionMethod.Store) {
-    if (bytes.length > opts.maxBytes) throw new ShareError('corrupt', 'Payload exceeds size limit.');
+    if (bytes.length > opts.maxBytes) throw new ImportError('corrupt', 'Payload exceeds size limit.');
     return bytes.slice();
   }
   // Abort once output would exceed the smaller of the absolute cap and the ratio guard.
@@ -50,7 +62,7 @@ export async function inflate(
   const format = streamFormat(method);
   let ds: DecompressionStream;
   try { ds = new DecompressionStream(format); }
-  catch { return (await import('./compression-fallback')).decompress(bytes, method, cap); }
+  catch { return (await import('./compression-fallback')).decompress(bytes, format, cap); }
   const w = ds.writable.getWriter();
   const pump = w.write(bytes as Uint8Array<ArrayBuffer>).then(() => w.close()).catch(() => {});
   const reader = ds.readable.getReader();
@@ -63,11 +75,11 @@ export async function inflate(
       if (total > cap) {
         await reader.cancel().catch(() => {});
         await pump;
-        throw new ShareError('corrupt', 'Decompressed data exceeds safety limit.');
+        throw new ImportError('corrupt', 'Decompressed data exceeds safety limit.');
       }
       chunks.push(value);
     }
   }
   await pump;
-  return concat(chunks, total);
+  return concatBytes(chunks, total);
 }

@@ -1,19 +1,10 @@
 import type { ChildOpStatus, ErrorClass, GateAnswer, JobOutcome, SessionEvent, SkillKind, StopReason, ToolResultDetail, TurnQuirk } from '../core/types';
+import {
+  type Check, isBoolean as boolean, isFiniteNumber as number, isRecord as record, isSafeIndex as index, isString as string,
+  listOf as list, member, optional, shapeOf as shape, valuesOf as values,
+} from '../../core/base/guards';
 
-type Check = (value: unknown) => boolean;
 type Fields = Record<string, Check>;
-const record = (v: unknown): v is Record<string, unknown> => v !== null && typeof v === 'object' && !Array.isArray(v);
-const string: Check = (v) => typeof v === 'string';
-const boolean: Check = (v) => typeof v === 'boolean';
-const number: Check = (v) => typeof v === 'number' && Number.isFinite(v);
-const index: Check = (v) => typeof v === 'number' && Number.isSafeInteger(v) && v >= 0;
-const optional = (check: Check): Check => (v) => v === undefined || check(v);
-const list = (check: Check): Check => (v) => Array.isArray(v) && v.every(check);
-const oneOf = (...values: readonly string[]): Check => (v) => typeof v === 'string' && values.includes(v);
-const shape = (fields: Fields): Check => (v) => record(v) && Object.entries(fields).every(([key, check]) => check(v[key]));
-const values = (check: Check): Check => (v) => record(v) && Object.values(v).every(check);
-/** A check for a string union, from a table keyed by every member so the type keeps it complete. */
-const member = <T extends string>(table: Record<T, true>): Check => oneOf(...Object.keys(table));
 type EventField<K extends SessionEvent['kind'], F extends string> = Extract<SessionEvent, { kind: K }>[F & keyof Extract<SessionEvent, { kind: K }>] & string;
 
 const ERROR_CLASSES: Record<ErrorClass, true> = {
@@ -36,7 +27,7 @@ const skill = shape({ name: string, kind: skillKind, title: string });
 const stage = shape({ label: string, checkpoint: optional(boolean) });
 const detailFields: { [K in keyof ToolResultDetail]-?: Check } = {
   cells: optional(index), objects: optional(index), reverted: optional(boolean), regionBlocked: optional(boolean),
-  partialRevert: optional((v) => v === true), skill: optional(skill),
+  partialRevert: optional((v) => v === true), banner: optional((v) => v === true), skill: optional(skill),
   damper: optional((v) => v === true), repeatRefused: optional((v) => v === true),
   childOps: optional(list(shape({ name: string, status: childStatus, skill: optional(skill) }))),
   childError: optional(errorClass),
@@ -77,6 +68,7 @@ const EVENT_FIELDS: Record<SessionEvent['kind'], Fields> = {
     quickAnswers: optional(list(string)), options: optional(list(shape({ cap: string, rect: optional(rect) }))),
   },
   gateAnswered: { gateId: string, answer: gateAnswer, words: optional(string) },
+  noteRefused: { steerSeq: optional(index), gateId: optional(string), reply: string },
   plan: { stages: list(stage), revision: index },
   stage: { index },
   checkpoint: { undoIndex: index, label: checkpointLabel, stageIndex: optional(index) },
@@ -87,7 +79,10 @@ const EVENT_FIELDS: Record<SessionEvent['kind'], Fields> = {
   retry: { attempt: index, cls: errorClass, delayMs: number },
   compaction: { summary: string, retainedFromSeq: index },
   incident: { error: turnError },
-  replySuggested: { orderSeq: index, reply: string, usage: optional(shape({ input: number, output: number, cacheRead: optional(number), cacheWrite: optional(number) })) },
+  replySuggested: {
+    orderSeq: index, reply: string,
+    usage: optional(shape({ input: number, output: number, cacheRead: optional(number), cacheWrite: optional(number) })),
+  },
   jobEnd: { outcome: jobOutcome, summary: optional(string), question: optional(boolean), undoIndex: optional(index) },
 };
 

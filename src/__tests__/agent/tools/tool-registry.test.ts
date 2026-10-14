@@ -1,46 +1,42 @@
 import { describe, it, expect } from 'vitest';
-import { TOOL_SCHEMAS, TOOL_HANDLERS, WRITE_TOOLS, SUBAGENT_TOOL_SCHEMAS, PARENT_ONLY_TOOLS } from '../../../agent/tools';
+import { PROTOCOL } from '../../../agent/core/protocol';
+import { writesMap } from '../../../agent/core/tool-facts';
+import { executeToolCall, TOOLS, TOOL_FACTS, TOOL_NAMES, wireSchemas, type AgentToolDeps } from '../../../agent/tools';
 
-// Drift guard for the agent tool surface. The schema (what the model sees) and
-// the dispatch registry (what runs) must describe exactly the same set of tools,
-// and write-ness must be declared in the registry — otherwise a tool can be
-// advertised with no handler, dispatched with no schema, or (the safety bug) a
-// mutating tool can slip past the approval gate by being absent from WRITE_TOOLS.
+/** The spec a name declares, read off the registry's own table. */
+const toolSpec = (name: string) => (TOOLS as Partial<Record<string, { run?: unknown; access?: unknown; parentOnly?: boolean }>>)[name];
+const parentOnly = (name: string): boolean => toolSpec(name)?.parentOnly === true;
+
+// Drift guard for the agent tool surface. Every derived view reads the one spec per tool, so these
+// pin what the specs must agree on: a tool either runs here or is a protocol tool, and write-ness is
+// declared on the spec, so a mutating tool cannot slip past the approval gate.
 describe('agent tool surface parity', () => {
-  const schemaNames = TOOL_SCHEMAS.map((s) => s.name).sort();
-  const handlerNames = Object.keys(TOOL_HANDLERS).sort();
+  const schemaNames = wireSchemas().map((s) => s.name).sort();
 
-  /** The advertised tools with no handler here are answered rather than unimplemented. The loop
-   *  intercepts `update_plan` and appends the `plan` event itself, because the plan is a fact of the
-   *  LOG and the call is gated at plan scope (`core/loop.ts:handleUpdatePlan`), and it acknowledges
-   *  `suggest_reply` in place. `exec/executor.ts` answers `delegate_task` with the job's adapter.
-   *  Named here so the exceptions cannot grow silently. */
-  const LOOP_ANSWERED = ['update_plan', 'suggest_reply'];
-  const EXECUTOR_ANSWERED = ['delegate_task'];
+  /** The advertised tools with no `run` are the protocol tools the loop or the executor answers. */
+  const EXECUTOR_ANSWERED = [PROTOCOL.delegate];
 
-  it('every TOOL_SCHEMAS entry has a dispatch handler, bar the ones the loop or executor answers', () => {
-    expect(handlerNames).toEqual(schemaNames.filter((n) => !LOOP_ANSWERED.includes(n) && !EXECUTOR_ANSWERED.includes(n)));
+  it('names every spec once, in wire order', () => {
+    expect(Object.keys(TOOLS)).toEqual([...TOOL_NAMES]);
+    expect(wireSchemas().map((s) => s.name)).toEqual([...TOOL_NAMES]);
   });
 
-  it('every dispatch handler has a schema: nothing runs that the model was never offered', () => {
-    for (const name of handlerNames) expect(schemaNames).toContain(name);
+  it('every spec runs here unless it is a protocol tool, which never runs here', () => {
+    const protocol: ReadonlySet<string> = new Set(Object.values(PROTOCOL));
+    for (const name of TOOL_NAMES) expect(Boolean(toolSpec(name)!.run), name).toBe(!protocol.has(name));
+    for (const name of protocol) expect(TOOL_NAMES as readonly string[], name).toContain(name);
   });
 
-  it('WRITE_TOOLS is exactly the registry entries flagged write, plus delegation', () => {
-    const declaredWrite = Object.entries(TOOL_HANDLERS)
-      .filter(([, def]) => def.write)
-      .map(([name]) => name);
-    expect([...WRITE_TOOLS].sort()).toEqual([...declaredWrite, ...EXECUTOR_ANSWERED].sort());
-  });
-
-  it('every write tool has a schema (gated tools are real tools)', () => {
-    for (const name of WRITE_TOOLS) expect(schemaNames).toContain(name);
+  it('the tool facts read each spec\'s declared access, so wide tools and delegation write', () => {
+    for (const name of TOOL_NAMES) expect(TOOL_FACTS.access(name), name).toBe(toolSpec(name)!.access);
+    for (const name of EXECUTOR_ANSWERED) expect(writesMap(TOOL_FACTS, name), name).toBe(true);
+    expect(TOOL_FACTS.access('no_such_tool')).toBeUndefined();
   });
 
   /**
-   * THE ONE BUDGET A MODEL IS GIVEN, AND THE UI THAT HAS TO HOLD IT.
+   * The one budget a model is given, and the UI that has to hold it.
    *
-   * `suggest_reply`'s answer is the only model-authored string in the panel with a HARD clip: it
+   * `suggest_reply`'s answer is the only model-authored string in the panel with a hard clip: it
    * stands inside the composer's field under `nowrap` + ellipsis, so characters past the field's
    * width are lost — where the says line expands on a tap and a stage label wraps. The field holds
    * about 30 characters in a Latin script and about 15 in CJK, on the same line that also asks for
@@ -48,27 +44,40 @@ describe('agent tool surface parity', () => {
    * anywhere in the licence, and the licence must name both scripts.
    */
   it('licenses suggest_reply the room the field actually has, in both scripts', () => {
-    const schema = TOOL_SCHEMAS.find((s) => s.name === 'suggest_reply')!;
-    const said = `${schema.description} ${JSON.stringify(schema.inputSchema)}`;
+    const schema = wireSchemas().find((s) => s.name === 'suggest_reply')!;
+    const said = `${schema.description} ${JSON.stringify(schema.parameters)}`;
     expect(said).not.toMatch(/\b60\b/);
     expect(said).toMatch(/\b30\b/);
     expect(said).toMatch(/\b15\b/);
-    // And it says WHY the number matters, rather than only stating one: a clip is not a wrap.
+    // And it says why the number matters, rather than only stating one: a clip is not a wrap.
     expect(schema.description).toMatch(/cuts off/i);
   });
 
   it('offers a subagent every tool but the parent-only ones, and no way to delegate again', () => {
-    const subNames = SUBAGENT_TOOL_SCHEMAS.map((s) => s.name);
-    for (const name of PARENT_ONLY_TOOLS) expect(schemaNames, name).toContain(name);
-    for (const name of schemaNames) expect(subNames.includes(name), name).toBe(!PARENT_ONLY_TOOLS.has(name));
+    const subNames = wireSchemas({ subagent: true }).map((s) => s.name);
+    for (const name of schemaNames) expect(subNames.includes(name), name).toBe(!parentOnly(name));
     expect(subNames).not.toContain('delegate_task');
   });
 
-  it('keeps every loop- and executor-answered tool, and the user-facing export, parent-only', () => {
-    for (const name of [...LOOP_ANSWERED, ...EXECUTOR_ANSWERED]) expect(PARENT_ONLY_TOOLS.has(name), name).toBe(true);
+  it('keeps every protocol tool, and the user-facing export, parent-only', () => {
+    for (const name of Object.values(PROTOCOL)) expect(parentOnly(name), name).toBe(true);
     // export_map opens a dialog for the user to confirm, which a subagent never speaks to.
-    const exportMap = TOOL_SCHEMAS.find((s) => s.name === 'export_map')!;
+    const exportMap = wireSchemas().find((s) => s.name === 'export_map')!;
     expect(exportMap.description).toMatch(/for the user/i);
-    expect(PARENT_ONLY_TOOLS.has(exportMap.name)).toBe(true);
+    expect(parentOnly(exportMap.name)).toBe(true);
+  });
+});
+
+describe('a tool that throws', () => {
+  it('answers with the redacted crash message the loop also uses', async () => {
+    const deps = {
+      getState: () => { throw new Error('read failed with sk-abcdefghijklmnopqrstuvwx'); },
+      getExecutor: () => { throw new Error('unused'); },
+      getRegion: () => [],
+    } as unknown as AgentToolDeps;
+    const r = await executeToolCall({ id: 'c1', name: 'inspect_region', input: { x1: 0, y1: 0, x2: 2, y2: 2 } }, deps);
+    expect(r.isError).toBe(true);
+    expect(r.content).toMatch(/^\(system\) The tool crashed: /);
+    expect(r.content).not.toContain('sk-abcdefghijklmnopqrstuvwx');
   });
 });

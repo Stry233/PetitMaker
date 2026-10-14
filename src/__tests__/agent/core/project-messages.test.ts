@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { quotePromptData } from '../../../core/runtime/prompt-data';
+import { quotePromptData } from '../../../platform/remote/prompt-data';
 import { append, createLog } from '../../../agent/core/log';
 import { deriveMessages, rawIsAllFrom, type ProviderMessage } from '../../../agent/core/project-messages';
 import { languageCue } from '../../../agent/core/language-cue';
@@ -229,7 +229,7 @@ describe('deriveMessages', () => {
     const log = createLog(() => 0);
     append(log, { kind: 'order', text: 'first', mapContext: '' }); // seq 1, must not appear
     append(log, { kind: 'compaction', summary: 'stale summary', retainedFromSeq: 3 }); // seq 2, superseded
-    append(log, { kind: 'order', text: 'second', mapContext: '' }); // seq 3, must not appear (before the LATEST compaction's retainedFromSeq)
+    append(log, { kind: 'order', text: 'second', mapContext: '' }); // seq 3, must not appear (before the latest compaction's retainedFromSeq)
     append(log, { kind: 'compaction', summary: 'fresh summary', retainedFromSeq: 5 }); // seq 4, the latest
     append(log, { kind: 'order', text: 'third', mapContext: '' }); // seq 5, retained
 
@@ -281,7 +281,7 @@ describe('deriveMessages', () => {
       expect(out[0]).toEqual({ role: 'user', text: '(conversation summary, reference only) <summary_data>"a village is going up"</summary_data>' });
       expect(out[1]).toEqual({ role: 'user', text: `(playbook still loaded: "Cozy Village")\n<playbook_data>${quotePromptData(COZY)}</playbook_data>` });
       // The steer that opened the retained group still speaks: its own `steer` event necessarily
-      // sits BEFORE the cut (a steer is logged when typed, delivered later), so reading the text
+      // sits before the cut (a steer is logged when typed, delivered later), so reading the text
       // from the retained window alone would drop the user's words at exactly this boundary.
       expect(out[2]).toEqual({ role: 'user', text: `make it smaller${CUE}` });
       expect(JSON.stringify(out).split('ring it with houses')).toHaveLength(2);
@@ -446,7 +446,7 @@ describe('deriveMessages', () => {
     append(log, { kind: 'gateAsked', gateId: 'g1', scope: 'tool', callId: 'c1', summary: 'paint a mountain' });
     append(log, { kind: 'gateAnswered', gateId: 'g1', answer: 'words', words: 'make it smaller' });
 
-    // A second exchange where the gated call DID get a real recorded toolResult: the words
+    // A second exchange where the gated call did get a real recorded toolResult: the words
     // message must still follow immediately, now after that real result rather than a synthesized one.
     append(log, { kind: 'order', text: 'go again', mapContext: '' });
     append(log, {
@@ -462,7 +462,7 @@ describe('deriveMessages', () => {
 
     // No toolResult was ever recorded for the first gated call, but it carries a 'words' answer,
     // so it gets the synthesized skip result rather than the generic orphan message (which is for
-    // calls with NO gate pair at all); the trailing words-message still follows it.
+    // calls with no gate pair at all); the trailing words-message still follows it.
     expect(out[2]).toEqual({
       role: 'tool',
       results: [{
@@ -474,7 +474,7 @@ describe('deriveMessages', () => {
     });
     expect(out[3]).toEqual({ role: 'user', text: '(about your request) make it smaller' });
 
-    // The second call's tool message carries its REAL recorded result, and the words-message
+    // The second call's tool message carries its real recorded result, and the words-message
     // still lands immediately after it.
     expect(out[6]).toEqual({
       role: 'tool',

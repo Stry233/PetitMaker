@@ -1,0 +1,35 @@
+{
+  "id": "print-field-junction",
+  "category": "road",
+  "icon": "print-field-junction",
+  "name": {
+    "en": "Field Junction Print",
+    "zh": "绿茵连接印花",
+    "ja": "フィールドの分岐模様",
+    "ru": "Т-образная разметка поля",
+    "th": "ลายทางแยกสนาม",
+    "id": "Motif Persimpangan Lapangan",
+    "fr": "Marquage en T de terrain"
+  },
+  "color": "#f0eedb",
+  "width": 1,
+  "height": 1,
+  "loadValue": 0,
+  "rotatable": true,
+  "placementMode": "brush",
+  "traits": [
+    {
+      "type": "flat"
+    },
+    {
+      "type": "surfaceCoating",
+      "layer": 1
+    }
+  ],
+  "surfacePrint": {
+    "kind": "image",
+    "image": "print-field-junction",
+    "repeat": 1
+  },
+  "strokeConnections": 7
+}

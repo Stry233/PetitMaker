@@ -1,41 +1,29 @@
+// @vitest-environment jsdom
 /**
- * EVERY TEXT FIELD IS RINGED AS THE SHAPE IT IS DRAWN AS, and the composer's
- * text never leaves the pill it is written in.
+ * Every text field is ringed as the shape it is drawn as, and the composer's text never leaves its
+ * pill. An outline follows its own element's radius, so the ring moves from the bare input to the
+ * rounded wrapper through `design/focus-source.ts`'s pair (`FIELD_WRAP_CLASS` on the box with the
+ * radius, `FIELD_INPUT_CLASS` on the focused input); a wrapper without its input rings twice, an
+ * input without its wrapper not at all. jsdom resolves no `:has()`, so this checks the classes and
+ * the radius; the pixels are the fidelity rig's.
  *
- * An outline follows its OWN element's `border-radius`. Every field in this panel is a rounded
- * wrapper with a bare input laid inside it, so the house focus ring landed on the input and was drawn
- * as a rectangle within the rounded box, corners and all. `design/focus-source.ts` names the pair
- * that moves it up (`FIELD_WRAP_CLASS` on the box that has the radius, `FIELD_INPUT_CLASS` on the
- * input that has the focus) and this file holds every field to it, both halves: a wrapper marked
- * without its input rings twice, an input marked without its wrapper rings not at all.
- *
- * WHAT THIS CANNOT SEE is the ring itself: jsdom paints nothing and resolves no `:has()`, so what is
- * checkable is that the two classes sit on the two right elements and that the box they name carries
- * a radius for the outline to follow. The pixels are the fidelity rig's.
- *
- * THE COMPOSER'S CORNER IS ARITHMETIC, for the same reason. A pill radius is half the box's height,
- * so a well that grows grows its corners with it, and past two lines the arc reached further in than
- * the field's lead-in: the first line's opening characters were drawn outside the rounded shape. The
- * corner is held at half the RESTING height instead, which makes the inset the lead-in has to cover
- * a constant — and that constant is what is asserted, against the height-proportional radius that
- * would not clear it.
+ * The composer's corner is held at half the resting height rather than half the live height, so the
+ * inset its lead-in must clear stays constant as the well grows past two lines.
  */
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
-import { MotionConfig } from 'framer-motion';
-import { I18nProvider } from '../../../i18n/context';
 import { useEditorStore } from '../../../state/store';
-import { SetupScreen } from '../../../ui/agent/SetupScreen';
-import { ManageScreen } from '../../../ui/agent/ManageScreen';
+import { SetupScreen } from '../../../ui/agent/connection/SetupScreen';
+import { ManageScreen } from '../../../ui/agent/connection/ManageScreen';
 import {
   Composer, COMPOSER_HEIGHT, PILL_RADIUS, WELL_LEAD_IN, WELL_PAD,
-} from '../../../ui/agent/Composer';
-import { useAgentPanelSettings } from '../../../ui/agent/settings';
+} from '../../../ui/agent/composer/Composer';
+import { useAgentConnection } from '../../../agent/connection/store';
 import { FIELD_INPUT_CLASS, FIELD_WRAP_CLASS } from '../../../ui/design/focus-source';
 import { PROVIDER_IDS, type ProviderId } from '../../../agent/providers/defaults';
+import { Wrapper } from '../../_support/agent-panel';
 
 const backing = new Map<string, string>();
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 (globalThis as any).localStorage = {
   getItem: (k: string) => backing.get(k) ?? null,
   setItem: (k: string, v: string) => void backing.set(k, String(v)),
@@ -43,13 +31,6 @@ const backing = new Map<string, string>();
   clear: () => backing.clear(),
 };
 
-function Wrapper({ children }: { children: React.ReactNode }) {
-  return (
-    <MotionConfig reducedMotion="always">
-      <I18nProvider>{children}</I18nProvider>
-    </MotionConfig>
-  );
-}
 const mount = (node: React.ReactElement) => render(node, { wrapper: Wrapper });
 
 const emptyModels = () =>
@@ -58,12 +39,12 @@ const emptyModels = () =>
 function reset(): void {
   backing.clear();
   useEditorStore.setState({ locale: 'en' });
-  useAgentPanelSettings.setState({
+  useAgentConnection.setState({
     provider: 'claude', model: emptyModels(), oversight: 'checkpoint',
     customBaseUrl: '', keyed: [], providerPinned: false, hydrated: true,
   });
-  for (const id of PROVIDER_IDS) useAgentPanelSettings.getState().forgetKey(id);
-  useAgentPanelSettings.setState({ provider: 'claude', providerPinned: false, customBaseUrl: '' });
+  for (const id of PROVIDER_IDS) useAgentConnection.getState().forgetKey(id);
+  useAgentConnection.setState({ provider: 'claude', providerPinned: false, customBaseUrl: '' });
   backing.clear();
 }
 
@@ -101,16 +82,16 @@ describe('every text field is ringed as its own rounded box', () => {
 
   it('the manage card\'s address field', async () => {
     reset();
-    useAgentPanelSettings.getState().setCustomBaseUrl('https://gw.example/v1');
-    useAgentPanelSettings.getState().pinProvider('custom');
-    useAgentPanelSettings.getState().connectKey('custom', 'sk-9f2c0123456789abcdef0123456789ab');
+    useAgentConnection.getState().setCustomBaseUrl('https://gw.example/v1');
+    useAgentConnection.getState().pinProvider('custom');
+    useAgentConnection.getState().connectKey('custom', 'sk-9f2c0123456789abcdef0123456789ab');
     await act(async () => { mount(<ManageScreen jobCount={0} listModels={pending} />); });
     ringedAsItsBox('manage-endpoint-input');
   });
 
   it('the manage card\'s typed model id', async () => {
     reset();
-    useAgentPanelSettings.getState().connectKey('claude', 'sk-ant-api03-abcdefghijkl');
+    useAgentConnection.getState().connectKey('claude', 'sk-ant-api03-abcdefghijkl');
     await act(async () => { mount(<ManageScreen jobCount={0} listModels={() => Promise.resolve([])} />); });
     fireEvent.click(screen.getByTestId('manage-model-dd'));
     ringedAsItsBox('manage-model-input');
@@ -129,7 +110,7 @@ describe('every text field is ringed as its own rounded box', () => {
 });
 
 /**
- * THE CORNER THE TEXT HAS TO CLEAR.
+ * The corner the text has to clear.
  *
  * A rounded corner of radius `r` cuts inward at every height above `r`: at `y` px from the top edge
  * the shape's own left boundary stands at `r - sqrt(r² - (r - y)²)`. The topmost text pixel in the

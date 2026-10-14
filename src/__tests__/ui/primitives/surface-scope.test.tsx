@@ -1,8 +1,10 @@
-import { useState } from 'react';
+// @vitest-environment jsdom
+import { useRef, useState } from 'react';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { FloatMenu } from '../../../ui/primitives/FloatMenu';
 import { ModalShell } from '../../../ui/primitives/ModalShell';
+import { useSurfaceScope } from '../../../ui/primitives/surface-scope';
 
 function Fixture({ close, pick = () => {} }: { close(): void; pick?: (id: string) => void }) {
   const [open, setOpen] = useState(false);
@@ -71,5 +73,44 @@ describe('menus owned by a modal', () => {
     fireEvent.keyDown(window, { key: 'Tab' });
     expect(screen.queryByRole('menu')).toBeNull();
     expect(document.activeElement).toBe(screen.getByRole('button', { name: 'After' }));
+  });
+});
+
+describe('a press outside a floating surface', () => {
+  function Floating({ close, beneath }: { close(): void; beneath(): void }) {
+    const root = useRef<HTMLDivElement>(null);
+    useSurfaceScope({ open: true, root, onClose: close, outside: true });
+    return <><button type="button" onPointerDown={beneath} onClick={beneath}>Map</button><div ref={root}><button type="button">Inside</button></div></>;
+  }
+
+  it('puts the surface away and reaches nothing beneath it, press or click', () => {
+    const close = vi.fn();
+    const beneath = vi.fn();
+    render(<Floating close={close} beneath={beneath} />);
+    const map = screen.getByRole('button', { name: 'Map' });
+    fireEvent.pointerDown(map);
+    fireEvent.click(map);
+    expect(close).toHaveBeenCalledOnce();
+    expect(beneath).not.toHaveBeenCalled();
+  });
+
+  it('leaves a press inside the surface alone', () => {
+    const close = vi.fn();
+    render(<Floating close={close} beneath={() => {}} />);
+    fireEvent.pointerDown(screen.getByRole('button', { name: 'Inside' }));
+    expect(close).not.toHaveBeenCalled();
+  });
+
+  it('lets a later click through once the swallowed press has ended', () => {
+    vi.useFakeTimers();
+    const beneath = vi.fn();
+    render(<Floating close={() => {}} beneath={() => {}} />);
+    fireEvent.pointerDown(document.body);
+    fireEvent.pointerUp(document.body);
+    vi.runAllTimers();
+    render(<button type="button" onClick={beneath}>Later</button>);
+    fireEvent.click(screen.getByRole('button', { name: 'Later' }));
+    expect(beneath).toHaveBeenCalledOnce();
+    vi.useRealTimers();
   });
 });

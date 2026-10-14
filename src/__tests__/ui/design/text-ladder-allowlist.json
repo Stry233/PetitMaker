@@ -1,0 +1,9 @@
+{
+  "src/ui/shell/bars/generate/CustomCard.tsx": "iOS Safari zooms the page in on focus for any input under 16px",
+  "src/ui/chrome/modals/export/Shot3dStrip.tsx": "two glyphs (a placeholder frame, a plus) sized to the tile they centre in",
+  "src/ui/chrome/modals/export/ExportPreview.tsx": "the failed-preview pictograph is an illustration, not a line of type",
+  "src/ui/chrome/modals/export/Preview3D.tsx": "a glyph centred in a 46px round button",
+  "src/ui/chrome/modals/about/about-styles.ts": "the grid row's chevron is a mark sized to the row, not a word in it",
+  "src/ui/help/hints/hint-marks.tsx": "key caps and mouse marks whose glyphs are sized to the cap art they centre in",
+  "src/ui/app/console-banner.ts": "the developer-console banner is styled by the browser console, and its zero size hides the logo line's text"
+}

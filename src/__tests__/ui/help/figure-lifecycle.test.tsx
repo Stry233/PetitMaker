@@ -1,19 +1,20 @@
+// @vitest-environment jsdom
 import { useRef } from 'react';
 import { act, cleanup, render } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { I18nProvider } from '../../../i18n/context';
-import { ensureHelpStrings } from '../../../i18n/locales/help';
-import { PageView } from '../../../ui/chrome/modals/help/PageView';
-import { HELP_PAGES } from '../../../ui/chrome/modals/help/catalog';
-import { FigureReadyContext } from '../../../ui/chrome/modals/help/figures/figure-ready';
-import { useInView } from '../../../ui/chrome/modals/help/figures/use-in-view';
-import { makeState } from '../../rules/_helpers';
-import { setStoreState } from '../../_store';
+import { installHelpTables } from '../../_support/locale-tables';
+import { PageView } from '../../../ui/help/PageView';
+import { HELP_PAGES } from '../../../ui/help/catalog';
+import { FigureReadyContext } from '../../../ui/help/figures/figure-ready';
+import { useInView } from '../../../ui/help/figures/use-in-view';
+import { makeState } from '../../_support/map-state';
+import { setStoreState } from '../../_support/store';
 
 const { generate, thumbnail } = vi.hoisted(() => ({ generate: vi.fn(), thumbnail: vi.fn(async () => null) }));
 vi.mock('../../../tools/generation/designer/pipeline', () => ({ generateDesigned: generate }));
-vi.mock('../../../canvas/thumbnail', async (original) => ({
-  ...(await original<typeof import('../../../canvas/thumbnail')>()), renderThumbnail: thumbnail,
+vi.mock('../../../view/map2d/capture/thumbnail', async (original) => ({
+  ...(await original<typeof import('../../../view/map2d/capture/thumbnail')>()), renderThumbnail: thumbnail,
 }));
 
 const observers = new Set<Observer>();
@@ -27,7 +28,9 @@ class Observer {
 function approach(el: Element) {
   act(() => {
     for (const observer of [...observers]) {
-      if (observer.elements.has(el)) observer.callback([{ target: el, isIntersecting: true } as IntersectionObserverEntry], observer as unknown as IntersectionObserver);
+      if (observer.elements.has(el)) observer.callback(
+        [{ target: el, isIntersecting: true } as IntersectionObserverEntry], observer as unknown as IntersectionObserver,
+      );
     }
   });
 }
@@ -37,7 +40,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   vi.stubGlobal('IntersectionObserver', Observer);
   setStoreState({ gridState: makeState(20, 20), locale: 'en' });
-  ensureHelpStrings();
+  installHelpTables();
 });
 afterEach(() => {
   cleanup();
@@ -48,7 +51,11 @@ afterEach(() => {
 
 const go = () => {};
 function Welcome({ entered }: { entered: boolean }) {
-  return <I18nProvider><FigureReadyContext.Provider value={entered}><PageView page={HELP_PAGES.welcome} onGo={go} /></FigureReadyContext.Provider></I18nProvider>;
+  return (
+    <I18nProvider>
+      <FigureReadyContext.Provider value={entered}><PageView page={HELP_PAGES.welcome} onGo={go} /></FigureReadyContext.Provider>
+    </I18nProvider>
+  );
 }
 
 describe('Help illustration work', () => {

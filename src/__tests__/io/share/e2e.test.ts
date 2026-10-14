@@ -4,11 +4,12 @@ import { describe, it, expect } from 'vitest';
 import { buildShareCode, importFromRaster } from '../../../io/share';
 import type { ShareCodeMeta } from '../../../io/share/codec/payload';
 import { encodePng, decodePng } from '../../../io/share/raster/png-raster';
-import { canonicalize, canonicalBytes } from '../../../io/share/canonical';
-import { BG } from '../../../io/share/glyph/palette';
-import { CURRENT_VERSION } from '../../../io/save-format';
+import { canonicalize, canonicalBytes } from '../../../io/save/canonical';
+import { BG } from '../../_support/glyph-v2';
+import { CURRENT_VERSION } from '../../../io/save/format';
 import { corpusCases } from './corpus';
 import { chromaSubsample420, jpegLike, downUp } from './glyph/degrade';
+import { exportable } from '../../_support/exportable';
 
 const META: ShareCodeMeta = { appVersion: 'e2e', saveVersion: CURRENT_VERSION };
 const TIMEOUT = 600000;
@@ -39,7 +40,7 @@ describe('PetitGlyph end-to-end (buildShareCode → PNG → importFromRaster)', 
       visible: false,
       locked: true,
     };
-    const code = await buildShareCode(state, null, META, 1600);
+    const code = await buildShareCode(exportable(state), null, META, 1600);
     expect(code).not.toBeNull();
     const result = await importFromRaster(code!.rgba, code!.width, code!.height);
     expect(result.ok, result.ok ? '' : `${result.error.code}: ${result.error.message}`).toBe(true);
@@ -50,7 +51,7 @@ describe('PetitGlyph end-to-end (buildShareCode → PNG → importFromRaster)', 
   it('restores the title and description from the visible code band', async () => {
     const { state } = (await corpusCases()).find((c) => c.name === 'hand-edit-small')!;
     state.notes = { title: 'River garden 河畔花园', description: 'Three homes by the bend, a mill downstream.' };
-    const code = await buildShareCode(state, null, META, 1600);
+    const code = await buildShareCode(exportable(state), null, META, 1600);
     expect(code).not.toBeNull();
     expect(code!.notesOmitted).toBe(false);
     const result = await importFromRaster(code!.rgba, code!.width, code!.height);
@@ -61,7 +62,7 @@ describe('PetitGlyph end-to-end (buildShareCode → PNG → importFromRaster)', 
 
   it('every corpus map survives the full composed-PNG round trip exactly', async () => {
     for (const { name, state } of await corpusCases()) {
-      const code = await buildShareCode(state, null, META, 1600);
+      const code = await buildShareCode(exportable(state), null, META, 1600);
       expect(code, name).not.toBeNull();
       const comp = inComposition(code!);
       const png = await encodePng({ width: comp.width, height: comp.height, data: comp.rgba });
@@ -78,7 +79,7 @@ describe('PetitGlyph end-to-end (buildShareCode → PNG → importFromRaster)', 
     for (const name of ['hand-edit-small', 'generated-64']) {
       it(`${name} survives chromaSubsample420 + jpegLike(q60) + downUp(0.75) on the whole composition`, async () => {
         const { state } = (await corpusCases()).find((c) => c.name === name)!;
-        const code = await buildShareCode(state, null, META, 1600);
+        const code = await buildShareCode(exportable(state), null, META, 1600);
         expect(code).not.toBeNull();
         const comp = inComposition(code!);
 
@@ -97,7 +98,7 @@ describe('PetitGlyph end-to-end (buildShareCode → PNG → importFromRaster)', 
   it('the largest map holds well past the rated envelope', async () => {
     // Stress the Reed-Solomon margin beyond the documented q60, 0.75-scale envelope.
     const { state } = (await corpusCases()).find((c) => c.name === 'generated-hexia')!;
-    const code = await buildShareCode(state, null, META, 1600);
+    const code = await buildShareCode(exportable(state), null, META, 1600);
     expect(code).not.toBeNull();
     const comp = inComposition(code!);
     let rgba = chromaSubsample420(comp.rgba, comp.width, comp.height);
@@ -113,7 +114,7 @@ describe('PetitGlyph end-to-end (buildShareCode → PNG → importFromRaster)', 
     const { state } = (await corpusCases()).find((c) => c.name === 'generated-64')!;
     expect(state.generation).toBeDefined();
 
-    const code = await buildShareCode(state, null, META, 1600);
+    const code = await buildShareCode(exportable(state), null, META, 1600);
     expect(code).not.toBeNull();
     const comp = inComposition(code!);
     const png = await encodePng({ width: comp.width, height: comp.height, data: comp.rgba });
@@ -123,7 +124,7 @@ describe('PetitGlyph end-to-end (buildShareCode → PNG → importFromRaster)', 
     if (!result.ok) return;
     expect(result.state.generation).toBeDefined();
 
-    const reCode = await buildShareCode(result.state, null, META, 1600);
+    const reCode = await buildShareCode(exportable(result.state), null, META, 1600);
     expect(reCode).not.toBeNull();
     const delta = Math.abs(reCode!.payloadLen - code!.payloadLen) / code!.payloadLen;
     expect(delta).toBeLessThanOrEqual(0.1);

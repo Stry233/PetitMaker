@@ -1,14 +1,15 @@
 import { describe, it, expect } from 'vitest';
 import { chunkLoadViolations } from '../../rules/chunk-load';
 import type { GridState, PlacedObject } from '../../core/model/types';
-import { ItemCategory } from '../../core/model/types';
-import { bumpObjectsVersion, chunkKey } from '../../core/model/grid-model';
-import { makeRng, type Rng } from '../../core/model/rng';
-import { getCatalogItem, registerCatalogItem } from '../../state/catalog';
+import { ItemCategory } from '../../config/catalog/categories';
+import { bumpObjectsVersion } from '../../core/model/grid-model';
+import { chunkKey } from '../../core/grid/rect';
+import { makeRng, type Rng } from '../../core/base/rng';
+import { getCatalogItem, __setCatalogItem } from '../../state/catalog';
 import { getPlacedObjectSize } from '../../state/object-geometry';
 import { getMapStats } from '../../state/map-stats';
-import { makeState } from './_helpers';
-import { CHUNK_LOAD_LIMIT, CHUNK_SIZE } from '../../core/model/game-profile';
+import { makeState } from '../_support/map-state';
+import { CHUNK_LOAD_LIMIT, CHUNK_SIZE } from '../../core/game/profile';
 
 // This exercises chunkLoadViolations directly, the same way the gated-off rule would once
 // CHUNK_LOAD_ENABLED flips true — see chunk-load.test.ts for the flag itself staying off.
@@ -108,7 +109,7 @@ describe('chunkLoadViolations cost shape', () => {
     getMapStats(small);
     getMapStats(large);
 
-    // grid-model.ts documents this as SAFE ("omitting [the delta] is safe... only slower"),
+    // grid-model.ts documents this as safe ("omitting [the delta] is safe... only slower"),
     // and real call sites take it: drag/rotate ghost updates on every pointer-move frame,
     // road-reconcile.ts, generator clearance sweeps and agent strip-placements all desync
     // the cache this way. It is not this rule's mistake to fix: chunkLoadViolations only
@@ -198,10 +199,10 @@ describe('chunkLoadViolations equivalence with the naive tally', () => {
 });
 
 // A 2x2 fixture, for the case a 1x1 cannot reach: a footprint straddling a chunk boundary is
-// charged in full to every chunk it touches, not divided among them. registerCatalogItem is
+// charged in full to every chunk it touches, not divided among them. __setCatalogItem is
 // test-support (state/catalog.ts), not used in production code.
 const WIDE_ID = 'chunk-load-test-2x2';
-registerCatalogItem({
+__setCatalogItem({
   id: WIDE_ID, category: ItemCategory.Building, name: { en: 'Chunk Test 2x2' },
   width: 2, height: 2, loadValue: 1000, rotatable: false, placementMode: 'point',
   traits: [],

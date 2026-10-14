@@ -6,7 +6,7 @@
  * from inside: a browser with no module support, an entry module that fails to parse or load, and
  * a browser without CSS zoom, which the interface is scaled with. Its copy and the download
  * addresses are kept in step with src/i18n/locales/ and src/legal/deploy-targets.ts by
- * src/__tests__/boot/boot-guard.test.ts.
+ * src/__tests__/boot-guard.test.ts.
  */
 (function () {
   'use strict';
@@ -15,7 +15,7 @@
   var GUARD_ID = 'petit-boot-guard';
   var CONTINUE_ID = 'petit-boot-continue';
 
-  var CREAM = '#FFFBE1';
+  var CREAM = '#FDFBE0';
   var INK = '#574935';
   var SURFACE = '#F3EEE8';
   var MUTED = '#747474';

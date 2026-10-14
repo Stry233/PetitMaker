@@ -1,25 +1,26 @@
 import { framerMotion } from '../../design/motion';
 import { useEffect, useState, useCallback, useRef } from 'react';
-import { useChromeScale, useWeightVars } from '../../design/scale';
+import { useChromeLayer } from '../../primitives/chrome-layer';
 import type { CSSProperties } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { colors, font, inkTint, radii, springs, z } from '../../design/styles';
+import { font, radii, z } from '../../design/styles';
 import { roleFont } from '../../design/text-weight';
 import { useEditorStore } from '../../../state/store';
-import { quantityParams, useT } from '../../../i18n/context';
+import { useT } from '../../../i18n/context';
 import type { ValidationError } from '../../../core/model/types';
-import { setToastPresenter, type ToastType } from '../../../core/runtime/toast-bus';
+import { setToastPresenter, type ToastType } from '../../../platform/channels/toast-bus';
 import { TOAST_BAND_TOP, bandTop } from './toast-band';
-import { ruleToast } from '../../../i18n/rule-copy';
+import { refusalKey, ruleToast } from '../../../i18n/rule-copy';
+import { PANEL_EDGE, ERROR, ACCENT, SUCCESS, PLATE, FRAME_INK, ON_DARK } from '../../design/tokens';
 
-export { showToast } from '../../../core/runtime/toast-bus';
+export { showToast } from '../../../platform/channels/toast-bus';
 
 const TOAST_DURATION = 3000;
 
 const containerStyle: CSSProperties = {
   position: 'fixed',
   top: bandTop(TOAST_BAND_TOP),
-  // Centred over the WORK: while the assistant's panel is docked it owns a strip at one side of the
+  // Centred over the work: while the assistant's panel is docked it owns a strip at one side of the
   // window, and a notice about what just happened on the map belongs over the map. Half the difference
   // between the two edges, since the dock stands at either and only one is ever non-zero.
   left: 'calc(50% + (var(--pin-dock-left, 0px) - var(--pin-dock-right, 0px)) / 2)',
@@ -41,21 +42,23 @@ interface ToastMessage {
 }
 
 function accentColor(type: ToastType): string {
-  return type === 'error' ? colors.statusError
-    : type === 'warning' ? colors.accentPrimary
-    : colors.statusSuccess;
+  return type === 'error' ? ERROR
+    : type === 'warning' ? ACCENT
+    : SUCCESS;
 }
 
 const toastStyle: CSSProperties = {
-  background: colors.panelCream,
-  color: colors.frameDark,
+  background: PLATE,
+  color: FRAME_INK,
   ...roleFont('menu'),
   // A toast wraps at `maxWidth`, so the leading is part of the token rather than the browser's.
   lineHeight: '150%',
   fontFamily: font.family,
-  padding: '11px 18px',
-  borderRadius: 18,
-  boxShadow: `0 10px 28px ${inkTint(0.22)}, 0 2px 6px ${colors.inkBorder}`,
+  padding: '10px 18px',
+  borderRadius: radii.card,
+  // A card standing on the map meets it with the panel hairline and casts nothing (`tokens.ts`).
+  border: PANEL_EDGE,
+  boxShadow: 'none',
   maxWidth: 420,
   display: 'flex',
   alignItems: 'center',
@@ -73,11 +76,11 @@ const dotStyle = (type: ToastType): CSSProperties => ({
 
 const badgeStyle = (type: ToastType): CSSProperties => ({
   background: accentColor(type),
-  color: colors.white,
+  color: ON_DARK,
   ...roleFont('caption'),
   fontFamily: font.family,
   borderRadius: radii.pill,
-  padding: '1px 7px',
+  padding: '2px 6px',
   minWidth: 20,
   textAlign: 'center',
   lineHeight: '18px',
@@ -97,7 +100,7 @@ export function ToastFace({ text, type, count }: { text: string; type: ToastType
           style={badgeStyle(type)}
           initial={{ scale: 1.4 }}
           animate={{ scale: 1 }}
-          transition={springs.stiff}
+          transition={framerMotion('surface.arrive')}
         >
           {count}
         </motion.span>
@@ -148,22 +151,20 @@ export function ToastContainer() {
     const handler = ({ errors }: { errors: ValidationError[] }) => {
       if (errors.length === 0) return;
       const first = errors[0]!;
-      // Rule message params are limits and counts.
-      const message = ruleToast(t, first.message, quantityParams(useEditorStore.getState().locale, first.messageParams));
+      const message = ruleToast(t, refusalKey(first.message), first.messageParams);
       addToast(message, 'error');
     };
     eventBus.on('validation-failed', handler);
     return () => eventBus.off('validation-failed', handler);
   }, [eventBus, t, addToast]);
 
-  const chrome = useChromeScale();
-  const weights = useWeightVars();
+  const layer = useChromeLayer();
   // Never early-return null while toasts could be exiting: unmounting the
   // container tears down <AnimatePresence> before it can play the last toast's
   // exit. The empty container is inert (pointerEvents: none), so keep it mounted
   // and let AnimatePresence animate the final toast out.
   return (
-    <div style={{ ...containerStyle, zoom: chrome, ...weights }}>
+    <div style={{ ...layer, ...containerStyle }}>
       <AnimatePresence>
         {toasts.map((toast) => (
           <motion.div
@@ -174,7 +175,7 @@ export function ToastContainer() {
             // instead of springing (the per-variant transition wins over the
             // component-level bouncy spring used for the entrance).
             exit={{ opacity: 0, y: -10, scale: 0.95, transition: framerMotion('notice.leave') }}
-            transition={springs.bouncy}
+            transition={framerMotion('surface.pop')}
           >
             <ToastFace text={toast.text} type={toast.type} count={toast.count} />
           </motion.div>

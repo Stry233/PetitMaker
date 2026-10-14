@@ -2,10 +2,10 @@ import { describe, it, expect } from 'vitest';
 import { RangeEncoder, RangeDecoder } from '../../../../io/share/codec/bitio';
 import { encodeMap, decodeMap, MODEL_VARIANTS, modelCanRepresent } from '../../../../io/share/codec/map-coder';
 import { tokensOf, parseToken, tokenOf, type CellFields } from '../../../../io/share/codec/grid-io';
-import { canonicalize } from '../../../../io/share/canonical';
+import { canonicalize } from '../../../../io/save/canonical';
 import { getMapTemplate } from '../../../../config/maps';
 import { corpusCases } from '../corpus';
-import type { SaveObject } from '../../../../io/save-format';
+import type { SaveObject } from '../../../../io/save/format';
 import type { MapTemplate } from '../../../../core/model/types';
 
 const roundTrip = (

@@ -1,4 +1,5 @@
-import type { Stencil } from '../../../core/model/types';
+import { simplifyStrokePath } from './stencil-line-path';
+import type { Stencil } from '../recipe';
 
 type Point = readonly [number, number];
 type Path = readonly Point[];
@@ -13,6 +14,7 @@ export interface TextGridModel {
   bands: Band[];
   gaps: number[];
   vertical: number[];
+  symmetricY: boolean;
   minimum: Box;
   pieces: number;
   counters: number;
@@ -65,22 +67,20 @@ function distanceInside(ink: Uint8Array, w: number, h: number): Float32Array {
 /** Two alternating thinning passes retain the connectivity and counters of the font outline. */
 function skeleton(ink: Uint8Array, w: number, h: number, distance: Float32Array): Uint8Array {
   const out = ink.slice();
-  // A deepest pixel anchors each component so parallel thinning cannot erase a small dot.
-  const anchors = new Set<number>(), visited = new Uint8Array(ink.length);
+  // Protect a component only when a parallel pass would erase all of it.
+  const labels = new Int32Array(ink.length).fill(-1), sizes: number[] = [];
   for (let start = 0; start < ink.length; start++) {
-    if (!ink[start] || visited[start]) continue;
-    const todo = [start]; visited[start] = 1;
-    let anchor = start;
+    if (!ink[start] || labels[start]! >= 0) continue;
+    const label = sizes.length, todo = [start]; labels[start] = label;
     for (let head = 0; head < todo.length; head++) {
       const i = todo[head]!, x = i % w, y = Math.floor(i / w);
-      if (distance[i]! > distance[anchor]!) anchor = i;
       for (const [dx, dy] of NEIGHBORS) {
         const nx = x + dx, ny = y + dy, j = ny * w + nx;
-        if (nx < 0 || ny < 0 || nx >= w || ny >= h || visited[j] || !ink[j]) continue;
-        visited[j] = 1; todo.push(j);
+        if (nx < 0 || ny < 0 || nx >= w || ny >= h || labels[j]! >= 0 || !ink[j]) continue;
+        labels[j] = label; todo.push(j);
       }
     }
-    anchors.add(anchor);
+    sizes.push(todo.length);
   }
 
   const at = (x: number, y: number) => x < 0 || y < 0 || x >= w || y >= h ? 0 : out[y * w + x]!;
@@ -90,7 +90,7 @@ function skeleton(ink: Uint8Array, w: number, h: number, distance: Float32Array)
     for (let phase = 0; phase < 2; phase++) {
       const remove: number[] = [];
       for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
-        if (!out[y * w + x] || anchors.has(y * w + x)) continue;
+        if (!out[y * w + x]) continue;
         const p = NEIGHBORS.map(([dx, dy]) => at(x + dx, y + dy));
         const count = p.reduce((a, b) => a + b, 0);
         if (count < 2 || count > 6) continue;
@@ -102,8 +102,16 @@ function skeleton(ink: Uint8Array, w: number, h: number, distance: Float32Array)
           : (p[0]! * p[2]! * p[6]!) || (p[0]! * p[4]! * p[6]!);
         if (!blocked) remove.push(y * w + x);
       }
-      for (const i of remove) out[i] = 0;
-      changed += remove.length;
+      const removed = new Map<number, number[]>();
+      for (const i of remove) {
+        const label = labels[i]!;
+        const group = removed.get(label);
+        if (group) group.push(i); else removed.set(label, [i]);
+      }
+      for (const [label, group] of removed) {
+        const anchor = group.length === sizes[label] ? group.reduce((a, b) => distance[a]! >= distance[b]! ? a : b) : -1;
+        for (const i of group) if (i !== anchor) { out[i] = 0; sizes[label]!--; changed++; }
+      }
     }
   } while (changed);
   return out;
@@ -163,21 +171,8 @@ export function stencilStrokePaths(coverage: Uint8Array, width: number, height: 
   return trace(skeleton(ink, width, height, distanceInside(ink, width, height)), width, height)
     .map(path => ({
       cells: path.map(([x, y]) => y * width + x),
-      corners: simplify(path, 0.75).map(([x, y]) => y * width + x),
+      corners: simplifyStrokePath(path, 0.75).map(([x, y]) => y * width + x),
     }));
-}
-
-function simplify(path: Path, epsilon: number): Point[] {
-  if (path.length < 3) return [...path];
-  const [ax, ay] = path[0]!, [bx, by] = path[path.length - 1]!;
-  const length = Math.hypot(bx - ax, by - ay);
-  let farthest = epsilon, split = -1;
-  for (let i = 1; i < path.length - 1; i++) {
-    const [x, y] = path[i]!;
-    const distance = length ? Math.abs((bx - ax) * (y - ay) - (by - ay) * (x - ax)) / length : Math.hypot(x - ax, y - ay);
-    if (distance > farthest) { farthest = distance; split = i; }
-  }
-  return split < 0 ? [path[0]!, path[path.length - 1]!] : [...simplify(path.slice(0, split + 1), epsilon).slice(0, -1), ...simplify(path.slice(split), epsilon)];
 }
 
 /** Endpoints, turns and straight stems supply alignment zones without character-specific drawings. */
@@ -222,6 +217,17 @@ function intervals(values: ArrayLike<number>): Interval[] {
   return runs;
 }
 
+function symmetricInk(ink: Uint8Array, width: number, bounds: readonly [number, number, number, number], axis: 0 | 1): boolean {
+  const [left, top, right, bottom] = bounds;
+  let difference = 0, mass = 0;
+  for (let y = top; y <= bottom; y++) for (let x = left; x <= right; x++) {
+    const value = ink[y * width + x]!;
+    const mirror = ink[(axis === 1 ? top + bottom - y : y) * width + (axis === 0 ? left + right - x : x)]!;
+    difference += Math.abs(value - mirror); mass += value;
+  }
+  return difference / Math.max(1, mass) < 0.25;
+}
+
 export function analyzeTextGrid(source: Pick<Stencil, 'width' | 'height' | 'coverage'>): TextGridModel | null {
   const { width: w, height: h } = source;
   const ink = Uint8Array.from(source.coverage, v => v >= 128 ? 1 : 0);
@@ -239,27 +245,31 @@ export function analyzeTextGrid(source: Pick<Stencil, 'width' | 'height' | 'cove
     const terminal = first ? path : [...path].reverse();
     for (const [x, y] of terminal.slice(0, -1)) thin[y * w + x] = 0;
   }
-  paths = trace(thin, w, h).map(p => simplify(p, 1.4));
+  paths = trace(thin, w, h).map(p => simplifyStrokePath(p, 1.4));
   const vertical = landmarks(paths, radius, 1);
   const occupied = new Uint8Array(w);
   for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (ink[y * w + x]) occupied[x] = 1;
   const bands: Band[] = intervals(occupied).map(([a, b]) => {
     const left = Math.ceil(a), right = Math.floor(b);
     const local = paths.filter(p => p.some(([x]) => x >= left && x <= right));
-    let runs = 1, difference = 0, mass = 0;
+    let runs = 1;
     for (let y = 0; y < h; y++) {
       runs = Math.max(runs, intervals(ink.subarray(y * w + left, y * w + right + 1)).length);
-      for (let x = left; x <= right; x++) {
-        difference += Math.abs(ink[y * w + x]! - ink[y * w + left + right - x]!);
-        mass += ink[y * w + x]!;
-      }
     }
     const axis = landmarks(local, radius, 0);
-    return { left, right, axis, minimum: Math.max(axis.length > 1 ? 2 : 1, Math.min(5, 2 * runs - 1)), symmetric: difference / Math.max(1, mass) < 0.25, ends: endsOf(local) };
+    return {
+      left, right, axis, minimum: Math.max(axis.length > 1 ? 2 : 1, Math.min(5, 2 * runs - 1)),
+      symmetric: symmetricInk(ink, w, [left, 0, right, h - 1], 0), ends: endsOf(local),
+    };
   });
   const gaps = bands.slice(1).map((band, i) => band.left - bands[i]!.right - 1 > radius * 4 ? 2 : 1);
   const minimum = { width: bands.reduce((n, b) => n + b.minimum, 0) + gaps.reduce((a, b) => a + b, 0), height: MIN_HEIGHT };
-  return { width: w, height: h, paths, radius, bands, gaps, vertical, minimum, ends: endsOf(paths), ...textTopology(ink, w, h, Math.max(2, radius * radius / 2)) };
+  const firstInk = ink.indexOf(1), lastInk = ink.lastIndexOf(1);
+  const symmetricY = symmetricInk(ink, w, [0, Math.floor(firstInk / w), w - 1, Math.floor(lastInk / w)], 1);
+  return {
+    width: w, height: h, paths, radius, bands, gaps, vertical, symmetricY, minimum, ends: endsOf(paths),
+    ...textTopology(ink, w, h, Math.max(2, radius * radius / 2))
+  };
 }
 
 function interpolate(value: number, from: readonly number[], to: readonly number[]): number {
@@ -274,7 +284,8 @@ function axisMap(landmarks: readonly number[], cells: number, separate = true): 
   const source = [...landmarks];
   while (source.length > cells) {
     let best = 1;
-    for (let i = 2; i < source.length - 1; i++) if (Math.min(source[i]! - source[i - 1]!, source[i + 1]! - source[i]!) < Math.min(source[best]! - source[best - 1]!, source[best + 1]! - source[best]!)) best = i;
+    const gapAt = (i: number) => Math.min(source[i]! - source[i - 1]!, source[i + 1]! - source[i]!);
+    for (let i = 2; i < source.length - 1; i++) if (gapAt(i) < gapAt(best)) best = i;
     source.splice(best, 1);
   }
   const gap = separate && (source.length - 1) * 2 <= cells - 1 ? 2 : 1;
@@ -318,7 +329,10 @@ function scanStrokes(paths: readonly Path[], axis: 0 | 1, line: number, cells: n
     for (let i = 1; i < path.length; i++) {
       const a = path[i - 1]!, b = path[i]!;
       if (Math.abs(b[axis] - a[axis]) < 0.01) {
-        if (Math.abs(line - a[axis]) <= 0.25) for (let x = Math.round(Math.min(a[1 - axis]!, b[1 - axis]!)); x <= Math.round(Math.max(a[1 - axis]!, b[1 - axis]!)); x++) bars.push(x);
+        if (Math.abs(line - a[axis]) <= 0.25) {
+          const lo = Math.round(Math.min(a[1 - axis]!, b[1 - axis]!)), hi = Math.round(Math.max(a[1 - axis]!, b[1 - axis]!));
+          for (let x = lo; x <= hi; x++) bars.push(x);
+        }
       } else if (line >= Math.min(a[axis], b[axis]) && line <= Math.max(a[axis], b[axis])) {
         centers.push(a[1 - axis]! + (line - a[axis]) / (b[axis] - a[axis]) * (b[1 - axis]! - a[1 - axis]!));
       }
@@ -370,7 +384,8 @@ function fitAtHeight(model: TextGridModel, box: Box, reduction: number): TextGri
   const total = () => sizes.reduce((a, b) => a + b, 0) + gaps.reduce((a, b) => a + b, 0);
   while (total() > width - air) {
     let index = -1;
-    for (let i = 0; i < sizes.length; i++) if (sizes[i]! > model.bands[i]!.minimum && (index < 0 || sizes[i]! / model.bands[i]!.minimum > sizes[index]! / model.bands[index]!.minimum)) index = i;
+    const share = (i: number): number => sizes[i]! / model.bands[i]!.minimum;
+    for (let i = 0; i < sizes.length; i++) if (sizes[i]! > model.bands[i]!.minimum && (index < 0 || share(i) > share(index))) index = i;
     if (index >= 0) { sizes[index]!--; continue; }
     const gap = gaps.findIndex((g, i) => g > model.gaps[i]!);
     if (gap < 0) break;
@@ -395,7 +410,7 @@ function fitAtHeight(model: TextGridModel, box: Box, reduction: number): TextGri
           if (x >= 0 && y >= 0 && x < bw && y < inkH) coverage[(oy + y) * width + ox + x] = 255;
         };
         const paths = model.paths.filter(p => p.some(([x]) => x >= band.left && x <= band.right))
-          .map(path => simplify(path.map(([x, y]): Point => [mapped(x, horizontal), mapped(y, vertical)]), tolerance));
+          .map(path => simplifyStrokePath(path.map(([x, y]): Point => [mapped(x, horizontal), mapped(y, vertical)]), tolerance));
         if (method === 'scan') {
           for (let y = 0; y < inkH; y++) for (const x of scanStrokes(paths, 1, y, bw, band.symmetric)) put(x, y);
           const crossbars = paths.flatMap(path => path.slice(1).flatMap((p, i) =>

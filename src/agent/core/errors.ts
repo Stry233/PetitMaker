@@ -1,18 +1,8 @@
+import { httpFailureKind, QUOTA_WORDING } from '../../platform/remote/http-failure';
 import type { ErrorClass, TurnError } from './types';
-
-/** The rejection an aborted wait settles with: a DOMException named AbortError, or a plain Error of
- *  that name where the runtime has no DOMException. */
-export function abortError(message = 'The wait was aborted.'): Error {
-  if (typeof DOMException !== 'undefined') return new DOMException(message, 'AbortError');
-  const err = new Error(message);
-  err.name = 'AbortError';
-  return err;
-}
 
 export interface RawFailure { status?: number; message: string; retryAfterMs?: number; aborted?: boolean }
 
-// Provider quota codes and billing-limit messages.
-const QUOTA_MESSAGE = /insufficient_quota|billing|usage limit|paid credits?/i;
 // Context-window and request-size messages across supported providers.
 const OVERFLOW_MESSAGE = /context.length|maximum context|too many tokens|prompt is too long|exceed context limit/i;
 // Browser, Node, Safari and SDK connection-failure messages.
@@ -60,22 +50,19 @@ export function classify(input: RawFailure): TurnError {
 function classifyCls(status: number | undefined, message: string, aborted: boolean | undefined): ErrorClass {
   if (aborted) return 'abort';
   if (status !== undefined) {
-    if (status === 401) return 'auth';
-    // A bare 403 is authentication; quota wording makes it a billing limit.
-    if (status === 402) return 'quota';
-    if (status === 403) return QUOTA_MESSAGE.test(message) ? 'quota' : 'auth';
-    if (status === 408 || status === 409 || status === 429) return 'rate-limit';
+    const kind = httpFailureKind(status, message);
+    if (kind === 'auth' || kind === 'quota' || kind === 'rate-limit') return kind;
     // Status zero represents the custom adapter's opaque browser response.
     if (status === 0) return 'cors';
     // A 404 is a model error only when the response identifies the model.
     if (status === 404 && /\bmodel\b/i.test(message)) return 'model';
-    if (status >= 500) return 'overloaded'; // Anthropic overloaded_error and every other 5xx fold in here
+    if (kind === 'server') return 'overloaded'; // Anthropic overloaded_error and every other 5xx fold in here
   }
   // Configuration failures precede provider-message matching because no request was made.
   if (CONFIG_MESSAGE.test(message)) return 'config';
   // SDK empty-response messages precede text parsed from provider bodies.
   if (SILENCE_MESSAGE.test(message)) return 'overloaded';
-  if (QUOTA_MESSAGE.test(message)) return 'quota';
+  if (QUOTA_WORDING.test(message)) return 'quota';
   if (OVERFLOW_MESSAGE.test(message)) return 'overflow';
   // Overflow precedes model matching because context-limit messages also name the model.
   if (MODEL_MESSAGE.test(message)) return 'model';
@@ -88,3 +75,4 @@ const RETRYABLE: ReadonlySet<ErrorClass> = new Set(['rate-limit', 'overloaded', 
 export function isRetryable(cls: ErrorClass): boolean {
   return RETRYABLE.has(cls);
 }
+

@@ -9,7 +9,7 @@ import { PROVIDER_IDS } from '../../agent/providers/defaults';
 /**
  * Generic translation-parity assertions for a bilingual legal doc, shared by
  * the privacy and terms parity tests:
- * the en and zh versions are authored EQUIVALENTS, so their material structure
+ * the en and zh versions are authored equivalents, so their material structure
  * and every factual anchor (h2 count, emails, dates, provider names) must
  * match. No English-only disclosure is allowed.
  */
@@ -31,7 +31,7 @@ export function datesIn(body: string): string[] {
 
 /** Compare provider identities after resolving each document's language. */
 export function providersIn(body: string, lang: 'en' | 'zh'): string[] {
-  const strings = lang === 'zh' ? zh : en;
+  const strings: Readonly<Record<string, string>> = lang === 'zh' ? zh : en;
   return PROVIDER_IDS.filter(id => id !== 'custom' && body.includes(providerName(id, key => strings[key] ?? key))).sort();
 }
 

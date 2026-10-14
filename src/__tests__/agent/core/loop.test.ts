@@ -1,15 +1,19 @@
+import { stubFacts } from '../../_support/tool-facts';
 import { describe, expect, it } from 'vitest';
-import { createScriptedAdapter, type ScriptedTurn } from '../../../agent/eval/scripted-adapter';
+import { createScriptedAdapter, type ScriptedTurn } from '../../_support/agent/scripted-adapter';
 import { answerGate, pendingGate } from '../../../agent/core/gates';
-import { deliveryNudge, reviewNudge, REVIEW_MIN_TURNS_LEFT, REVIEW_MIN_WRITES } from '../../../agent/core/governor';
+import { REVIEW_MIN_TURNS_LEFT, REVIEW_MIN_WRITES } from '../../../agent/core/governor';
+import { deliveryNudge, reviewNudge } from '../../../agent/core/nudges';
 import { append, createLog, eventsOf, type SessionLog } from '../../../agent/core/log';
 import type { LoopDeps, ExecutedResult, ToolExecutor } from '../../../agent/core/loop';
-import { BUILD_BEAT_MS, runJob } from '../../../agent/core/loop';
+import { runJob } from '../../../agent/core/loop';
 import { deriveView } from '../../../agent/core/project-view';
-import { deserializeLog, serializeLog } from '../../../agent/session/persist';
+import { deserializeLog, serializeLog } from '../../../agent/session/log-codec';
 import { queueSteer } from '../../../agent/core/steering';
 import type { Part } from '../../../agent/core/types';
-import { TOOL_SCHEMAS } from '../../../agent/tools';
+import { TOOL_FACTS, wireSchemas } from '../../../agent/tools';
+
+const GUIDES = TOOL_FACTS.guides;
 
 /** Drains the microtask queue: everything in this file resolves through promise chains alone
  *  (no real timers), so a fixed, generous number of `await`s is enough to run the loop up to its
@@ -34,13 +38,12 @@ function makeExecutor(opts: {
       calls.push(call);
       return opts.result ? opts.result(call) : { content: `did ${call.name}`, isError: false };
     },
-    isWrite: (name) => writeNames.has(name),
-    isWide: (name) => wideNames.has(name),
+    facts: stubFacts(writeNames, wideNames),
     describe: (call) => `run ${call.name}`,
   };
 }
 
-/** Stand-ins for the ordinary PARENT job's two ungated control tools: `processCalls` special-cases
+/** Stand-ins for the ordinary parent job's two ungated control tools: `processCalls` special-cases
  *  `update_plan`/`suggest_reply` only when `deps.tools` advertises them by name (a subagent wired
  *  via `wireSchemas({subagent:true})` excludes both), so the default fixture here must carry them
  *  for every test below that exercises either call under the parent path. */
@@ -56,7 +59,6 @@ function makeDeps(overrides: Partial<LoopDeps> & { adapter: LoopDeps['adapter'];
     tools: PARENT_CONTROL_TOOLS,
     oversight: 'yolo',
     sameModel: true,
-    budgetTokens: 100_000,
     signal: new AbortController().signal,
     undoStackSize: () => 0,
     ...overrides,
@@ -76,7 +78,7 @@ function toolTurn(calls: { callId: string; name: string; args?: Record<string, u
   };
 }
 
-/** A turn that SAYS something and calls tools in the same breath (the closing-message shape). */
+/** A turn that says something and calls tools in the same breath (the closing-message shape). */
 function sayingToolTurn(text: string, calls: { callId: string; name: string; args?: Record<string, unknown> }[]): ScriptedTurn {
   return {
     events: [
@@ -145,7 +147,7 @@ describe('runJob core flows', () => {
   });
 
   /**
-   * A NORMALIZED PROSE CALL IS A CALL, all the way down.
+   * A normalized prose call is a call, all the way down.
    *
    * The events here are exactly what `providers/openai.ts` delivers for a gateway that types the
    * call into its message body: no text part, a tool part, `stop: 'tool-calls'` and the turn's own
@@ -334,7 +336,7 @@ describe('runJob core flows', () => {
   });
 
   /**
-   * THE SETTLE BANKS ITS OWN DEPTH, which is the upper half of the pair the panel's take-back reads:
+   * The settle banks its own depth, which is the upper half of the pair the panel's take-back reads:
    * the first checkpoint says where the job's writes began, this says where they ended, so anything
    * above it is the user's own later work and a rewind can name the two apart.
    */
@@ -534,16 +536,16 @@ describe('runJob core flows', () => {
   });
 
   /**
-   * THE ADVERTISED SCHEMA AND THIS PARSER ARE ONE CONTRACT, and nothing else in the tree holds them
+   * The advertised schema and this parser are one contract, and nothing else in the tree holds them
    * together: the loop intercepts `update_plan` before the executor, so no handler's own validation
    * stands between the two. Drifted apart — a schema demanding `{title, status}` while the parser
    * reads `label` — every plan a well-behaved model sends is refused and the tool cannot succeed
-   * once. The stage here is BUILT FROM THE SCHEMA's own
+   * once. The stage here is built from the schema's own
    * `required` list rather than written out, so moving one without the other fails this.
    */
   it("accepts a stage of exactly the shape update_plan's own schema requires", async () => {
-    const schema = TOOL_SCHEMAS.find((s) => s.name === 'update_plan');
-    const items = ((schema?.inputSchema as any).properties.stages.items) as
+    const schema = wireSchemas().find((s) => s.name === 'update_plan');
+    const items = ((schema?.parameters as any).properties.stages.items) as
       { properties: Record<string, { type: string }>; required: string[] };
     const stage: Record<string, unknown> = {};
     for (const key of items.required) {
@@ -725,11 +727,11 @@ describe('runJob core flows', () => {
 });
 
 /**
- * WRITE-NESS AND THE MINTING TURN ARE STAMPED AT EXECUTE TIME, on every `toolResult` the loop
+ * Write-ness and the minting turn are stamped at execute time, on every `toolResult` the loop
  * appends and on every `gateAsked` it asks. The projection then answers "was this a build or an
  * answer?" and "which turn does this call belong to?" from the log alone, with no side channel:
  * `isWrite` is the executor's fact and the executor is not in scope at fold time, and a callId is
- * only unique WITHIN one assistant turn, so the seq of the turn that minted the occurrence is the
+ * only unique within one assistant turn, so the seq of the turn that minted the occurrence is the
  * only durable key for it.
  */
 describe('a result carries its own write-ness and the turn that minted it', () => {
@@ -862,9 +864,9 @@ describe('a result carries its own write-ness and the turn that minted it', () =
     expect(await promise).toBe('done');
   });
 
-  /* A GATE SURVIVES A RELOAD, AND THE RESUME IS WHAT RE-RAISES IT. The projection withholds
+  /* A gate survives a reload, and the resume is what re-raises it. The projection withholds
    * `view.gate` while the phase is paused (nothing is asking), so this is the other half of that
-   * contract: the ask has to come BACK, with a loop behind it, the moment the job is resumed. */
+   * contract: the ask has to come back, with a loop behind it, the moment the job is resumed. */
   it('re-enters a gate left unanswered by a reload, and the answer then runs the call', async () => {
     const log = createLog(() => 0);
     seedOrder(log, 'raise the ridge');
@@ -884,7 +886,7 @@ describe('a result carries its own write-ness and the turn that minted it', () =
     }));
     await flush();
 
-    // The SAME gate, not a second one, and now surfaced.
+    // The same gate, not a second one, and now surfaced.
     expect(eventsOf(log).filter((e) => e.kind === 'gateAsked')).toHaveLength(1);
     expect(deriveView(log).gate).toMatchObject({ gateId: 'g1', callId: 'c1' });
     expect(executor.calls).toEqual([]);
@@ -975,7 +977,7 @@ describe('a governor nudge that escalates a result stamps it as dampered', () =>
 });
 
 /**
- * A REFUSED CALL, RESENT UNCHANGED, IS REFUSED WITHOUT RUNNING. The identical arguments against
+ * A refused call, resent unchanged, is refused without running. The identical arguments against
  * the same map earn the identical error, so the loop answers with that error itself instead of
  * spending an execution; a success with those args, or any successful write since the failure,
  * reopens the ground.
@@ -1186,14 +1188,14 @@ describe('explicit plan progress', () => {
 });
 
 /**
- * THE CLOSING WORDS SURVIVE THE SETTLE. A `jobEnd` carrying an outcome and nothing else would
+ * The closing words survive the settle. A `jobEnd` carrying an outcome and nothing else would
  * leave the answer card no text to show, and every finished job would read alike. The settle
- * carries the closing text as `summary` and marks it when it ENDS IN A QUESTION, which is the fact
+ * carries the closing text as `summary` and marks it when it ends in a question, which is the fact
  * the done.question state and the celebrate hold both read. A quiet giveup carries neither: no
  * words were said, and inventing some would put a sentence in the model's mouth.
  *
- * The words ride EVERY outcome that has them (a cap was told to wrap up; an abort still said what
- * it said), and the question mark rides only the ones the MODEL ended: a truncated fragment or a
+ * The words ride every outcome that has them (a cap was told to wrap up; an abort still said what
+ * it said), and the question mark rides only the ones the model ended: a truncated fragment or a
  * cut-off sentence that happens to stop on "?" must never leave the job waiting on an answer to a
  * question nobody asked.
  */
@@ -1366,7 +1368,7 @@ describe('the closing words settle into the record', () => {
     expect(lastEnd(log)).toMatchObject({ outcome: 'done', summary: 'The ridge is up, and next I would' });
     expect(lastEnd(log)).not.toHaveProperty('question');
 
-    // The same fragment ending ON a question mark is still no question: the cut landed there.
+    // The same fragment ending on a question mark is still no question: the cut landed there.
     const cutOnMark = createLog(() => 0);
     seedOrder(cutOnMark, 'raise a ridge');
     expect(await runJob(cutOnMark, makeDeps({
@@ -1410,11 +1412,11 @@ describe('the closing words settle into the record', () => {
 });
 
 /**
- * THE CONSTRUCTION BEAT: a real pause between consecutive WRITES, so the work is watchable.
+ * The construction beat: a real pause between consecutive writes, so the work is watchable.
  *
  * A batch of writes lands in one microtask burst, which on the glass is the map jumping to its
  * finished state with the working animation never having played a frame. The beat is spent in the
- * LOOP rather than in a renderer: a render delay would hold the panel's own report back too, and the
+ * Loop rather than in a renderer: a render delay would hold the panel's own report back too, and the
  * edits would already have landed either way. Reads are unpaced (nothing lands for them to show), the
  * first write of a batch is unpaced (there is nothing to pace it against), and the wait is the
  * injected `sleep` — the runner's skippable one — so a stop cuts straight through it.
@@ -1454,7 +1456,9 @@ describe('the construction beat', () => {
     await runJob(log, deps);
 
     // c1 is the batch's first write and c2 is a read: neither is paced. c3 and c4 each follow a write.
-    expect(spy.calls.map((c) => c.ms)).toEqual([BUILD_BEAT_MS, BUILD_BEAT_MS]);
+    const [beat] = spy.calls.map((c) => c.ms);
+    expect(beat, 'a beat is a real wait').toBeGreaterThan(0);
+    expect(spy.calls.map((c) => c.ms)).toEqual([beat, beat]);
     expect(spy.calls.every((c) => c.signal === deps.signal)).toBe(true);
     expect(executor.calls.map((c) => c.callId)).toEqual(['c1', 'c2', 'c3', 'c4']);
   });
@@ -1480,7 +1484,7 @@ describe('the construction beat', () => {
     expect(spy.calls).toEqual([]);
   });
 
-  /** A SKIPPED WRITE IS NOT A WRITE. Nothing landed on the map for the next one to be paced against,
+  /** A skipped write is not a write. Nothing landed on the map for the next one to be paced against,
    *  so a batch the user declined runs at its own speed. */
   it('paces nothing after a write the user declined', async () => {
     const log = createLog();
@@ -1509,7 +1513,7 @@ describe('the construction beat', () => {
     expect(spy.calls, 'the first write never landed').toEqual([]);
   });
 
-  /** A STOP CUTS THROUGH THE BEAT. The wait carries the job's own signal, so an abort inside it ends
+  /** A stop cuts through the beat. The wait carries the job's own signal, so an abort inside it ends
    *  the job there rather than after the pause it was waiting out. */
   it('ends the job where the beat was, when the stop lands inside it', async () => {
     const log = createLog();
@@ -1539,7 +1543,7 @@ describe('the construction beat', () => {
     expect(eventsOf(log)[eventsOf(log).length - 1]).toMatchObject({ kind: 'jobEnd', outcome: 'aborted' });
   });
 
-  /** MAX, NOT SUM. The inter-turn courtesy wait and the beat are two answers to the same question
+  /** Max, not sum. The inter-turn courtesy wait and the beat are two answers to the same question
    *  (how fast may this job go), and they cover different gaps: the beat is inside a batch, the
    *  courtesy is between turns. A batch of one write therefore adds nothing to a turn boundary. */
   it('adds nothing to a turn boundary, which the courtesy wait already owns', async () => {
@@ -1563,15 +1567,15 @@ describe('the construction beat', () => {
 });
 
 /**
- * THE DELIVERY NUDGE: finishing means delivering. A closing turn (text, no real tool call) on a job
- * that COULD write but landed nothing is answered once with the delivery contract instead of
+ * The delivery nudge: finishing means delivering. A closing turn (text, no real tool call) on a job
+ * that could write but landed nothing is answered once with the delivery contract instead of
  * settling — build the order's intent on the map as it stands, or state plainly that it cannot be
  * done. The note is a `systemNote` log event, so it reaches the model through the ordinary replay
  * and survives into the record; the close after it is final whatever it says, which is what bounds
  * the nudge to one extra turn per job.
  */
 describe('the delivery nudge', () => {
-  /** The default fixture tools plus one advertised WRITE verb: the nudge asks for an edit, so it
+  /** The default fixture tools plus one advertised write verb: the nudge asks for an edit, so it
    *  only speaks to a job whose tool set could land one. */
   const BUILD_TOOLS = [
     ...PARENT_CONTROL_TOOLS,
@@ -1605,7 +1609,7 @@ describe('the delivery nudge', () => {
     const messages = adapter.requests[1]?.messages ?? [];
     expect(messages[messages.length - 1]).toEqual({ role: 'user', text: deliveryNudge() });
 
-    // The words that settle the job are the SECOND close's.
+    // The words that settle the job are the second close's.
     const end = eventsOf(log)[eventsOf(log).length - 1];
     expect(end).toMatchObject({
       kind: 'jobEnd', outcome: 'done',
@@ -1770,9 +1774,9 @@ describe('the delivery nudge', () => {
 });
 
 /**
- * THE REVIEW BEAT: the review serves the order. The first closing turn of a job whose build LANDED
+ * The review beat: the review serves the order. The first closing turn of a job whose build landed
  * (`REVIEW_MIN_WRITES` writes or more) is answered once with an invitation to re-read the order,
- * judge the map against its own words alone, and fix the one thing IT asked for that is weakest,
+ * judge the map against its own words alone, and fix the one thing it asked for that is weakest,
  * before the close stands. It is the delivery nudge's complement, and the two grounds are disjoint
  * at any one close: zero landed writes is delivery's, a landed build is this one's, and a couple of
  * aimed edits in between is neither's. Each fires at most once per job, so a job is answered at most
@@ -1816,12 +1820,12 @@ describe('the review beat', () => {
     const notes = systemNotes(log);
     expect(notes).toHaveLength(1);
     expect(notes[0]?.kind === 'systemNote' && notes[0].note).toBe('review');
-    expect(notes[0]?.kind === 'systemNote' && notes[0].text).toBe(reviewNudge());
+    expect(notes[0]?.kind === 'systemNote' && notes[0].text).toBe(reviewNudge(GUIDES));
 
     // The note reaches the model as the trailing user message of the next request.
     expect(adapter.requests).toHaveLength(4);
     const messages = adapter.requests[2]?.messages ?? [];
-    expect(messages[messages.length - 1]).toEqual({ role: 'user', text: reviewNudge() });
+    expect(messages[messages.length - 1]).toEqual({ role: 'user', text: reviewNudge(GUIDES) });
 
     // The words that settle the job are the reviewed close's.
     const end = eventsOf(log)[eventsOf(log).length - 1];

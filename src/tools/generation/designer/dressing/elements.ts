@@ -1,36 +1,36 @@
 /**
- * The blocks a kit builds a place out of, and the engine that lays them.
+ * The blocks a kit builds a place out of, and the engine that lays them. Two planting grammars,
+ * read off the decoded expert maps: a flower goes down as a step-1 solid block of one species, a
+ * tree as a step-2 lattice. Everything is one of those, a pair of straight one-species runs along a
+ * block's edges, or bare ground.
  *
- * TWO PLANTING GRAMMARS, both read off the decoded expert maps: a flower goes down as a STEP-1 SOLID
- * block of ONE species (the target planet's beds are eleven blocks of exactly 30 at 5x6), a tree as a
- * STEP-2 LATTICE (twenty of its twenty-two tree blocks). Everything below is one of those two, a pair
- * of straight runs of one species along a block's edges, or bare ground.
+ * The tiling is mirror-symmetric by construction: a block's element and species come from its
+ * mirrored index, so both halves ask for the same thing before `symmetry.ts` reflects the marks,
+ * which would otherwise drop half of them.
  *
- * THE COMPOSITION IS A TILING, and it is MIRROR-SYMMETRIC BY CONSTRUCTION: the canvas is covered by
- * blocks of one size, and a block's element and species are drawn from its MIRRORED index rather
- * than its own, so the two halves ask for the same thing before `symmetry.ts` reflects the marks.
- * Without that the reflection would drop half of what was laid, since a mark whose mirror carries a
- * different species is not a mirror at all.
+ * `KitCanvas.cover` is reached by walking blocks up a ladder (bare, tree lattice, stripes, solid
+ * bed), never by packing a bed tighter: a composed planet differs from a carpet in arrangement, not amount.
  *
- * HOW MUCH is laid is `KitCanvas.cover`, and the tiling reaches it by walking blocks up a ladder
- * (bare, then a tree lattice, then stripes, then a solid bed) rather than by planting denser: on the
- * two reference maps the amount of decoration is already right and the ARRANGEMENT is what differs, so
- * the knob moves how much of the ground is composed, never how tightly a bed is packed.
- *
- * Pure and deterministic per (canvas, style): every draw comes from a hash of the block's mirrored
- * index, so it cannot depend on how many blocks were laid before it.
+ * Pure and deterministic per (canvas, style): every draw hashes the block's mirrored index.
  */
-import type { Rect } from '../../../../core/model/types';
+import { cellKey, type Rect } from '../../../../core/grid/rect';
 import type { PlantRole } from './palette';
 import { inCanvas, type KitCanvas, type KitStyle, type PlantMark, type TileKind } from './types';
+import { fnv1a32 } from '../../../../core/base/hash';
+import { clamp } from '../../../../core/base/math';
 
 /** What share of a tree block's cells a step-2 lattice actually plants: one in four, since every
  *  tree carries an exclusion radius of a cell. */
 const LATTICE_FILL = 0.25;
 /** Cells between two blocks: one, so a bed reads as a bed rather than as a field. */
 const TILE_GAP = 1;
+/** What share of a canvas the blocks actually stand on. They are laid `TILE_GAP` apart, so a 5x5
+ *  block grid covers about 0.69 of its ground and a 7x6 one about 0.75. */
+const TILE_YIELD = 0.7;
+/** The most of a run any composition plants: a run planted edge to edge is a carpet. */
+const COVER_MAX = 0.9;
 /** Share of blocks that plant the accent family instead of the dominant one. Held well under half so
- *  the region's dominant family stays over the 60% the unity score asks for. */
+ *  the region's dominant family stays over 60% of its decor. */
 const ACCENT_SHARE = 0.25;
 /** What share of a block each element covers, used to steer the tiling toward `cover`. */
 const FILL: Readonly<Record<TileKind, number>> = {
@@ -38,42 +38,31 @@ const FILL: Readonly<Record<TileKind, number>> = {
   orchard: LATTICE_FILL, grove: LATTICE_FILL, open: 0,
 };
 /**
- * THE LADDER IS TWO RUNGS, bare ground and a solid bed, and that is the grain rule in one place.
+ * The ladder is two rungs, bare ground and a solid bed: the grain rule. Half-filled rungs would
+ * reach a cover by speckling every block; half the blocks solid and the rest bare plants the same
+ * cells in far fewer pieces, the grain of a bed or a specimen with nothing between.
  *
- * A ladder of half-filled rungs gives a map one middling grain everywhere: a canvas asked to cover half
- * its ground reaches that by walking every block to a HALF-FILLED element — stripes, a chequer, two
- * border runs — which comes out uniformly speckled, nothing anywhere either a mass or an accent, at 64
- * to 86 flora clusters of a median 4 to 7 cells against the reference's 27 at 18 for the same total
- * planted. Reaching the same cover by planting HALF THE BLOCKS SOLID and leaving the others bare plants
- * the same number of cells in a quarter as many pieces, which is the reference's own grain: a bed of
- * size S, or one specimen, with nothing in between.
+ * Trees are off the ladder, which holds the tree-to-flower ratio: a lattice covers a quarter of its
+ * block, so one ladder would answer "plant more" by turning orchards into beds. Tree ground is set
+ * first from `KitCanvas.treeShare` and the cover knob moves only the rest.
  *
- * THE TREES ARE NOT ON IT, and that is what holds the map's tree-to-flower ratio. A lattice covers a
- * quarter of its block and a bed covers all of it, so a single ladder carrying both answers "plant
- * more" by felling orchards into flower beds — four times the blooms and a quarter of the trees for one
- * step. How much ground is under TREES is set first, from `KitCanvas.treeShare`, and the cover knob then
- * moves only what is left.
- *
- * A BORDER, A CHEQUER AND A STRIPED BLOCK STAND AT THE BOTTOM RUNG rather than off the ladder: a kit
- * that drew one keeps it while the cover it wants is low, and where the cover is high it becomes the bed
- * the ladder's top rung is. That is what keeps the reference's line planting (its own border runs are
- * straight same-species rows of four and more) available at the quiet end of the richness axis while the
- * full end reads as beds.
+ * A border, chequer or striped block stands at the bottom rung: kept while the cover is low, it
+ * becomes a bed where the cover is high, so line planting survives at the quiet end.
  */
 const STEERABLE: Readonly<Record<TileKind, boolean>> = {
   open: true, border: true, rows: true, checker: true, bed: true, orchard: false, grove: false,
 };
 /**
- * The moves a block makes in each direction, which are NOT SYMMETRIC.
+ * The moves a block makes in each direction, which are not symmetric.
  *
- * UP GOES STRAIGHT TO A SOLID BED, which is the grain rule: a place that needs more planting gets
+ * Up goes straight to a solid bed, which is the grain rule: a place that needs more planting gets
  * another bed, never a whole canvas of half-filled blocks.
  *
- * DOWN WALKS EVERY RUNG, because the quiet end of the richness axis is the flat garden town and its own
- * planting is LINE planting — its near-water flora is period-2 rows and nothing else. A two-state
- * descent takes per-region unity from 0.57 to 0.52 at richness 0.2, since a region planting three blocks
- * in total is dominated by whichever family the kit's accent roll gave one of them. So a place with
- * little to plant keeps its border runs and stripes, and a place with a lot reads as beds.
+ * Down walks every rung, because the quiet end of the richness axis is the flat garden town and its own
+ * planting is line planting — its near-water flora is period-2 rows and nothing else. Skipping rungs
+ * would let a region planting three blocks in total be dominated by whichever family the kit's accent
+ * roll gave one of them. So a place with little to plant keeps its border runs and stripes, and a place
+ * with a lot reads as beds.
  */
 const DOWN: readonly TileKind[] = ['open', 'border', 'rows', 'bed'];
 const RUNG: Readonly<Record<TileKind, number>> = {
@@ -85,6 +74,15 @@ const demote = (kind: TileKind): TileKind | null => {
   return at <= 0 ? null : DOWN[at - 1]!;
 };
 
+
+/**
+ * The most of a run one composition may plant, given its tree share. A tree block plants a quarter
+ * of itself, so a tree share `s` at cover `c` commits `4sc` of the ground to lattices and leaves the
+ * flowers `(1 - s)c`; the two fit while `c <= 1 / (1 + 3s)`, and past that the map-level correction
+ * spirals thinner. `TILE_YIELD` accounts for the air between blocks that makes a bed read as a bed.
+ */
+export const coverCap = (treeShare: number): number =>
+  Math.min(COVER_MAX, TILE_YIELD / (1 + 3 * clamp(treeShare, 0, 1)));
 
 /** The bounding box of a set of flat indices. */
 export function boxOf(cells: ReadonlySet<number>, W: number): Rect {
@@ -161,7 +159,7 @@ function layTiles(canvas: KitCanvas, style: KitStyle, mirrorAxis: 'v' | 'h' | nu
       const kr = mirrorAxis === 'h' ? Math.min(r, rows - 1 - r) : r;
       const middle = style.aisle
         && (mirrorAxis === 'h' ? rows > 2 && 2 * r + 1 === rows : cols > 2 && 2 * c + 1 === cols);
-      out.push({ rect, key: middle ? 'aisle' : `${kr},${kc}`, cells });
+      out.push({ rect, key: middle ? 'aisle' : cellKey(kr, kc), cells });
     }
   }
   return out;
@@ -183,7 +181,7 @@ function drawKind(canvas: KitCanvas, style: KitStyle, key: string): TileKind {
 }
 
 /**
- * How much of the canvas goes under TREES, decided before the cover knob touches anything.
+ * How much of the canvas goes under trees, decided before the cover knob touches anything.
  *
  * The wanted tree area follows from three numbers the caller already fixed: the composition plants
  * `cover` of the canvas, `treeShare` of those plants should be trees, and a lattice plants a quarter
@@ -213,7 +211,7 @@ function steerTrees(
     }
     return;
   }
-  // ORCHARDS ARE FELLED BEFORE GROVES. A grove is the tree block the kit's own mix asked for, so it
+  // Orchards are felled before groves. A grove is the tree block the kit's own mix asked for, so it
   // is what a tree avenue is made of; an orchard at this point may be one this pass planted. At the
   // quiet end of the axis the map wants six flowers per tree and even the groves have to go, but
   // they go last, and a region whose whole mix is trees keeps its character longest.
@@ -229,7 +227,7 @@ function steerTrees(
   }
 }
 
-/** Walk the FLOWER blocks up or down the ladder until the composition covers about `cover` of the
+/** Walk the flower blocks up or down the ladder until the composition covers about `cover` of the
  *  canvas, counting what the tree blocks already carry. */
 function steerCover(
   kinds: Map<string, TileKind>, area: Map<string, number>, cells: number, cover: number,
@@ -244,7 +242,7 @@ function steerCover(
   const movable = [...kinds.keys()].filter((k) => STEERABLE[kinds.get(k)!]);
   // Largest block first, so a step changes the cover as much as it can.
   movable.sort((a, b) => (area.get(b) ?? 0) - (area.get(a) ?? 0) || (a < b ? -1 : 1));
-  // ROUND ROBIN, not block by block: walking one block to the top of the ladder before touching the
+  // Round robin, not block by block: walking one block to the top of the ladder before touching the
   // next leaves a composition of a few solid beds among bare ground, which is a carpet beside a lawn
   // rather than a composed place. Every block rises a rung, then every block rises again.
   let cursor = 0;
@@ -258,9 +256,9 @@ function steerCover(
       const kind = kinds.get(key)!;
       const next = up ? promote(kind) : demote(kind);
       if (!next) continue;
-      // A STEP THAT LANDS FURTHER FROM THE TARGET IS NOT TAKEN. On a canvas holding two or three
+      // A step that lands further from the target is not taken. On a canvas holding two or three
       // steerable blocks the rungs are coarse, so a run asked for a third of its ground can sit
-      // between two of them — and a loop that only asks which SIDE of the target it is on walks
+      // between two of them — and a loop that only asks which side of the target it is on walks
       // straight past, then back, until it settles at the far rung, which plants a run at an eighth
       // of the cover it asked for.
       const after = now + (FILL[next] - FILL[kind]) * (area.get(key) ?? 0) / cells;
@@ -279,7 +277,7 @@ function steerCover(
 /**
  * The marks one block lays.
  *
- * A BED THE COVER KNOB ADDED PLANTS THE REGION'S OWN FAMILY. The accent is a deliberate draw of the
+ * A bed the cover knob added plants the region's own family. The accent is a deliberate draw of the
  * kit — a quarter of the blocks it composes — and a block the steering promoted to reach a cover is not
  * one of those: letting it keep its accent roll spent the region's unity on how much ground was being
  * planted rather than on how the place was composed, which is what the per-region unity reading is for.
@@ -304,18 +302,18 @@ function fillTile(canvas: KitCanvas, tile: Tile, kind: TileKind, promoted = fals
         case 'bed': put(x, y, flower); break;
         case 'rows': if ((y - rect.y) % 2 === 0) put(x, y, flower); break;
         case 'checker': put(x, y, (x + y) % 2 === 0 ? flower : second); break;
-        // Two parallel runs along the block's long axis, not a closed frame: the references' border
-        // planting is straight same-species runs of four and more, and a ring of them at block scale
+        // Two parallel runs along the block's long axis, not a closed frame: border planting is straight
+        // same-species runs of four and more, and a ring of them at block scale
         // tiles the map with picture frames.
         case 'border':
           if (rect.w >= rect.h ? (y === rect.y || y === rect.y + rect.h - 1)
             : (x === rect.x || x === rect.x + rect.w - 1)) put(x, y, flower);
           break;
-        // ONE PARITY FOR EVERY TREE ON THE MAP, absolute rather than each block's own. Two
+        // One parity for every tree on the map, absolute rather than each block's own. Two
         // adjacent lattices then line up into one orchard instead of meeting at a seam — and, more
         // than that, every tree carries an exclusion radius of one cell, so two lattices on
         // opposite parities would stand diagonally adjacent and the rules would refuse half of the
-        // second one. A grove differs from an orchard by its SPECIES, not by its phase.
+        // second one. A grove differs from an orchard by its species, not by its phase.
         case 'orchard':
         case 'grove': if (x % 2 === 0 && y % 2 === 0) put(x, y, tree); break;
       }
@@ -326,11 +324,8 @@ function fillTile(canvas: KitCanvas, tile: Tile, kind: TileKind, promoted = fals
 
 /** A stable value in [0,1) per (region, elevation, block, salt). */
 function hash01(regionId: string, elevation: number, key: string, salt: number): number {
-  let h = (0x9e3779b9 ^ (elevation * 0x27d4eb2d) ^ (salt * 0x165667b1)) >>> 0;
-  const text = `${regionId}|${key}`;
-  for (let i = 0; i < text.length; i++) h = Math.imul(h ^ text.charCodeAt(i), 0x01000193) >>> 0;
+  let h = fnv1a32(`${regionId}|${key}`, 0x9e3779b9 ^ (elevation * 0x27d4eb2d) ^ (salt * 0x165667b1));
   h ^= h >>> 15;
   return (h >>> 0) / 4294967296;
 }
 
-const clamp = (v: number, lo: number, hi: number): number => (v < lo ? lo : v > hi ? hi : v);

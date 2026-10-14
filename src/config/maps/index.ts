@@ -1,16 +1,20 @@
 /**
  * Built-in map registry. Every `*.json` in this directory is auto-registered by
  * its `template.id` via a Vite glob — drop a new map JSON in and it appears in the
- * New-Project picker and resolves on import/load with NO wiring edits elsewhere.
+ * New-Project picker and resolves on import/load with no wiring edits elsewhere.
  */
 import type { MapTemplate } from '../../core/model/types';
 
-const modules = import.meta.glob('./*.json', { eager: true }) as Record<string, { default: MapTemplate }>;
+/** A map JSON as stored: its row-major terrain (the supports under its landmarks) is a plain array. */
+type StoredMap = Omit<MapTemplate, 'terrain'> & { terrain?: number[] };
+
+const modules = import.meta.glob('./*.json', { eager: true }) as Record<string, { default: StoredMap }>;
 
 /** Built-in maps keyed by `template.id`. */
 export const MAP_TEMPLATES: Record<string, MapTemplate> = {};
 for (const mod of Object.values(modules)) {
-  const tmpl = mod.default;
+  const { terrain, ...rest } = mod.default;
+  const tmpl: MapTemplate = { ...rest, ...(terrain ? { terrain: Uint8Array.from(terrain) } : {}) };
   MAP_TEMPLATES[tmpl.id] = tmpl;
 }
 

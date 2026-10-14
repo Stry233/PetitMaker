@@ -46,4 +46,21 @@ describe('floating placement', () => {
     expect(below.room * 2).toBe(900 - 60 - 16 - 8);
     expect(Number(below.box.maxHeight)).toBe(below.room);
   });
+
+  it('holds a chosen side as the card grows, capping it there with the anchor edge in place', () => {
+    const at = { anchor: { left: 400, right: 500, top: 500, bottom: 540, width: 100 }, width: 300, zoom: 1, gap: 8, viewport: { width: 1200, height: 800 } };
+    const short = placeFloating({ ...at, height: 200 });
+    expect(short.above).toBe(false);
+    // Taller content would open above, but the side the card opened on stands.
+    expect(placeFloating({ ...at, height: 300 }).above).toBe(true);
+    const held = placeFloating({ ...at, height: 300, side: 'below' });
+    expect(held.above).toBe(false);
+    expect(held.box.top).toBe(short.box.top);
+    expect(held.box.maxHeight).toBe(800 - 540 - 8 - 8);
+    // Above, growth lengthens the card upwards and its bottom stays on the anchor.
+    for (const height of [150, 250]) {
+      const up = placeFloating({ ...at, height, side: 'above' });
+      expect(Number(up.box.top) + height).toBe(500 - 8);
+    }
+  });
 });

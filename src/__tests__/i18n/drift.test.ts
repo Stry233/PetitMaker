@@ -4,42 +4,29 @@
  * decides what counts as "used" and fails on anything in en.ts that doesn't.
  *
  * A key is not always the literal argument of a `t(...)`/`translate(...)` call — plenty are held
- * as DATA and translated later at a different site (`config/catalog/categories.ts` holds
+ * as data and translated later at a different site (`config/catalog/categories.ts` holds
  * `placeKey: 'menu.place_building'`; `rules/*.ts` hold `message: 'error.zone_restricted'`; several
  * UI files hold a key behind a ternary or pass it as a bare positional argument to a helper that
  * calls `t()` internally). A matcher that only follows direct call arguments misses all of those
  * and would recommend deleting a live key, which blanks a UI string in seven languages with no
- * test failure to catch it. So "used" here means the literal, key-shaped string appears ANYWHERE
+ * test failure to catch it. So "used" here means the literal, key-shaped string appears anywhere
  * in application source, not only inside a translate call — the safe direction for a detector
  * whose false positive is a silent deletion.
  */
 import { describe, it, expect } from 'vitest';
-// @ts-ignore - node:fs is untyped here (no @types/node)
-import { readFileSync, readdirSync, statSync } from 'node:fs';
-// @ts-ignore - node:path is untyped here (no @types/node)
-import { join, resolve } from 'node:path';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { translations } from '../../i18n/translations';
-import { HELP_TABLES } from '../../i18n/locales/help';
-
-declare const __dirname: string;
+import { translateFor } from '../../i18n/context';
+import type { Translate } from '../../i18n/keys';
+import { countedBase } from '../_support/plural-keys';
+import { walkFiles } from '../_support/source-graph';
 
 const SRC = resolve(__dirname, '..', '..');
 
 /** Every .ts/.tsx under src, excluding tests (which quote keys for reasons unrelated to using
  *  them — assertion fixtures, the export-keys-parity list) and the locale data itself. */
-function sourceFiles(dir: string, out: string[] = []): string[] {
-  for (const name of readdirSync(dir)) {
-    const full = join(dir, name);
-    if (statSync(full).isDirectory()) {
-      if (name === '__tests__') continue;
-      if (full.replace(/\\/g, '/').endsWith('/i18n/locales')) continue;
-      sourceFiles(full, out);
-    } else if (/\.tsx?$/.test(name)) {
-      out.push(full);
-    }
-  }
-  return out;
-}
+const sourceFiles = (dir: string): string[] => walkFiles(dir, { skip: ['__tests__', 'i18n/locales'] });
 
 const FILES = sourceFiles(SRC);
 const SOURCE_TEXT = FILES.map((f) => readFileSync(f, 'utf8'));
@@ -70,14 +57,7 @@ function usedKeys(): Set<string> {
 /** Every .mts under scripts/, recursively. The offline README-figure pipeline drives the live app
  *  and reads i18n keys straight out of `translations` to build captions, so a key it reads must
  *  still exist even though quoting it here is not a reason to keep that key translated. */
-function scriptFiles(dir: string, out: string[] = []): string[] {
-  for (const name of readdirSync(dir)) {
-    const full = join(dir, name);
-    if (statSync(full).isDirectory()) scriptFiles(full, out);
-    else if (/\.mts$/.test(name)) out.push(full);
-  }
-  return out;
-}
+const scriptFiles = (dir: string): string[] => walkFiles(dir, { accept: /\.mts$/ });
 
 const SCRIPTS = resolve(__dirname, '..', '..', '..', 'scripts');
 const SCRIPT_TEXT = scriptFiles(SCRIPTS).map((f) => readFileSync(f, 'utf8'));
@@ -85,7 +65,7 @@ const SCRIPT_TEXT = scriptFiles(SCRIPTS).map((f) => readFileSync(f, 'utf8'));
 /** Key-shaped strings from scripts/, narrowed to the namespaces en.ts actually declares (first dot
  *  segment) — scripts/ is full of unrelated dotted literals that happen to fit KEY_SHAPE (CDP method
  *  names like `Page.navigate`, filenames like `README.md`), and none of those share a namespace with
- *  a real i18n key. A DYNAMIC_PREFIXES entry (e.g. `agent2.prov_` before a script concatenates an id
+ *  a real i18n key. A DYNAMIC_PREFIXES entry (e.g. `agent.prov_` before a script concatenates an id
  *  onto it) is a deliberately incomplete key, not a reference to a missing one. */
 function keysReferencedFromScripts(enKeySet: Set<string>): string[] {
   const namespaces = new Set([...enKeySet].map((k) => k.split('.')[0]));
@@ -97,14 +77,15 @@ function keysReferencedFromScripts(enKeySet: Set<string>): string[] {
  *  Each entry names the call site that composes it, and an entry whose call site is gone fails the
  *  "still composed" check below: an unbacked prefix protects every key under it from detection. */
 const DYNAMIC_PREFIXES: readonly string[] = [
-  'modal.settings_motion_', // ui/chrome/modals/SettingsModal.tsx: t(`modal.settings_motion_${pref}`) per motion-pref row
-  'modal.settings_quality3d_', // ui/chrome/modals/SettingsModal.tsx: t(`modal.settings_quality3d_${q}`) per 3D-quality row
+  'modal.settings_motion_', // ui/chrome/modals/settings/SettingsModal.tsx: t(`modal.settings_motion_${pref}`) per motion-pref row
+  'modal.settings_quality3d_', // ui/chrome/modals/settings/SettingsModal.tsx: t(`modal.settings_quality3d_${q}`) per 3D-quality row
   'export.preset_', // ui/chrome/modals/export/ExportControls.tsx: t(`export.preset_${preset}`) and `${preset}_desc`
   'export.res_', // ui/chrome/modals/export/ExportControls.tsx: t(`export.res_${resolutionKey}`) per resolution option
   'kbd.cat.', // ui/chrome/modals/keyboard/KeyboardModal.tsx: t(`kbd.cat.${category}`) per keybind category heading
-  'hint.sep.', // ui/hints/tokens.tsx: t(`hint.sep.${separator}`) for the combo-token separator glyph
+  'hint.sep.', // ui/help/hints/hint-marks.tsx: t(`hint.sep.${separator}`) for the combo-token separator glyph
   'context.rotate_', // ui/chrome/floating/ContextMenu.tsx: t(`context.rotate_${axis}`) for the rotate-object menu row
-  'stylize.provider_', // ui/chrome/modals/export/stylize/Hero.tsx: t(`stylize.provider_${id}`) per provider row
+  'agent.verb_', // agent/tools/labels.ts: toolVerbKey composes `agent.verb_${name}` per tool
+  'agent.skill_', // agent/skills/titles.ts: skillTitleKey composes the title key per skill name
 ];
 
 const isDynamic = (key: string): boolean => DYNAMIC_PREFIXES.some((p) => key.startsWith(p));
@@ -114,13 +95,16 @@ describe('i18n drift: an orphaned key fails the suite', () => {
   const enKeys = Object.keys(translations.en);
 
   it('every en key is referenced, directly or via a declared dynamic prefix', () => {
-    const orphans = enKeys.filter((k) => !used.has(k) && !isDynamic(k));
+    // A plural variant `base_one` or the exact-one `base_single` is read through its base key's
+    // count, so the base's use covers it.
+    const variantOfUsed = (k: string) => { const base = countedBase(k); return base !== null && used.has(base); };
+    const orphans = enKeys.filter((k) => !used.has(k) && !isDynamic(k) && !variantOfUsed(k));
     expect(orphans).toEqual([]);
   });
 
   it('every declared dynamic prefix is still composed somewhere', () => {
     // The only source shape that produces `prefix + arbitrary-suffix` at runtime is a template
-    // literal whose static portion IS the prefix, so the prefix text immediately followed by the
+    // literal whose static portion is the prefix, so the prefix text immediately followed by the
     // interpolation start is the fact to search for.
     const stale = DYNAMIC_PREFIXES.filter((p) => !SOURCE_TEXT.some((text) => text.includes(`${p}\${`)));
     expect(stale).toEqual([]);
@@ -134,38 +118,20 @@ describe('i18n drift: an orphaned key fails the suite', () => {
 });
 
 /**
- * THE OTHER DIRECTION: a key asked FOR must be declared, or its label reads as the key itself.
- * Locale key-set parity is `parity.test.ts`'s.
- *
- * Only the LITERAL argument of a translate call is checked. A key held as data, composed from a
- * table or chosen behind a ternary is invisible to this and is the drift test's business above; a
- * literal at the call site is the common case and is free to check.
+ * The other direction: a key asked for must be declared, or its label reads as the key itself. The
+ * type checker holds it: `Translate`, `translate` and `translateFor` take only `TextKey`, so an
+ * undeclared literal, a key-holding field typed `string` or a composed family with a missing member
+ * fails `npm run lint`. Locale key-set parity is `parity.test.ts`'s.
  */
-describe('i18n gaps: a key asked for and never declared fails the suite', () => {
-  /** `t('some.key'` and `translate(locale, 'some.key'` — the two call shapes this app translates
-   *  through. The key is the first literal for one and the second for the other. */
-  const CALLS: readonly RegExp[] = [
-    /\bt\(\s*'([a-zA-Z][a-zA-Z0-9_.]*)'/g,
-    /\btranslate\(\s*[^,()]+,\s*'([a-zA-Z][a-zA-Z0-9_.]*)'/g,
-  ];
-
-  it('every literal key at a translate call site resolves in en', () => {
-    // The Help Center's tables arrive as a lazy OVERLAY (`i18n/locales/help`) rather than through
-    // the eager merge, so its keys resolve too; the overlay's own parity, register and orphan
-    // checks live in `__tests__/ui/help/catalog.test.ts`.
-    const enSet = new Set([...Object.keys(translations.en), ...Object.keys(HELP_TABLES.en)]);
-    const missing = new Set<string>();
-    for (const [i, text] of SOURCE_TEXT.entries()) {
-      for (const call of CALLS) {
-        call.lastIndex = 0;
-        let m: RegExpExecArray | null;
-        while ((m = call.exec(text))) {
-          const key = m[1]!;
-          if (!KEY_SHAPE.test(key) || isDynamic(key) || enSet.has(key)) continue;
-          missing.add(`${key} (${FILES[i]})`);
-        }
-      }
-    }
-    expect([...missing]).toEqual([]);
+describe('i18n gaps: a key asked for and never declared fails the type check', () => {
+  it('rejects an undeclared key at every translate entry point', () => {
+    const asks = (t: Translate) => {
+      // @ts-expect-error an undeclared key
+      t('no.such_key');
+      // @ts-expect-error an undeclared key
+      translateFor('en', 'no.such_key');
+      return t('app.name');
+    };
+    expect(asks((key) => translateFor('en', key))).toBe(translateFor('en', 'app.name'));
   });
 });

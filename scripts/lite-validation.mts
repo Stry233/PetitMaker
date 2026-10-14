@@ -27,7 +27,10 @@ export function validateLiteScript(name: string, code: string): void {
       || (ts.isBindingElement(node) && node.dotDotDotToken && ts.isObjectBindingPattern(node.parent))
       || (ts.isFunctionLike(node) && 'asteriskToken' in node && node.asteriskToken && ts.getModifiers(node)?.some(m => m.kind === ts.SyntaxKind.AsyncKeyword))
       || (ts.isNumericLiteral(node) && node.getText(file).includes('_'))
-      || (ts.isBinaryExpression(node) && [ts.SyntaxKind.QuestionQuestionToken, ts.SyntaxKind.QuestionQuestionEqualsToken, ts.SyntaxKind.BarBarEqualsToken, ts.SyntaxKind.AmpersandAmpersandEqualsToken].includes(node.operatorToken.kind))) {
+      || (ts.isBinaryExpression(node) && [
+        ts.SyntaxKind.QuestionQuestionToken, ts.SyntaxKind.QuestionQuestionEqualsToken,
+        ts.SyntaxKind.BarBarEqualsToken, ts.SyntaxKind.AmpersandAmpersandEqualsToken,
+      ].includes(node.operatorToken.kind))) {
       throw new Error(`Unsupported syntax in ${name}: ${ts.SyntaxKind[node.kind]}`);
     }
     if (ts.isCallExpression(node) || ts.isNewExpression(node)) {

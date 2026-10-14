@@ -1,25 +1,25 @@
-// THE LARGE COMPOSED BODIES, read as shapes and then as cut ground.
+// The large composed bodies, read as shapes and then as cut ground.
 //
-// The SHAPE claims are what the water ledger's reading rests on, so they are asserted directly off
+// The shape claims are what the water ledger's reading rests on, so they are asserted directly off
 // the draw: every form mirrors about both axes of its own box, none of them fills it the way a
 // dropped rectangle does, and each one carries the dry ground its own accounting class is defined by
 // — two or more enclosed islets for a basin and a medallion, one platform for a ring, a 3:1-or-thinner
 // profile for a trough. A figure that lost those would pass through the ledger as water belonging to
 // no story.
 //
-// The CUT claims are read on a synthetic flat map: the figures land, they are few and large, no two
+// The cut claims are read on a synthetic flat map: the figures land, they are few and large, no two
 // of them are congruent, and the ground commits through the live rules with no violation.
 import { describe, it, expect } from 'vitest';
 import { MAP_TEMPLATES } from '../../../../../config/maps';
-import { flatIndex } from '../../../../../core/model/grid-model';
-import type { MacroCoord, MapTemplate, Rect } from '../../../../../core/model/types';
+import { flatIndex } from '../../../../../core/grid/rect';
+import type { MacroCoord, MapTemplate } from '../../../../../core/model/types';
+import type { Rect } from '../../../../../core/grid/rect';
 import { createDefaultRegistry } from '../../../../../rules';
-import { applyPlanToScratch } from '../../../../../tools/generation/core/repair';
-import type { TerrainPlan } from '../../../../../tools/generation/core/types';
-import { paintableMask } from '../../../../../tools/generation/designer/composition/composition';
-import {
-  cutComposedBodies, fitForm, formCells, type ComposedBody, type WaterForm,
-} from '../../../../../tools/generation/designer/water/water-forms';
+import { applyPlanToScratch } from '../../../../../tools/generation/terrain-plan/repair';
+import type { TerrainPlan } from '../../../../../tools/generation/terrain-plan/types';
+import { paintableMask } from '../../../../../tools/generation/designer/planet';
+import { cutComposedBodies, type ComposedBody } from '../../../../../tools/generation/designer/water/water-forms';
+import { fitForm, formCells, type WaterForm } from '../../../../../tools/generation/designer/water/water-form-shapes';
 import type { DesignPlan } from '../../../../../tools/generation/designer/types';
 
 const HEXIA = MAP_TEMPLATES['hexia']!;
@@ -97,7 +97,7 @@ function flatIsland(template: MapTemplate, tier = 1): {
 function emptyPlan(template: MapTemplate): DesignPlan {
   return {
     seedInfo: { seed: 0, richness: 1, templateId: template.id },
-    plazaHub: { x: 0, y: 0, w: 0, h: 0 },
+    hubArea: { x: 0, y: 0, w: 0, h: 0 },
     backingBand: { x: 0, y: 0, w: 0, h: 0 },
     regions: [], unplaced: [],
   };
@@ -235,9 +235,9 @@ describe('the figures, cut into a terrace', () => {
 });
 
 describe('the figures set into the terrace', () => {
-  // The reference's water is CUT INTO its terraces and framed by their edges (calibration §8.3, §8.5),
+  // The reference's water is cut into its terraces and framed by their edges (calibration §8.3, §8.5),
   // not floated in the middle of an open plate. `fitForm` centres its box in the room it was given, so
-  // the pass pushes the box against whichever sides of that room a step RISES on — and only a rise,
+  // the pass pushes the box against whichever sides of that room a step rises on — and only a rise,
   // since a body flush against lower ground shows a face nobody composed.
   it('lays a figure against the riser its room ends at, and never against a drop', () => {
     const { t, grass, flat } = flatIsland(HEXIA);
@@ -257,7 +257,7 @@ describe('the figures set into the terrace', () => {
         for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
           const i = flatIndex(c.x + dx, c.y + dy, W);
           const surface = t.water[i]! >= 0 ? t.water[i]! : t.tier[i]!;
-          // NOTHING BELOW: a face is what the rules would ask for caps at, and no figure here shows one.
+          // Nothing below: a face is what the rules would ask for caps at, and no figure here shows one.
           expect(surface, `${body.form} at ${c.x},${c.y} faces lower ground`)
             .toBeGreaterThanOrEqual(body.tier);
           if (t.water[i]! < 0 && t.tier[i]! > body.tier) against++;

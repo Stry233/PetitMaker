@@ -6,7 +6,7 @@
 import { getCharacterHandle } from './Character';
 import { CHARACTER_SEAT } from '../../shell/panel-frame';
 import { visualRect } from '../../design/visual-rect';
-import { createSignal } from '../../../core/runtime/signal';
+import { createSignal } from '../../../core/base/signal';
 
 function layerOrigin(el: HTMLElement): { left: number; top: number } {
   const layer = el.parentElement;
@@ -84,7 +84,7 @@ export function parkCharacter(seat: SeatedAt | null): SeatedAt | null {
 }
 
 /** Places the carriage and character from one progress value, with no independent character transition. */
-export function placeCarried(seat: SeatedAt, step: CarryStep, at: number): void {
+function placeCarried(seat: SeatedAt, step: CarryStep, at: number): void {
   const back = 1 - at;
   shift = { x: back * step.left, y: back * step.top };
   if (carriage) {

@@ -1,4 +1,6 @@
-import { abortError } from './errors';
+import { abortError } from '../../platform/async/abort';
+
+const sleepAbortError = (): Error => abortError('The wait was aborted.');
 
 /** A `sleep` whose wait can be ended by hand: the runner's retry ladder is the one caller that skips
  *  (`loop.ts`'s `deps.sleep`, only at the backoff between adapter attempts — never the idle-stream
@@ -6,7 +8,7 @@ import { abortError } from './errors';
  *  countdown press needs to resolve that wait immediately without touching the clock. A job with no
  *  sleep of its own waits on one nothing skips. `skip()` is
  *  not latched: it only ever resolves sleeps already pending at the moment it runs, so a sleep
- *  started afterward (the NEXT attempt's own backoff) waits out its full delay. */
+ *  started afterward (the next attempt's own backoff) waits out its full delay. */
 interface SkippableSleeper {
   sleep(ms: number, signal: AbortSignal): Promise<void>;
   skip(): void;
@@ -16,16 +18,16 @@ export function createSkippableSleeper(): SkippableSleeper {
   const pending = new Set<() => void>();
   return {
     sleep(ms: number, signal: AbortSignal): Promise<void> {
-      if (signal.aborted) return Promise.reject(abortError());
+      if (signal.aborted) return Promise.reject(sleepAbortError());
       return new Promise((resolve, reject) => {
         const settle = (fn: () => void): void => { clearTimeout(timer); signal.removeEventListener('abort', onAbort); pending.delete(done); fn(); };
-        // A caller's OWN abort listener on this signal can run `skip()` (via `done`) before the
+        // A caller's own abort listener on this signal can run `skip()` (via `done`) before the
         // sleeper's own `onAbort` fires, if it was registered first — listeners run in
         // registration order, and `signal.aborted` is already true by then. Guarding here (rather
         // than trusting whichever listener runs first) keeps a skip that races an abort a
         // rejection, never a silent success.
-        const done = (): void => settle(signal.aborted ? () => reject(abortError()) : resolve);
-        const onAbort = (): void => settle(() => reject(abortError()));
+        const done = (): void => settle(signal.aborted ? () => reject(sleepAbortError()) : resolve);
+        const onAbort = (): void => settle(() => reject(sleepAbortError()));
         const timer = setTimeout(done, ms);
         pending.add(done);
         signal.addEventListener('abort', onAbort, { once: true });

@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { stubFacts } from '../../_support/tool-facts';
 import { isRetryable } from '../../../agent/core/errors';
 import { append, createLog, eventsOf, type SessionLog } from '../../../agent/core/log';
 import { runJob, type LoopDeps, type ToolExecutor } from '../../../agent/core/loop';
@@ -6,8 +7,8 @@ import {
   BETWEEN_EVENT_IDLE_MS, FIRST_EVENT_IDLE_MS, withIdleTimeout,
 } from '../../../agent/core/stream-idle';
 import type { StreamEvent } from '../../../agent/core/types';
-import { createScriptedAdapter } from '../../../agent/eval/scripted-adapter';
-import type { Adapter, AdapterRequest } from '../../../agent/providers/types';
+import { createScriptedAdapter } from '../../_support/agent/scripted-adapter';
+import type { Adapter, AdapterRequest } from '../../../agent/core/adapter';
 
 /** A stream that stops sending without ending: the shape a proxy dropping a connection, a gateway
  *  holding a socket open, or a provider stalling mid-turn leaves behind. Nothing rejects and
@@ -39,8 +40,7 @@ function collect(stream: AsyncGenerator<StreamEvent>): { events: StreamEvent[]; 
 function makeExecutor(): ToolExecutor {
   return {
     async execute(call) { return { content: `did ${call.name}`, isError: false }; },
-    isWrite: () => false,
-    isWide: () => false,
+    facts: stubFacts(),
     describe: (call) => `run ${call.name}`,
   };
 }
@@ -53,10 +53,9 @@ function makeDeps(overrides: Partial<LoopDeps> & { adapter: Adapter }): LoopDeps
     executor: makeExecutor(),
     oversight: 'yolo',
     sameModel: true,
-    budgetTokens: 100_000,
     signal: new AbortController().signal,
     undoStackSize: () => 0,
-    sleep: async () => {}, // the retry ladder's own wait, resolved at once: this suite times the STREAM
+    sleep: async () => {}, // the retry ladder's own wait, resolved at once: this suite times the stream
     ...overrides,
   };
 }
@@ -65,7 +64,7 @@ function seedOrder(log: SessionLog): void {
   append(log, { kind: 'order', text: 'go', mapContext: '' });
 }
 
-/** An adapter whose FIRST turn goes silent forever and whose second answers normally, recording the
+/** An adapter whose first turn goes silent forever and whose second answers normally, recording the
  *  signal each turn was handed so a test can see which of them the idle trip cancelled. */
 function stallsThenAnswers(text: string): Adapter & { requests: AdapterRequest[]; signals: AbortSignal[] } {
   const requests: AdapterRequest[] = [];
@@ -115,7 +114,7 @@ describe('withIdleTimeout', () => {
     const { events, done } = collect(withIdleTimeout(neverYields(), { onIdle: () => { idled++; } }));
 
     await vi.advanceTimersByTimeAsync(FIRST_EVENT_IDLE_MS - 1);
-    expect(events).toHaveLength(0); // the first wait is the GENEROUS one: a hidden-CoT turn is still thinking
+    expect(events).toHaveLength(0); // the first wait is the generous one: a hidden-CoT turn is still thinking
     expect(idled).toBe(0);
 
     await vi.advanceTimersByTimeAsync(1);
@@ -126,7 +125,7 @@ describe('withIdleTimeout', () => {
     const only = events[0];
     expect(only?.t).toBe('error');
     const cls = only?.t === 'error' ? only.error.cls : 'unknown';
-    expect(cls).toBe('network'); // a NAMED class the banner can caption, never the uncaptioned 'unknown'
+    expect(cls).toBe('network'); // a named class the banner can caption, never the uncaptioned 'unknown'
     expect(isRetryable(cls)).toBe(true);
     expect(vi.getTimerCount()).toBe(0);
   });

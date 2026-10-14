@@ -1,5 +1,5 @@
 /**
- * PERPLEXITY'S ROUTER, through the OpenAI-dialect adapter it is a drop-in for.
+ * Perplexity'S router, through the OpenAI-dialect adapter it is a drop-in for.
  *
  * The Router speaks the OpenAI Chat Completions schema at `https://api.perplexity.ai/router/v1`, so
  * the provider is an entry in the registry rather than an adapter of its own, and this file is what
@@ -15,9 +15,10 @@ import { isRetryable } from '../../../agent/core/errors';
 import type { StreamEvent } from '../../../agent/core/types';
 import { baseUrlFor, PROVIDER_META, PROVIDER_IDS, QUIRKS } from '../../../agent/providers/defaults';
 import { detectProviderFromKey } from '../../../agent/providers/detect';
-import type { AdapterRequest } from '../../../agent/providers/types';
+import type { AdapterRequest } from '../../../agent/core/adapter';
 import { agentProviderDisclosureList } from '../../../legal/providers-list';
-import { PROVIDER_ROSTER, readKeyShape } from '../../../ui/agent/setup-parts';
+import { PROVIDER_ROSTER } from '../../../ui/agent/connection/setup-parts';
+import { readKeyShape } from '../../../agent/connection/key-grammar';
 
 const { createMock, ctorMock, listMock } = vi.hoisted(() => ({
   createMock: vi.fn(),
@@ -59,6 +60,7 @@ function request(): AdapterRequest {
 
 function perplexityAdapter() {
   return createOpenAIAdapter({
+    providerId: 'perplexity',
     apiKey: 'pplx-1234567890abcdef',
     baseUrl: baseUrlFor('perplexity', {}),
     quirks: QUIRKS.perplexity,
@@ -119,9 +121,6 @@ describe('providers/perplexity: the key shape', () => {
   it('names the provider from the key prefix, with no probe', () => {
     expect(detectProviderFromKey('pplx-1234567890abcdef')).toBe('perplexity');
     expect(readKeyShape('pplx-1234567890abcdef')).toBe('perplexity');
-  });
-
-  it('is never a probe candidate: the prefix is distinct', () => {
   });
 
   it('leaves a bare sk- key to the probe', () => {

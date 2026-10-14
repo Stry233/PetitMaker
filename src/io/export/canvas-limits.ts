@@ -1,4 +1,4 @@
-// What THIS device's 2D canvas can allocate, measured once instead of assumed.
+// What this device's 2D canvas can allocate, measured once instead of assumed.
 //
 // `CANVAS_LIMITS` is desktop Chrome's ceiling: 16384 px per side and 16384² pixels of area. WebKit
 // allows about a sixteenth of that area, so a 169×140 map composed at Size = Original asks for
@@ -37,7 +37,7 @@ function probeCanvas2d(w: number, h: number): boolean {
 /** Descend both ladders through `probe`. A ladder that confirms nothing while the other confirms
  *  something takes its smallest rung, since the probe demonstrably ran; neither confirming means
  *  there is nothing to learn here (no 2D context at all) and the conservative constants stand. */
-export function measureCanvasLimits(probe: (w: number, h: number) => boolean): CanvasLimits {
+function measureCanvasLimits(probe: (w: number, h: number) => boolean): CanvasLimits {
   const maxDim = DIM_RUNGS.find((d) => probe(d, 1));
   // A square wider than the longest side allowed cannot be allocated whatever the area ceiling is.
   const areaSide = AREA_SIDE_RUNGS.filter((s) => s <= (maxDim ?? Infinity)).find((s) => probe(s, s));
@@ -48,15 +48,15 @@ export function measureCanvasLimits(probe: (w: number, h: number) => boolean): C
 
 let measured: CanvasLimits | null = null;
 
-/** Harness seam: stand in a ceiling, or null to measure again. */
-export function __setDeviceCanvasLimits(limits: CanvasLimits | null): void {
-  measured = limits;
-}
-
 /** This device's ceiling, measured on first use and kept: the probe allocates real pixels, and the
  *  answer cannot change within a session. */
 export function deviceCanvasLimits(): CanvasLimits {
   if (measured) return measured;
   measured = typeof document === 'undefined' ? CANVAS_LIMITS : measureCanvasLimits(probeCanvas2d);
   return measured;
+}
+
+/** Forgets the measured ceiling, so the next read probes again. */
+export function __resetCanvasLimits(): void {
+  measured = null;
 }

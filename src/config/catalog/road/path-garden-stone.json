@@ -4,7 +4,7 @@
   "icon": "path-garden-stone",
   "name": {
     "en": "Garden Stone Path",
-    "zh": "庭园石路",
+    "zh": "庭院碎石路",
     "ja": "庭石の道",
     "ru": "Садовая каменная дорожка",
     "th": "ทางหินสวน",
@@ -27,5 +27,17 @@
     {
       "type": "plantable"
     }
-  ]
+  ],
+  "roadMaterial": {
+    "feather": 0.065,
+    "edge": {
+      "color": "#ffffff",
+      "pattern": {
+        "kind": "image",
+        "image": "path-garden-stone",
+        "repeat": 2.5
+      }
+    },
+    "layers": []
+  }
 }

@@ -1,33 +1,30 @@
 /*
- * A SIZE IS NAMED, NOT CHOSEN.
+ * A size is named, not chosen.
  *
- * Modelled on `__tests__/core/runtime/prefs.test.ts` (a storage key written outside its one table) and
- * `__tests__/ui/shell/motion-registry.test.ts` (a curve chosen at a call site). The same argument
+ * Modelled on `__tests__/platform/storage/prefs.test.ts` (a storage key written outside its one table) and
+ * `__tests__/ui/design/motion-registry.test.ts` (a curve chosen at a call site). The same argument
  * carries: a number written into a style object is a decision nobody can find later, and it lets
  * one semantic level drift to six different sizes across the windows — a section heading at
  * 12/700, 12.5/800, 13/900, 15/800, 15/900 and 16/700, each defensible where it stands and none of
  * them the same rank on the glass as its neighbour.
  *
  * `ui/design/text-weight.ts:TEXT_ROLES` is the inventory. The homes below are the files allowed to
- * hold a number, and `ALLOWED` names every survivor with the reason it is one, so the exceptions are
- * documented rather than merely absent.
+ * hold a number, and `text-ladder-allowlist.json` names every survivor with the reason it is one, so
+ * the exceptions are documented rather than merely absent.
  */
 import { describe, it, expect } from 'vitest';
-// @ts-ignore - node:fs is untyped here (no @types/node)
-import { readFileSync, readdirSync, statSync } from 'node:fs';
-import { TEXT_FLOOR, TEXT_ROLES, type TextRole } from '../../../ui/design/text-weight';
+import { readFileSync } from 'node:fs';
+import { TEXT_ROLES, type TextRole } from '../../../ui/design/text-weight';
+import { repoFiles } from '../../_support/source-graph';
+import ALLOWLIST from './text-ladder-allowlist.json';
 
 function sources(dir: string): { path: string; text: string }[] {
-  return (readdirSync(dir) as string[]).flatMap((name) => {
-    const full = `${dir}/${name}`;
-    if (statSync(full).isDirectory()) return sources(full);
-    return /\.tsx?$/.test(name) ? [{ path: full, text: readFileSync(full, 'utf8') }] : [];
-  });
+  return repoFiles(dir).map((path) => ({ path, text: readFileSync(path, 'utf8') }));
 }
 
 /**
  * The files that may hold a type size: the ladder itself, the two token sets that publish it, and
- * the frame's own fixed-px ladder (`units.ts`), which is a SECOND declared system rather than a
+ * the frame's own fixed-px ladder (`units.ts`), which is a second declared system rather than a
  * stray — the frame draws at `units.ts:ZOOM` times the chrome's factor, so its numbers are authored
  * against a different multiplier and cannot be pooled with the chrome's.
  */
@@ -39,23 +36,15 @@ const HOMES = [
 ];
 
 /**
- * A size that is legitimately local, each with the reason it is not a rung. A run of TITLED text
+ * A size that is legitimately local, each with the reason it is not a rung. A run of titled text
  * never belongs here: what is left is glyphs measured against the art they centre in, one platform
- * requirement, and one surface that does not ship.
+ * requirement, and the key-cap tokens Help draws.
  *
- * A size DERIVED from a caller's own dimension (`Math.round(size * 0.42)` in `BrandLockup`, the
+ * A size derived from a caller's own dimension (`Math.round(size * 0.42)` in `BrandLockup`, the
  * map-anchored marks, `bar-atoms`' `size` prop) needs no entry — it is not a number chosen for a
  * run of text, and the scan below does not read it as one.
  */
-const ALLOWED: Record<string, string> = {
-  'src/ui/shell/bars/CandidateCard.tsx': 'iOS Safari zooms the page in on focus for any input under 16px',
-  'src/ui/chrome/modals/export/Shot3dStrip.tsx': 'two glyphs (a placeholder frame, a plus) sized to the tile they centre in',
-  'src/ui/chrome/modals/export/ExportPreview.tsx': 'the failed-preview pictograph is an illustration, not a line of type',
-  'src/ui/chrome/modals/export/Preview3D.tsx': 'a glyph centred in a 46px round button',
-  'src/ui/chrome/modals/AboutModal.tsx': 'the grid row\'s chevron is a mark sized to the row, not a word in it',
-  // Quick Hints is unmounted and has no shared frame placement, so its local sizes are exempt.
-  'src/ui/hints/tokens.tsx': 'the Quick Hints panel is built but unmounted',
-};
+const ALLOWED: Readonly<Record<string, string>> = ALLOWLIST;
 
 /**
  * A size given as a bare number: `fontSize:`, the `fontSize={...}` prop form, and the kebab-case
@@ -93,7 +82,7 @@ describe('the type ladder is the only inventory of sizes', () => {
 });
 
 /**
- * The rungs a WINDOW's titled text may stand on. A window title, a section heading and a card header
+ * The rungs a window's titled text may stand on. A window title, a section heading and a card header
  * are three ranks and no more: the same rank must never read at a
  * different size depending on which window it is in.
  */
@@ -116,7 +105,7 @@ describe('the heading rungs', () => {
   it('gives the innermost heading the heaviest weight on its card', () => {
     expect(TEXT_ROLES.subhead.weight).toBeGreaterThan(TEXT_ROLES.body.weight);
     expect(TEXT_ROLES.subhead.weight).toBeGreaterThan(TEXT_ROLES.chip.weight);
-    expect(TEXT_ROLES.subhead.px).toBeGreaterThanOrEqual(TEXT_FLOOR);
+    expect(TEXT_ROLES.subhead.px).toBeGreaterThanOrEqual(TEXT_ROLES.caption.px);
   });
 
   it('sets body copy and an input at one size, so a field matches the prose round it', () => {
@@ -125,7 +114,7 @@ describe('the heading rungs', () => {
 });
 
 /**
- * PROSE IS NOT SMALL PRINT, and the `note` rung is how the ladder says so: without it,
+ * Prose is not small print, and the `note` rung is how the ladder says so: without it,
  * every sentence a surface says in its own voice lands on `caption` — the rung reserved for a
  * tabular count, and the floor of the whole ladder — and the agent panel's most-read text and its
  * smallest figures are drawn at one size, told apart by nothing.
@@ -138,7 +127,7 @@ describe('the prose rung', () => {
   });
 
   /** It sits half a pixel over `chip` because prose and a pill share a row and must not step; the
-   *  rank between them is the WEIGHT, as it is everywhere else two rungs nearly share a size. */
+   *  rank between them is the weight, as it is everywhere else two rungs nearly share a size. */
   it('is lighter than the pill it sits beside', () => {
     expect(TEXT_ROLES.note.px - TEXT_ROLES.chip.px).toBeLessThanOrEqual(1);
     expect(TEXT_ROLES.note.weight).toBeLessThan(TEXT_ROLES.chip.weight);

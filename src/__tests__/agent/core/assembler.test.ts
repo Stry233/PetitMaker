@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createAssembler } from '../../../agent/core/assembler';
+import { deriveBadCallIds } from '../../../agent/core/job-reads';
 
 function make() { return createAssembler(); }
 
@@ -16,7 +17,7 @@ describe('turn assembler', () => {
     expect(turn.parts.map((p) => p.kind)).toEqual(['reasoning', 'text', 'tool']);
     expect(turn.parts[1]).toMatchObject({ kind: 'text', text: 'Placing a tree.', done: true });
     expect(turn.parts[2]).toMatchObject({ kind: 'tool', callId: 'c1', input: { id: 'tree-1' }, argsDone: true });
-    expect(turn.badCalls).toEqual([]);
+    expect([...deriveBadCallIds(turn)]).toEqual([]);
   });
 
   it('exposes best-effort partial args in live snapshots', () => {
@@ -36,7 +37,7 @@ describe('turn assembler', () => {
     a.push({ t: 'tool-args', callId: 'c1', delta: '{"from":' });
     a.push({ t: 'done', stop: 'tool-calls', final: [{ callId: 'c1', name: 'build_road', args: undefined, rawArgs: '{"from":' }] });
     const turn = a.finish();
-    expect(turn.badCalls).toEqual(['c1']);
+    expect([...deriveBadCallIds(turn)]).toEqual(['c1']);
     expect((turn.parts[0] as { rawInput?: string }).rawInput).toBe('{"from":');
   });
 
@@ -49,7 +50,7 @@ describe('turn assembler', () => {
       { callId: 'c1', name: 'place_object', args: { id: 'a' }, rawArgs: '{"id":"a"}' },
       { callId: 'c2', name: 'place_object', args: undefined, rawArgs: '' },
     ] });
-    expect(a.finish().badCalls).toEqual(['c1', 'c2']);
+    expect([...deriveBadCallIds(a.finish())]).toEqual(['c1', 'c2']);
   });
 
   it('carries an error event through finish as a value', () => {
@@ -79,7 +80,7 @@ describe('turn assembler', () => {
     const turn = a.finish();
     expect(turn.stop).toBe('aborted');
     expect(turn.parts[0]).toMatchObject({ kind: 'text', text: 'partial' });
-    expect(turn.badCalls).toEqual([]);
+    expect([...deriveBadCallIds(turn)]).toEqual([]);
   });
 
   it('a repeated tool-start for the same callId reuses the existing part instead of opening a second', () => {
@@ -101,19 +102,19 @@ describe('turn assembler', () => {
     const turn = a.finish();
     expect(turn.parts.map((p) => p.kind)).toEqual(['text', 'tool']);
     expect(turn.parts[1]).toMatchObject({ kind: 'tool', callId: 'c9', name: 'undo', input: { steps: 1 }, argsDone: true });
-    expect(turn.badCalls).toEqual([]);
+    expect([...deriveBadCallIds(turn)]).toEqual([]);
   });
 
-  it('an unstreamed final call with unparseable args is still appended and joins badCalls', () => {
+  it('an unstreamed final call with unparseable args is still appended and counts as bad', () => {
     const a = make();
     a.push({ t: 'done', stop: 'tool-calls', final: [{ callId: 'c9', name: 'undo', args: undefined, rawArgs: '{"steps":' }] });
     const turn = a.finish();
     expect(turn.parts).toHaveLength(1);
     expect(turn.parts[0]).toMatchObject({ kind: 'tool', callId: 'c9', argsDone: true, rawInput: '{"steps":' });
-    expect(turn.badCalls).toEqual(['c9']);
+    expect([...deriveBadCallIds(turn)]).toEqual(['c9']);
   });
 
-  /** The marker rides the `done` event and belongs to the TURN, so the log can record how the parts
+  /** The marker rides the `done` event and belongs to the turn, so the log can record how the parts
    *  beside it were arrived at. A turn the adapter had nothing to normalize carries no key at all. */
   it('carries an adapter quirk through to the finished turn, and none where the wire was ordinary', () => {
     const marked = make();

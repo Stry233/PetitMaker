@@ -6,24 +6,35 @@
  * needs a canvas and lives on the main thread, which is exactly why the generator takes the result
  * rather than the source.
  */
+import { placeObjectCommand } from '../../../../core/model/command-build';
 import { describe, it, expect } from 'vitest';
-import { CommandExecutor } from '../../../../core/commands/command-executor';
-import { EventBus } from '../../../../core/commands/event-bus';
-import { createDefaultRegistry } from '../../../../rules';
-import { roadLookup } from '../../../../state/object-index';
-import { CellZone, ItemCategory, TerrainType, type EditorEvents, type GridState, type PlacedObject } from '../../../../core/model/types';
-import { objectPlacementCommand } from '../../../../tools/objects/object-placer';
-import { makeState } from '../../../rules/_helpers';
-import { COVERAGE_ON, covered, FLAT_SAFE_ELEVATION, nearestTerrain, relaxHeights, STENCIL_MIN_SIDE, terrainPalette, textMinBox, textMinSide, type Stencil } from '../../../../tools/generation/stencil/stencil';
+import { TerrainType, type Command, type GridState, type PlacedObject, type ValidationResult } from '../../../../core/model/types';
+import { CellZone } from '../../../../core/game/zones';
+import { makeState, makeExecutor } from '../../../_support/map-state';
+import { FLAT_SAFE_ELEVATION, type StencilPlan } from '../../../../tools/generation/recipe';
+import { ELEVATION_MAX } from '../../../../core/game/profile';
+import { COVERAGE_ON, covered, nearestTerrain, relaxHeights, STENCIL_MIN_SIDE, terrainPalette, textMinBox, type Stencil, tilesAShape } from '../../../../tools/generation/stencil/stencil';
 import { finishGlyph } from '../../../../tools/generation/stencil/stencil-stroke';
-import { layStencilColor, layStencilObjects, layStencilTerrain } from '../../../../tools/generation/stencil/stencil-generator';
-import { tilesAShape } from '../../../../tools/generation/stencil/stencil';
+import { layStencilColor, runStencilPlan } from '../../../../tools/generation/stencil/stencil-generator';
 import { stencilChooser } from '../../../../tools/generation/stencil/stencil-trim';
 import { getAllItems } from '../../../../state/catalog';
-import { ELEVATION_COLORS, WATER_COLOR } from '../../../../core/model/constants';
-import { hexStringToNumber } from '../../../../core/model/colors';
+import { ELEVATION_COLORS, WATER_COLOR } from '../../../../core/model/palette';
+import { hexStringToNumber } from '../../../../core/base/color';
+import { ItemCategory } from '../../../../config/catalog/categories';
 
-const exec = (state: GridState) => new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
+const exec = (state: GridState) => makeExecutor(state);
+
+/** The text mode's terrain fill, laid through the plan entry the generator runs. */
+const layTerrain = (
+  state: GridState, placement: Pick<StencilPlan, 'origin' | 'stencil' | 'allow'>, terrain: TerrainType,
+  execute: (cmd: Command) => ValidationResult,
+) => runStencilPlan(state, { read: 'shape', fill: { kind: 'terrain', terrain }, ...placement }, ELEVATION_MAX, execute);
+
+/** The text mode's object fill, laid through the plan entry the generator runs. */
+const layObjects = (
+  state: GridState, placement: Pick<StencilPlan, 'origin' | 'stencil' | 'allow'>, catalogId: string,
+  execute: (cmd: Command) => ValidationResult,
+) => runStencilPlan(state, { read: 'shape', fill: { kind: 'object', catalogId }, ...placement }, ELEVATION_MAX, execute);
 
 /** A stencil from an ASCII picture: '#' is covered, '.' is not. */
 function stencilOf(rows: string[], color = 0x000000): Stencil {
@@ -79,7 +90,7 @@ describe('stencil as SHAPE (the text mode)', () => {
       '####',
       '.##.',
     ]);
-    const res = layStencilTerrain(state, { origin: { x: 5, y: 5 }, stencil }, TerrainType.Mountain, (c) => exec(state).execute(c));
+    const res = layTerrain(state, { origin: { x: 5, y: 5 }, stencil }, TerrainType.Mountain, (c) => exec(state).execute(c));
     expect(res.placed).toBeGreaterThan(0);
     expect(at(state, 6, 5)?.type).toBe(TerrainType.Mountain);   // covered
     expect(at(state, 5, 5)).toBeNull();                          // not covered
@@ -90,17 +101,18 @@ describe('stencil as SHAPE (the text mode)', () => {
     const state = makeState(20, 20);
     const rows = Array.from({ length: 6 }, () => '######');
     const e = exec(state);
-    layStencilTerrain(state, { origin: { x: 4, y: 4 }, stencil: stencilOf(rows) }, TerrainType.Mountain, (c) => e.execute(c));
+    const whole = e.beginStroke();
+    layTerrain(state, { origin: { x: 4, y: 4 }, stencil: stencilOf(rows) }, TerrainType.Mountain, (c) => e.execute(c));
     expect(at(state, 7, 7)?.elevation).toBe(1);
     expect(at(state, 4, 4)?.elevation).toBe(1);
-    expect(e.commitStroke(0)).toEqual([]);
+    expect(whole.commit()).toEqual([]);
   });
 
   it('fills a shape with objects, stepped by the item\'s own footprint', () => {
     const state = makeState(20, 20);
     const e = exec(state);
     const rows = Array.from({ length: 4 }, () => '####');
-    const res = layStencilObjects(state, { origin: { x: 5, y: 5 }, stencil: stencilOf(rows) }, 'tree-apple', (c) => e.execute(c));
+    const res = layObjects(state, { origin: { x: 5, y: 5 }, stencil: stencilOf(rows) }, 'tree-apple', (c) => e.execute(c));
     expect(res.placed).toBeGreaterThan(0);
     expect(state.objects.size).toBe(res.placed);
     for (const o of state.objects.values()) {
@@ -113,7 +125,7 @@ describe('stencil as SHAPE (the text mode)', () => {
     const state = makeState(20, 20);
     const e = exec(state);
     // A single covered cell cannot hold a 2x2 item whole.
-    const res = layStencilObjects(state, { origin: { x: 5, y: 5 }, stencil: stencilOf(['#...', '....']) }, 'building-myhouse', (c) => e.execute(c));
+    const res = layObjects(state, { origin: { x: 5, y: 5 }, stencil: stencilOf(['#...', '....']) }, 'building-myhouse', (c) => e.execute(c));
     expect(res.placed).toBe(0);
   });
 });
@@ -181,7 +193,7 @@ describe('the trim chooses each corner from the source', () => {
   });
 
   it('always fills an offered notch, sized by how far the source bulges into it', () => {
-    // The notch cell is outside the glyph, so near-zero ink there is the NORMAL case at a concave
+    // The notch cell is outside the glyph, so near-zero ink there is the normal case at a concave
     // corner — the curve's ink is in the stroke cells beside it. A fillet adds no mass, so the
     // question is never whether, only how big.
     const pick = stencilChooser(at0, withQuads([0.05, 0.2, 0.45, 0]))!;
@@ -230,7 +242,7 @@ describe('the trim chooses each corner from the source', () => {
 
 describe('the region, not its bounding box', () => {
   /**
-   * A stencil is FITTED to the region's bounding box, which is not the region. A rectangle's box is
+   * A stencil is fitted to the region's bounding box, which is not the region. A rectangle's box is
    * itself, so the two agreed and the gap went unnoticed; anything else has a box bigger than it is,
    * and the picture filled the box and spilled over everything the visitor had not painted.
    */
@@ -243,7 +255,7 @@ describe('the region, not its bounding box', () => {
     for (let y = 4; y < 10; y++) {
       for (let x = 4; x < 10; x++) if ((x + y) % 2 === 0) allow.add(y * 20 + x);
     }
-    layStencilTerrain(
+    layTerrain(
       state,
       { origin: { x: 4, y: 4 }, stencil: stencilOf(rows), allow },
       TerrainType.Mountain, (c) => e.execute(c),
@@ -259,7 +271,7 @@ describe('the region, not its bounding box', () => {
   it('with no scope it builds anywhere buildable, as the whole-planet kinds do', () => {
     const state = makeState(20, 20);
     const e = exec(state);
-    layStencilTerrain(
+    layTerrain(
       state,
       { origin: { x: 5, y: 5 }, stencil: stencilOf(['###', '###']) },
       TerrainType.Mountain, (c) => e.execute(c),
@@ -269,7 +281,7 @@ describe('the region, not its bounding box', () => {
 });
 
 describe('the smallest region a word is worth writing in', () => {
-  /** The shelf gates on the SHORTER side, which says nothing about a row of characters: six of them
+  /** The shelf gates on the shorter side, which says nothing about a row of characters: six of them
    *  in a box twelve cells across leave two cells each. The box helper is what a gate that cares
    *  about the word rather than the region consults. What each glyph needs is measured in the text
    *  matrix (`stencil-glyph.test.ts`); here it is the arithmetic over that number. */
@@ -281,19 +293,19 @@ describe('the smallest region a word is worth writing in', () => {
 
   it('asks for more room per glyph as the glyph asks for more', () => {
     // One letter, a row of letters, an ideograph: three floors, and the whole point of asking the
-    // TEXT rather than the region. A word with one dense character in it is a dense word.
-    expect(textMinSide('E')).toBeLessThan(textMinSide('HELLO'));
-    expect(textMinSide('HELLO')).toBeLessThan(textMinSide('谷'));
-    expect(textMinSide('A谷')).toBe(textMinSide('谷'));
-    // The REGION gate is lower than any of them: it is the smallest region a glyph has been measured
+    // Text rather than the region. A word with one dense character in it is a dense word.
+    expect(textMinBox('E').height).toBeLessThan(textMinBox('HELLO').height);
+    expect(textMinBox('HELLO').height).toBeLessThan(textMinBox('谷').height);
+    expect(textMinBox('A谷').height).toBe(textMinBox('谷').height);
+    // The region gate is lower than any of them: it is the smallest region a glyph has been measured
     // to survive, and which texts that region can carry is each card's own question, measured on the
     // letter it drew rather than assumed from the string.
-    expect(STENCIL_MIN_SIDE.text).toBeLessThan(textMinSide('E'));
+    expect(STENCIL_MIN_SIDE.text).toBeLessThan(textMinBox('E').height);
   });
 });
 
 describe('what a shape may be tiled with', () => {
-  /** A letter needs the SAME item many times over, so the list it offers has to be exactly the items
+  /** A letter needs the same item many times over, so the list it offers has to be exactly the items
    *  that can be placed many times over. Read from the live catalog, not from a list of ids. */
   it('excludes every capped item, and every crossing', () => {
     const all = getAllItems();
@@ -319,17 +331,18 @@ describe('what a shape may be tiled with', () => {
 
 describe('what the rules refuse, refused before it is asked', () => {
   /**
-   * Both of these came back from driving the REAL rasterizer and generator in a browser: a letter
+   * Both of these came back from driving the real rasterizer and generator in a browser: a letter
    * that committed 2265 cells and then vanished (46 violations), and a picture that lost most of
    * itself (210). Neither was visible to a test that hand-drew a solid block.
    */
   it('a letter with thin strokes commits clean against the live rules', () => {
     const state = makeState(24, 24);
     const e = exec(state);
+    const whole = e.beginStroke();
     // Two cells wide, which is what a real glyph's stem comes out as in a modest region.
     const rows = ['..##..', '..##..', '..##..', '..##..', '..##..', '..##..'];
-    layStencilTerrain(state, { origin: { x: 6, y: 6 }, stencil: stencilOf(rows) }, TerrainType.Mountain, (c) => e.execute(c));
-    expect(e.commitStroke(0)).toEqual([]);
+    layTerrain(state, { origin: { x: 6, y: 6 }, stencil: stencilOf(rows) }, TerrainType.Mountain, (c) => e.execute(c));
+    expect(whole.commit()).toEqual([]);
     expect(at(state, 8, 8)).not.toBeNull();   // and it is still standing
   });
 
@@ -339,9 +352,10 @@ describe('what the rules refuse, refused before it is asked', () => {
     const state = makeState(24, 24);
     state.cells[9]![9]!.zone = CellZone.Beach;
     const e = exec(state);
+    const whole = e.beginStroke();
     const rows = Array.from({ length: 8 }, () => '########');
-    layStencilTerrain(state, { origin: { x: 6, y: 6 }, stencil: stencilOf(rows) }, TerrainType.Mountain, (c) => e.execute(c));
-    expect(e.commitStroke(0)).toEqual([]);
+    layTerrain(state, { origin: { x: 6, y: 6 }, stencil: stencilOf(rows) }, TerrainType.Mountain, (c) => e.execute(c));
+    expect(whole.commit()).toEqual([]);
     expect(at(state, 9, 9)).toBeNull();                              // the hole stays a hole
     expect(at(state, 7, 7)?.elevation).toBeGreaterThanOrEqual(1);    // and the shape still stands
   });
@@ -349,34 +363,39 @@ describe('what the rules refuse, refused before it is asked', () => {
   it('writes only inside the scope it was allowed, and commits clean', () => {
     const state = makeState(24, 24);
     const e = exec(state);
+    const whole = e.beginStroke();
     const rows = Array.from({ length: 8 }, () => '########');
     const allow = new Set<number>();
     for (let y = 6; y < 14; y++) {
       for (let x = 6; x < 14; x++) if (x !== 10) allow.add(y * 24 + x);   // one column clipped out
     }
-    layStencilTerrain(state, { origin: { x: 6, y: 6 }, stencil: stencilOf(rows), allow }, TerrainType.Mountain, (c) => e.execute(c));
-    expect(e.commitStroke(0)).toEqual([]);
+    layTerrain(state, { origin: { x: 6, y: 6 }, stencil: stencilOf(rows), allow }, TerrainType.Mountain, (c) => e.execute(c));
+    expect(whole.commit()).toEqual([]);
   });
 
   it('skips the one cell an object refuses, and keeps the rest', () => {
-    // The object cell IS writable ground, so no mask can see it coming: the refusal lands at layer
+    // The object cell is writable ground, so no mask can see it coming: the refusal lands at layer
     // 1, pre-command, and everything already targeted around it has to lower with it.
     const state = makeState(24, 24);
     const e = exec(state);
+    const whole = e.beginStroke();
     const tree: PlacedObject = { id: 'blocker', catalogId: 'tree-apple', position: { x: 9, y: 9 }, rotation: 0, elevation: 0 };
-    expect(e.execute(objectPlacementCommand(tree)).success).toBe(true);
+    expect(e.execute(placeObjectCommand(tree)).success).toBe(true);
     const rows = Array.from({ length: 8 }, () => '########');
-    layStencilTerrain(state, { origin: { x: 6, y: 6 }, stencil: stencilOf(rows) }, TerrainType.Mountain, (c) => e.execute(c));
-    expect(e.commitStroke(0)).toEqual([]);
+    layTerrain(state, { origin: { x: 6, y: 6 }, stencil: stencilOf(rows) }, TerrainType.Mountain, (c) => e.execute(c));
+    expect(whole.commit()).toEqual([]);
   });
 
   it('relaxes a picture no higher than its own zone holes can support', () => {
     const state = makeState(24, 24);
     state.cells[9]![9]!.zone = CellZone.Beach;
     const e = exec(state);
+    const whole = e.beginStroke();
     const rows = Array.from({ length: 8 }, () => '########');
-    layStencilColor(state, { origin: { x: 6, y: 6 }, stencil: stencilOf(rows, hexStringToNumber(ELEVATION_COLORS[8]!)) }, 8, (c) => e.execute(c));
-    expect(e.commitStroke(0)).toEqual([]);
+    layStencilColor(
+      state, { origin: { x: 6, y: 6 }, stencil: stencilOf(rows, hexStringToNumber(ELEVATION_COLORS[8]!)) }, (c) => e.execute(c), { maxElevation: 8 },
+    );
+    expect(whole.commit()).toEqual([]);
   });
 
   it('relaxes heights the picture chose but the rules will not carry', () => {
@@ -391,14 +410,15 @@ describe('what the rules refuse, refused before it is asked', () => {
   it('a full-range picture commits clean, having been relaxed first', () => {
     const state = makeState(24, 24);
     const e = exec(state);
+    const whole = e.beginStroke();
     // Alternating extremes, which is the worst a photograph can hand the palette.
     const rows = Array.from({ length: 8 }, () => '########');
     const stencil = stencilOf(rows);
     stencil.color.forEach((_, i) => {
       stencil.color[i] = hexStringToNumber(ELEVATION_COLORS[(i % 8) + 1]!);
     });
-    layStencilColor(state, { origin: { x: 6, y: 6 }, stencil }, 8, (c) => e.execute(c));
-    expect(e.commitStroke(0)).toEqual([]);
+    layStencilColor(state, { origin: { x: 6, y: 6 }, stencil }, (c) => e.execute(c), { maxElevation: 8 });
+    expect(whole.commit()).toEqual([]);
   });
 });
 
@@ -407,7 +427,7 @@ describe('stencil as COLOUR (the image mode)', () => {
     const state = makeState(20, 20);
     const e = exec(state);
     const stencil = stencilOf(['##', '##'], hexStringToNumber(ELEVATION_COLORS[2]!));
-    layStencilColor(state, { origin: { x: 6, y: 6 }, stencil }, 8, (c) => e.execute(c));
+    layStencilColor(state, { origin: { x: 6, y: 6 }, stencil }, (c) => e.execute(c), { maxElevation: 8 });
     expect(at(state, 6, 6)?.type).toBe(TerrainType.Mountain);
     expect(at(state, 6, 6)?.elevation).toBe(2);
   });
@@ -415,19 +435,20 @@ describe('stencil as COLOUR (the image mode)', () => {
   it('lays a blue picture as water at ground level, and commits legally', () => {
     const state = makeState(20, 20);
     const e = exec(state);
+    const whole = e.beginStroke();
     const rows = Array.from({ length: 4 }, () => '####');
-    // Water IN the palette: the blue is a ninth entry a blue picture wins, which is the reading a
+    // Water in the palette: the blue is a ninth entry a blue picture wins, which is the reading a
     // mixed picture takes.
-    layStencilColor(state, { origin: { x: 6, y: 6 }, stencil: stencilOf(rows, hexStringToNumber(WATER_COLOR)) }, 8, (c) => e.execute(c), 1, 'palette');
+    layStencilColor(state, { origin: { x: 6, y: 6 }, stencil: stencilOf(rows, hexStringToNumber(WATER_COLOR)) }, (c) => e.execute(c), { maxElevation: 8, water: 'palette' });
     expect(at(state, 7, 7)?.type).toBe(TerrainType.Water);
-    expect(e.commitStroke(0)).toEqual([]);
+    expect(whole.commit()).toEqual([]);
   });
 
   it('leaves an uncovered cell as it found it: the shape is not the subject here', () => {
     const state = makeState(20, 20);
     const e = exec(state);
     const stencil = stencilOf(['#.', '.#'], hexStringToNumber(ELEVATION_COLORS[3]!));
-    layStencilColor(state, { origin: { x: 8, y: 8 }, stencil }, 8, (c) => e.execute(c));
+    layStencilColor(state, { origin: { x: 8, y: 8 }, stencil }, (c) => e.execute(c), { maxElevation: 8 });
     expect(at(state, 8, 8)).not.toBeNull();
     expect(at(state, 9, 8)).toBeNull();
   });

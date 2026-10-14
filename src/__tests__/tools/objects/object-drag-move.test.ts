@@ -1,43 +1,31 @@
 /**
- * Drag-to-move on a SNAPPING item (bridge/ramp): the drop must re-detect the span at the
- * destination, orientation included — the waterSpan/heightDrop traits MUTATE the command's
- * position/rotation during validation, so planning the drop against the real command and then
- * re-validating it in `executor.execute` snaps twice: the second detection runs from the
- * already-snapped anchor, where there is no cliff or gap to find, and a legal drop is refused
- * with the object already lifted. The same double-snap `object-placer-bridge-ramp` pins on the
- * placement path, here on the drag path. The sequence here is the pointer machine's own drop
- * sequence.
+ * Drag-to-move on a snapping item (bridge/ramp): the drop re-detects the span at the destination,
+ * orientation included, and the plan and `executor.execute` resolve it to the same span, so a
+ * legal drop lands, through the same `moveObject` the pointer drop commits by.
  */
-import { describe, it, expect } from 'vitest';
-import { planObjectMove, removeObjectCommand, stripCoatingsFor } from '../../../tools/objects/object-placer';
+import { describe, it, expect, vi } from 'vitest';
+import { moveObject } from '../../../tools/objects/actions';
 import { CommandExecutor } from '../../../core/commands/command-executor';
-import { EventBus } from '../../../core/commands/event-bus';
-import { createDefaultRegistry } from '../../../rules/index';
-import { CommandType, TerrainType, CellZone, type EditorEvents, type GridState, type PlacedObject } from '../../../core/model/types';
-import { makeState, setTerrain, setZone } from '../../rules/_helpers';
-import { roadLookup } from '../../../state/object-index';
+import { CommandType, TerrainType, type GridState, type PlacedObject } from '../../../core/model/types';
+import { CellZone } from '../../../core/game/zones';
+import { makeState, setTerrain, setZone, makeExecutor } from '../../_support/map-state';
 
-const exec = (s: GridState) => new CommandExecutor(s, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(s));
+const exec = (s: GridState) => makeExecutor(s);
 
 /** Place `catalogId` by anchor through the executor, letting the trait snap it. */
 function place(executor: CommandExecutor, state: GridState, catalogId: string, x: number, y: number): PlacedObject {
   const res = executor.execute({
-    type: CommandType.PlaceObject, timestamp: 0,
-    object: { id: `t-${catalogId}`, catalogId, position: { x, y }, rotation: 0, elevation: 0 },
+    type: CommandType.PlaceObject,     object: { id: `t-${catalogId}`, catalogId, position: { x, y }, rotation: 0, elevation: 0 },
   });
   expect(res.success, `${catalogId} placed`).toBe(true);
   return state.objects.get(`t-${catalogId}`)!;
 }
 
-/** The pointer machine's drop sequence, verbatim: plan, lift, coat over, place, commit. */
+/** Drop `obj` at anchor (x, y) as the pointer drop does. */
 function drop(executor: CommandExecutor, state: GridState, obj: PlacedObject, x: number, y: number): void {
-  const { cmd, errors } = planObjectMove(executor, state, obj, x, y);
-  expect(errors, 'the drop plan accepted the destination').toEqual([]);
-  const start = executor.getUndoStackSize();
-  executor.execute(removeObjectCommand(obj));
-  stripCoatingsFor(executor, state, cmd.object);
-  executor.execute(cmd);
-  executor.commitStroke(start);
+  const res = moveObject(executor, state, obj, x, y);
+  expect(res.refusal?.errors ?? [], 'the drop plan accepted the destination').toEqual([]);
+  expect(res.ok).toBe(true);
 }
 
 describe('dragging a snapping object re-snaps its orientation at the drop', () => {
@@ -82,7 +70,7 @@ describe('dragging a snapping object re-snaps its orientation at the drop', () =
     // The drop anchor goes through snapAnchor too, so a halfStep item can land on the
     // half grid at the destination, not only where it started. Same lane as
     // half-step-detection.test.ts's case (a): a mountain shoulder at x = 7 and a water bank at
-    // x = 4 leave a lane exactly the ramp's width — only the HALF anchor at x = 4.5 clears it.
+    // x = 4 leave a lane exactly the ramp's width — only the half anchor at x = 4.5 clears it.
     const S = 24; const state = makeState(S, S);
     for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
       setZone(state, x, y, CellZone.Grass);
@@ -102,5 +90,29 @@ describe('dragging a snapping object re-snaps its orientation at the drop', () =
     expect(moved, 'the ramp survived the drop').toBeTruthy();
     expect(moved!.position).toEqual({ x: 4.5, y: 9 });
     expect(moved!.rotation).toBe(0);
+  });
+});
+
+describe('moving one object', () => {
+  it('is one undo step, and a throw part-way leaves the object where it stood', () => {
+    const state = makeState(12, 12);
+    for (let y = 0; y < 12; y++) for (let x = 0; x < 12; x++) setZone(state, x, y, CellZone.Grass);
+    const ex = exec(state);
+    const tree = place(ex, state, 'tree-apple', 2, 2);
+    const depth = ex.historyDepth();
+    const execute = ex.execute.bind(ex);
+    const spy = vi.spyOn(ex, 'execute').mockImplementation((cmd) => {
+      if (cmd.type === CommandType.PlaceObject) throw new Error('place failed');
+      return execute(cmd);
+    });
+    expect(() => moveObject(ex, state, tree, 6, 6)).toThrow('place failed');
+    expect(state.objects.get(tree.id)?.position).toEqual({ x: 2, y: 2 });
+    expect(ex.historyDepth()).toBe(depth);
+    spy.mockRestore();
+
+    expect(moveObject(ex, state, tree, 6, 6)).toEqual({ ok: true, refusal: null });
+    expect(state.objects.get(tree.id)?.position).toEqual({ x: 6, y: 6 });
+    expect(ex.historyDepth()).toBe(depth + 1);
+    expect(moveObject(ex, state, state.objects.get(tree.id)!, 6, 6)).toEqual({ ok: false, refusal: null });
   });
 });

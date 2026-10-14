@@ -1,7 +1,8 @@
+// @vitest-environment jsdom
 /**
  * The region attachment, and the one fact it is a view of.
  *
- * THE PANEL OWNS NO REGION. Everything here is driven through the editor's own store — paint the
+ * The panel owns no region. Everything here is driven through the editor's own store — paint the
  * region and the chip docks, empty it and the chip leaves, arm the brush and the panel wears the
  * marking state, switch build mode and the store puts the brush away and the panel folds back with
  * it. A panel-local copy of any of those would pass a test that set it directly and fail every one
@@ -14,30 +15,29 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { act, cleanup, fireEvent, render } from '@testing-library/react';
 import { MotionConfig } from 'framer-motion';
 
-import { CommandExecutor } from '../../../core/commands/command-executor';
 import { EventBus } from '../../../core/commands/event-bus';
-import { setRegionBrushHandler } from '../../../core/runtime/region-brush';
-import type { EditorEvents, GridState, MacroCoord } from '../../../core/model/types';
+import { setRegionBrushHandler } from '../../../tools/pointer/region';
+import type { GridState, MacroCoord } from '../../../core/model/types';
+import type { EditorEvents } from '../../../state/editing/events';
 import { createDefaultRegistry } from '../../../rules';
-import { roadLookup } from '../../../state/object-index';
 import { useEditorStore } from '../../../state/store';
 import { I18nProvider } from '../../../i18n/context';
 import { append } from '../../../agent/core/log';
-import { useAgentSession } from '../../../agent/session/store';
-import { seaFrame } from '../../../canvas/thumbnail';
-import { regionBounds } from '../../../state/region-bounds';
-import { host } from '../../../kit/host';
+import { useAgentSession, panelView } from '../../../agent/session/store';
+import { seaFrame } from '../../../view/map2d/capture/thumbnail';
+import { regionBounds } from '../../../core/grid/rect';
+import { host } from '../../../editor/host/host';
 import { PanelShell } from '../../../ui/agent/PanelShell';
 import { Shell } from '../../../ui/shell/Shell';
-import { OPTION_THUMB } from '../../../ui/agent/OptionPick';
-import { CHIP_VIGNETTE } from '../../../ui/agent/region-chip';
-import { useAgentPanelSettings } from '../../../ui/agent/settings';
+import { OPTION_THUMB } from '../../../ui/agent/record/OptionPick';
+import { CHIP_VIGNETTE } from '../../../ui/agent/composer/region-chip';
+import { useAgentConnection } from '../../../agent/connection/store';
 import { PROVIDER_IDS, type ProviderId } from '../../../agent/providers/defaults';
-import { panelView } from '../../../agent/session/store';
-import { makeState } from '../../rules/_helpers';
+import { makeState } from '../../_support/map-state';
+import { createExecutor } from '../../../state/executor';
+import { panelProps } from '../../_support/agent-panel';
 
 const backing = new Map<string, string>();
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 (globalThis as any).localStorage = {
   getItem: (k: string) => backing.get(k) ?? null,
   setItem: (k: string, v: string) => void backing.set(k, String(v)),
@@ -48,8 +48,8 @@ const backing = new Map<string, string>();
 // The chip's picture is a real capture off the live 2D renderer, which no jsdom run has. `MapShot`
 // already answers "no renderer yet" with an empty box, so this only keeps the async capture out of
 // the way of the facts under test.
-vi.mock('../../../canvas/thumbnail', async (importOriginal) => ({
-  ...await importOriginal<typeof import('../../../canvas/thumbnail')>(),
+vi.mock('../../../view/map2d/capture/thumbnail', async (importOriginal) => ({
+  ...await importOriginal<typeof import('../../../view/map2d/capture/thumbnail')>(),
   renderThumbnail: async () => null,
 }));
 
@@ -66,23 +66,23 @@ function rect(x1: number, y1: number, x2: number, y2: number): MacroCoord[] {
 function connect(): void {
   const model = Object.fromEntries(PROVIDER_IDS.map((id) => [id, ''])) as Record<ProviderId, string>;
   model.claude = 'claude-sonnet-4-5';
-  useAgentPanelSettings.setState({
+  useAgentConnection.setState({
     provider: 'claude', model, oversight: 'checkpoint', customBaseUrl: '', hydrated: true,
   });
-  useAgentPanelSettings.getState().connectKey('claude', 'sk-ant-api03-region-chip-fixture');
+  useAgentConnection.getState().connectKey('claude', 'sk-ant-api03-region-chip-fixture');
 }
 
 function installMap(): GridState {
   const gs = makeState(24, 24) as GridState;
   const bus = new EventBus<EditorEvents>();
-  const executor = new CommandExecutor(gs, bus, createDefaultRegistry(), roadLookup(gs));
+  const executor = createExecutor(gs, createDefaultRegistry(), bus);
   useEditorStore.setState({
     gridState: gs, commandExecutor: executor, eventBus: bus, region: [], selectingRegion: false,
   });
   return gs;
 }
 
-/** The column in a tree, with a re-render that can put the panel AWAY: a fold is a prop change here,
+/** The column in a tree, with a re-render that can put the panel away: a fold is a prop change here,
  *  the same one the shell makes when the assistant block is pressed a second time. */
 async function mountColumn(withShell = false): Promise<ReturnType<typeof render> & { fold(): Promise<void> }> {
   const { default: PanelColumn } = await import('../../../ui/agent/PanelColumn');
@@ -147,7 +147,7 @@ describe('the chip is a view of the store\'s painted region', () => {
     // 3x2 = six cells, painted by anything at all: the panel is not told, it is subscribed.
     await paint(rect(4, 7, 6, 8));
     expect(getByTestId('composer-region-chip').getAttribute('title')).toBe('In this region, 6 cells');
-    // The frame button reads the SAME fact rather than a second one.
+    // The frame button reads the same fact rather than a second one.
     expect(getByTestId('composer-region-mark').getAttribute('data-lit')).toBe('true');
 
     await paint([]);
@@ -156,8 +156,8 @@ describe('the chip is a view of the store\'s painted region', () => {
   });
 
   /**
-   * A REGION PAINTED BEFORE THE PANEL EVER OPENED still docks, which is the case that proves the
-   * chip is a SUBSCRIPTION rather than a prop handed down at open time. The scope tools can paint
+   * A region painted before the panel ever opened still docks, which is the case that proves the
+   * chip is a subscription rather than a prop handed down at open time. The scope tools can paint
    * one at any point; the panel arriving afterwards has to find it already there.
    */
   it('docks for a region the store was already holding when the panel opened', async () => {
@@ -168,17 +168,17 @@ describe('the chip is a view of the store\'s painted region', () => {
   });
 
   /**
-   * THE MARK IS DRAWN ON THE CELLS `regionBounds` NAMES, and nothing else observed that.
+   * The mark is drawn on the cells                names, and nothing else observed that.
    *
    * The chip's count is `region.length` whichever way the box is derived, so it survives any bounds
-   * bug; the BOX reaches the screen only as four percentages inside the vignette. A local min/max at
+   * bug; the box reaches the screen only as four percentages inside the vignette. A local min/max at
    * the derivation site with `x2`/`y2` off by one therefore passed the whole agent suite. This reads
    * the rendered percentages back and compares them with the shared derivation plus the same
    * sea-framing the capture is composed with, so the chip's box and the refusal's box are pinned to
    * one reading of one list.
    */
   it('draws the mark on the box the shared derivation names', async () => {
-    // A SCATTER, not a rect: three cells whose bounding box is much larger than the paint, so an
+    // A scatter, not a rect: three cells whose bounding box is much larger than the paint, so an
     // off-by-one or a swapped axis moves the mark by a visible share of the picture.
     const scatter: MacroCoord[] = [{ x: 3, y: 2 }, { x: 11, y: 4 }, { x: 7, y: 9 }];
     const { getByTestId } = await mountColumn();
@@ -201,7 +201,7 @@ describe('the chip is a view of the store\'s painted region', () => {
     expect(getByTestId('composer-region-chip').getAttribute('title')).toBe('In this region, 1 cell');
   });
 
-  /** THE CROSS CLEARS THE PAINT, through the brush's own channel: the region carries an undo stack
+  /** The cross clears the paint, through the brush's own channel: the region carries an undo stack
    *  the brush owns, and a store write behind its back leaves that stack holding a region the map
    *  no longer has. */
   it('detaches through the region brush\'s own clear, so the stroke stays undoable', async () => {
@@ -227,11 +227,11 @@ describe('the chip is a view of the store\'s painted region', () => {
 });
 
 /**
- * THERE IS ONE REGION-SELECTION UI IN THE APP, and the panel's frame button is a CALLER of it.
+ * There is one region-selection UI in the app, and the panel's frame button is a caller of it.
  *
- * The screen is the generate shelf's own (`ui/shell/bars/ScopeScreen`): the figure cells, the brush
+ * The screen is the generate shelf's own (`ui/shell/bars/generate/ScopeScreen`): the figure cells, the brush
  * slider, Clear and Done. Arming the brush alone left the user a live pencil with no figure to choose
- * and no verb to finish with, so what is asserted here is the ENTRY — the press opens that screen, its
+ * and no verb to finish with, so what is asserted here is the entry — the press opens that screen, its
  * Done comes back to the panel with the region standing, and the panel never stands a second one over
  * a marking the shelf armed.
  */
@@ -258,7 +258,7 @@ describe('the marking state', () => {
     expect((getByTestId('composer-region-mark') as HTMLButtonElement).disabled).toBe(false);
   });
 
-  /** DONE COMES BACK TO THE PANEL WITH THE REGION STANDING, which is the whole contract of the entry:
+  /** Done comes back to the panel with the region standing, which is the whole contract of the entry:
    *  the screen edits the store's one region fact and the chip is a view of it. */
   it('returns to the panel on the screen\'s own Done, with what was painted attached', async () => {
     const { getByTestId, queryByTestId } = await mountColumn(true);
@@ -285,7 +285,7 @@ describe('the marking state', () => {
     expect((getByTestId('composer-input') as HTMLInputElement).disabled).toBe(false);
   });
 
-  /** AND ONLY FOR A MARKING THIS PANEL ARMED. The shelf mounts its own screen for the ones it arms,
+  /** And only for a marking this panel armed. The shelf mounts its own screen for the ones it arms,
    *  so a second here would be two sets of the same controls on one bottom bar. */
   it('stands no screen over a marking the map\'s own tools armed', async () => {
     const { queryByTestId } = await mountColumn();
@@ -304,7 +304,7 @@ describe('the marking state', () => {
   });
 
   /**
-   * THE `setEditMode` GOTCHA. Choosing what to build puts the region brush away (`edit.ts`'s own
+   * The               gotcha. Choosing what to build puts the region brush away (`edit.ts`'s own
    * rule: the region outranks the tool, so leaving it armed would hand every press to a scope brush
    * while the bar showed a terrain one). A panel holding its own marking flag would then stand with
    * the composer disabled and the record folded over a brush that is no longer listening.
@@ -326,7 +326,7 @@ describe('the marking state', () => {
   });
 
   /**
-   * A FOLD ENDS A MARKING THE PANEL ARMED.
+   * A fold ends a marking the panel armed.
    *
    * `selectingRegion` outranks every tool in `resolvePress`, so a marking left standing behind a
    * closed panel hands every press on the map to the region brush under whatever mode is showing,
@@ -347,7 +347,7 @@ describe('the marking state', () => {
     clearOutline.mockRestore();
   });
 
-  /** AND ONLY THE ONE IT ARMED. The store's flag cannot say who holds the pencil, and the map's own
+  /** And only the one it armed. The store's flag cannot say who holds the pencil, and the map's own
    *  scope screen sets the same one: a fold that peeled it unconditionally would put away a brush
    *  the panel never picked up. */
   it('leaves a marking the map\'s own tools armed exactly where it is', async () => {
@@ -394,9 +394,9 @@ describe('the placeholder shortens while the chip is docked', () => {
 });
 
 /**
- * THE TICKET HEAD IS THE FILED COPY, and the chip is the live one. The order stamps the region it
+ * The ticket head is the filed copy, and the chip is the live one. The order stamps the region it
  * was filed under at push time; repainting the store afterwards moves the chip and must not move
- * the record, because the record's whole job is to say which region HELD.
+ * the record, because the record's whole job is to say which region held.
  */
 describe('the ticket head reads the region as filed', () => {
   it('keeps the filed bounds while the live region is repainted underneath it', async () => {
@@ -412,24 +412,25 @@ describe('the ticket head reads the region as filed', () => {
     const { getByTestId, rerender } = render(
       <MotionConfig reducedMotion="always">
         <I18nProvider>
-          <PanelShell
-            view={view}
-            connected
-            region={{ count: 6, x1: 0, y1: 0, x2: 2, y2: 1 }}
-            regionShot={shot}
-            onMarkRegion={() => {}}
-            onClearRegion={() => {}}
-            onSend={() => {}}
-            onStop={() => {}}
-            onPause={() => {}}
-            onGateAnswer={() => {}}
+          <PanelShell {...panelProps({
+            view,
+            connected: true,
+            bounds: { count: 6, x1: 0, y1: 0, x2: 2, y2: 1 },
+            regionShot: shot,
+            onMarkRegion: () => {},
+            onClearRegion: () => {},
+            onSend: () => {},
+            onStop: () => {},
+            onPause: () => {},
+            onGateAnswer: () => {},
+          })}
           />
         </I18nProvider>
       </MotionConfig>,
     );
 
     expect(getByTestId('ticket-region').textContent).toContain('in the marked region');
-    // The head's picture is of the FILED box; the chip's is of the live one. Two calls, two boxes.
+    // The head's picture is of the filed box; the chip's is of the live one. Two calls, two boxes.
     const counts = shot.mock.calls.map((c) => c[0].count);
     expect(counts).toContain(1128);
     expect(counts).toContain(6);
@@ -439,17 +440,18 @@ describe('the ticket head reads the region as filed', () => {
     rerender(
       <MotionConfig reducedMotion="always">
         <I18nProvider>
-          <PanelShell
-            view={view}
-            connected
-            region={{ count: 40, x1: 10, y1: 10, x2: 17, y2: 14 }}
-            regionShot={shot}
-            onMarkRegion={() => {}}
-            onClearRegion={() => {}}
-            onSend={() => {}}
-            onStop={() => {}}
-            onPause={() => {}}
-            onGateAnswer={() => {}}
+          <PanelShell {...panelProps({
+            view,
+            connected: true,
+            bounds: { count: 40, x1: 10, y1: 10, x2: 17, y2: 14 },
+            regionShot: shot,
+            onMarkRegion: () => {},
+            onClearRegion: () => {},
+            onSend: () => {},
+            onStop: () => {},
+            onPause: () => {},
+            onGateAnswer: () => {},
+          })}
           />
         </I18nProvider>
       </MotionConfig>,
@@ -462,10 +464,10 @@ describe('the ticket head reads the region as filed', () => {
 });
 
 /**
- * THE SAME MARK, ONE RUNG DOWN: the gate family's own pictures.
+ * The same mark, one rung down: the gate family's own pictures.
  *
  * A gate thumb and an option thumb draw the region vignette's own reading — the island entire with
- * the option's own rect marked on it. A CROP framed on the rect (`MapShot box=…`) fills its frame
+ * the option's own rect marked on it. A crop framed on the rect (`MapShot box=…`) fills its frame
  * edge to edge with whatever ground happens to be there, so three option cards come back as three
  * near-identical crops of the same green field and the picture that exists to distinguish the
  * choices distinguishes none of them.
@@ -491,7 +493,7 @@ describe('the gate family\'s pictures mark their place rather than cropping to i
     const sea = seaFrame(24, 24, OPTION_THUMB.width / OPTION_THUMB.height);
     const placed = marks.map((m) => `${m.style.left}|${m.style.top}|${m.style.width}`);
     expect(new Set(placed).size, 'three options, three different pictures').toBe(3);
-    // And each is placed by the option's OWN rect, through the shared sea-framing math.
+    // And each is placed by the option's own rect, through the shared sea-framing math.
     const first = OPTIONS[0]!.rect;
     expect(Number.parseFloat(marks[0]!.style.left))
       .toBeCloseTo(((sea.dx + first.x1) / sea.width) * 100, 4);

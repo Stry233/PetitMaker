@@ -1,18 +1,15 @@
 import {
-  GRID_COLS, TOP_ROWS, CURRENT_TOP_ROWS, currentBandSize, RS_N, RS_K, HEADER_NSYM, HEADER_BYTES, HEADER_VERSION, HEADER_OFFSET,
+  GRID_COLS, TOP_ROWS, CURRENT_TOP_ROWS, currentBandSize, HEADER_NSYM, HEADER_BYTES, HEADER_VERSION, HEADER_OFFSET,
   HEADER_SYMBOL_BITS, FINDER, CALIB_CELLS,
-  type Tier, tierFor, bandSize, calibrationRect, headerModuleAt, dataModuleRect, nBlocks,
+  calibrationRect, headerModuleAt,
 } from './geometry';
-import {
-  PALETTE16, PALETTE8_INDICES, HEADER_LEVELS, BG, PRODUCT_HEADER_LEVELS, PRODUCT_INK,
-  PRODUCT_PAPER, type RGB,
-} from './palette';
-import { dataCellAt, choosePlan, planFor, type GlyphPlan, type GlyphProfile } from './profiles';
+import { PRODUCT_HEADER_LEVELS, PRODUCT_INK, PRODUCT_PAPER, type RGB } from './palette';
+import { dataCellAt, choosePlan, type GlyphPlan, type GlyphProfile } from './profiles';
 import { rsEncode } from './rs';
 import { interleaveBlocks } from './interleave';
 import { bytesToSymbols } from './bitpack';
 import { convolutionEncode } from './convolution';
-import { crc32 } from '../crypto/crc32';
+import { crc32 } from '../../../core/base/crc32';
 
 export interface EncodedGlyph {
   rgba: Uint8Array;
@@ -20,13 +17,6 @@ export interface EncodedGlyph {
   height: number;
   profile: GlyphProfile;
   plan: GlyphPlan;
-}
-
-export interface LegacyEncodedGlyph {
-  rgba: Uint8Array;
-  width: number;
-  height: number;
-  tier: Tier;
 }
 
 /** Build version(u8), transport id(u8), payload length(u16 LE), and CRC-32(u32 LE). */
@@ -54,16 +44,15 @@ export function whiten(bytes: Uint8Array): Uint8Array {
   return out;
 }
 
-function fillRect(
-  rgba: Uint8Array,
-  width: number,
-  height: number,
-  x0: number,
-  y0: number,
-  x1: number,
-  y1: number,
-  color: RGB,
-): void {
+/** An RGBA pixel buffer and its size. */
+interface Raster { rgba: Uint8Array; width: number; height: number }
+
+/** A pixel box from (x0, y0) to (x1, y1), exclusive at the far edge. */
+interface Box { x0: number; y0: number; x1: number; y1: number }
+
+function fillRect(img: Raster, box: Box, color: RGB): void {
+  const { rgba, width, height } = img;
+  const { x0, y0, x1, y1 } = box;
   const xa = Math.max(0, Math.floor(x0));
   const xb = Math.min(width, Math.ceil(x1));
   const ya = Math.max(0, Math.floor(y0));
@@ -79,17 +68,9 @@ function fillRect(
   }
 }
 
-function fillRoundedRect(
-  rgba: Uint8Array,
-  width: number,
-  height: number,
-  x0: number,
-  y0: number,
-  x1: number,
-  y1: number,
-  radius: number,
-  color: RGB,
-): void {
+function fillRoundedRect(img: Raster, box: Box, radius: number, color: RGB): void {
+  const { rgba, width, height } = img;
+  const { x0, y0, x1, y1 } = box;
   const xa = Math.max(0, Math.floor(x0));
   const xb = Math.min(width, Math.ceil(x1));
   const ya = Math.max(0, Math.floor(y0));
@@ -108,26 +89,18 @@ function fillRoundedRect(
   }
 }
 
-function paintCurrentChrome(
-  rgba: Uint8Array,
-  width: number,
-  height: number,
-  profile: GlyphProfile,
-  payload: Uint8Array,
-  moduleBase: number,
-): void {
-  fillRect(rgba, width, height, 0, 0, width, height, PRODUCT_PAPER);
-  fillRoundedRect(rgba, width, height, 0, 0, FINDER * moduleBase, TOP_ROWS * moduleBase, FINDER * moduleBase / 2, PRODUCT_INK);
-  fillRoundedRect(rgba, width, height, (GRID_COLS - FINDER) * moduleBase, 0, width, TOP_ROWS * moduleBase, FINDER * moduleBase / 2, PRODUCT_INK);
+function paintCurrentChrome(img: Raster, profile: GlyphProfile, payload: Uint8Array, moduleBase: number): void {
+  const { width, height } = img;
+  fillRect(img, { x0: 0, y0: 0, x1: width, y1: height }, PRODUCT_PAPER);
+  fillRoundedRect(img, { x0: 0, y0: 0, x1: FINDER * moduleBase, y1: TOP_ROWS * moduleBase }, FINDER * moduleBase / 2, PRODUCT_INK);
+  fillRoundedRect(img, { x0: (GRID_COLS - FINDER) * moduleBase, y0: 0, x1: width, y1: TOP_ROWS * moduleBase }, FINDER * moduleBase / 2, PRODUCT_INK);
 
   for (let i = 0; i < profile.palette.length; i++) {
     const { col, row } = calibrationRect(i);
-    fillRoundedRect(
-      rgba, width, height,
-      col * moduleBase + 1, row * moduleBase + 1,
-      (col + CALIB_CELLS) * moduleBase - 1, (row + CALIB_CELLS) * moduleBase - 1,
-      4, profile.palette[i]!,
-    );
+    fillRoundedRect(img, {
+      x0: col * moduleBase + 1, y0: row * moduleBase + 1,
+      x1: (col + CALIB_CELLS) * moduleBase - 1, y1: (row + CALIB_CELLS) * moduleBase - 1,
+    }, 4, profile.palette[i]!);
   }
 
   const header = bytesToSymbols(
@@ -136,8 +109,10 @@ function paintCurrentChrome(
   );
   for (let k = 0; k < header.length; k++) {
     const { col, row } = headerModuleAt(k);
-    fillRoundedRect(rgba, width, height, col * moduleBase + 1, row * moduleBase + 1,
-      (col + 1) * moduleBase - 1, (row + 1) * moduleBase - 1, moduleBase / 4, PRODUCT_HEADER_LEVELS[header[k]!]!);
+    fillRoundedRect(img, {
+      x0: col * moduleBase + 1, y0: row * moduleBase + 1,
+      x1: (col + 1) * moduleBase - 1, y1: (row + 1) * moduleBase - 1,
+    }, moduleBase / 4, PRODUCT_HEADER_LEVELS[header[k]!]!);
   }
 }
 
@@ -145,7 +120,8 @@ function encodePlannedGlyph(payload: Uint8Array, moduleBase: number, plan: Glyph
   const { profile } = plan;
   const { width, height } = currentBandSize(moduleBase);
   const rgba = new Uint8Array(width * height * 4);
-  paintCurrentChrome(rgba, width, height, profile, payload, moduleBase);
+  const img: Raster = { rgba, width, height };
+  paintCurrentChrome(img, profile, payload, moduleBase);
 
   const padded = new Uint8Array(plan.blocks * plan.dataBytes);
   padded.set(payload);
@@ -172,7 +148,7 @@ function encodePlannedGlyph(payload: Uint8Array, moduleBase: number, plan: Glyph
     const row = Math.floor(k / profile.dataCols);
     const x = col * size;
     const y = CURRENT_TOP_ROWS * moduleBase + row * size;
-    fillRect(rgba, width, height, Math.round(x), Math.round(y), Math.round(x + size), Math.round(y + size), profile.palette[modules[k]!]!);
+    fillRect(img, { x0: Math.round(x), y0: Math.round(y), x1: Math.round(x + size), y1: Math.round(y + size) }, profile.palette[modules[k]!]!);
   }
 
   return { rgba, width, height, profile, plan };
@@ -182,67 +158,4 @@ function encodePlannedGlyph(payload: Uint8Array, moduleBase: number, plan: Glyph
 export function encodeGlyph(payload: Uint8Array, moduleBase: number): EncodedGlyph | null {
   const plan = choosePlan(payload.length);
   return plan ? encodePlannedGlyph(payload, moduleBase, plan) : null;
-}
-
-/** Encode with a specified compatible profile for diagnostics and robustness comparison. */
-export function encodeGlyphWithProfile(
-  payload: Uint8Array,
-  moduleBase: number,
-  profile: GlyphProfile,
-): EncodedGlyph | null {
-  const plan = planFor(payload.length, profile);
-  return plan ? encodePlannedGlyph(payload, moduleBase, plan) : null;
-}
-
-/** Encode the v2 transport for compatibility fixtures and benchmarks. */
-export function encodeGlyphV2(payload: Uint8Array, moduleBase: number): LegacyEncodedGlyph | null {
-  const tier = tierFor(payload.length);
-  if (!tier) return null;
-  const { width, height } = bandSize(moduleBase);
-  const rgba = new Uint8Array(width * height * 4);
-  fillRect(rgba, width, height, 0, 0, width, height, BG);
-  fillRect(rgba, width, height, 0, 0, FINDER * moduleBase, TOP_ROWS * moduleBase, [0, 0, 0]);
-  fillRect(rgba, width, height, (GRID_COLS - FINDER) * moduleBase, 0, width, TOP_ROWS * moduleBase, [0, 0, 0]);
-
-  for (let i = 0; i < PALETTE16.length; i++) {
-    const { col, row } = calibrationRect(i);
-    fillRect(
-      rgba, width, height,
-      col * moduleBase, row * moduleBase,
-      (col + CALIB_CELLS) * moduleBase, (row + CALIB_CELLS) * moduleBase,
-      PALETTE16[i]!,
-    );
-  }
-
-  const header = bytesToSymbols(rsEncode(buildHeaderBytes(2, tier.id, payload), HEADER_NSYM), HEADER_SYMBOL_BITS);
-  for (let k = 0; k < header.length; k++) {
-    const { col, row } = headerModuleAt(k);
-    fillRect(
-      rgba, width, height,
-      col * moduleBase, row * moduleBase,
-      (col + 1) * moduleBase, (row + 1) * moduleBase,
-      HEADER_LEVELS[header[k]!]!,
-    );
-  }
-
-  const blockCount = nBlocks(tier);
-  const padded = new Uint8Array(blockCount * RS_K);
-  padded.set(payload);
-  const blocks: Uint8Array[] = [];
-  for (let block = 0; block < blockCount; block++) {
-    blocks.push(rsEncode(padded.subarray(block * RS_K, (block + 1) * RS_K), RS_N - RS_K));
-  }
-  const symbols = bytesToSymbols(whiten(interleaveBlocks(blocks)), tier.bits);
-  for (let k = 0; k < symbols.length; k++) {
-    const rect = dataModuleRect(tier, k, moduleBase);
-    const symbol = symbols[k]!;
-    const paletteIndex = tier.colors === 8 ? PALETTE8_INDICES[symbol]! : symbol;
-    fillRect(
-      rgba, width, height,
-      Math.round(rect.x), Math.round(rect.y),
-      Math.round(rect.x + rect.size), Math.round(rect.y + rect.size),
-      PALETTE16[paletteIndex]!,
-    );
-  }
-  return { rgba, width, height, tier };
 }

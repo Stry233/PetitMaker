@@ -1,0 +1,34 @@
+{
+  "id": "print-flight-orange-goal",
+  "category": "road",
+  "icon": "print-flight-orange-goal",
+  "name": {
+    "en": "Orange Goal Print",
+    "zh": "橙色终点格印花",
+    "ja": "オレンジのゴール模様",
+    "ru": "Оранжевая отметка финиша",
+    "th": "ลายจุดหมายสีส้ม",
+    "id": "Motif Tujuan Oranye",
+    "fr": "Motif d’arrivée orange"
+  },
+  "color": "#e5bd78",
+  "width": 1,
+  "height": 1,
+  "loadValue": 0,
+  "rotatable": true,
+  "placementMode": "brush",
+  "traits": [
+    {
+      "type": "flat"
+    },
+    {
+      "type": "surfaceCoating",
+      "layer": 1
+    }
+  ],
+  "surfacePrint": {
+    "kind": "image",
+    "image": "print-flight-orange-goal",
+    "repeat": 1
+  }
+}

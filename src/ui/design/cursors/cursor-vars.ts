@@ -1,8 +1,8 @@
 /**
- * Publishes the four DOM cursors to CSS, as custom properties on `<html>`, and publishes the
- * system-cursors preference to the two gates that cannot read the store themselves.
+ * Publishes the four DOM cursors to CSS, as custom properties on `<html>`, at the system-cursors
+ * preference the store holds, and has the canvas controller re-resolve when it flips.
  *
- * The same shape as `useMotionEnabled`: ONE writer stamps the root element, and everything
+ * The same shape as `useMotionEnabled`: One writer stamps the root element, and everything
  * downstream reads it through plain CSS, so no component subscribes and nothing re-renders when
  * the values change. The values are zoom-independent by construction — the cursors are SVGs drawn
  * at their intrinsic size, and no engine scales a cursor's drawn size by CSS zoom (verified by
@@ -12,30 +12,27 @@
  * and the global rules in `cursors.css` are the readers.
  */
 import { useEffect } from 'react';
-import { refreshCursor } from '../../../canvas/interaction/cursor-controller';
+import { refreshCursor } from '../../../view/interaction/cursor-controller';
 import { useEditorStore } from '../../../state/store';
-import { cursorCss, setSystemCursors } from '../../../assets/cursors/cursor-css';
-import { DOM_CURSORS, type CursorId, type DomCursorId } from '../../../core/runtime/cursor-spec';
+import { cursorCss } from '../../../assets/cursors/cursor-css';
+import { DOM_CURSORS, type CursorId, type DomCursorId } from '../../../assets/cursors/cursor-spec';
 
 /** Write the properties. Idempotent, and safe to call before React mounts. */
-function applyCursorVars(root: HTMLElement | null = typeof document === 'undefined' ? null : document.documentElement): void {
+function applyCursorVars(system: boolean, root: HTMLElement | null = typeof document === 'undefined' ? null : document.documentElement): void {
   if (!root) return;
   for (const id of Object.keys(DOM_CURSORS) as DomCursorId[]) {
-    root.style.setProperty(DOM_CURSORS[id], cursorCss(id));
+    root.style.setProperty(DOM_CURSORS[id], cursorCss(id, { system }));
   }
 }
 
 /**
- * Hand the preference to every gate that resolves a cursor, in the order they read it.
- *
- * All three gates are dedupe-blind on their own: `cursorCss` answers from a module flag, the custom
- * properties are written once, and the canvas controller skips a write whose resolved value matches
- * what it last wrote. Flipping the preference changes what every id resolves to WITHOUT changing any
- * of their inputs, so each has to be told.
+ * Re-resolve every cursor written ahead of a pointer event at preference `system` (default: the
+ * store's, which the canvas controller reads): the custom properties, written once, and the canvas
+ * controller, which skips a write whose resolved value matches what it last wrote. A flip changes
+ * what every id resolves to without changing their inputs, so each has to be told.
  */
-export function publishCursorPreference(system: boolean): void {
-  setSystemCursors(system);
-  applyCursorVars();
+export function publishCursorPreference(system: boolean = useEditorStore.getState().systemCursors): void {
+  applyCursorVars(system);
   refreshCursor();
 }
 
@@ -47,16 +44,15 @@ export function publishCursorPreference(system: boolean): void {
 export function useCursorVars(): void {
   const systemCursors = useEditorStore((s) => s.systemCursors);
   useEffect(() => {
-    publishCursorPreference(systemCursors);
+    publishCursorPreference();
   }, [systemCursors]);
 }
 
 /**
  * `cursorCss` for a component that renders a cursor value into its own inline style.
  *
- * The module flag is not enough here: the store change re-renders these components BEFORE the
- * effect above republishes, so a plain `cursorCss` call would return the previous preference's
- * value and then never be asked again.
+ * The component subscribes to the preference itself, so the store change that re-renders it hands
+ * the fresh value straight in.
  */
 export function useCursorCss(id: CursorId, opts: { forbidden?: boolean } = {}): string {
   const system = useEditorStore((s) => s.systemCursors);

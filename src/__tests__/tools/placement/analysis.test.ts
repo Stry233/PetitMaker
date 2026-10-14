@@ -1,12 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { analyzeTerrain, distanceField } from '../../../tools/placement/analysis';
-import { makeState } from '../../rules/_helpers';
+import { analyzeTerrain } from '../../../tools/placement/analysis';
+import { makeState } from '../../_support/map-state';
 import { TerrainType } from '../../../core/model/types';
 
 describe('placement/analysis', () => {
-  it('distanceField is 0 at seeds, grows by BFS', () => {
-    expect(Array.from(distanceField([0], 5, 1))).toEqual([0, 1, 2, 3, 4]);
-  });
   it('analyzeTerrain: one big open region + distance to a water cell', () => {
     const state = makeState(12, 12);
     state.cells[6]![6]!.terrain = { type: TerrainType.Water, elevation: 0 };
@@ -28,5 +25,13 @@ describe('placement/analysis', () => {
     expect(a.region[plateauInterior]).not.toBe(a.region[groundCell]); // different regions
     expect(a.regionElev[a.region[plateauInterior]!]).toBe(2);
     expect(a.regionElev[a.region[groundCell]!]).toBe(0);
+  });
+  it('reads a cosmetic fillet at the level the flat rule stands an object on, its real base', () => {
+    const state = makeState(12, 12);
+    state.cells[6]![6]!.terrain = { type: TerrainType.Mountain, elevation: 1, patchOnly: true, patchBase: 0, corners: ['fan', 'square', 'square', 'square'] };
+    const a = analyzeTerrain(state);
+    expect(a.elev[6 * 12 + 6]).toBe(0);
+    expect(a.open[6 * 12 + 5]).toBe(1);
+    expect(a.region[6 * 12 + 5]).toBe(a.region[0]);
   });
 });

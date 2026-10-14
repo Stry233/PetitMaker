@@ -1,31 +1,32 @@
 /*
- * WHICH FEW CELLS OF A PICTURE A DECORATION IS SPENT ON, and why those.
+ * Which few cells of a picture a decoration is spent on, and why those.
  *
  * The terrain ramp is eight greens: it can say a picture's lightness and it cannot say its colour. A
  * decoration can — a flower carries a real hue and stands on one cell — which makes it the one
  * instrument in a terrain picture that says what the ramp cannot, and it is scarce: every mark is an
  * object the load rules carry, and past a few dozen of them a figure is not marked but overdrawn.
  *
- * A SCARCE INSTRUMENT IS SPENT ON THE FEATURES THAT IDENTIFY THE SUBJECT. Those are small, they sit
- * INSIDE the figure rather than on its silhouette, they are far in colour from what surrounds them, and
+ * A scarce instrument is spent on the features that identify the subject. Those are small, they sit
+ * inside the figure rather than on its silhouette, they are far in colour from what surrounds them, and
  * the primary palette has nothing near their colour: an eye, a marking, a red throat. A cell that is
- * merely a strong EDGE is not one of them — the ramp draws an edge as a step perfectly well — which is
+ * merely a strong edge is not one of them — the ramp draws an edge as a step perfectly well — which is
  * why ranking cells by their own gradient (what this replaces below the box gate) laid an even dotting
  * of marks over every figure and said nothing about any of them.
  *
- * The reading is PURE arithmetic over the stencil and the two palettes: no map, no rules, no randomness,
+ * The reading is pure arithmetic over the stencil and the two palettes: no map, no rules, no randomness,
  * ties by first cell. What reaches the map is whatever the executor makes of the plan this produces, and
  * a refused mark is simply a mark that is not there.
  */
-import type { Stencil } from '../../../core/model/types';
-import { cellDepths, coherentAreas, colourGap, nearestEntry, type Area } from './stencil-small';
-import { NEIGHBORS4_NESW } from '../../../core/model/grid-model';
+import type { Stencil } from '../recipe';
+import { cellDepths, coherentAreas, type Area } from './stencil-areas';
+import { colorDistance, nearestEntry } from './color';
+import { NEIGHBORS4_NESW } from '../../../core/grid/directions';
 
 /**
- * A feature a picture identifies itself by: the cells it covers, the colour the SOURCE has there, and
+ * A feature a picture identifies itself by: the cells it covers, the colour the source has there, and
  * how much of the subject's identity depends on it.
  *
- * `cells` is DEEPEST FIRST (then by index), because that is the order a mark spends them in: the
+ * `cells` is deepest first (then by index), because that is the order a mark spends them in: the
  * innermost cell of a feature is where the ground is flattest — a coating or a tier boundary runs along
  * a colour boundary, so the outermost cell of a feature is the one whose placement is refused — and a
  * mark on the inside reads as the feature rather than as a fringe of it.
@@ -45,7 +46,7 @@ export interface Feature {
 }
 
 /**
- * How much of the figure a FEATURE may be, at most.
+ * How much of the figure a feature may be, at most.
  *
  * A feature is the small thing the reduction deletes; the subject's own mass is not one, and marking it
  * would be a second picture drawn over the first. An eighth is measured rather than chosen: over the
@@ -57,7 +58,7 @@ export const FEATURE_MAX_SHARE = 0.125;
 
 /**
  * How far in colour a feature has to sit from what surrounds it, in the channel-weighted units every
- * colour gap here uses (`stencil-small.ts:colourGap`).
+ * colour gap here uses (`color.ts:colorDistance`).
  *
  * 24 is about a step and a half of the terrain ramp, the same gap `BORROW_MIN_GAIN` asks a borrowed
  * material to beat the ramp by: below it the picture is not drawing a boundary there, it is shading.
@@ -67,8 +68,8 @@ const FEATURE_MIN_CONTRAST = 24;
 /**
  * How deep inside the figure a feature's cells have to sit on average.
  *
- * TWO, WHICH IS ONE CELL OFF THE SILHOUETTE. A mark on the outline is read as part of the outline: it
- * says where the figure ENDS, which the silhouette already says, and it is the cell terrain refuses a
+ * Two, which is one cell off the silhouette. A mark on the outline is read as part of the outline: it
+ * says where the figure ends, which the silhouette already says, and it is the cell terrain refuses a
  * coating or a flat placement on. What identifies a subject is inside it.
  */
 const FEATURE_DEPTH_MIN = 2;
@@ -77,10 +78,9 @@ const FEATURE_DEPTH_MIN = 2;
  * The depth at which being interior stops earning anything, and the size at which a feature stops
  * earning for being bigger — the two saturating terms of the ranking.
  *
- * BOTH ARE SATURATING BECAUSE BOTH ARE QUALITIES RATHER THAN QUANTITIES. An area three cells inside the
+ * Both are saturating because both are qualities rather than quantities. An area three cells inside the
  * figure is interior; six cells inside it is not more interior, and a term that kept rewarding depth
- * ranked a one-cell speck in the middle of a face above the eye patch beside it (measured on the seed
- * picture at 24 cells: its four highest-ranked features were one cell each). Size is the same shape of
+ * ranks a one-cell speck in the middle of a face above the eye patch beside it. Size is the same shape of
  * mistake in the other direction: a mark on four cells says more than a mark on one, and a one-cell area
  * that survived the fold is as likely to be a highlight as an eye — but past a 48th of the figure a
  * feature is fully said, and rewarding size further would walk the ranking up into the subject's own mass,
@@ -93,8 +93,8 @@ const FEATURE_MASS_SHARE = 1 / 48;
  * How much better the accent palette has to say a feature's colour than the primary palette can, before
  * a mark is worth spending on it.
  *
- * THIS IS THE TERM THAT MAKES THE INSTRUMENT AN ACCENT. A dark eye on a pale face is a feature of the
- * DRAWING, and the ramp has a dark green for it; a red throat is a feature the ramp has nothing for at
+ * This is the term that makes the instrument an accent. A dark eye on a pale face is a feature of the
+ * Drawing, and the ramp has a dark green for it; a red throat is a feature the ramp has nothing for at
  * all. Only the second is worth a mark, because a flower planted where the terrain already said the same
  * thing adds an object and no information. Eight is half a ramp step: enough to exclude a colour the two
  * palettes say equally well, small enough to keep a feature whose hue the ramp merely approximates.
@@ -105,12 +105,12 @@ const FEATURE_SAY_MIN = 8;
  * How much of the figure the whole decoration may cover in a small box, and how many features it may
  * spend that on.
  *
- * A SIXTEENTH, AND FOUR. At sixteen cells a figure is about 150 cells, so the budget is nine marks —
+ * A sixteenth, and four. At sixteen cells a figure is about 150 cells, so the budget is nine marks —
  * enough for two eyes and a throat, and nowhere near enough to texture anything. The count cap is what
  * keeps the budget from being spent as nine one-cell marks: a subject is identified by two or three
  * things, and a fourth is already the picture's shading rather than its identity.
  */
-export const FEATURE_BUDGET_SHARE = 1 / 16;
+const FEATURE_BUDGET_SHARE = 1 / 16;
 export const FEATURE_MAX = 4;
 
 /** How many cells of decoration a figure of this size is worth, at least one. */
@@ -119,21 +119,13 @@ export function featureBudget(figureCells: number): number {
 }
 
 /**
- * The features of a picture, most identifying first — the reading this file exists for.
- *
- * The candidates are the picture's own coherent colour AREAS at the box's cell count
- * (`stencil-small.ts:coherentAreas`, over the SOURCE colours rather than the tone-fitted ones: what is
- * being asked is what the picture said, not what the ramp made of it). That segmentation already keeps a
- * speck that is nothing like its neighbour and folds one that is nearly its neighbour's colour into it,
- * which is exactly the difference between a two-cell eye and the noise inside a face.
- *
- * FOUR GATES, and each is a way a candidate can fail to be a feature: it must be SMALL
- * (`FEATURE_MAX_SHARE`), it must be INSIDE the figure (`FEATURE_DEPTH_MIN`), it must be far in colour
- * from what surrounds it (`FEATURE_MIN_CONTRAST`), and the accent palette must say its colour better than
- * the primary one can (`FEATURE_SAY_MIN`). What is left is RANKED on the same three terms multiplied —
- * contrast, interiority, and what the accent can say — each as a share of the most any candidate has,
- * multiplied rather than added because a candidate that fails any of the three is not a feature and a sum
- * would let a large dull one outrank a small vivid one.
+ * The features of a picture, most identifying first. Candidates are the picture's coherent colour
+ * areas at the box's cell count (`stencil-areas.ts:coherentAreas`, over the source colours), which
+ * keeps a distinct speck and folds a near-neighbour one in. A feature must be small
+ * (`FEATURE_MAX_SHARE`), inside the figure (`FEATURE_DEPTH_MIN`), far in colour from its surround
+ * (`FEATURE_MIN_CONTRAST`), and better said by the accent palette than the primary
+ * (`FEATURE_SAY_MIN`). Survivors rank by contrast, interiority and accent fit multiplied, each as a
+ * share of the best, so failing any one sinks a candidate.
  */
 export function detectFeatures(
   stencil: Stencil,
@@ -158,7 +150,7 @@ export function detectFeatures(
     if (interiority < FEATURE_DEPTH_MIN) continue;
     const around = surround(stencil, areas, owner, id);
     if (around === null) continue;                       // nothing touches it: no surround to stand out from
-    const contrast = colourGap(area.rgb, around);
+    const contrast = colorDistance(area.rgb, around);
     if (contrast < FEATURE_MIN_CONTRAST) continue;
     const say = nearestEntry(primary, area.rgb).off - nearestEntry(accent, area.rgb).off;
     if (say < FEATURE_SAY_MIN) continue;
@@ -185,7 +177,7 @@ export function detectFeatures(
     .sort((a, b) => (b.score - a.score) || (a.cells[0]! - b.cells[0]!));
 }
 
-/** The colour AROUND an area: the mean of the areas it touches, weighted by how much of its border each
+/** The colour around an area: the mean of the areas it touches, weighted by how much of its border each
  *  one holds. Null where it touches nothing. */
 function surround(
   stencil: Stencil, areas: readonly Area[], owner: Int32Array, id: number,
@@ -217,14 +209,14 @@ function surround(
 export interface FeatureMark {
   catalogId: string;
   /**
-   * Every cell of the feature, INNERMOST FIRST — the order the caller must try them in.
+   * Every cell of the feature, innermost first — the order the caller must try them in.
    *
-   * MORE CELLS THAN THE BUDGET AFFORDS, on purpose. A feature's own boundary is a colour boundary and so
+   * More cells than the budget affords, on purpose. A feature's own boundary is a colour boundary and so
    * a tier boundary, and a flat placement is refused a cell away from a step: whether a given cell of a
    * feature will take a mark is a fact about the terrain the primary built, which no reading of the
    * picture knows. So the plan offers the whole feature in the order it would rather spend it and the
-   * caller stops at `want` marks that stood — measured on the seed picture at 24 cells, three of the four
-   * features said nothing at all when the plan named its cells and the caller took only those.
+   * caller stops at `want` marks that stood; a plan that named only `want` cells leaves most features
+   * unmarked.
    */
   cells: number[];
   /** How many marks this feature is worth: what the budget gives it. */
@@ -234,22 +226,12 @@ export interface FeatureMark {
 }
 
 /**
- * The marks a budget buys: the most identifying features first, each told in the ONE accent whose own
- * colour is nearest to it.
- *
- * ONE ITEM PER FEATURE, not one per cell, which is what makes a feature spanning several cells read as
- * its own shape rather than as a gradient of species. A feature the budget cannot cover whole is spent
- * as far as it reaches, from the innermost cell outward — a partial mark on the middle of an eye still
- * says the eye; one spread over its rim says a ring.
- *
- * THE BUDGET IS DIVIDED BEFORE IT IS SPENT, evenly among the features that will be marked, and only then
- * is what nobody could use handed down the ranking. A plain walk gives the first feature everything it can
- * hold — and a feature may be an eighth of the figure while the whole budget is a sixteenth of it, so the
- * most identifying one would take the lot and the accent would arrive as a single patch. Several marks
- * saying several things is the composition; one patch is a second picture.
- *
- * What is left when the map refuses a feature is simply unspent: the budget is a ceiling on what a figure
- * may carry, not a quota to fill.
+ * The marks a budget buys: the most identifying features first, each in the one accent nearest its
+ * colour, one item per feature so a multi-cell feature reads as its own shape. A feature the budget
+ * cannot cover is spent from its innermost cell outward. The budget is split evenly among the marked
+ * features before the leftover goes down the ranking, since one feature can be larger than the whole
+ * budget and would arrive as a single patch. A refused feature's share stays unspent: the budget is a
+ * ceiling, not a quota.
  */
 export function planFeatureMarks(
   features: readonly Feature[],

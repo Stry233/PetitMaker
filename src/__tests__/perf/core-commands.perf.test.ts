@@ -8,30 +8,23 @@
  * folding many undo entries into one, and the placement probe a ghost or the agent runs before every
  * candidate cell. See `_harness.ts` for the gate and methodology.
  */
+import { placeObjectCommand } from '../../core/model/command-build';
 import { describe, it } from 'vitest';
 import { PERF, perfSuite } from './_harness';
 import { cloneWorld, denseIsland, templateWorld } from './_fixtures';
 import type { World } from './_fixtures';
 import { getCell } from '../../core/model/grid-model';
 import { surfaceElevationAt } from '../../state/object-geometry';
-import { objectPlacementCommand } from '../../tools/objects/object-placer';
 import { getPlaceableByCategory } from '../../state/catalog';
-import {
-  CellZone,
-  CommandType,
-  ItemCategory,
-  TerrainType,
-  type MacroCoord,
-  type PaintTerrainCommand,
-  type PlacedObject,
-} from '../../core/model/types';
+import { CommandType, TerrainType, type MacroCoord, type PaintTerrainCommand, type PlacedObject } from '../../core/model/types';
+import { CellZone } from '../../core/game/zones';
+import { ItemCategory } from '../../config/catalog/categories';
 
 const s = perfSuite('core-commands');
 
 function paintCell(world: World, coord: MacroCoord, elevation: number): boolean {
   const cmd: PaintTerrainCommand = {
-    type: CommandType.PaintTerrain, timestamp: 0,
-    cells: [coord], terrainType: TerrainType.Mountain, elevation,
+    type: CommandType.PaintTerrain,     cells: [coord], terrainType: TerrainType.Mountain, elevation,
   };
   return world.executor.execute(cmd).success;
 }
@@ -54,9 +47,9 @@ describe.runIf(PERF)('perf: core commands', () => {
   it('paint stroke: 200 cells, one command per cell', async () => {
     let world = templateWorld();
     await s.bench('stroke/paint-200-cells', () => {
-      const start = world.executor.getUndoStackSize();
+      const start = world.executor.beginStroke();
       for (const c of STROKE_200) paintCell(world, c, 1);
-      world.executor.commitStroke(start);
+      start.commit();
     }, {
       setup: () => { world = templateWorld(); },
       meta: { cells: STROKE_200.length },
@@ -66,9 +59,9 @@ describe.runIf(PERF)('perf: core commands', () => {
   it('auto-stack ladder: climb 50 cells from elevation 1 to 3', async () => {
     let world = templateWorld();
     await s.bench('stroke/auto-stack-ladder', () => {
-      const start = world.executor.getUndoStackSize();
+      const start = world.executor.beginStroke();
       for (let e = 1; e <= 3; e++) for (const c of LADDER_50) paintCell(world, c, e);
-      world.executor.commitStroke(start);
+      start.commit();
     }, {
       setup: () => { world = templateWorld(); },
       meta: { cells: LADDER_50.length, rungs: 3 },
@@ -78,9 +71,9 @@ describe.runIf(PERF)('perf: core commands', () => {
   it('undo + redo of a committed 200-cell stroke', async () => {
     let world = templateWorld();
     function buildStroke(): void {
-      const start = world.executor.getUndoStackSize();
+      const start = world.executor.beginStroke();
       for (const c of STROKE_200) paintCell(world, c, 1);
-      world.executor.commitStroke(start);
+      start.commit();
     }
     await s.bench('stroke/undo-redo', () => {
       world.executor.undo();
@@ -104,17 +97,16 @@ describe.runIf(PERF)('perf: core commands', () => {
         const cell = getCell(probe.state.cells, x, y);
         if (!cell || cell.terrain !== null || cell.zone !== CellZone.Grass) continue;
         const cmd: PaintTerrainCommand = {
-          type: CommandType.PaintTerrain, timestamp: 0,
-          cells: [{ x, y }], terrainType: TerrainType.Mountain, elevation: 1,
+          type: CommandType.PaintTerrain,           cells: [{ x, y }], terrainType: TerrainType.Mountain, elevation: 1,
         };
         if (probe.executor.validatePre(cmd).length === 0) cells.push({ x, y });
       }
     }
     let world = cloneWorld(island);
     await s.bench('stroke/commit-on-dense', () => {
-      const start = world.executor.getUndoStackSize();
+      const start = world.executor.beginStroke();
       for (const c of cells) paintCell(world, c, 1);
-      world.executor.commitStroke(start);
+      start.commit();
     }, {
       setup: () => { world = cloneWorld(island); },
       meta: { cells: cells.length },
@@ -127,10 +119,11 @@ describe.runIf(PERF)('perf: core commands', () => {
     function buildEntries(): void {
       for (const c of cells) paintCell(world, c, 1);
     }
+    let stroke = world.executor.beginStroke();
     await s.bench('history/collapse', () => {
-      world.executor.collapseHistory(0);
+      stroke.collapse();
     }, {
-      setup: () => { world = templateWorld(); buildEntries(); },
+      setup: () => { world = templateWorld(); stroke = world.executor.beginStroke(); buildEntries(); },
       meta: { entries: cells.length },
     });
   });
@@ -145,7 +138,7 @@ describe.runIf(PERF)('perf: core commands', () => {
         id: '__perf-probe__', catalogId: item.id, position: p,
         rotation: 0, elevation: surfaceElevationAt(state, p.x, p.y),
       };
-      return objectPlacementCommand(candidate);
+      return placeObjectCommand(candidate);
     });
     await s.bench('validate/place-probe-100', () => {
       for (const cmd of commands) executor.validatePre(cmd);

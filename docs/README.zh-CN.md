@@ -88,7 +88,7 @@ _为《[星布谷地](https://planet.mihoyo.com/home)》设计的地图规划工
 
 图片底部的色带称为 **PetitGlyph**，其中保存了地图和规划标注。纠错机制可以容忍一定程度的缩小和 JPEG、WebP 压缩。为保证分享可靠，请保留原始文件；发布平台的图片处理仍可能使地图码无法读取。导入时会先校验数据，再打开地图。此过程在浏览器本地完成，不会上传图片。
 
-需要独立备份时，可以导出 JSON 存档。「规划标注」默认开启，也可单独关闭；「备注」控制标题、描述和作者。普通图片无法恢复为可编辑地图。中国大陆站点与国际站点的浏览器存档相互独立，切换站点时可以通过文件导出、导入来转移地图。
+需要独立备份时，可以导出 JSON 存档。「规划标注」默认开启，也可单独关闭；「备注」单独控制是否写入地图的标题和描述。普通图片无法恢复为可编辑地图。中国大陆站点与国际站点的浏览器存档相互独立，切换站点时可以通过文件导出、导入来转移地图。
 
 ## 把规划图变成插画
 
@@ -169,7 +169,7 @@ _为《[星布谷地](https://planet.mihoyo.com/home)》设计的地图规划工
 <div align="center">
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="./media/underhood-zh-dark.svg">
-  <img src="./media/underhood-zh-light.svg" alt="源码分层框图：一层一条通栏色带，每条里排满该层的模块。最上面是「谁在编辑」（画笔、生成器、AI 智能体），往下依次是 ui 与 legal，agent、io 与 api，kit，canvas（2D 编辑器与 3D 编辑器），tools，i18n，rules，state，config 与 assets，最底下是 core。一条高亮通道从三个编辑者向下穿过 rules 落到 core/commands；右侧竖排标注：依赖只向下" width="900">
+  <img src="./media/underhood-zh-light.svg" alt="源码分层框图：一层一条通栏色带，每条里排满该层的模块。最上面是「谁在编辑」（画笔、生成器、智能体），往下依次是 ui，legal，agent、io 与 api，editor，pipelines，view，tools，i18n，rules，state，config 与 assets，platform，最底下是 core。一条高亮通道从三个编辑者向下穿过 rules 落到 core/commands；右侧竖排标注：依赖只向下" width="900">
 </picture>
 </div>
 
@@ -195,8 +195,8 @@ npm run dev          # Vite 开发服务器
 <summary>其他命令（测试、检查、构建）</summary>
 
 ```bash
-npm run test:run     # 运行全部测试（Vitest）
-npm run lint         # TypeScript 类型检查（应用与脚本）
+npm run test:run     # 运行单元测试（Vitest）
+npm run lint         # TypeScript 类型检查与 ESLint（应用、脚本与测试）
 npm run build        # 生产构建
 ```
 

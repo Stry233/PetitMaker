@@ -1,8 +1,6 @@
 /**
- * Spinner — the ONE circular loading indicator, for TIGHT spaces (badges,
- * chips, small squares) where the three-dot LoadingDots doesn't fit. Roomy
- * contexts (buttons, chat, panels) use ui/primitives/LoadingDots instead — keep it
- * to these two; don't hand-roll loaders inline.
+ * The circular loading indicator for tight spaces (badges, chips, small squares) where the
+ * three-dot LoadingDots does not fit; roomy contexts (buttons, chat, panels) use LoadingDots.
  *
  * Uses the global `spin` keyframes from animations.css. Size/colors are plain
  * CSS px: modal chrome is css-zoomed already, and design-px callers pass their
@@ -10,7 +8,7 @@
  */
 import { seconds, easingCss } from '../design/motion';
 import type { CSSProperties } from 'react';
-import { colors, inkTint } from '../design/styles';
+import { ACTIVE, inkTint } from '../design/tokens';
 
 interface SpinnerProps {
   /** Outer diameter in CSS px (pre-zoom). */
@@ -22,7 +20,7 @@ interface SpinnerProps {
   thickness?: number;
 }
 
-export function Spinner({ size = 30, color = colors.tileYellow, trackColor = inkTint(0.15), thickness }: SpinnerProps) {
+export function Spinner({ size = 30, color = ACTIVE, trackColor = inkTint(0.15), thickness }: SpinnerProps) {
   const border = thickness ?? Math.max(2, Math.round(size * 0.13));
   const style: CSSProperties = {
     width: size,

@@ -4,7 +4,7 @@
  * celebrated order id, allowing either the timer or any newer settlement to end the pose.
  */
 import { useEffect, useRef, useState } from 'react';
-import type { PanelView } from '../../../agent/core/project-view';
+import type { PanelView } from '../../../agent/panel';
 import { POSES, type PoseName } from './poses';
 
 /** How long the one-shot runs before settling back to `idle`, per its own spec. */
@@ -28,7 +28,7 @@ export function useCelebrateEdge(view: PanelView): PoseName | undefined {
     // The first run only records what was already on the log. There is no edge to a session that
     // was restored mid-sentence, and a panel that danced on every mount would be lying about when.
     if (first || seq === undefined || !worth) {
-      // Any other settlement ENDS a dance in progress rather than leaving it standing. Setting
+      // Any other settlement ends a dance in progress rather than leaving it standing. Setting
       // undefined over undefined is a no-op React bails out of, so the ordinary path costs nothing.
       setCelebratingFor(undefined);
       return undefined;

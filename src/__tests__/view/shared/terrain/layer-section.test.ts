@@ -1,0 +1,63 @@
+import { describe, it, expect } from 'vitest';
+import { paintLayer } from '../../../../view/shared/terrain/layer-section';
+import { TerrainType, type GridState, type MacroCell, type PlacedObject } from '../../../../core/model/types';
+import { CellZone } from '../../../../core/game/zones';
+
+/** A `CanvasRenderingContext2D` stand-in with no real canvas: every path/state method is a
+ *  no-op, `fillRect` records its call alongside whatever `fillStyle` was set immediately before
+ *  it (a real context reads `fillStyle` at fill time too), which is all `paintLayer` needs. */
+function fakeCtx(): CanvasRenderingContext2D & { calls: { x: number; y: number; w: number; h: number; fillStyle: unknown }[] } {
+  let fillStyle: unknown = '#000';
+  const calls: { x: number; y: number; w: number; h: number; fillStyle: unknown }[] = [];
+  const noop = () => {};
+  return {
+    save: noop, restore: noop, clip: noop, beginPath: noop, moveTo: noop, arcTo: noop, closePath: noop,
+    get fillStyle() { return fillStyle; },
+    set fillStyle(v: unknown) { fillStyle = v; },
+    set globalAlpha(_v: number) {},
+    fillRect(x: number, y: number, w: number, h: number) { calls.push({ x, y, w, h, fillStyle }); },
+    calls,
+  } as unknown as CanvasRenderingContext2D & { calls: { x: number; y: number; w: number; h: number; fillStyle: unknown }[] };
+}
+
+/** Build a tiny GridState whose cells carry the given (type, elevation) so we can probe the
+ *  construction-step derivation directly. `peaks` is a flat list painted onto a 4x3 grass grid. */
+function makeState(peaks: { type: TerrainType; elevation: number }[]): GridState {
+  const width = 4, height = 3;
+  const cells: MacroCell[][] = [];
+  for (let y = 0; y < height; y++) {
+    const row: MacroCell[] = [];
+    for (let x = 0; x < width; x++) row.push({ zone: CellZone.Grass, terrain: null });
+    cells.push(row);
+  }
+  // Drop the peaks onto the first cells, row-major.
+  let i = 0;
+  for (const p of peaks) {
+    const y = Math.floor(i / width), x = i % width;
+    if (cells[y]?.[x]) cells[y]![x] = { zone: CellZone.Grass, terrain: { type: p.type, elevation: p.elevation } };
+    i++;
+  }
+  return {
+    template: { id: 't', name: { en: 't' }, width, height, zones: [], landmarks: [] },
+    cells,
+    objects: new Map(),
+    objectsVersion: 0, cellsVersion: 0, lockedLayers: new Set(),
+  };
+}
+
+describe('paintLayer: object draw position', () => {
+  it('draws a half-anchored object at its EXACT position, not the cell its rounded position lands on', () => {
+    // 4x3 map, rect matches the map aspect exactly so fit is the plain rect and cellW = cellH =
+    // At scale 100, a half-anchored deck at x = 2.5 must draw at fit.x + 250, not at
+    // Math.round(2.5) * 100 = 300 (the wrong neighbour cell).
+    const state = makeState([]);
+    const deck: PlacedObject = { id: 'd', catalogId: 'nope', position: { x: 2.5, y: 1 }, width: 1, height: 1, rotation: 0, elevation: 0 };
+    state.objects.set('d', deck);
+    const ctx = fakeCtx();
+    paintLayer(ctx, { x: 0, y: 0, w: 400, h: 300 }, state, 0, 4 / 3);
+
+    const objectCalls = ctx.calls.filter((c) => c.fillStyle === '#e6c48a'); // objectMarkColor's fallback for an unknown catalogId
+    expect(objectCalls).toHaveLength(1);
+    expect(objectCalls[0]).toMatchObject({ x: 250, y: 100 });
+  });
+});

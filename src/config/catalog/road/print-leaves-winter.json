@@ -1,0 +1,34 @@
+{
+  "id": "print-leaves-winter",
+  "category": "road",
+  "icon": "print-leaves-winter",
+  "name": {
+    "en": "Winter Leaves Print",
+    "zh": "安冬之叶印花",
+    "ja": "冬の葉模様",
+    "ru": "Узор зимних листьев",
+    "th": "ลายใบไม้ฤดูหนาว",
+    "id": "Motif Daun Musim Dingin",
+    "fr": "Motif de feuilles hivernales"
+  },
+  "color": "#ac9468",
+  "width": 1,
+  "height": 1,
+  "loadValue": 0,
+  "rotatable": true,
+  "placementMode": "brush",
+  "traits": [
+    {
+      "type": "flat"
+    },
+    {
+      "type": "surfaceCoating",
+      "layer": 1
+    }
+  ],
+  "surfacePrint": {
+    "kind": "image",
+    "image": "print-leaves-winter",
+    "repeat": 1
+  }
+}

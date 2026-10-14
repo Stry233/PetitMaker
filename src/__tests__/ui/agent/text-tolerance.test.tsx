@@ -1,36 +1,35 @@
+// @vitest-environment jsdom
 /**
- * The panel's text seats against the worst shapes the backend can hand
- * them, at the seam a jsdom test can pin: the CSS that decides whether a hostile string wraps,
- * ellipsizes, or walks out of its card.
+ * The panel's text seats against the worst strings the backend can hand them, through the CSS that
+ * decides whether a hostile string wraps, ellipsizes or leaves its card:
  *
- * TWO FAMILIES OF SEAT, TWO CONTRACTS:
+ *   wrapping seats (prose, orders, details, stamps, lane names) need `overflow-wrap: anywhere`, or
+ *   one unbroken token such as a 500-char URL overflows the card or is clipped mid-word;
  *
- *   WRAPPING seats (prose, orders, details, stamps, lane names) hold model- or user-authored text
- *   at length. Their killer shape is one UNBROKEN TOKEN — a 500-char URL or model id has no space
- *   for the line breaker to use, so without `overflow-wrap: anywhere` it overflows the card (or is
- *   clipped mid-word under a clamp, which hides the tail of a two-line order behind nothing).
+ *   one-line seats (the op phrase, result chips, the verdict word, a queued steer) need `nowrap`,
+ *   `hidden` and `ellipsis`, or the row's controls are pushed off the edge.
  *
- *   ONE-LINE seats (the op phrase, result chips, the verdict word, a queued steer) must ellipsize:
- *   `nowrap` + `hidden` + `ellipsis`, or the row's own controls are pushed off the right edge.
- *
- * jsdom lays nothing out, so the assertions read the declared style off the element — which is
- * exactly the contract: the seat CARRIES the tolerance, whatever text arrives.
+ * jsdom lays nothing out, so the declared style is read off the element.
  */
 import { describe, it, expect, beforeEach } from 'vitest';
 import { render } from '@testing-library/react';
 import { I18nProvider } from '../../../i18n/context';
-import { AnswerPaper } from '../../../ui/agent/AnswerPaper';
-import { ArchiveCard } from '../../../ui/agent/FlipTicket';
-import { GateBlock } from '../../../ui/agent/GateBlock';
-import { JobTicket } from '../../../ui/agent/JobTicket';
-import { Lane } from '../../../ui/agent/Lane';
-import { ModelProse, INLINE_PROSE_STYLE } from '../../../ui/agent/model-prose';
-import { OpRow } from '../../../ui/agent/OpRow';
-import { Stamp } from '../../../ui/agent/atoms';
+import { AnswerPaper } from '../../../ui/agent/record/AnswerPaper';
+import { ArchiveCard } from '../../../ui/agent/record/ArchiveCard';
+import { GateBlock } from '../../../ui/agent/record/GateBlock';
+import { JobTicket } from '../../../ui/agent/record/JobTicket';
+import { Lane } from '../../../ui/agent/record/Lane';
+import { ModelProse, INLINE_PROSE_STYLE } from '../../../ui/agent/parts/model-prose';
+import { OpsList } from '../../../ui/agent/record/OpRow';
+import { Stamp } from '../../../ui/agent/parts/panel-parts';
 import type { AskRecord, JobView, OpRow as OpRowData } from '../../../agent/core/project-view';
 
+/** One operation row as every list draws it: a single-row `OpsList`. */
+function OpRow({ op }: { op: OpRowData }) {
+  return <OpsList ops={[op]} />;
+}
+
 const backing = new Map<string, string>();
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 (globalThis as any).localStorage = {
   getItem: (k: string) => backing.get(k) ?? null,
   setItem: (k: string, v: string) => void backing.set(k, String(v)),
@@ -101,7 +100,7 @@ describe('wrapping seats break an unbroken token instead of overflowing', () => 
     expect(wraps(getByTestId('ticket-order'))).toBe('anywhere');
   });
 
-  it('the gate summary wraps whatever describe-call interpolated into it', () => {
+  it('the gate summary wraps whatever the call describer interpolated into it', () => {
     const ask: AskRecord = { gateId: 'g1', scope: 'tool', summary: TOKEN };
     const { getByTestId } = renderWithI18n(
       <GateBlock ask={ask} onAnswer={() => {}} />,

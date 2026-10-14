@@ -1,14 +1,13 @@
 import { describe, it, expect } from 'vitest';
-import { makeState } from '../../rules/_helpers';
+import { makeState, makeExecutor } from '../../_support/map-state';
 import { CommandExecutor } from '../../../core/commands/command-executor';
-import { EventBus } from '../../../core/commands/event-bus';
-import { createDefaultRegistry } from '../../../rules/index';
-import { runStroke, type AgentToolDeps } from '../../../agent/tools/tools-common';
+import { runStroke } from '../../../agent/tools/stroke';
+import type { AgentToolDeps } from '../../../agent/tools';
 import { executeToolCall } from '../../../agent/tools';
-import { CommandType, ItemCategory, TerrainType, type Command, type GridState } from '../../../core/model/types';
+import { CommandType, TerrainType, type Command, type GridState } from '../../../core/model/types';
 import { getCatalogByCategory } from '../../../state/catalog';
-import { roadLookup } from '../../../state/object-index';
 import { ProvSource } from '../../../core/provenance/types';
+import { ItemCategory } from '../../../config/catalog/categories';
 
 function deps(state: GridState, exec: CommandExecutor): AgentToolDeps {
   return {
@@ -20,19 +19,14 @@ function deps(state: GridState, exec: CommandExecutor): AgentToolDeps {
 describe('agent provenance', () => {
   it('a write tool taints affected cells as AI', () => {
     const s = makeState(8, 8);
-    const e = new CommandExecutor(s, new EventBus(), createDefaultRegistry(), roadLookup(s));
-    const cmd: Command = { type: CommandType.PaintTerrain, timestamp: 0, cells: [{ x: 2, y: 2 }], terrainType: TerrainType.Mountain, elevation: 1 } as Command;
+    const e = makeExecutor(s);
+    const cmd: Command = { type: CommandType.PaintTerrain, cells: [{ x: 2, y: 2 }], terrainType: TerrainType.Mountain, elevation: 1 } as Command;
     runStroke(deps(s, e), [cmd], () => 'ok');
     const sum = e.getProvenanceSummary();
     expect(sum.containsAi).toBe(true);
-    const ledger = e.getProvenanceTracker().state.ledger;
+    const ledger = s.provenance!.ledger;
     expect(ledger[ledger.length - 1]!.ai?.model).toBe('claude');
   });
-
-  // The analysis-only ("noteAnalysisOnly does not taint") case lives in
-  // core/provenance/executor-provenance.test.ts ('analysis-only never taints content'), which
-  // drives the executor directly; the AI-taint case above is the agent-specific half (the
-  // runStroke path).
 });
 
 /**
@@ -44,7 +38,7 @@ describe('agent provenance', () => {
 describe('agent provenance (runStrokeBody tools)', () => {
   function setup(w = 20, h = 20) {
     const state = makeState(w, h);
-    const exec = new CommandExecutor(state, new EventBus(), createDefaultRegistry(), roadLookup(state));
+    const exec = makeExecutor(state);
     return { state, exec, deps: deps(state, exec) };
   }
 
@@ -57,7 +51,7 @@ describe('agent provenance (runStrokeBody tools)', () => {
     expect(r.isError).toBe(false);
     const ids = [...state.objects.keys()];
     expect(ids.length).toBeGreaterThan(0);
-    const tracker = exec.getProvenanceTracker();
+    const tracker = exec.getAuthorship();
     for (const id of ids) expect(tracker.objectAuthor(id)).toBe('ai');
     expect(exec.getProvenanceSummary().containsAi).toBe(true);
   });
@@ -72,7 +66,7 @@ describe('agent provenance (runStrokeBody tools)', () => {
     expect(r.isError).toBe(false);
     const ids = [...state.objects.keys()];
     expect(ids.length).toBeGreaterThan(0);
-    const tracker = exec.getProvenanceTracker();
+    const tracker = exec.getAuthorship();
     for (const id of ids) expect(tracker.objectAuthor(id)).not.toBe('human');
     for (const id of ids) expect(tracker.objectAuthor(id)).toBe('ai');
   });
@@ -86,19 +80,19 @@ describe('agent provenance (runStrokeBody tools)', () => {
     expect(r.isError).toBe(false);
     const ids = [...state.objects.keys()];
     expect(ids.length).toBeGreaterThan(0);
-    const tracker = exec.getProvenanceTracker();
+    const tracker = exec.getAuthorship();
     for (const id of ids) expect(tracker.objectAuthor(id)).toBe('ai');
   });
 
   it('a user-approved runStrokeBody write records AiAccepted, matching runStroke', async () => {
     const state = makeState(20, 20);
-    const exec = new CommandExecutor(state, new EventBus(), createDefaultRegistry(), roadLookup(state));
+    const exec = makeExecutor(state);
     const d: AgentToolDeps = {
       getState: () => state, getExecutor: () => exec, getRegion: () => [],
       getProvenanceSource: () => ({ provider: 'anthropic', model: 'claude', userApproved: true }),
     };
     await executeToolCall({ id: 't4', name: 'build_road', input: { line: { x1: 2, y1: 4, x2: 8, y2: 4 } } }, d);
-    const ledger = exec.getProvenanceTracker().state.ledger;
+    const ledger = state.provenance!.ledger;
     expect(ledger[ledger.length - 1]!.source).toBe(ProvSource.AiAccepted);
     expect(ledger[ledger.length - 1]!.ai?.model).toBe('claude');
   });

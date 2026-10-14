@@ -1,17 +1,18 @@
 /**
  * Some road surfaces support flowers and crops, and the
  * editor grants that through the road's `plantable` trait — the dirt road today. Flora and a
- * plantable road COEXIST on a cell, in both orders of arrival: placing flora keeps the road it
+ * plantable road coexist on a cell, in both orders of arrival: placing flora keeps the road it
  * lands on, and painting the road under standing flora keeps the flowers. Everything else keeps
  * the coating discipline: a tree or building still strips or is refused, and a stone road still
  * cannot carry a flower.
  */
 import { describe, it, expect } from 'vitest';
-import { CellZone, CommandType, type GridState, type PlacedObject } from '../../core/model/types';
+import { CommandType, type GridState, type PlacedObject } from '../../core/model/types';
+import { CellZone } from '../../core/game/zones';
 import { standsOnCoating } from '../../core/model/traits';
 import { getCatalogItem } from '../../state/catalog';
 import { placementOverlapRule } from '../../rules/placement-overlap';
-import { makeState, makeExecutor, placeCmd } from './_helpers';
+import { makeState, makeExecutor, placeCmd } from '../_support/map-state';
 import { bumpObjectsVersion } from '../../core/model/grid-model';
 
 function grassMap(): GridState {
@@ -41,7 +42,7 @@ describe('a plantable road under standing flora', () => {
     const state = grassMap();
     state.objects.set('f', at('f', 'flower-daisy', 4, 4));
     bumpObjectsVersion(state, { added: [state.objects.get('f')!] });
-    const cmd = { type: CommandType.PlaceObject, timestamp: 0, object: at('r', 'path-overgrown-dirt', 4, 4), loadValue: 10 } as const;
+    const cmd = { type: CommandType.PlaceObject, object: at('r', 'path-overgrown-dirt', 4, 4), loadValue: 10 } as const;
     expect(placementOverlapRule.validate(cmd as never, state)).toEqual([]);
   });
 
@@ -49,7 +50,7 @@ describe('a plantable road under standing flora', () => {
     const state = grassMap();
     state.objects.set('r1', at('r1', 'path-cobblestone', 4, 4));
     bumpObjectsVersion(state, { added: [state.objects.get('r1')!] });
-    const cmd = { type: CommandType.PlaceObject, timestamp: 0, object: at('r2', 'path-overgrown-dirt', 4, 4), loadValue: 10 } as const;
+    const cmd = { type: CommandType.PlaceObject, object: at('r2', 'path-overgrown-dirt', 4, 4), loadValue: 10 } as const;
     expect(placementOverlapRule.validate(cmd as never, state).length).toBeGreaterThan(0);
   });
 
@@ -57,7 +58,7 @@ describe('a plantable road under standing flora', () => {
     const state = grassMap();
     state.objects.set('f', at('f', 'flower-daisy', 4, 4));
     bumpObjectsVersion(state, { added: [state.objects.get('f')!] });
-    const cmd = { type: CommandType.PlaceObject, timestamp: 0, object: at('r', 'path-cobblestone', 4, 4), loadValue: 10 } as const;
+    const cmd = { type: CommandType.PlaceObject, object: at('r', 'path-cobblestone', 4, 4), loadValue: 10 } as const;
     expect(placementOverlapRule.validate(cmd as never, state).length).toBeGreaterThan(0);
   });
 });
@@ -67,9 +68,9 @@ describe('flora and the dirt road, end to end', () => {
     const state = grassMap();
     const exec = makeExecutor(state);
     exec.execute(placeCmd(at('r', 'path-overgrown-dirt', 4, 4)));
-    const start = exec.getUndoStackSize();
+    const start = exec.beginStroke();
     exec.execute(placeCmd(at('f', 'flower-daisy', 4, 4)));
-    expect(exec.commitStroke(start)).toEqual([]);
+    expect(start.commit()).toEqual([]);
     expect(state.objects.has('r'), 'the road survives the flower').toBe(true);
     expect(state.objects.has('f'), 'the flower survives the commit').toBe(true);
   });

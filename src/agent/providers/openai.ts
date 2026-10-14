@@ -11,12 +11,13 @@ import { classify, NO_ENDPOINT_ADDRESS, PROVIDER_SILENCE } from '../core/errors'
 import { parseArgs } from '../core/json';
 import type { ProviderMessage } from '../core/project-messages';
 import type { FinalToolCall, StopReason, StreamEvent, TurnQuirk, Usage } from '../core/types';
-import { QUIRKS, PROVIDER_IDS, type ProviderId, type Quirks } from './defaults';
+import { OPENAI_BASE_URL, type ProviderId, type Quirks } from './defaults';
+import type { ModelCapabilities } from '../core/adapter';
 import { modelCapabilities, rememberNativeModels } from './model-catalog';
 import { ChatReasoning, savedChat } from './chat-reasoning';
 import { reasoningBody } from './reasoning';
 import { streamFailureEvent } from './http-failure';
-import type { Adapter, AdapterRequest } from './types';
+import type { Adapter, AdapterRequest } from '../core/adapter';
 
 /**
  * The SDK's telemetry headers, cleared (`null` removes a header in the SDK's header model).
@@ -38,7 +39,11 @@ function userContent(text: string, images: string[] | undefined): OpenAI.ChatCom
 }
 
 /** Converts neutral session history to the provider wire format. */
-export function toOpenAIMessages(system: string, messages: ProviderMessage[], imageInToolResult = false, sameModel = false, endpoint?: string): OpenAI.ChatCompletionMessageParam[] {
+function toOpenAIMessages(
+  system: string, messages: ProviderMessage[],
+  opts: { imageInToolResult?: boolean; sameModel?: boolean; endpoint?: string } = {},
+): OpenAI.ChatCompletionMessageParam[] {
+  const { imageInToolResult = false, sameModel = false, endpoint } = opts;
   const out: OpenAI.ChatCompletionMessageParam[] = [{ role: 'system', content: system }];
   for (const m of messages) {
     if (m.role === 'user') {
@@ -46,7 +51,7 @@ export function toOpenAIMessages(system: string, messages: ProviderMessage[], im
     } else if (m.role === 'assistant') {
       const saved = sameModel ? savedChat(m.raw) : undefined;
       const raw = endpoint === undefined || saved?.endpoint === endpoint ? saved : undefined;
-      // NEVER `content: null`: the spec makes content optional only beside tool_calls, and a strict
+      // Never `content: null`: the spec makes content optional only beside tool_calls, and a strict
       // gateway rejects an explicit null either way. Empty text is the field omitted where calls
       // carry the turn, and an empty string where nothing else would.
       const msg: OpenAI.ChatCompletionAssistantMessageParam = { role: 'assistant' };
@@ -68,7 +73,7 @@ export function toOpenAIMessages(system: string, messages: ProviderMessage[], im
       }
       out.push(msg);
     } else {
-      // Two passes, never one interleaved loop: every tool_call_id MUST be answered by a
+      // Two passes, never one interleaved loop: every tool_call_id must be answered by a
       // role:'tool' message before any role:'user' message appears, or the API rejects the
       // request. The wire has no is_error flag, so an error result is named in its own text.
       for (const r of m.results) {
@@ -124,7 +129,7 @@ function usageOf(u: OpenAI.CompletionUsage): Usage {
 }
 
 /**
- * A gateway that does not know `stream_options` refuses the WHOLE request rather than ignoring the
+ * A gateway that does not know `stream_options` refuses the whole request rather than ignoring the
  * parameter: an OpenAI-shaped endpoint answers 400 `Unrecognized request argument supplied:
  * stream_options`, a schema-validated one (FastAPI and the gateways built on it) answers 422
  * `extra fields not permitted`. Both name the parameter or the class of complaint, which is what
@@ -139,10 +144,20 @@ function refusesStreamOptions(err: unknown): boolean {
   return typeof e.message === 'string' && STREAM_OPTIONS_REJECTION.test(e.message);
 }
 
+/** OpenAI's reasoning model families, which take `max_completion_tokens` and, on OpenAI's own host,
+ *  the Responses protocol. */
+export const OPENAI_REASONING_MODEL = /^(?:gpt-[5-9]|o[1-9])/;
+
+/** Whether a turn goes over the Responses protocol: a reasoning model on OpenAI's own host. */
+function usesResponses(baseUrl: string | undefined, model: string, caps: ModelCapabilities | undefined): boolean {
+  const official = !baseUrl || baseUrl.replace(/\/$/, '') === OPENAI_BASE_URL;
+  return official && (caps?.reasoning === true || OPENAI_REASONING_MODEL.test(model));
+}
+
 /** A tool call the model typed into its message body instead of the tool_calls channel. */
 interface ProseCall { name: string; args: Record<string, unknown>; rawArgs: string }
 
-/** `arguments` as an object: the wire carries it either as JSON or as a JSON STRING, and models
+/** `arguments` as an object: the wire carries it either as JSON or as a JSON string, and models
  *  emitting a call in prose use both spellings. Absent reads as no arguments, which is a legal call
  *  for a tool whose parameters are all optional. */
 function proseArgs(raw: unknown): Record<string, unknown> | undefined {
@@ -152,12 +167,9 @@ function proseArgs(raw: unknown): Record<string, unknown> | undefined {
 }
 
 /**
- * A MESSAGE BODY THAT IS ONE TOOL CALL, or undefined for ordinary prose.
- *
- * Exported for tests. The three conditions together are what make a false positive impossible: the
- * WHOLE body must parse as one JSON object (not a fenced snippet inside a sentence, not an array),
- * `name` must be a tool the request actually offered, and `arguments` must be an object or a JSON
- * string that is one. A model answering in words about `place_object` writes a sentence, not this.
+ * The tool call a message body consists of, or undefined for ordinary prose. The whole body must
+ * parse as one JSON object, `name` must be a tool the request offered, and `arguments` must be an
+ * object or a JSON string of one, so prose about a tool never matches.
  */
 export function toolCallInProse(text: string, toolNames: ReadonlySet<string>): ProseCall | undefined {
   const body = text.trim();
@@ -172,7 +184,7 @@ export function toolCallInProse(text: string, toolNames: ReadonlySet<string>): P
   return { name, args, rawArgs: JSON.stringify(args) };
 }
 
-/** Whether the text so far could still GROW into the whole-body JSON object a prose call is: empty,
+/** Whether the text so far could still grow into the whole-body JSON object a prose call is: empty,
  *  whitespace, or opened with a brace. Anything else is prose and streams from the next delta on. */
 function couldBeProseCall(text: string): boolean {
   const head = text.trimStart();
@@ -185,27 +197,102 @@ function couldBeProseCall(text: string): boolean {
 const PROSE_HOLD_MAX = 8192;
 
 /**
- * Endpoints observed answering a STREAMED request with a tool call typed into the message body, by
- * base URL. The next request to one of them is sent UNSTREAMED, where the same gateway sends a
- * proper `tool_calls` array (the L1 probe: one endpoint, one body, both answers).
- *
- * Module-scoped rather than per adapter: `exec/runner.ts` builds a fresh adapter for every job, so
- * an instance-scoped memory would spend the first turn of every order learning the same fact again.
- * Never cleared, for the reason `usageParamRefused` is never cleared — a gateway that cannot carry
- * tool calls on its streaming path cannot carry them on the next turn either.
+ * Endpoints, by base URL, that answered a streamed request with a tool call typed into the message
+ * body. Later requests to them go unstreamed, where such gateways send a proper `tool_calls` array.
+ * Module-scoped because the runner builds a fresh adapter per job; kept for the page's lifetime.
  */
 const PROSE_ENDPOINTS = new Set<string>();
 
-export function createOpenAIAdapter(opts: { apiKey: string; baseUrl?: string; providerId?: ProviderId; quirks: Quirks }): Adapter {
+/** Restores a fresh page's state: every endpoint streams again. */
+export function __resetProseEndpoints(): void {
+  PROSE_ENDPOINTS.clear();
+}
+
+/** What the wire said once a turn is over, whichever path carried it. */
+interface TurnEnd {
+  final: FinalToolCall[];
+  /** The message body, the candidate for a tool call typed as prose. */
+  text: string;
+  finishReason: OpenAI.ChatCompletionChunk.Choice['finish_reason'];
+  usage: Usage | undefined;
+  thinking: ChatReasoning;
+}
+
+/** One streamed turn's tool-call fragments, joined into whole calls. */
+class CallJoiner {
+  private readonly buffers = new Map<string, CallBuffer>();
+  private readonly started = new Set<string>();
+  private keyless = 0;
+
+  constructor(private readonly mintId: (index: number | undefined) => string) {}
+
+  get size(): number { return this.buffers.size; }
+
+  /**
+   * A fragment's events. The chunk `index` is the fragment handle on the standard wire, so
+   * interleaved calls accumulate apart. Some vLLM-style gateways send each call whole in one chunk
+   * with no index, so the key falls back to the call id, then to a fresh key per fragment. A
+   * gateway may repeat the name on a later fragment, so `tool-start` is sent once per key.
+   */
+  *add(tc: StreamedCall, thinking: ChatReasoning): Generator<StreamEvent> {
+    const key = tc.index !== undefined ? `i${tc.index}` : tc.id !== undefined ? `d${tc.id}` : `k${this.keyless++}`;
+    let entry = this.buffers.get(key);
+    if (!entry) {
+      entry = { callId: tc.id ?? this.mintId(tc.index), name: '', args: '' };
+      this.buffers.set(key, entry);
+    }
+    thinking.tool(entry.callId, tc.extra_content);
+    if (tc.function?.name && !this.started.has(key)) {
+      entry.name = tc.function.name;
+      this.started.add(key);
+      yield { t: 'tool-start', callId: entry.callId, name: entry.name };
+    }
+    if (tc.function?.arguments) {
+      entry.args += tc.function.arguments;
+      yield { t: 'tool-args', callId: entry.callId, delta: tc.function.arguments };
+    }
+  }
+
+  calls(): FinalToolCall[] {
+    return [...this.buffers.values()].map((e) => ({ callId: e.callId, name: e.name, args: parseArgs(e.args), rawArgs: e.args }));
+  }
+}
+
+type StreamedCall = { index?: number; id?: string; extra_content?: unknown; function?: { name?: string; arguments?: string } };
+
+/**
+ * Brace-opened message text, held while it could still be a whole-body tool call. A body that is
+ * not brace-opened releases on its first delta; a held one is replayed delta by delta at the end of
+ * the turn unless it was the call it looked like.
+ */
+class ProseHold {
+  private readonly held: string[] = [];
+  private holding = true;
+  text = '';
+
+  *add(delta: string): Generator<StreamEvent> {
+    if (!this.holding) { yield { t: 'text', delta }; return; }
+    this.held.push(delta);
+    this.text += delta;
+    this.holding = this.text.length <= PROSE_HOLD_MAX && couldBeProseCall(this.text);
+    if (!this.holding) yield* this.release();
+  }
+
+  *release(): Generator<StreamEvent> {
+    for (const delta of this.held) yield { t: 'text', delta };
+    this.held.length = 0;
+  }
+}
+
+export function createOpenAIAdapter(opts: { apiKey: string; baseUrl?: string; providerId: ProviderId; quirks: Quirks }): Adapter {
+  const { providerId } = opts;
   // Custom credentials must never reach the SDK's default cloud endpoint.
-  const providerId = opts.providerId ?? PROVIDER_IDS.find((id) => QUIRKS[id] === opts.quirks) ?? 'custom';
   if ((providerId === 'custom' || opts.quirks.needsBaseUrl === true) && (opts.baseUrl ?? '') === '') throw new Error(NO_ENDPOINT_ADDRESS);
   const anonymous = providerId === 'custom' && opts.apiKey === '';
   const client = new OpenAI({
     // The SDK requires a nonempty key even when Authorization is explicitly omitted.
     apiKey: anonymous ? 'no-auth' : opts.apiKey,
-    // undefined is SDK-legal here and takes the SDK's own default endpoint — the `openai`
-    // provider's `baseUrlFor` deliberately returns undefined (see defaults.ts).
+    // Every registered provider names its host; undefined reaches the SDK only from a direct caller.
     baseURL: opts.baseUrl,
     maxRetries: 0,
     dangerouslyAllowBrowser: true,
@@ -214,26 +301,73 @@ export function createOpenAIAdapter(opts: { apiKey: string; baseUrl?: string; pr
   const reasoningFields = opts.quirks.reasoningFields ?? [];
   const imageInToolResult = opts.quirks.imageInToolResult;
   const streamUsage = opts.quirks.streamUsage === true;
-  // Per-ADAPTER-instance, not per-stream: a fresh counter on every `stream()` call let two
-  // different turns both mint `call-0-0` for their first id-less tool call, and every later
-  // callId-keyed lookup (the loop's gate/result tracking, project-messages' replay maps) then
-  // silently treated the two turns' distinct calls as the same occurrence.
+  // Per adapter instance, so two turns never mint the same id for their id-less tool calls.
   let synthCounter = 0;
-  // Set by the one self-heal below and never cleared: an endpoint that refuses `stream_options`
-  // refuses it every turn, so re-offering it would spend a rejected roundtrip per turn forever.
+  // An endpoint that refuses `stream_options` refuses it every turn, so the refusal is kept.
   let usageParamRefused = false;
-  /** This adapter's row in `PROSE_ENDPOINTS`. The SDK's own default endpoint is one endpoint like
-   *  any other, so an omitted base URL keys on the empty string rather than opting out. */
+  /** This adapter's row in `PROSE_ENDPOINTS`; the SDK's default endpoint keys on the empty string. */
   const endpointKey = opts.baseUrl ?? '';
 
+  function requestBody(req: AdapterRequest, capabilities: ModelCapabilities | undefined): OpenAI.ChatCompletionCreateParamsNonStreaming {
+    return {
+      model: req.model,
+      ...reasoningBody(opts.quirks.thinkingWire, req.thinking, capabilities),
+      ...(req.maxOutputTokens === undefined ? {} : OPENAI_REASONING_MODEL.test(req.model)
+        ? { max_completion_tokens: req.maxOutputTokens } : { max_tokens: req.maxOutputTokens }),
+      messages: toOpenAIMessages(req.system, req.messages, { imageInToolResult, sameModel: req.sameModel, endpoint: endpointKey }),
+      ...(req.tools.length ? { tools: req.tools.map((t) => ({
+        type: 'function' as const,
+        function: { name: t.name, description: t.description, parameters: t.parameters },
+      })) } : {}),
+    };
+  }
+
+  /** Opens the stream, dropping the usage request once if the endpoint refuses that parameter. */
+  async function openStream(params: OpenAI.ChatCompletionCreateParamsStreaming, signal: AbortSignal) {
+    const askUsage = streamUsage && !usageParamRefused;
+    try {
+      return await client.chat.completions.create(
+        askUsage ? { ...params, stream_options: { include_usage: true } } : params,
+        { signal },
+      );
+    } catch (err) {
+      // Usage is a statistic and the refusal would otherwise cost the whole turn.
+      if (!askUsage || signal.aborted || !refusesStreamOptions(err)) throw err;
+      usageParamRefused = true;
+      return client.chat.completions.create(params, { signal });
+    }
+  }
+
   /**
-   * ONE TURN, UNSTREAMED: the request an endpoint gets once it has shown it cannot carry a tool call
-   * on its streaming path, mapped onto the same events the streamed path emits.
-   *
-   * Usage rides in the response body here, so `stream_options` (and its self-heal) has nothing to
-   * do; the idle bound is the loop's `withIdleTimeout` either way, which now measures the whole
-   * answer against its first-event budget rather than the gap between deltas.
+   * The turn's closing events on both paths. A body that is one requested tool call, on a turn with
+   * no wire calls that was not truncated, becomes that call, and its endpoint is sent unstreamed from
+   * then on. `released` replays held text when the body was not a call.
    */
+  function* finishTurn(end: TurnEnd, toolNames: ReadonlySet<string>, released: () => Generator<StreamEvent>): Generator<StreamEvent> {
+    const prose = end.final.length === 0 && end.finishReason !== 'length'
+      ? toolCallInProse(end.text, toolNames)
+      : undefined;
+    const final = end.final.slice();
+    if (prose !== undefined) {
+      const callId = `call-prose-${synthCounter++}`;
+      yield { t: 'tool-start', callId, name: prose.name };
+      yield { t: 'tool-args', callId, delta: prose.rawArgs };
+      final.push({ callId, name: prose.name, args: prose.args, rawArgs: prose.rawArgs });
+      PROSE_ENDPOINTS.add(endpointKey);
+    } else {
+      yield* released();
+    }
+    yield {
+      t: 'done',
+      stop: prose !== undefined ? 'tool-calls' : mapStop(end.finishReason),
+      final,
+      ...(end.thinking.raw() ? { raw: end.thinking.raw() } : {}),
+      ...(end.usage !== undefined && { usage: end.usage }),
+      ...(prose !== undefined && { quirks: ['tool-call-as-prose' as TurnQuirk] }),
+    };
+  }
+
+  /** One turn unstreamed, for an endpoint that cannot carry a tool call on its streaming path. */
   async function* unstreamed(
     params: OpenAI.ChatCompletionCreateParamsNonStreaming, toolNames: ReadonlySet<string>, signal: AbortSignal,
   ): AsyncGenerator<StreamEvent> {
@@ -246,33 +380,56 @@ export function createOpenAIAdapter(opts: { apiKey: string; baseUrl?: string; pr
     const message = choice.message as OpenAI.ChatCompletionMessage & { [key: string]: unknown };
     const thinking = new ChatReasoning(reasoningFields, endpointKey);
     for (const thought of thinking.add(message)) yield { t: 'reasoning', delta: thought };
-    for (const call of message.tool_calls ?? []) thinking.tool(call.id, (call as unknown as Record<string, unknown>).extra_content);
-    const wireCalls = (message.tool_calls ?? [])
-      .filter((c): c is OpenAI.ChatCompletionMessageFunctionToolCall => c.type === 'function')
-      .map((c) => ({ callId: c.id, name: c.function.name, rawArgs: c.function.arguments }));
-    const text = message.content ?? '';
-    const prose = wireCalls.length === 0 && choice.finish_reason !== 'length'
-      ? toolCallInProse(text, toolNames)
-      : undefined;
-    if (prose === undefined && text !== '') yield { t: 'text', delta: text };
-    const calls = prose !== undefined
-      ? [{ callId: `call-prose-${synthCounter++}`, name: prose.name, rawArgs: prose.rawArgs }]
-      : wireCalls;
     const final: FinalToolCall[] = [];
-    for (const call of calls) {
+    for (const call of message.tool_calls ?? []) {
+      thinking.tool(call.id, (call as unknown as Record<string, unknown>).extra_content);
+      if (call.type !== 'function') continue;
+      const rawArgs = call.function.arguments;
+      final.push({ callId: call.id, name: call.function.name, args: parseArgs(rawArgs), rawArgs });
+    }
+    const text = message.content ?? '';
+    const end: TurnEnd = { final, text, finishReason: choice.finish_reason, usage: res.usage ? usageOf(res.usage) : undefined, thinking };
+    // A body that turns out to be a call is never published as text.
+    const proseCall = final.length === 0 && choice.finish_reason !== 'length' && toolCallInProse(text, toolNames) !== undefined;
+    if (!proseCall && text !== '') yield { t: 'text', delta: text };
+    for (const call of final) {
       yield { t: 'tool-start', callId: call.callId, name: call.name };
       if (call.rawArgs) yield { t: 'tool-args', callId: call.callId, delta: call.rawArgs };
-      final.push({ callId: call.callId, name: call.name, args: parseArgs(call.rawArgs), rawArgs: call.rawArgs });
     }
-    const usage = res.usage ? usageOf(res.usage) : undefined;
-    yield {
-      t: 'done',
-      stop: prose !== undefined ? 'tool-calls' : mapStop(choice.finish_reason),
-      final,
-      ...(thinking.raw() ? { raw: thinking.raw() } : {}),
-      ...(usage !== undefined && { usage }),
-      ...(prose !== undefined && { quirks: ['tool-call-as-prose' as TurnQuirk] }),
-    };
+    yield* finishTurn(end, toolNames, function* () {});
+  }
+
+  /** One turn streamed: text, reasoning and tool-call fragments as they arrive. */
+  async function* streamed(
+    params: OpenAI.ChatCompletionCreateParamsStreaming, toolNames: ReadonlySet<string>, signal: AbortSignal,
+  ): AsyncGenerator<StreamEvent> {
+    const sdkStream = await openStream(params, signal);
+    const thinking = new ChatReasoning(reasoningFields, endpointKey);
+    const calls = new CallJoiner((index) => `call-${index ?? 'x'}-${synthCounter++}`);
+    const hold = new ProseHold();
+    let finishReason: OpenAI.ChatCompletionChunk.Choice['finish_reason'] = null;
+    let usage: Usage | undefined;
+    // Whether the model produced text, a thought or a tool call; a usage-only frame is not content.
+    let said = false;
+    for await (const chunk of sdkStream) {
+      // `include_usage` delivers usage on a trailing chunk whose `choices` array is empty.
+      if (chunk.usage) usage = usageOf(chunk.usage);
+      const choice = chunk.choices[0];
+      if (!choice) continue;
+      const delta = choice.delta as OpenAI.ChatCompletionChunk.Choice.Delta & { [key: string]: unknown };
+      if (delta.content) { said = true; yield* hold.add(delta.content); }
+      for (const thought of thinking.add(delta)) { said = true; yield { t: 'reasoning', delta: thought }; }
+      for (const tc of (delta.tool_calls ?? []) as StreamedCall[]) { said = true; yield* calls.add(tc, thinking); }
+      if (choice.finish_reason) finishReason = choice.finish_reason;
+    }
+    // A model ending an empty turn still sends a finish reason. A stream with neither content nor a
+    // finish frame is a host that never wrote a body (a gateway at its rate cap answers 200 that
+    // way), reported as a provider fault rather than as the model's silence.
+    if (finishReason === null && !said) {
+      yield { t: 'error', error: classify({ message: PROVIDER_SILENCE }) };
+      return;
+    }
+    yield* finishTurn({ final: calls.calls(), text: hold.text, finishReason, usage, thinking }, toolNames, () => hold.release());
   }
 
   return {
@@ -280,171 +437,14 @@ export function createOpenAIAdapter(opts: { apiKey: string; baseUrl?: string; pr
       const toolNames = new Set(req.tools.map((t) => t.name));
       try {
         const capabilities = req.capabilities ?? modelCapabilities(providerId, req.model, opts.baseUrl);
-        if ((!opts.baseUrl || /^https:\/\/api\.openai\.com\/v1\/?$/.test(opts.baseUrl))
-          && (capabilities?.reasoning || /^(?:gpt-(?:[5-9]|[1-9]\d)|o[1-9])/.test(req.model))) {
+        if (usesResponses(opts.baseUrl, req.model, capabilities)) {
           const { streamResponses } = await import('./openai-responses');
           yield* streamResponses(client, { ...req, capabilities }, signal, opts.apiKey);
           return;
         }
-        const base: OpenAI.ChatCompletionCreateParamsNonStreaming = {
-          model: req.model,
-          ...reasoningBody(providerId, req.thinking, capabilities),
-          ...(req.maxOutputTokens === undefined ? {} : /^(gpt-[5-9]|o[1-9])/.test(req.model)
-            ? { max_completion_tokens: req.maxOutputTokens } : { max_tokens: req.maxOutputTokens }),
-          messages: toOpenAIMessages(req.system, req.messages, imageInToolResult, req.sameModel, endpointKey),
-          ...(req.tools.length ? { tools: req.tools.map((t) => ({
-            type: 'function' as const,
-            function: { name: t.name, description: t.description, parameters: t.parameters },
-          })) } : {}),
-        };
-        if (PROSE_ENDPOINTS.has(endpointKey)) {
-          yield* unstreamed(base, toolNames, signal);
-          return;
-        }
-        const params: OpenAI.ChatCompletionCreateParamsStreaming = { ...base, stream: true };
-        const askUsage = streamUsage && !usageParamRefused;
-        let sdkStream;
-        try {
-          sdkStream = await client.chat.completions.create(
-            askUsage ? { ...params, stream_options: { include_usage: true } } : params,
-            { signal },
-          );
-        } catch (err) {
-          // Usage is a statistic; the stream is the product. An endpoint that rejects the
-          // parameter loses the turn outright otherwise, and the refusal classifies 'unknown', so
-          // the user would be told only that something went wrong. Drop the ask and go again once.
-          if (!askUsage || signal.aborted || !refusesStreamOptions(err)) throw err;
-          usageParamRefused = true;
-          sdkStream = await client.chat.completions.create(params, { signal });
-        }
-
-        // A tool call's chunk `index` is the fragment handle on the standard wire; the buffer keyed
-        // on it is what lets interleaved calls (two tools issued back-to-back) accumulate without
-        // cross-contaminating each other's name/args. A vLLM-style gateway (Ivy) streams each call
-        // COMPLETE in its own chunk — id + name + whole arguments, a cumulative `message` object
-        // beside the `delta`, and NO index — so the key falls back to the call id there, and to a
-        // fresh key per entry where neither exists (nothing could correlate a later fragment to it).
-        // Keyed on the absent index alone, a whole turn's calls merged into one buffer of
-        // concatenated JSON: one bad call reported, every real one lost. `startedCalls` gates
-        // `tool-start` to once per key, since a gateway can repeat the name on a later chunk of the
-        // same call.
-        const thinking = new ChatReasoning(reasoningFields, endpointKey);
-        const buffers = new Map<string, CallBuffer>();
-        const startedCalls = new Set<string>();
-        let keylessCalls = 0;
-        let finishReason: OpenAI.ChatCompletionChunk.Choice['finish_reason'] = null;
-        let usage: Usage | undefined;
-        // Whether anything the MODEL produced came down the wire: text, thought or tool call.
-        // Usage is not content — a trailing usage-only frame says how big the nothing was.
-        let said = false;
-        /**
-         * TEXT THAT COULD STILL BE A TOOL CALL IS HELD, and only that text.
-         *
-         * The deltas are kept individually so a release replays the stream as it arrived rather than
-         * coalescing it into one event. A body that is not brace-opened releases on its FIRST delta,
-         * which is every prose answer there is; a brace-opened one is held to the end of the turn,
-         * where it is either the call it looks like or published as the answer it turned out to be.
-         * Publishing it as it arrives is what made the JSON the assistant's own words.
-         */
-        const held: string[] = [];
-        let holdText = '';
-        let holding = true;
-
-        for await (const chunk of sdkStream) {
-          // Read usage BEFORE the choice guard: `include_usage` delivers it on a trailing chunk
-          // whose `choices` array is empty, so a guard-first loop discards the only chunk carrying it.
-          if (chunk.usage) usage = usageOf(chunk.usage);
-          const choice = chunk.choices[0];
-          if (!choice) continue;
-          const delta = choice.delta as OpenAI.ChatCompletionChunk.Choice.Delta & { [key: string]: unknown };
-          if (delta.content) {
-            said = true;
-            if (holding) {
-              held.push(delta.content);
-              holdText += delta.content;
-              holding = holdText.length <= PROSE_HOLD_MAX && couldBeProseCall(holdText);
-              if (!holding) {
-                for (const d of held) yield { t: 'text', delta: d };
-                held.length = 0;
-              }
-            } else {
-              yield { t: 'text', delta: delta.content };
-            }
-          }
-          for (const thought of thinking.add(delta)) { said = true; yield { t: 'reasoning', delta: thought }; }
-          for (const tc of (delta.tool_calls ?? []) as { index?: number; id?: string; extra_content?: unknown; function?: { name?: string; arguments?: string } }[]) {
-            said = true;
-            const key = tc.index !== undefined ? `i${tc.index}` : tc.id !== undefined ? `d${tc.id}` : `k${keylessCalls++}`;
-            let entry = buffers.get(key);
-            if (!entry) {
-              // A gateway that never sends an id at all still gets one call executed, never
-              // dropped: `call-<index>-<n>`, synthesized unconditionally regardless of provider.
-              entry = { callId: tc.id ?? `call-${tc.index ?? 'x'}-${synthCounter++}`, name: '', args: '' };
-              buffers.set(key, entry);
-            }
-            thinking.tool(entry.callId, tc.extra_content);
-            if (tc.function?.name && !startedCalls.has(key)) {
-              entry.name = tc.function.name;
-              startedCalls.add(key);
-              yield { t: 'tool-start', callId: entry.callId, name: entry.name };
-            }
-            if (tc.function?.arguments) {
-              entry.args += tc.function.arguments;
-              yield { t: 'tool-args', callId: entry.callId, delta: tc.function.arguments };
-            }
-          }
-          if (choice.finish_reason) finishReason = choice.finish_reason;
-        }
-
-        // A PROVIDER THAT SENT NOTHING IS NOT A MODEL THAT SAID NOTHING, and this is the only layer
-        // that can tell them apart. A model ending an empty turn still sends a FINISH REASON; a host
-        // that never wrote a body produces a stream that completes with neither content nor a finish
-        // frame (a gateway at its per-minute cap answers 200 that way). Reported as `done`, the
-        // second becomes an empty MODEL turn: the loop nudges it twice, gives up politely, and the
-        // panel closes the job with "nothing was said" about a turn the model was never asked —
-        // a platform fault worn as the model's silence, with no retry and nothing to press.
-        if (finishReason === null && !said) {
-          yield { t: 'error', error: classify({ message: PROVIDER_SILENCE }) };
-          return;
-        }
-
-        const final: FinalToolCall[] = [...buffers.values()].map((e) => ({
-          callId: e.callId,
-          name: e.name,
-          args: parseArgs(e.args),
-          rawArgs: e.args,
-        }));
-
-        /**
-         * THE CALL THE MODEL TYPED INTO ITS MESSAGE, promoted to the channel it belongs in.
-         *
-         * A held body is a call only where the wire carried NO tool call of its own and the turn was
-         * not truncated: a truncated body cannot be trusted to be the whole object it parses as, and
-         * a turn with real calls in it has already said what it wanted through the proper channel.
-         * The endpoint is remembered, so the next request to it goes unstreamed and this normalizing
-         * is a first-turn repair rather than a standing translation.
-         */
-        const prose = buffers.size === 0 && finishReason !== 'length'
-          ? toolCallInProse(holdText, toolNames)
-          : undefined;
-        if (prose !== undefined) {
-          const callId = `call-prose-${synthCounter++}`;
-          yield { t: 'tool-start', callId, name: prose.name };
-          yield { t: 'tool-args', callId, delta: prose.rawArgs };
-          final.push({ callId, name: prose.name, args: prose.args, rawArgs: prose.rawArgs });
-          PROSE_ENDPOINTS.add(endpointKey);
-        } else {
-          for (const d of held) yield { t: 'text', delta: d };
-        }
-
-        yield {
-          t: 'done',
-          stop: prose !== undefined ? 'tool-calls' : mapStop(finishReason),
-          final,
-          ...(thinking.raw() ? { raw: thinking.raw() } : {}),
-          ...(usage !== undefined && { usage }),
-          ...(prose !== undefined && { quirks: ['tool-call-as-prose' as TurnQuirk] }),
-        };
+        const body = requestBody(req, capabilities);
+        if (PROSE_ENDPOINTS.has(endpointKey)) yield* unstreamed(body, toolNames, signal);
+        else yield* streamed({ ...body, stream: true }, toolNames, signal);
       } catch (err) {
         yield streamFailureEvent(err, signal.aborted, [opts.apiKey]);
       }
@@ -454,7 +454,7 @@ export function createOpenAIAdapter(opts: { apiKey: string; baseUrl?: string; pr
       const ids: string[] = [];
       const rows: unknown[] = [];
       for await (const m of client.models.list({ signal })) { ids.push(m.id); rows.push(m); }
-      rememberNativeModels(providerId, rows, providerId === 'custom' ? opts.baseUrl : undefined);
+      rememberNativeModels(providerId, rows, opts.baseUrl);
       return ids;
     },
   };

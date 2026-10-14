@@ -3,7 +3,7 @@
  * `poseForPhase` maps durable session phases; one-shot `celebrating` and `noted` poses are triggered
  * from events. Setup supplies `keylean` and `pleased`, and region marking supplies `watching`.
  */
-import type { SessionPhase } from '../../../agent/core/project-view';
+import type { SessionPhase } from '../../../agent/panel';
 import type { BadgeId } from './badges';
 
 export type PoseName =
@@ -22,7 +22,7 @@ export interface PoseKeyframe {
 
 /** One WAAPI `.animate()` call: which part, when it starts (ms after the pose's own timers are
  *  armed, default 0), how long, on which curve. `puffAt` (seq only) fires the dust-puff effect
- *  that many ms after this track's OWN start. */
+ *  that many ms after this track's own start. */
 export interface PoseTrack {
   part: BodyPart;
   at?: number;
@@ -30,7 +30,7 @@ export interface PoseTrack {
   easing: string;
   keyframes: PoseKeyframe[];
   puffAt?: number;
-  /** ADDITIVE, for a gesture that plays OVER a standing loop on the same part. A replacing animation
+  /** Additive, for a gesture that plays over a standing loop on the same part. A replacing animation
    *  takes the loop's own value off the element for as long as it runs and hands it back at the end,
    *  which reads as two hitches around a 120ms flick; `composite: 'add'` composes with it instead, so
    *  the breath goes on underneath. Every ambient micro-gesture is one of these. */
@@ -203,7 +203,7 @@ export const POSES: Record<PoseName, PoseSpec> = {
         { transform: 'none' }, { transform: 'translateY(7px) rotate(-4deg) scaleY(.94)' }] },
     ],
     loops: [
-      // THE SLEEPING BREATH IS TWO-AXIS, and the 1% narrowing is what makes it read as a chest rather
+      // The sleeping breath is two-axis, and the 1% narrowing is what makes it read as a chest rather
       // than a vertical stretch: at 72px of art the rise is 2.8px against 1.9px for a scaleY-only
       // 1.03.
       { part: 'body', at: 900, dur: 3600, easing: CURVES.ease, keyframes: [
@@ -211,9 +211,9 @@ export const POSES: Record<PoseName, PoseSpec> = {
     ],
     static: 'translateY(7px) rotate(-4deg) scaleY(.94)',
   },
-  // THE KEY-ENTRY PAIR. The provider ROW under the field carries the verdict; these
-  // DOUBLE it as reaction garnish and never carry it alone, which is why the reading one wears no
-  // badge at all. A REFUSED KEY IS `trouble`: the hop back and the worried tremble is the one face
+  // The key-entry pair. The provider row under the field carries the verdict; these
+  // Double it as reaction garnish and never carry it alone, which is why the reading one wears no
+  // badge at all. A refused key is `trouble`: the hop back and the worried tremble is the one face
   // the panel has for something going wrong, and a second droop with the same exclaim beside it was
   // one gesture said twice.
   keylean: {
@@ -229,7 +229,7 @@ export const POSES: Record<PoseName, PoseSpec> = {
     timers: [{ every: 5200, jitter: 1400, run: 'blink' }],
     static: 'rotate(9deg) translateY(1px)',
   },
-  // A HOLDING pose, not a one-shot: the confirmation stands until the gate moves the screen on, so
+  // A holding pose, not a one-shot: the confirmation stands until the gate moves the screen on, so
   // there is no `settleTo` and the spark stays lit while the provider is confirmed.
   pleased: {
     badge: 'spark', badgeAt: 300, badgeCurve: 'boing', lids: false,
@@ -247,7 +247,7 @@ export const POSES: Record<PoseName, PoseSpec> = {
     ],
     static: 'translateY(-2px)', staticBadge: 'spark',
   },
-  // The mirror of `keylean`: she turns AWAY from the panel, toward the map, for the one state where
+  // The mirror of `keylean`: she turns away from the panel, toward the map, for the one state where
   // the map holds the pencil and the panel is only watching.
   watching: {
     badge: null, lids: false,
@@ -277,15 +277,8 @@ export const POSES: Record<PoseName, PoseSpec> = {
 };
 
 /**
- * The Connect-press wake beat. Pressing Connect on
- * the keyless rest, she rises OUT of the sleeping rest as the key screen lands: the first frame IS
- * the sleeping still, so there is no jump, the .62 frame passes neutral with a slight stretch, and
- * the landing is plain `none` on the overshoot curve.
- *
- * NO FILL AND OUTSIDE THE POSE MACHINE, both load-bearing: the key screen's rest (`idle`) drives no
- * pose-part track, so the beat plays out under it, and anything that moves the pose inside the beat
- * (a fast paste bringing `keylean` in) starts a newer animation on the same part and takes over —
- * the wake yields by construction. `Character.tsx`'s `wake` verb is the one player.
+ * The wake beat as the key screen lands: it starts from the sleeping still and lands on the overshoot
+ * curve. It has no fill and runs outside the pose machine, so a newer pose on the same part takes over.
  */
 export const WAKE_BEAT: PoseTrack = {
   part: 'pose', dur: 620, easing: CURVES.snap, keyframes: [
@@ -308,32 +301,16 @@ export const PRESS_SQUASH: PoseTrack = {
   ],
 };
 
-/**
- * Ambient one-shot gestures fired by pose timers on a jittered interval.
- *
- * ADDITIVE, because the part it plays on is the part the breath loops on: an ear-flick that REPLACED
- * the transform dropped the breath to its rest value for its own 120ms and snapped it back at the end,
- * which is a stutter in a loop that is meant to be uninterrupted. Same rule the dreaming office's
- * twitch already follows.
- */
+/** Ambient one-shot gestures on a jittered interval, composited additively so the breath loop on the same part never stutters. */
 export const MICRO: Record<'earflick', PoseTrack> = {
   earflick: { part: 'body', dur: 120, easing: CURVES.out, composite: 'add', keyframes: [
     { transform: 'rotate(0deg)' }, { transform: 'rotate(2deg)', offset: .5 }, { transform: 'rotate(0deg)' }] },
 };
 
 /**
- * HOW LONG A POSE IS WORN BEFORE ANOTHER ONE MAY LAND, in ms.
- *
- * A pose is a GESTURE, and a gesture cut short of its own length reads as a convulsion: the
- * session's phase is derived from the streaming parts, so it moves several times a second inside one
- * turn (a tool call appearing reads as `executing`, the text after it as `streaming`), and a pose
- * landing on every move restarts the entrance several times a second (measured live at a 140ms
- * input: 142 restarts in 20 seconds).
- *
- * So a pose asked for inside this window is REMEMBERED rather than worn, and the newest one lands when
- * the window closes — one gesture at a time, whatever the phase does. It is a little longer than the
- * longest entrance in the table (`thinking`, 460ms) so the entrance that is playing is never the thing
- * that is interrupted.
+ * How long a pose is worn before another may land, in ms. The phase moves several times a second
+ * inside a turn; a pose asked for inside this window waits, and the newest lands when it closes. It
+ * exceeds the longest entrance (`thinking`, 460ms).
  */
 export const POSE_DWELL = 520;
 
@@ -342,13 +319,7 @@ export const POSE_DWELL = 520;
  *  the last frame is not swept away mid-paint). `Character.tsx:puff` is the one reader. */
 export const PUFF = { dur: 340, stagger: 20, clearAfter: 460 };
 
-/**
- * The SessionPhase → PoseName mapping. `connected: false` wins
- * outright — a disconnected session shows `sleeping` whatever phase the log last recorded, since
- * there's nothing running to portray. `aborted` settles to `idle` (a stopped session is not mid
- * job and not in trouble). `celebrating`/`noted` are one-shots outside this mapping — see the
- * file header.
- */
+/** The phase's pose. A disconnected session sleeps whatever the phase, and `aborted` settles to `idle`. */
 export function poseForPhase(phase: SessionPhase, opts: { connected: boolean }): PoseName {
   if (!opts.connected) return 'sleeping';
   switch (phase) {

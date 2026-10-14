@@ -1,12 +1,12 @@
-// Build the visible share-code band for a state (the ONLY carrier).
-import { protectedImageNotes } from '../../core/provenance/image-attribution';
-import type { GridState } from '../../core/model/types';
+// Build the visible share-code band for a state (the only carrier).
+import { protectedImageNotes } from '../../state/notes-attribution';
+import type { ExportableState } from '../save/exportable-state';
 import type { MapProvenanceSummary } from '../../core/provenance/types';
 import { encodeMapPayload, type ShareCodeMeta } from './codec/payload';
 import { encodeGlyph } from './glyph/encode';
 import { moduleBaseFor } from './glyph/geometry';
 import type { GlyphPlan, GlyphProfile } from './glyph/profiles';
-import { ShareError } from './errors';
+import { ShareTooLargeError } from './errors';
 
 export interface ShareCode {
   rgba: Uint8Array;
@@ -22,7 +22,7 @@ export interface ShareCode {
 
 /** Render the share-code band at the module base for a composition width. */
 export async function buildShareCode(
-  state: GridState,
+  state: ExportableState,
   summary: MapProvenanceSummary | null,
   meta: ShareCodeMeta,
   compositionWidth: number,
@@ -38,6 +38,6 @@ export async function buildShareCode(
     g = encodeGlyph(payload, mb);
     notesOmitted = true;
   }
-  if (!g) throw new ShareError('decode-failed', 'Map payload exceeds the densest PetitGlyph profile.');
+  if (!g) throw new ShareTooLargeError('Map payload exceeds the densest PetitGlyph profile.');
   return { ...g, payloadLen: payload.length, shareOriginalRecommended: g.profile.div > 4, notesOmitted };
 }

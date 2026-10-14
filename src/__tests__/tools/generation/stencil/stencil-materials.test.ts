@@ -1,33 +1,19 @@
-/**
- * WHAT a picture is built out of, and the decoration laid over it.
- *
- * The material is the palette: the one-cell catalogue less the trees, the flowers alone, the trees
- * alone, or the road surfaces. The decoration is the mixed composition's second half — bounded,
- * rule-checked and absent unless the material asks for one.
- *
- * THE DECORATION IS TWO INSTRUMENTS OVER ONE GATE, and the cases here are about the BACKGROUND one:
- * objects at the picture's anchor points, where it changes most and where its colour is furthest from
- * anything the primary can draw. That is what a box above `SMALL_BOX_OFF` gets, which is why these
- * pictures are larger than the gate — in a small box the decoration is an accent spent on the few
- * features that identify the subject instead, and `stencil-feature.test.ts` is where that is pinned.
- */
+import { placeObjectCommand } from '../../../../core/model/command-build';
 import { describe, it, expect } from 'vitest';
-import { CommandExecutor } from '../../../../core/commands/command-executor';
-import { EventBus } from '../../../../core/commands/event-bus';
-import { createDefaultRegistry } from '../../../../rules';
-import { roadLookup } from '../../../../state/object-index';
-import { ItemCategory, TerrainType, type EditorEvents, type GridState, type PlacedObject, type StencilPlan } from '../../../../core/model/types';
-import { makeState } from '../../../rules/_helpers';
+import { TerrainType, type GridState, type PlacedObject } from '../../../../core/model/types';
+import { type StencilPlan } from '../../../../tools/generation/recipe';
+import { makeState, makeExecutor } from '../../../_support/map-state';
 import { getCatalogItem } from '../../../../state/catalog';
-import { ELEVATION_COLORS } from '../../../../core/model/constants';
-import { hexStringToNumber } from '../../../../core/model/colors';
+import { ELEVATION_COLORS } from '../../../../core/model/palette';
+import { hexStringToNumber } from '../../../../core/base/color';
 import type { Stencil } from '../../../../tools/generation/stencil/stencil';
-import { declaredColorPalette, materialDeclaresColors, paletteItems } from '../../../../tools/generation/stencil/stencil-palette';
-import { DECOR_MAX_SHARE, layStencilDecor, runStencilPlan } from '../../../../tools/generation/stencil/stencil-generator';
+import { declaredColorPalette, paletteItems } from '../../../../tools/generation/stencil/stencil-palette';
+import { layStencilDecor, runStencilPlan } from '../../../../tools/generation/stencil/stencil-generator';
 import { terrainPalette } from '../../../../tools/generation/stencil/stencil';
-import { objectPlacementCommand } from '../../../../tools/objects/object-placer';
+import { isSurfacePrint } from '../../../../core/model/traits';
+import { ItemCategory } from '../../../../config/catalog/categories';
 
-const exec = (state: GridState) => new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
+const exec = (state: GridState) => makeExecutor(state);
 
 /** Whether an item coats the surface rather than standing on it, read from its own traits. */
 const isCoating = (catalogId: string): boolean =>
@@ -70,8 +56,8 @@ describe('the materials a picture may be built from', () => {
   });
 
   it('takes the road surfaces from the catalog, colour and all, with no canvas anywhere', () => {
-    expect(materialDeclaresColors('roads')).toBe(true);
     const palette = declaredColorPalette('roads');
+    expect(palette).toHaveLength(paletteItems('roads').length);
     expect(palette.length).toBeGreaterThanOrEqual(20);
     for (const entry of palette) {
       expect(getCatalogItem(entry.catalogId)?.category).toBe(ItemCategory.Road);
@@ -83,14 +69,14 @@ describe('the materials a picture may be built from', () => {
   });
 
   it('knows every material\'s colours from the catalog, with no canvas anywhere', () => {
-    // A sprite's colour is DERIVED DATA in the catalog (`iconColor`, written by the project's
+    // A sprite's colour is derived data in the catalog (`iconColor`, written by the project's
     // extraction tooling and guarded by its own drift check), which is what lets the engine answer
     // "what colour is this flower" in a worker and in the offline benchmark — a colour sampled from a
     // canvas would leave anywhere without a page (both of those) with no palette at all.
     for (const material of ['mixed', 'flora', 'trees', 'roads'] as const) {
-      expect(materialDeclaresColors(material)).toBe(true);
       const palette = declaredColorPalette(material);
-      expect(palette).toHaveLength(paletteItems(material).length);
+      // Every item, in catalog order: a colour two items match equally goes to the first.
+      expect(palette.map((e) => e.catalogId)).toEqual(paletteItems(material).map((i) => i.id));
       for (const entry of palette) {
         expect(entry.rgb).toBeGreaterThanOrEqual(0);
         expect(entry.rgb).toBeLessThanOrEqual(0xffffff);
@@ -123,6 +109,7 @@ describe('the materials a picture may be built from', () => {
   it('paves a picture with roads when that is the material', () => {
     const state = makeState(24, 24);
     const e = exec(state);
+    const whole = e.beginStroke();
     const palette = declaredColorPalette('roads');
     const plan: StencilPlan = {
       read: 'color', stencil: flat(6, 0xc4a882), origin: { x: 6, y: 6 }, objectPalette: palette,
@@ -132,11 +119,12 @@ describe('the materials a picture may be built from', () => {
     for (const obj of state.objects.values()) {
       expect(getCatalogItem(obj.catalogId)?.category).toBe(ItemCategory.Road);
     }
-    expect(e.commitStroke(0)).toEqual([]);
+    expect(whole.commit()).toEqual([]);
   });
 
-  it('leaves the mixed palette as the default a caller gets for asking nothing', () => {
-    expect(paletteItems('mixed').length).toBeGreaterThan(paletteItems('roads').length);
+  it('keeps transparent prints out of the opaque road mosaic palette', () => {
+    expect(paletteItems('roads').every(item => !isSurfacePrint(item))).toBe(true);
+    expect(declaredColorPalette('roads').every(entry => !isSurfacePrint(getCatalogItem(entry.catalogId)))).toBe(true);
   });
 });
 
@@ -165,6 +153,7 @@ describe('the decoration layer', () => {
   it('marks the cells where the picture changes most', () => {
     const state = makeState(56, 56);
     const e = exec(state);
+    const whole = e.beginStroke();
     const side = 40;
     layStencilDecor(state, { origin: { x: 6, y: 6 }, stencil: edged(side) }, { palette: PALETTE, density: 0.1 }, (c) => e.execute(c));
     expect(state.objects.size).toBeGreaterThan(0);
@@ -173,25 +162,26 @@ describe('the decoration layer', () => {
       const x = obj.position.x - 6;
       expect(Math.abs(x - (side / 2 - 0.5))).toBeLessThanOrEqual(1.5);
     }
-    expect(e.commitStroke(0)).toEqual([]);
+    expect(whole.commit()).toEqual([]);
   });
 
   it('is bounded however much is asked for, and never crowds', () => {
     const state = makeState(56, 56);
     const e = exec(state);
+    const whole = e.beginStroke();
     const side = 40;
     const res = layStencilDecor(
       state, { origin: { x: 6, y: 6 }, stencil: noisy(side) },
       { palette: PALETTE, density: 5 }, (c) => e.execute(c),
     );
-    expect(res.placed).toBeLessThanOrEqual(Math.floor(side * side * DECOR_MAX_SHARE));
+    expect(res.placed).toBeLessThanOrEqual(Math.floor(side * side * 0.15));   // a background takes at most 15% of the box
     const at = new Set([...state.objects.values()].map((o) => `${o.position.x},${o.position.y}`));
     for (const obj of state.objects.values()) {
       for (const [dx, dy] of [[1, 0], [0, 1], [1, 1], [1, -1]]) {
         expect(at.has(`${obj.position.x + dx!},${obj.position.y + dy!}`)).toBe(false);
       }
     }
-    expect(e.commitStroke(0)).toEqual([]);
+    expect(whole.commit()).toEqual([]);
   });
 
   it('places nothing at all on a picture with no detail in it', () => {
@@ -217,6 +207,7 @@ describe('the decoration layer', () => {
     // stand on it.
     const state = makeState(52, 52);
     const e = exec(state);
+    const whole = e.beginStroke();
     const plan: StencilPlan = {
       read: 'color', stencil: edged(34), origin: { x: 6, y: 6 },
       objectPalette: declaredColorPalette('roads'),
@@ -227,24 +218,25 @@ describe('the decoration layer', () => {
     expect(res.placed).toBeGreaterThan(res.decorated!);
     const flowers = [...state.objects.values()].filter((o) => o.catalogId === PALETTE[0]!.catalogId);
     expect(flowers).toHaveLength(res.decorated!);
-    expect(e.commitStroke(0)).toEqual([]);
+    expect(whole.commit()).toEqual([]);
   });
 
   it('leaves an object it did not place standing, and goes without', () => {
     const state = makeState(24, 24);
     const e = exec(state);
+    const whole = e.beginStroke();
     const side = 10;
     const stencil = edged(side);
     // Somebody else's tree, right on the seam where the decoration would most like to be.
     const tree: PlacedObject = { id: 'theirs', catalogId: 'tree-apple', position: { x: 6 + side / 2, y: 8 }, rotation: 0, elevation: 0 };
-    expect(e.execute(objectPlacementCommand(tree)).success).toBe(true);
+    expect(e.execute(placeObjectCommand(tree)).success).toBe(true);
     layStencilDecor(state, { origin: { x: 6, y: 6 }, stencil }, { palette: PALETTE, density: 0.15 }, (c) => e.execute(c));
     expect(state.objects.get('theirs')).toBeDefined();
-    expect(e.commitStroke(0)).toEqual([]);
+    expect(whole.commit()).toEqual([]);
   });
 
   it('marks the colours the primary cannot say, not only the edges', () => {
-    // Two halves with the SAME light and dark in them, so the gradient says they are equally
+    // Two halves with the same light and dark in them, so the gradient says they are equally
     // detailed; the left is drawn in the ramp's own greens and the right in a red of the same tone.
     // What separates them is only how far the primary palette can reach, which is the half of
     // salience an edge detector cannot see — a red bow on a green picture is a flat area.
@@ -257,10 +249,11 @@ describe('the decoration layer', () => {
     }
     const state = makeState(48, 48);
     const e = exec(state);
+    const whole = e.beginStroke();
     const palette = [{ catalogId: 'flower-dahlia', rgb: 0xd44a5a }, { catalogId: 'flower-agapanthus', rgb: 0x93cf7e }];
     layStencilDecor(
       state, { origin: { x: 6, y: 6 }, stencil: s }, { palette, density: 0.08 },
-      (c) => e.execute(c), undefined, terrainPalette(8, false),
+      (c) => e.execute(c), { primary: terrainPalette(8, false) },
     );
     const marks = [...state.objects.values()];
     expect(marks.length).toBeGreaterThan(4);
@@ -270,11 +263,11 @@ describe('the decoration layer', () => {
     expect(onRed.some((o) => o.position.x - 6 > mid + 2)).toBe(true);
     // And each one is the palette entry whose colour is the picture's there.
     for (const mark of onRed) expect(mark.catalogId).toBe('flower-dahlia');
-    expect(e.commitStroke(0)).toEqual([]);
+    expect(whole.commit()).toEqual([]);
   });
 });
 
-/** A red of a given tone: the same brightness the ramp is drawing in, so only the HUE is out of
+/** A red of a given tone: the same brightness the ramp is drawing in, so only the hue is out of
  *  reach. `luma`'s own weights, solved for the scale of a fixed red direction. */
 function redOfTone(tone: number): number {
   const dir = [1, 0.35, 0.35] as const;
@@ -290,6 +283,7 @@ describe('the mixed material is a composition, not a palette', () => {
   it('tells the ground in terrain and stands objects at the anchor points', () => {
     const state = makeState(30, 30);
     const e = exec(state);
+    const whole = e.beginStroke();
     const side = 16;
     const s = flat(side, hexStringToNumber(ELEVATION_COLORS[4]!));
     // One bright mark the ramp cannot say, which is what a decoration is for.
@@ -311,22 +305,23 @@ describe('the mixed material is a composition, not a palette', () => {
     for (const object of state.objects.values()) {
       expect(kinds.has(object.catalogId) || isCoating(object.catalogId)).toBe(true);
     }
-    // AN UPPER BOUND rather than a sum, because the bright mark is a FEATURE here: in a box this small
+    // An upper bound rather than a sum, because the bright mark is a feature here: in a box this small
     // the accent is spent on it, and a mark takes its cell from the paving the region borrowed
     // (`layStencilDecor` — a feature is the more specific statement of the two). So the count standing is
     // what both laid, less the coatings the marks took.
     expect(state.objects.size).toBeLessThanOrEqual(res.decorated! + res.coated!);
     expect(state.objects.size).toBeGreaterThan(res.coated! - res.decorated!);
-    expect(e.commitStroke(0)).toEqual([]);
+    expect(whole.commit()).toEqual([]);
   });
 
   it('never plants a tree, whatever the picture asks for', () => {
-    // The catalogue less the trees IS the material, so this holds by the palette rather than by a
+    // The catalogue less the trees is the material, so this holds by the palette rather than by a
     // filter at the placement — which is what keeps it true for every picture at once.
     const decor = paletteItems('mixed').map((item, i) => ({ catalogId: item.id, rgb: (i * 0x0a1b2c) & 0xffffff }));
     expect(decor.length).toBeGreaterThan(10);
     const state = makeState(30, 30);
     const e = exec(state);
+    const whole = e.beginStroke();
     const plan: StencilPlan = {
       // Two flat halves: a picture with ground a mark can stand on, which a cell-by-cell relief is
       // not (nothing is flat beside a step, and the rules refuse a bloom there).
@@ -338,7 +333,7 @@ describe('the mixed material is a composition, not a palette', () => {
     for (const obj of state.objects.values()) {
       expect(getCatalogItem(obj.catalogId)?.category).not.toBe(ItemCategory.Tree);
     }
-    expect(e.commitStroke(0)).toEqual([]);
+    expect(whole.commit()).toEqual([]);
   });
 });
 
@@ -350,13 +345,14 @@ describe('the image mode takes a height', () => {
     const run = (maxElevation: number): number => {
       const state = makeState(24, 24);
       const e = exec(state);
+      const whole = e.beginStroke();
       // The brightest green on the ramp: matched against a deep palette it stands tall, against a
       // shallow one it can only reach the top of what it was offered.
       const plan: StencilPlan = {
         read: 'color', stencil: flat(8, hexStringToNumber(ELEVATION_COLORS[8]!)), origin: { x: 6, y: 6 },
       };
       runStencilPlan(state, plan, maxElevation, (c) => e.execute(c));
-      expect(e.commitStroke(0)).toEqual([]);
+      expect(whole.commit()).toEqual([]);
       return tallest(state);
     };
     expect(run(2)).toBe(2);

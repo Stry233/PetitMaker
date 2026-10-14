@@ -3,10 +3,12 @@
  * ships new surfaces the way it ships new houses.
  */
 import { describe, it, expect } from 'vitest';
+import { LOCALES } from '../../core/model/locale';
 import { getRoadMaterials, getCatalogItem } from '../../state/catalog';
 import { SHARE_CATALOG_ORDER } from '../../io/share/codec/catalog-order';
-import { RETIRED_CATALOG_IDS } from '../../io/legacy-catalog';
-import { ROAD_FEATHER } from '../../core/edge-cut/road-shape';
+import { RETIRED_CATALOG_IDS } from '../../config/catalog/retired-ids';
+import { surfaceUrl } from '../../assets/surface-urls';
+import { ROAD_FEATHER } from '../../view/shared/road/shape';
 
 describe('road materials', () => {
   it('come from the catalog, not a union', () => {
@@ -48,7 +50,8 @@ describe('road materials', () => {
         if (typeof pattern !== 'object') continue;
         expect(Number.isFinite(pattern.repeat)).toBe(true);
         expect(pattern.repeat).toBeGreaterThan(0);
-        if (pattern.kind === 'inlay') continue;
+        if (pattern.kind === 'image') { expect(surfaceUrl(pattern.image)).toBeTruthy(); continue; }
+        if (pattern.kind === 'inlay' || pattern.kind === 'vector') continue;
         expect(Number.isFinite(pattern.joint)).toBe(true);
         expect(pattern.joint).toBeGreaterThan(0);
         if (pattern.kind === 'masonry') {
@@ -80,7 +83,7 @@ describe('road materials', () => {
     }
   });
 
-  // The append-only ORDER itself (released prefix fixed, new ids appended not sorted in) is
+  // The append-only order itself (released prefix fixed, new ids appended not sorted in) is
   // guarded by catalog-order.test.ts; this only checks that every road material is present there.
   it('every material is registered in the share order', () => {
     for (const m of getRoadMaterials()) expect(SHARE_CATALOG_ORDER).toContain(m.id);
@@ -121,25 +124,24 @@ describe('path tile surfaces', () => {
     }
   });
 
-  it('plants on the five surfaces that carry flowers in-game, and nowhere else', () => {
-    // A saved map with flowers standing on one of these must still load legal, so the plantable
-    // trait lives on exactly the surfaces the game itself plants on: the two dirt tracks, the two
-    // stone garden paths, and the flowerbed.
+  it('allows planting on the supported surfaces', () => {
     const plantable = getRoadMaterials()
       .filter((r) => r.traits?.some((t) => t.type === 'plantable'))
       .map((r) => r.id);
     expect(plantable).toEqual([
       'path-overgrown-dirt',
       'path-rustic-dirt',
+      'path-tilled-soil',
       'path-park-stone',
       'path-garden-stone',
       'path-simple-flowerbed',
+      'path-flower-meadow',
     ]);
   });
 
   it('names every path in all 7 locales', () => {
     for (const r of getRoadMaterials()) {
-      for (const loc of ['en', 'zh', 'ja', 'ru', 'th', 'id', 'fr'] as const) {
+      for (const loc of LOCALES) {
         expect(r.name[loc], `${r.id} ${loc}`).toBeTruthy();
       }
     }

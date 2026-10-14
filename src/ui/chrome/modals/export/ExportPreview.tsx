@@ -4,31 +4,36 @@ import { radii, font } from '../../../design/styles';
 import { skin } from '../../../design/window-skin';
 import { roleFont } from '../../../design/text-weight';
 import { Spinner } from '../../../primitives/Spinner';
-import { useT } from '../../../../i18n/context';
+import { useLocale, useT } from '../../../../i18n/context';
 import { useEditorStore } from '../../../../state/store';
 import type { ExportOptions } from '../../../../io/export/types';
 import type { MapProvenanceSummary } from '../../../../core/provenance/types';
-import { captureBaseMap, captureCard3dAngles, paintPreview, type BaseMapSource } from './render-preview-bridge';
-import { loadBrandLockup } from './brand';
+import { captureBaseMap, captureCard3dAngles, loadBrandLockup, paintPreview, type BaseMapSource } from '../../../../editor/export/preview';
+import { LEGAL } from '../../../../legal/config';
 import { CodeWarn } from './ExportControls';
 import type { ShareCodeIssue } from './use-share-code';
-import { angleKey } from '../../../../canvas/map3d/capture';
+import { angleKey } from '../../../../view/map3d/capture/stills';
 import { usePanZoom } from './use-pan-zoom';
 import { PanZoomResetHint, stageOutline } from './pan-zoom-stage';
 import { useStylizeVersions } from './stylize/use-stylize-versions';
-import { useMotion } from '../../../shell/motion/use-motion';
+import { useTransition } from '../../../design/motion/use-motion';
+import { useSettledValue } from '../../../primitives/use-settled-value';
+import { useEffectEvent } from '../../../primitives/use-effect-event';
 
 /** Interactive export preview. Expensive captures (map, 3D) are cached and refresh only when the
  *  map / resolution / 3D toggle change; typing title/description re-paints cheaply. Pan with drag,
  *  zoom with the wheel, double-click to reset.
  *
- *  `open` gates every capture and resets the view, and is a PROP rather than a store read: the
+ *  `open` gates every capture and resets the view, and is a prop rather than a store read: the
  *  window this preview sits in is not always the one the `modals.export` flag describes. */
-export function ExportPreview({ open, preparing = open, checkingMap = false, options, summary, codeImg, codePending, codeIssue, footerTokens }: { open: boolean; preparing?: boolean; checkingMap?: boolean; options: ExportOptions; summary: MapProvenanceSummary | null; codeImg?: HTMLCanvasElement | null; codePending?: boolean; codeIssue?: ShareCodeIssue | null; footerTokens?: Record<string, string> }) {
+export function ExportPreview({ open, preparing = open, checkingMap = false, options, summary, codeImg, codePending, codeIssue, footerTokens }: {
+  open: boolean; preparing?: boolean; checkingMap?: boolean; options: ExportOptions; summary: MapProvenanceSummary | null;
+  codeImg?: HTMLCanvasElement | null; codePending?: boolean; codeIssue?: ShareCodeIssue | null; footerTokens?: Record<string, string>;
+}) {
   const t = useT();
-  const statusTransition = useMotion('export.preview.status');
+  const statusTransition = useTransition('export.preview.status');
   const state = useEditorStore((s) => s.gridState);
-  const locale = useEditorStore((s) => s.locale);
+  const locale = useLocale();
   const [baseMap, setBaseMap] = useState<BaseMapSource | null>(null);
   const [brandLockup, setBrandLockup] = useState<HTMLImageElement | null>(null);
   const [card3d, setCard3d] = useState<HTMLImageElement[]>([]);
@@ -40,14 +45,14 @@ export function ExportPreview({ open, preparing = open, checkingMap = false, opt
   // Drag/wheel/double-click and the transient reset hint, shared with the stylize studio's canvas.
   const pz = usePanZoom();
 
-  // A stylize selection changes what the map band even IS, so the expensive capture below must
+  // A stylize selection changes what the map band even is, so the expensive capture below must
   // re-run on a selection change too, even though nothing else in its deps moved. Keyed on the
   // selected version's own id: retiring/minting/reselecting all move it, a re-render of an
   // unrelated store slice does not.
   const { selected: stylizeSelected } = useStylizeVersions();
   const stylizeEpoch = stylizeSelected?.id ?? null;
 
-  // EXPENSIVE: capture the 2D map — only when the map, the grid toggle, or the stylize selection
+  // Expensive: capture the 2D map — only when the map, the grid toggle, or the stylize selection
   // changes (the grid is baked into the capture by the real 2D renderer, so toggling it must
   // recapture). The capture is fixed at preview resolution, so the export Size choice never re-runs it.
   useEffect(() => {
@@ -57,28 +62,26 @@ export function ExportPreview({ open, preparing = open, checkingMap = false, opt
     // stage (the chosen export Size still governs the final file; this is preview-only).
     captureBaseMap(1440, options.grid, options.annotations, t('export.ai_tag')).then((img) => { if (alive) setBaseMap(img); }).catch(() => { if (alive) setLoading(false); });
     return () => { alive = false; };
-  }, [open, state, options.grid, options.annotations, stylizeEpoch]);
+  }, [open, state, options.grid, options.annotations, stylizeEpoch, t]);
 
-  // EXPENSIVE: capture the 3D stills — when toggled on, the map changes, or the user edits the
+  // Expensive: capture the 3D stills — when toggled on, the map changes, or the user edits the
   // chosen shots (so the preview card matches the exported card exactly).
-  const shots = useEditorStore((s) => s.export3dShots);
-  const shotsKey = shots.map(angleKey).join('|');
+  const shots = useSettledValue(useEditorStore((s) => s.export3dShots), (list) => list.map(angleKey).join('|'));
   useEffect(() => {
     if (!open || !state || !options.card3d) { setCard3d([]); return; }
     let alive = true;
-    // Defer this (heavy, main-thread-blocking) 3D re-capture until AFTER the shots strip's
+    // Defer this (heavy, main-thread-blocking) 3D re-capture until after the shots strip's
     // add/expand spring settles (~400ms), so building the throwaway scene never stalls that
     // animation mid-flight (a stall snaps the layout on the final frame).
     const id = setTimeout(() => {
       captureCard3dAngles(state, shots.length ? shots : undefined).then((imgs) => { if (alive) setCard3d(imgs); }).catch(() => undefined);
     }, 480);
     return () => { alive = false; clearTimeout(id); };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on the serialized shots
-  }, [open, state, options.card3d, shotsKey]);
+  }, [open, state, options.card3d, shots]);
 
-  // CHEAP: re-paint from cached assets on any option/text change (debounced); never recaptures.
-  // The title/description arrive SETTLED (the modal holds them until typing stops), so a keystroke
-  // never lands here. codeImg is the REAL share-code band (built async by the modal). There is NO
+  // Cheap: re-paint from cached assets on any option/text change (debounced); never recaptures.
+  // The title/description arrive settled (the modal holds them until typing stops), so a keystroke
+  // never lands here. codeImg is the real share-code band (built async by the modal). There is no
   // placeholder: while a code is still building (codePending) the preview holds the last complete
   // picture it drew, and shows its loading state only when there is none to hold — a rebuild for a
   // retyped title must not blink an already-standing picture away.
@@ -92,16 +95,19 @@ export function ExportPreview({ open, preparing = open, checkingMap = false, opt
     if (!open || !baseMap || !state) return;
     if (codePending) { if (!hasPicture.current) setLoading(true); return; }
     const id = setTimeout(() => {
-      setPicture(paintPreview({ options, summary: summaryRef.current ?? null, state, locale, baseMap, card3dAngles: card3d, codeImg: codeImg ?? null, brandLockup, footerTokens }));
+      setPicture(paintPreview(
+        { options, summary: summaryRef.current ?? null, state, locale, baseMap, card3dAngles: card3d, codeImg: codeImg ?? null, brandLockup, footerTokens,
+          site: LEGAL.canonicalOrigin },
+      ));
       hasPicture.current = true;
       setLoading(false);
     }, 50);
     return () => clearTimeout(id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- summary rides in a ref, see above
+    // The summary is read from a ref.
   }, [open, options, state, locale, baseMap, card3d, codeImg, codePending, brandLockup, footerTokens]);
 
-  const resetView = pz.reset;
-  useEffect(() => { resetView(); }, [open, baseMap]); // a fresh picture opens at rest
+  const resetView = useEffectEvent(pz.reset);
+  useEffect(() => { resetView(); }, [open, baseMap]);
 
   // The maker's band's lockup art, per locale; the preview repaints when it lands.
   useEffect(() => {
@@ -127,7 +133,7 @@ export function ExportPreview({ open, preparing = open, checkingMap = false, opt
         </div>}
         {open && picture && !busy && (
           <canvas ref={displayPicture} width={picture.width} height={picture.height} data-export-preview aria-hidden
-            style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain', borderRadius: 8, userSelect: 'none', ...pz.viewStyle }} />
+            style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain', borderRadius: radii.chip, userSelect: 'none', ...pz.viewStyle }} />
         )}
         {open && !busy && !picture && <div style={hintStyle}><div style={{ fontSize: 28 }}>🗺️</div><div>{t('export.fail_t')}</div></div>}
         <PanZoomResetHint show={pz.showResetHint} />

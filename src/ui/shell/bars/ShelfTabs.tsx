@@ -1,18 +1,18 @@
 /**
- * Shared single-line, horizontally scrollable tab row for bottom shelves. The active underline,
- * focused tab, and externally selected tab are revealed automatically. Wheel behavior matches the
- * item row. `active` may be null while search results span categories.
+ * The bottom shelves' one-line scrolling tab row: the active, focused or externally chosen tab is revealed,
+ * the wheel behaves as the item row's, and `active` may be null during a search.
  */
-import { motion } from 'framer-motion';
+import { ActionButton } from '../../primitives/ActionButton';
 import { useLayoutEffect, useRef, type CSSProperties } from 'react';
 import { CONTROL_CLEARANCE, useScrollRow } from '../../primitives/use-scroll-row';
-import { btnReset, cursors, pressable } from '../../design/styles';
+import { btnReset, cursors } from '../../design/styles';
 import { ACTIVE } from '../../design/tokens';
-import { helpTargetAttr } from '../../chrome/modals/help/targets';
-import type { HelpPageId } from '../../chrome/modals/help/page-schema';
+import { helpTargetAttr } from '../../session/help-targets';
+import type { HelpPageId } from '../../help/page-schema';
 import { SHELF_TABS, TEXT } from '../units';
 import { BarText } from './bar-atoms';
-import { reveal, useFrameZoom } from './row-scroll';
+import { reveal } from './row-scroll';
+import { useFrameZoom } from '../use-frame-zoom';
 
 /** The row's own box, which the shelf places a sibling (a search field, a row of actions) into. */
 export const TAB_ROW: CSSProperties = {
@@ -24,23 +24,13 @@ export const TAB_ROW: CSSProperties = {
  *  begins — reads as a drawing error rather than as a row that continues. */
 const FADE = 24;
 
-/** How far the fade reaches INTO the last whole name instead, in css px: about one glyph of a shelf
+/** How far the fade reaches into the last whole name instead, in css px: about one glyph of a shelf
  *  label, which is enough to see dissolve. */
 const BITE = 26;
 
 /**
- * How wide the fade has to be at one end of the row for it to land on a NAME.
- *
- * The fade is the whole of what says the row continues, and it can only say it over something that
- * is drawn: the names stand on the map, so a fade that stops in the gutter between two of them
- * covers bare ground and shows nothing at all. That is not a rare case — at 1440 in English the row
- * ends a couple of pixels past "Ramps" with "Facilities" wholly hidden and no sign of it — and a
- * fixed width cannot cover it, since the gutter between two names is wider than any fade that would
- * not also wash out a short one.
- *
- * So: where a name is already cut by this edge the fixed width softens the cut, and where the edge
- * falls in a gutter the fade stretches back until it bites the last whole name. It never takes more
- * than a part of that name, so the word still reads.
+ * How wide the fade at one end must be to land on a name: a fade in the gutter between names shows
+ * nothing, so it stretches back to bite part of the last whole name.
  */
 function fadeAt(row: HTMLElement, edge: number, atEnd: boolean): number {
   const tabs = [...row.children] as HTMLElement[];
@@ -72,9 +62,8 @@ function ShelfTabButton({ label, active, onSelect, helpTarget }: {
   helpTarget?: HelpPageId;
 }) {
   return (
-    <motion.button
-      type="button"
-      {...pressable}
+    <ActionButton
+      interaction="tile"
       {...(helpTarget ? helpTargetAttr(helpTarget) : {})}
       role="tab"
       aria-selected={active}
@@ -100,7 +89,7 @@ function ShelfTabButton({ label, active, onSelect, helpTarget }: {
           background: active ? ACTIVE : 'transparent',
         }}
       />
-    </motion.button>
+    </ActionButton>
   );
 }
 
@@ -117,10 +106,7 @@ export function ShelfTabs<T extends string>({ label, tabs, active, onSelect }: {
   // resize does, with no extra wiring needed here.
   const fade = useScrollRow(rowRef, { zoom, bleed: CONTROL_CLEARANCE, pointerEvents: 'auto', fade: { fadeAt } });
 
-  // The chosen tab is read out of the row rather than carried by a ref: a motion element's
-  // forwarded ref callback is identity-stable, so a ref prop that CHANGES on a persistent button
-  // is never re-invoked — a conditional ref here stays on whichever tab was active at first mount,
-  // and every later choice brings THAT one back, scrolling the row home under the click.
+  // The chosen tab is read from the row, not a ref: a persistent motion button's forwarded ref is never re-invoked.
   useLayoutEffect(() => {
     reveal(rowRef.current?.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]'));
   }, [active]);

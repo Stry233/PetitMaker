@@ -4,7 +4,7 @@
   "icon": "path-maizeglow-brick",
   "name": {
     "en": "Maizeglow Brick Path",
-    "zh": "玉米金砖路",
+    "zh": "暖黄石砖路",
     "ja": "メイズグロウレンガの道",
     "ru": "Кукурузная кирпичная дорожка",
     "th": "ทางอิฐสีข้าวโพด",
@@ -24,5 +24,17 @@
     {
       "type": "surfaceCoating"
     }
-  ]
+  ],
+  "roadMaterial": {
+    "feather": 0.035,
+    "edge": {
+      "color": "#ffffff",
+      "pattern": {
+        "kind": "image",
+        "image": "path-maizeglow-brick",
+        "repeat": 2.5
+      }
+    },
+    "layers": []
+  }
 }

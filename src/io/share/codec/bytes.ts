@@ -1,5 +1,5 @@
 // Minimal little-endian byte writer and reader for payload frames and their records.
-import { ShareError } from '../errors';
+import { ImportError } from '../../save/import-error';
 
 export class ByteWriter {
   private out: number[] = [];
@@ -39,7 +39,7 @@ export class ByteReader {
   private pos = 0;
   constructor(private buf: Uint8Array) {}
   private need(n: number): void {
-    if (this.pos + n > this.buf.length) throw new ShareError('decode-failed', 'Payload ends unexpectedly.');
+    if (this.pos + n > this.buf.length) throw new ImportError('decode-failed', 'Payload ends unexpectedly.');
   }
   u8(): number { this.need(1); return this.buf[this.pos++]!; }
   u16(): number {

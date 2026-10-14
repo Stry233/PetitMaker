@@ -1,13 +1,13 @@
 /** Shared animated emphasis underline. Keeping it in primitives prevents the main-bundle tour from
  * importing the lazy assistant chunk. Reduced motion freezes the wave but keeps it visible. */
-import type { CSSProperties, ReactNode } from 'react';
-import { usePx } from '../design/scale';
+import type { ReactNode } from 'react';
+import { useDevicePixelRatio } from '../design/scale';
+import type { PwStyle } from '../design/styles';
 
-/** Inline style + `--pw-*` custom properties (React's CSSProperties has no index signature for
- *  custom props). */
-type PwStyle = CSSProperties & Record<`--pw-${string}`, string>;
+/** The wave tile and the room under the words, in css px. */
+const WAVE = { w: 7.84, h: 6.72, pad: 3.36, pull: -1.12 } as const;
 
-/** Wave tile: 7×6 CSS pixels scaled to 14×12 design pixels with a 2px round stroke.
+/** Wave tile: a 7×6 drawing laid out at `WAVE` css px with a 2-unit round stroke.
  *  The SVG itself stays in its 7×6 coordinate space; background-size scales it.
  *  Spaces and quotes are percent-encoded (same rendering; strict CSS value
  *  parsers reject raw spaces/quotes inside url()). */
@@ -18,13 +18,15 @@ const waveUri = (strokeHex: string) =>
  *  entries) freezes it and greys the stroke; reduced motion freezes it too
  *  (media query in animations.css) while the underline stays visible. */
 export function Wavy({ children, dimmed }: { children: ReactNode; dimmed?: boolean }) {
-  const { px } = usePx();
+  const dpr = useDevicePixelRatio();
+  // Lengths land on whole device pixels so the wave repeats without a seam.
+  const device = (n: number) => Math.round(n * dpr) / dpr;
   const style: PwStyle = {
-    paddingBottom: px(6),
-    marginBottom: px(-2),
+    paddingBottom: device(WAVE.pad),
+    marginBottom: device(WAVE.pull),
     backgroundImage: waveUri(dimmed ? 'C9C2B4' : 'FFDA7E'),
-    '--pw-wave-size': `${px(14)}px ${px(12)}px`,
-    '--pw-wave-period': `${px(14)}px`,
+    '--pw-wave-size': `${device(WAVE.w)}px ${device(WAVE.h)}px`,
+    '--pw-wave-period': `${device(WAVE.w)}px`,
   };
   return (
     <span className={`pw-wavy${dimmed ? ' pw-dimmed' : ''}`} style={style}>

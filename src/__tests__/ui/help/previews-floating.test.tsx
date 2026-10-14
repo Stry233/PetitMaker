@@ -1,6 +1,7 @@
+// @vitest-environment jsdom
 /**
  * The figures for the two surfaces the map raises mount those surfaces' own faces, so this pins
- * what a redrawing would lose: the ROWS the menu offers for each target, and the words the
+ * what a redrawing would lose: the rows the menu offers for each target, and the words the
  * confirmation asks. `PreviewFrame` marks its subtree `aria-hidden`, so every query needs
  * `hidden: true`.
  */
@@ -9,9 +10,9 @@ import { describe, it, expect, afterEach } from 'vitest';
 import { render, screen, cleanup } from '@testing-library/react';
 import { I18nProvider } from '../../../i18n/context';
 import { en } from '../../../i18n/locales/en';
-import { setStoreState } from '../../_store';
+import { setStoreState } from '../../_support/store';
 import { getCatalogItem } from '../../../state/catalog';
-import { ContextMenuPreview, DeleteConfirmPreview } from '../../../ui/chrome/modals/help/figures/previews/floating';
+import { ContextMenuPreview, DeleteConfirmPreview } from '../../../ui/help/figures/previews/floating';
 
 function label(key: string): string {
   const text = (en as Record<string, string | undefined>)[key];

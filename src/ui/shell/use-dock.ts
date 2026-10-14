@@ -7,13 +7,14 @@
  */
 import { useEffect, useLayoutEffect, useSyncExternalStore } from 'react';
 import { animate, motionValue, useReducedMotionConfig, type MotionValue, type Transition } from 'framer-motion';
-import type { DockSide } from '../../core/runtime/prefs';
+import type { DockSide } from '../../platform/storage/prefs';
 import { useEditorStore } from '../../state/store';
 import { framerMotion, outMotion, outSeconds, seconds } from '../design/motion';
 import { useViewportSize } from '../design/scale';
-import type { MotionId } from './motion/registry';
+import type { MotionId } from '../design/motion/registry';
 import { hasPinRoom } from './panel-frame';
-import { createSignal } from '../../core/runtime/signal';
+import { createSignal } from '../../core/base/signal';
+import { useEffectEvent } from '../primitives/use-effect-event';
 
 /** Whether the settled UI zoom leaves enough width for the dock. */
 export function usePinRoom(): boolean {
@@ -50,16 +51,9 @@ interface DockStage {
 interface DockWant { docked: boolean; side: DockSide }
 
 /**
- * How far the sequence has got, and the live slide.
- *
- * `reached` is null until the driver mounts, which is the answer a surface rendered before it needs:
- * nothing has moved, so the store's own desire IS the stage. `done` counts the beats of the pending
- * move that have FINISHED, which is what lets a move have more than one of them while the beat itself
- * stays a derivation — a fresh desire is at beat 0 by definition, so no publication is needed to say
- * the sequence has started. `slide` is null until the driver has seeded it, so a browser that opens
- * docked opens with the sheet already aside rather than sliding there. `slideEnd` is the QUANTIZED
- * fraction — an end, or between them — and it is the only reading of the slide React is notified of:
- * a per-frame value in the snapshot is a per-frame render of every subscriber.
+ * How far the sequence has got. `reached` is null until the driver mounts (the store's desire is then the
+ * stage); `done` counts the pending move's finished beats; `slide` is null until seeded; `slideEnd` is
+ * the quantized fraction, the only reading of the slide React is notified of.
  */
 let reached: DockWant | null = null;
 let done: { want: DockWant; beats: number } | null = null;
@@ -67,11 +61,7 @@ let slide: number | null = null;
 let slideEnd: 0 | 1 | 'between' | null = null;
 const watchers = createSignal();
 
-/**
- * THE ONE FRACTION, 0 lying flat on the desk to 1 fully off it, as the live value the per-frame
- * movers subscribe to (`Shell`'s planes, the ground's drift). A subscriber turns a change into a DOM
- * style write of its own; nothing per-frame goes through a render.
- */
+/** The one fraction, 0 flat on the desk to 1 fully off it; subscribers write styles directly, never through a render. */
 export const dockAside: MotionValue<number> = motionValue(0);
 
 function tellWatchers(): void {
@@ -106,19 +96,15 @@ function inFlight(from: DockWant | null, want: DockWant): boolean {
   return from !== null && !same(from, want);
 }
 
-/** How many beats of THIS pending move have finished. A desire the driver has not seen yet is at 0,
+/** How many beats of this pending move have finished. A desire the driver has not seen yet is at 0,
  *  which is what makes the first beat a derivation rather than a publication. */
 function beatsDone(want: DockWant): number {
   return done !== null && same(done.want, want) ? done.beats : 0;
 }
 
 /**
- * ONE BEAT OF A MOVE: what the stage is while it runs, and which declared motion carries it.
- *
- * `half` is which end of that declaration the beat takes, and it is the beat's length as much as its
- * curve: a motion split into a leave and a landing (`panel.pin.cross`) has a different shape and a
- * different length for each, and the timer and the sheet's own tween must read the same one or the
- * ground changes ends a frame after the sheet has finished covering it.
+ * One beat of a move: its stage and the declared motion carrying it; `half` picks that motion's leave or
+ * landing, which the timer and the sheet's tween must both read.
  */
 interface DockBeat {
   stage: Omit<DockStage, 'aside'>;
@@ -131,27 +117,16 @@ function beatSeconds(beat: DockBeat): number {
   return beat.half === 'out' ? outSeconds(beat.motion) : seconds(beat.motion);
 }
 
-/** The Framer transition the SHEET runs on for a beat, which is the same half of the same declaration
+/** The Framer transition the sheet runs on for a beat, which is the same half of the same declaration
  *  the timer above is reading. */
 function beatTravel(motion: MotionId, half: 'out' | 'in'): Transition {
   return half === 'out' ? outMotion(motion) : framerMotion(motion);
 }
 
 /**
- * THE BEATS OF A MOVE, in order.
- *
- * ARRIVING AT A DOCK IS ONE BEAT: the floating panel and the character play their exit over a sheet
- * that has not moved, and the ground is then simply revealed by the slide.
- *
- * LEAVING ONE IS TWO, and the second is what gives the returning panel an honest entrance. The sheet
- * comes back over the ground first; then the whole floating form stands FOLDED under a sheet that is
- * covering all of it, so what follows unfolds from her corner exactly as a press opens it rather than
- * standing there whole and wiping.
- *
- * A CHANGE OF SIDE IS TWO HALVES OF ONE CROSSING (`panel.pin.cross`, whose own entry carries why the
- * middle must not be a stop). The sheet returns over the end the dock is leaving, the ground changes
- * ends while the sheet covers every part of it — which is what makes the second half's stage the NEW
- * side with the sheet still flat — and the sheet then leaves the other way.
+ * A move's beats in order: arriving at a dock is one beat; leaving one is two (the sheet covers, then the
+ * floating form unfolds); a side change is two halves of one crossing, the ground changing ends while the
+ * sheet covers it.
  */
 function beatsOf(from: DockWant, want: DockWant): DockBeat[] {
   if (want.docked && !from.docked) {
@@ -202,13 +177,8 @@ export function useDockStage(): DockStage {
 }
 
 /**
- * THE SEQUENCE, DRIVEN. Mounted once, by the shell.
- *
- * Each beat runs for the length of the motion that carries it and the driver then publishes the
- * desire as reached, which is what hands the rest of the move to the settled answer. A browser that
- * opens with the dock remembered therefore opens docked with nothing animating, since the first
- * publication IS the desire and the fraction has never been moved. Reduced motion has no beats to be
- * in: the desire is reached in the same commit, before the paint, so both halves land in one frame.
+ * The sequence's driver, mounted once by the shell: each beat runs its motion's length, then the desire is
+ * published as reached. A remembered dock opens docked; reduced motion lands before the paint.
  */
 export function useDockDriver(): void {
   const docked = useAssistantDocked();
@@ -217,26 +187,21 @@ export function useDockDriver(): void {
   const moving = useSyncExternalStore(subscribe, readMoving, readMoving);
   const from = moving.reached;
 
-  // The driver's mount is what makes the sequence real: until it has published a starting point,
-  // every surface reads the store's own desire and nothing is in flight. The fraction is seeded to
-  // that desire's own end — before any subscriber is attached, so the seed is a fact and not a frame.
+  // Mounting publishes the starting point and seeds the fraction to its end before any subscriber attaches.
+  const seed = useEffectEvent(() => {
+    if (reached !== null) return;
+    dockAside.jump(docked ? 1 : 0);
+    slide = docked ? 1 : 0;
+    slideEnd = docked ? 1 : 0;
+    reached = { docked, side };
+    tellWatchers();
+  });
   useLayoutEffect(() => {
-    if (reached === null) {
-      dockAside.jump(docked ? 1 : 0);
-      slide = docked ? 1 : 0;
-      slideEnd = docked ? 1 : 0;
-      reached = { docked, side };
-      tellWatchers();
-    }
+    seed();
     return () => { reached = null; done = null; slide = null; slideEnd = null; };
-    // Seeded from the desire at mount and never re-seeded: the effects below own it after that.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // REDUCED MOTION HAS NO BEAT TO BE IN, and it lands before the paint rather than a frame later —
-  // the fraction included, jumped HERE rather than in the passive effect below, because a passive
-  // effect runs after the paint and the frame between would show the desire reached with the sheet
-  // still where it was.
+  // Reduced motion lands before the paint, the fraction jumped here rather than a frame later.
   useLayoutEffect(() => {
     if (!reduced || from === null) return;
     if (inFlight(from, { docked, side })) {
@@ -247,36 +212,29 @@ export function useDockDriver(): void {
     }
   }, [reduced, from, docked, side]);
 
-  // WHICH BEAT IS RUNNING, once, for both the clock and the sheet: a timer measuring one half of a
-  // declaration while the tween ran the other is how the ground comes to change ends a frame off the
-  // sheet that is covering it.
+  // The running beat, read once for both the clock and the sheet.
   const beats = moving.done;
   const beat = from !== null && inFlight(from, { docked, side })
     ? beatsOf(from, { docked, side })[beatsDone({ docked, side })]
     : undefined;
 
-  // ONE TIMER PER BEAT. Each runs for the length of the motion that carries it and then either hands
-  // the move its next beat or declares the desire reached, which is what passes the rest of the move
-  // to the settled answer.
+  const beatMs = beat ? beatSeconds(beat) * 1000 : null;
+
+  // One timer per beat: it hands the move its next beat or declares the desire reached.
   useEffect(() => {
-    if (reduced || from === null || !beat) return undefined;
+    if (reduced || from === null || beatMs === null) return undefined;
     const want = { docked, side };
     const at = beatsDone(want);
     const timer = setTimeout(() => {
       if (at + 1 < beatsOf(from, want).length) done = { want, beats: at + 1 };
       else { reached = want; done = null; }
       tellWatchers();
-    }, beatSeconds(beat) * 1000);
+    }, beatMs);
     return () => clearTimeout(timer);
-    // The beat is the (from, done, desire) triple resolved; those are the dependencies.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [reduced, from, beats, docked, side]);
+  }, [reduced, from, beats, docked, side, beatMs]);
 
-  // THE SLIDE ITSELF, chasing whatever the stage's own half says — read through the stage so a beat
-  // being reached is a re-render here too, and running on the beat's own half of its own declaration.
-  // Interruptible by construction: a second press retargets from where the sheet is rather than
-  // restarting from an end. The frames go to the fraction's own subscribers; React hears about a
-  // CROSSING only, which is when a plane's travelling form and its settled form change places.
+  // The slide chases the stage's own half, retargeting from where the sheet is on a second press; React
+  // hears only about a crossing.
   const target = useDockStage().sheetAside ? 1 : 0;
   const carry = beat?.motion ?? 'panel.pin.slide';
   const half = beat?.half ?? 'in';

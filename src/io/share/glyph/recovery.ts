@@ -2,7 +2,7 @@ import { bytesToSymbols, symbolsToBytes } from './bitpack';
 import { whiten } from './encode';
 import { deinterleave, interleaveBlocks } from './interleave';
 import { rsDecode, rsEncode } from './rs';
-import { crc32 } from '../crypto/crc32';
+import { crc32 } from '../../../core/base/crc32';
 import type { GlyphPlan } from './profiles';
 
 export interface RecoveryBudget { attempts: number }

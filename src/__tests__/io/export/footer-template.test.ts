@@ -1,13 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { parseFooter, serializeFooter, resolveFooter, DEFAULT_FOOTER, FOOTER_TOKENS } from '../../../io/export/footer-template';
+import { parseFooter, resolveFooter, DEFAULT_FOOTER, FOOTER_TOKENS } from '../../../io/export/footer-template';
 
 const VALUES = { date: '2026-06-28', dims: '1600×1080', name: 'Hexia', layers: '6', objects: '3', title: '' };
 
 describe('footer-template', () => {
-  it('parse → serialize round-trips', () => {
-    const t = '{name}{fill} {date} · {dims}';
-    expect(serializeFooter(parseFooter(t))).toBe(t);
-  });
   it('parses tokens and literal text in order', () => {
     expect(parseFooter('{date} · {dims}')).toEqual([
       { t: 'token', id: 'date' }, { t: 'text', v: ' · ' }, { t: 'token', id: 'dims' },
@@ -31,9 +27,6 @@ describe('footer-template', () => {
   it('empty/unknown token values drop out', () => {
     const { left } = resolveFooter('{title}{name}', VALUES); // title is empty
     expect(left).toBe('Hexia');
-  });
-  it('serialize strips stray braces from literal text', () => {
-    expect(serializeFooter([{ t: 'text', v: 'a{b}c' }])).toBe('abc');
   });
 });
 

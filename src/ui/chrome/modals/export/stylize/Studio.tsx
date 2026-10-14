@@ -1,48 +1,23 @@
 /* Illustration workspace. Takes remain in memory for the current map state, and only the Generate
  * action is disabled while a job is running. */
 import { useEffect, useRef, useState } from 'react';
-import { retainNeuralRuntime } from '../../../../../io/stylize';
 import { useT } from '../../../../../i18n/context';
-import { useEditorStore } from '../../../../../state/store';
-import { host } from '../../../../../kit/host';
-import { reviewText, ReviewWorkerLease } from '../../../../../io/moderation/text/reviewer';
-import { CUSTOM_PROMPT_MAX } from '../../../../../io/stylize/prompt';
+import { host } from '../../../../../editor/host/host';
+import { CUSTOM_DIRECTION_ID, STYLE_PACKS, isProcPackId, type StylizeDirection } from '../../../../../pipelines/stylize/facts';
 import {
-  CUSTOM_DIRECTION_ID,
-  STYLE_PACKS,
-  StylizeError,
-  isProcPackId,
-  procPackMeta,
-  loadProcRenderer,
-  loadStylizeSettings,
-  resolveRecipe,
-  runEngine,
-  saveStylizeSettings,
-  versionStore,
-  type DialectConfig,
-  type DirectionId,
-  type EngineDeps,
-  type Recipe,
-  type StylizeDialect,
-  type StylizeDirection,
-  type StylizeStatus,
-} from '../../../../../io/stylize';
+  StylizeStudioJobs, loadProcRenderer, retainNeuralRuntime, runEngine, storedStylizeInputs,
+  type DialectConfig, type RunStylize, type StylizeDialect, type TakeOutcome,
+} from '../../../../../editor/export/stylize';
+import { versionStore, versionSrc } from '../../../../../state/stylize-versions';
 import { packSampleUrl, packSwatchUrl } from './sample-assets';
 import { useStylizeVersions } from './use-stylize-versions';
-import { GearGlyph, GhostVerb, IconVerb, PrimaryVerb, StatusSlot, WindowFoot, type SlotStatus } from './atoms';
+import { GearGlyph, GhostVerb, IconVerb, PrimaryVerb, StatusSlot, WindowFoot, type SlotStatus } from './stylize-parts';
 import { DirectionBooklet, directionRow } from './DirectionBooklet';
 import { DirectionPane } from './DirectionPane';
 import { StudioCanvas, type Picture } from './StudioCanvas';
-import { VersionShelf, versionSrc } from './VersionShelf';
+import { VersionShelf } from './VersionShelf';
 
-/** Injectable provider-backed generation runner. */
-export type RunStylize = (
-  deps: EngineDeps,
-  direction: DirectionId,
-  customText: string | undefined,
-  recipe: Recipe,
-  signal?: AbortSignal,
-) => Promise<{ image: HTMLImageElement }>;
+export type { RunStylize };
 
 interface StudioProps {
   /** Provider connection; local directions do not require one. */
@@ -57,29 +32,13 @@ interface StudioProps {
   procRenderer?: typeof loadProcRenderer;
 }
 
-/** Local render width matching the largest export preset. */
-const PROC_RENDER_PX = 2400;
-
-function statusOf(err: unknown): StylizeStatus {
-  return err instanceof StylizeError ? err.status : 'network';
-}
-
-function loadDataUrl(url: string): Promise<HTMLImageElement> {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.onload = () => resolve(img);
-    img.onerror = () => reject(new StylizeError('bad_response'));
-    img.src = url;
-  });
-}
-
 export function Studio({ dialect, cfg, connected, onSettings, onDone, run = runEngine, captureOriginal, procRenderer = loadProcRenderer }: StudioProps) {
   const t = useT();
-  const [lease] = useState(() => new ReviewWorkerLease());
-  useEffect(() => () => lease.dispose(), [lease]);
+  const [jobs] = useState(() => new StylizeStudioJobs());
+  useEffect(() => () => jobs.dispose(), [jobs]);
   const { state } = useStylizeVersions();
   // Load persisted inputs once; edits in this page own their live values afterward.
-  const [settings] = useState(loadStylizeSettings);
+  const [settings] = useState(storedStylizeInputs);
   const [direction, setDirection] = useState<StylizeDirection>(settings.direction);
   const [text, setText] = useState(settings.customPrompt);
   const [status, setStatus] = useState<SlotStatus | null>(null);
@@ -88,7 +47,7 @@ export function Studio({ dialect, cfg, connected, onSettings, onDone, run = runE
   const abortRef = useRef<AbortController | null>(null);
 
   // Capture the original once so comparison stays fixed throughout this studio session.
-  const capture = captureOriginal ?? (() => host.capture2d(dialect?.maxEdge ?? 2048, false, false));
+  const capture = captureOriginal ?? (() => host.capture2dImage({ maxPx: dialect?.maxEdge ?? 2048, annotations: false }));
   const [originalSrc] = useState(capture);
 
   // Closing the window cancels its active generation.
@@ -120,115 +79,35 @@ export function Studio({ dialect, cfg, connected, onSettings, onDone, run = runE
     }
   };
 
+  /** A finished take's word in the status slot; a kept or stale take shows the front picture again. */
+  const settle = (outcome: TakeOutcome) => {
+    if (outcome.status === 'failed') { setStatus(outcome.reason); return; }
+    if (outcome.status === 'stale') setStatus('map_changed');
+    setSwapped(false);
+  };
+
   const generate = async () => {
     if (state.running) return;
-    const gridState = useEditorStore.getState().gridState;
     const dir = direction;
     if (isProcPackId(dir)) {
-      await generateProc(dir);
+      setStatus(null);
+      settle(await jobs.generateProc(dir, direction, procRenderer));
       return;
     }
     if (!dialect || !cfg) {
       onSettings();
       return;
     }
-    const custom = dir === CUSTOM_DIRECTION_ID;
     const pack = STYLE_PACKS.find((p) => p.id === dir) ?? null;
-    // Prefer a retained take of the same direction as the style reference, then the pack sample.
-    const kept = state.selectedId ? state.versions.find((v) => v.id === state.selectedId) : null;
-    const keptSrc = kept && kept.direction === dir ? versionSrc(kept) : null;
-    const packAnchor = pack ? packSampleUrl(pack.id) ?? packSwatchUrl(pack.id) : null;
-    const styleRef = keptSrc
-      ? { url: keptSrc, kind: 'take' as const }
-      : packAnchor
-        ? { url: packAnchor, kind: 'pack' as const }
-        : null;
     setStatus(null);
-    versionStore.setRunning(true);
     const abort = new AbortController();
     abortRef.current = abort;
-    // Record the fingerprint before capture so concurrent map edits make the result stale.
-    const fingerprint = versionStore.currentFingerprint();
     try {
-      if (!gridState) throw new StylizeError('bad_response');
-      // Custom preferences are user text bound for a provider; the local content check runs first and refuses on its own.
-      if (custom && text.trim()) {
-        let verdict;
-        try {
-          verdict = await reviewText([{ field: 'description', text: text.trim().slice(0, CUSTOM_PROMPT_MAX) }], abort.signal, () => {}, lease);
-        } catch (err) {
-          if (err instanceof DOMException && err.name === 'AbortError') throw err;
-          throw new StylizeError('unchecked');
-        }
-        if (!verdict.allowed) throw new StylizeError('inappropriate');
-      }
-      const { image } = await run(
-        {
-          captureMap: () => host.capture2d(dialect.maxEdge, false, false),
-          state: gridState,
-          dialect,
-          cfg,
-          pack,
-          ...(styleRef ? { styleRef } : {}),
-        },
-        dir,
-        custom ? text : undefined,
-        resolveRecipe(dialect),
-        abort.signal,
-      );
-      const minted = versionStore.mint({
-        kind: 'model',
-        direction: dir,
-        ...(custom ? { prompt: text } : {}),
-        image,
-        fingerprint,
-      });
-      if (!minted) setStatus('map_changed');
-      setSwapped(false);
-      saveStylizeSettings({ ...loadStylizeSettings(), direction: dir, customPrompt: text });
-    } catch (err: unknown) {
-      setStatus(statusOf(err));
+      settle(await jobs.generateModel({
+        direction: dir, text, dialect, cfg, run, packAnchor: pack ? packSampleUrl(pack.id) ?? packSwatchUrl(pack.id) : null,
+      }, abort.signal));
     } finally {
       abortRef.current = null;
-      versionStore.setRunning(false);
-    }
-  };
-
-  /** Generate a local procedural or neural pack without a provider connection. */
-  const generateProc = async (packId: string) => {
-    setStatus(null);
-    versionStore.setRunning(true);
-    const fingerprint = versionStore.currentFingerprint();
-    try {
-      const gridState = useEditorStore.getState().gridState;
-      if (!gridState) throw new StylizeError('bad_response');
-      // Yield once so the running card paints before synchronous rendering starts.
-      const [{ renderProcPackAsync, takeSeed }] = await Promise.all([
-        procRenderer(),
-        new Promise((resolve) => setTimeout(resolve, 30)),
-      ]);
-      // Derive the next variation from live shelf state so concurrent requests receive distinct seeds.
-      const roll = versionStore.getState().versions.reduce(
-        (m, v) => (v.direction === packId && v.roll !== undefined ? Math.max(m, v.roll + 1) : m), 0);
-      // Headless callers fall back to the renderer's field-based source.
-      const shot = host.capture2dCanvas(PROC_RENDER_PX, false, false);
-      const sourceImage = shot ?? undefined;
-      const canvas = await renderProcPackAsync({
-        state: gridState, packId, maxPx: PROC_RENDER_PX, seed: takeSeed(gridState, roll),
-        locale: useEditorStore.getState().locale,
-        ...(sourceImage ? { sourceImage } : {}),
-      });
-      if (!canvas) throw new StylizeError('bad_response');
-      const image = await loadDataUrl(canvas.toDataURL('image/png'));
-      // Neural output carries the AI disclosure; non-neural procedural output does not.
-      const minted = versionStore.mint({ kind: procPackMeta(packId)?.neural ? 'model' : 'proc', direction: packId as StylizeDirection, image, fingerprint, roll });
-      if (!minted) setStatus('map_changed');
-      setSwapped(false);
-      saveStylizeSettings({ ...loadStylizeSettings(), direction });
-    } catch (err: unknown) {
-      setStatus(statusOf(err));
-    } finally {
-      versionStore.setRunning(false);
     }
   };
 
@@ -261,13 +140,13 @@ export function Studio({ dialect, cfg, connected, onSettings, onDone, run = runE
         </IconVerb>
         {/* The shelf card displays generation progress. */}
         <StatusSlot status={status} />
+        <GhostVerb onClick={onDone}>{t('stylize.done_btn')}</GhostVerb>
         <PrimaryVerb
           disabled={state.running || (!connected && !isProcPackId(direction))}
           onClick={() => { void generate(); }}
         >
           {t('stylize.generate')}
         </PrimaryVerb>
-        <GhostVerb onClick={onDone}>{t('stylize.done_btn')}</GhostVerb>
       </WindowFoot>
     </>
   );

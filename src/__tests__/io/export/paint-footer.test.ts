@@ -1,4 +1,4 @@
-// paint.ts's drawFooter: the band carries ONLY the user's own template line. The AI-illustration
+// paint.ts's drawFooter: the band carries only the user's own template line. The AI-illustration
 // disclosure is baked into the stylized band's pixels (compose-stylized.ts), never injected here,
 // so a user-authored footer is never rearranged by the system and removing the footer removes
 // nothing but the user's own line. A fake 2D context records fill/fillText calls; everything else
@@ -83,5 +83,48 @@ describe('drawFooter: the user-owned band', () => {
 
     const left = texts.find((t) => t.text === 'Hexia')!;
     expect(left.x).toBe(14);
+  });
+});
+
+/** True when the string holds an unpaired UTF-16 surrogate, which paints as a replacement box. */
+const hasLoneSurrogate = (s: string) => /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/.test(s);
+
+describe('header and footer text in any script', () => {
+  const withHeader = (): ExportComposition => ({ ...baseComp(), header: { x: 0, y: 0, w: 400, h: 60 } });
+  const headerLines = (texts: TextCall[]) => texts.filter((t) => t.y < 60);
+
+  it('wraps a description without spaces into two lines that fit, marking the dropped text', () => {
+    const { ctx, texts } = fakeCtx();
+    paintComposition(ctx, withHeader(), baseAssets({ description: '星布谷地的河边花园'.repeat(20) }));
+    const lines = headerLines(texts);
+    expect(lines).toHaveLength(2);
+    for (const line of lines) expect(ctx.measureText(line.text).width).toBeLessThanOrEqual(400 - 12);
+    expect(lines[1]!.text.endsWith('…')).toBe(true);
+    expect(lines[0]!.text.startsWith('星布谷地')).toBe(true);
+  });
+
+  it('breaks an overlong word in a spaced script and keeps short words whole', () => {
+    const { ctx, texts } = fakeCtx();
+    paintComposition(ctx, withHeader(), baseAssets({ description: `${'a'.repeat(90)} river` }));
+    const lines = headerLines(texts);
+    expect(lines.map((l) => l.text)).toEqual(['a'.repeat(64), `${'a'.repeat(26)} river`]);
+  });
+
+  it('never splits a character outside the basic plane when it shortens a title or a footer', () => {
+    const { ctx, texts } = fakeCtx();
+    const wide = '𠮷野家🌊'.repeat(40);
+    paintComposition(ctx, withHeader(), baseAssets({ title: wide, description: wide, footerTokens: { name: wide, date: '2026-08-29' } }));
+    expect(texts.length).toBeGreaterThan(2);
+    for (const t of texts) expect(hasLoneSurrogate(t.text), t.text).toBe(false);
+  });
+
+  it('shortens right-to-left footer text from its logical end and keeps it inside the band', () => {
+    const { ctx, texts } = fakeCtx();
+    const rtl = 'حديقة النهر '.repeat(12);
+    paintComposition(ctx, baseComp(), baseAssets({ footerTokens: { name: rtl, date: '2026-08-29' } }));
+    const left = texts.find((t) => t.textAlign === 'left' && t.y > 500)!;
+    expect(left.text.startsWith('حديقة')).toBe(true);
+    expect(left.text.endsWith('…')).toBe(true);
+    expect(ctx.measureText(left.text).width).toBeLessThanOrEqual(400 - 28 - 12);
   });
 });

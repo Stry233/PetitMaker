@@ -26,3 +26,8 @@ export function packSampleUrl(id: string): string | null {
 export function packSwatchUrl(id: string): string | null {
   return URLS[`${id}-swatch`] ?? null;
 }
+
+/** Every committed sample and swatch, for the warm schedule's prefetch. */
+export function allStyleSampleUrls(): string[] {
+  return Object.values(URLS);
+}

@@ -3,9 +3,8 @@ import { useScrollRow } from '../../primitives/use-scroll-row';
 import { QUAD, SCALE } from '../units';
 import { useRailClearance } from '../frame-layout';
 import { cssMotion } from '../../design/motion';
-import { CELL_BOX } from './ToolCell';
-import { ACTIVE_PLATE } from './terrain-cells';
-import { useFrameZoom } from './row-scroll';
+import { ACTIVE_PLATE, CELL_BOX } from './terrain-cells';
+import { useFrameZoom } from '../use-frame-zoom';
 
 export const SWATCH_ROW_GAP = 20;
 export const SWATCH_ROW_BOTTOM = QUAD.bottom + CELL_BOX.h + SWATCH_ROW_GAP;

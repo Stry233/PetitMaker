@@ -1,0 +1,1644 @@
+[
+ {
+  "name": "get_annotations",
+  "description": "Read planning annotations, their stable IDs, geometry, tags, visibility and lock state. These are planning ink, not terrain or placed objects. Optional id reads one annotation. Unfinished user drafts are separate and cannot be edited by these tools.",
+  "parameters": {
+   "type": "object",
+   "properties": {
+    "id": {
+     "type": "string"
+    }
+   }
+  }
+ },
+ {
+  "name": "set_annotation",
+  "description": "Create a planning annotation, or update the supplied id. Updates preserve omitted fields and cannot change kind. Zone cells and measurement endpoints use integer map coordinates; chips and routes may use fractional coordinates. Zones may have tag null. Chips require a tag. Measurements require two aligned endpoints. This edits annotation history independently of terrain history.",
+  "parameters": {
+   "type": "object",
+   "properties": {
+    "id": {
+     "type": "string"
+    },
+    "kind": {
+     "type": "string",
+     "enum": [
+      "zone",
+      "chip",
+      "route",
+      "measure"
+     ]
+    },
+    "tag": {
+     "type": [
+      "string",
+      "null"
+     ],
+     "enum": [
+      "homes",
+      "shops",
+      "farm",
+      "orchard",
+      "garden",
+      "forest",
+      "plaza",
+      "landmark",
+      "dock",
+      "water",
+      "entrance",
+      "reserved",
+      null
+     ]
+    },
+    "color": {
+     "type": "string",
+     "enum": [
+      "#FF8A7A",
+      "#E5484D",
+      "#FFB347",
+      "#FFD84D",
+      "#9BC53D",
+      "#2FBF9B",
+      "#38BDF8",
+      "#3B82F6",
+      "#818CF8",
+      "#A78BFA",
+      "#C969E6",
+      "#FF7BAE",
+      "#A9704C",
+      "#8A9BAE",
+      "#5D5A55",
+      "#FFFEE3"
+     ]
+    },
+    "size": {
+     "type": "string",
+     "enum": [
+      "s",
+      "m",
+      "l"
+     ]
+    },
+    "cells": {
+     "type": "array",
+     "minItems": 1,
+     "items": {
+      "type": "object",
+      "properties": {
+       "x": {
+        "type": "number"
+       },
+       "y": {
+        "type": "number"
+       }
+      },
+      "required": [
+       "x",
+       "y"
+      ],
+      "additionalProperties": false
+     }
+    },
+    "points": {
+     "type": "array",
+     "minItems": 2,
+     "items": {
+      "type": "object",
+      "properties": {
+       "x": {
+        "type": "number"
+       },
+       "y": {
+        "type": "number"
+       }
+      },
+      "required": [
+       "x",
+       "y"
+      ],
+      "additionalProperties": false
+     }
+    },
+    "x": {
+     "type": "number"
+    },
+    "y": {
+     "type": "number"
+    },
+    "dashed": {
+     "type": "boolean"
+    },
+    "flipped": {
+     "type": "boolean"
+    }
+   },
+   "additionalProperties": false
+  }
+ },
+ {
+  "name": "remove_annotation",
+  "description": "Remove one finished planning annotation by its id. Read get_annotations first. Respects the annotation lock and selected region; never removes terrain, objects or an unfinished draft.",
+  "parameters": {
+   "type": "object",
+   "properties": {
+    "id": {
+     "type": "string"
+    }
+   },
+   "required": [
+    "id"
+   ]
+  }
+ },
+ {
+  "name": "inspect_region",
+  "description": "Read the terrain of a rectangle (max 45x45) as a compact token grid. Use this before editing — do not guess current terrain.",
+  "parameters": {
+   "type": "object",
+   "properties": {
+    "x1": {
+     "type": "integer"
+    },
+    "y1": {
+     "type": "integer"
+    },
+    "x2": {
+     "type": "integer"
+    },
+    "y2": {
+     "type": "integer"
+    }
+   },
+   "required": [
+    "x1",
+    "y1",
+    "x2",
+    "y2"
+   ]
+  }
+ },
+ {
+  "name": "get_objects",
+  "description": "List placed objects (id, catalogId, position, rotation, elevation). Optionally filter by catalog category.",
+  "parameters": {
+   "type": "object",
+   "properties": {
+    "category": {
+     "type": "string",
+     "enum": [
+      "building",
+      "tree",
+      "flora",
+      "road",
+      "bridge",
+      "ramp",
+      "facility"
+     ]
+    }
+   }
+  }
+ },
+ {
+  "name": "get_selection",
+  "description": "Get the user's current region selection (bbox + cell count). Call when the user refers to 'here' or 'the selected area'.",
+  "parameters": {
+   "type": "object",
+   "properties": {}
+  }
+ },
+ {
+  "name": "get_catalog_item",
+  "description": "Full catalog details for one item id (size, traits, display name, maxCount).",
+  "parameters": {
+   "type": "object",
+   "properties": {
+    "id": {
+     "type": "string"
+    }
+   },
+   "required": [
+    "id"
+   ]
+  }
+ },
+ {
+  "name": "view_map",
+  "description": "See the map as a rendered image (on vision models) or a token grid. Pass x1,y1,x2,y2 to view just that region, close up. Rendered images carry a coordinate ruler so you can map what you see to the cells you edit. Use it to judge COMPOSITION — shapes, balance, ragged edges — after major terrain or decoration work. Costs tokens on vision models; prefer evaluate_map for objective metrics.",
+  "parameters": {
+   "type": "object",
+   "properties": {
+    "x1": {
+     "type": "number"
+    },
+    "y1": {
+     "type": "number"
+    },
+    "x2": {
+     "type": "number"
+    },
+    "y2": {
+     "type": "number"
+    }
+   }
+  }
+ },
+ {
+  "name": "evaluate_map",
+  "description": "Inspect whole-map design heuristics and trends. These are suggestions, not game rules or task completion criteria: low scores and REGRESSED trends do not require edits outside the user request. A small task needs no scorecard.",
+  "parameters": {
+   "type": "object",
+   "properties": {}
+  }
+ },
+ {
+  "name": "update_plan",
+  "description": "Set stages for substantial dependent work or when the user asks for a plan. Use short labels covering only requested outcomes. To report progress on an existing plan, send completedStages alone, the number of consecutive stages already finished. This updates progress without editing the map or running a scorecard. Compact tasks can be built directly.",
+  "parameters": {
+   "type": "object",
+   "properties": {
+    "stages": {
+     "type": "array",
+     "minItems": 1,
+     "items": {
+      "type": "object",
+      "properties": {
+       "label": {
+        "type": "string"
+       }
+      },
+      "required": [
+       "label"
+      ]
+     }
+    },
+    "completedStages": {
+     "type": "integer",
+     "minimum": 0,
+     "description": "Number of consecutive completed stages in the existing plan. Send without stages; verify existing work before marking it complete."
+    }
+   }
+  }
+ },
+ {
+  "name": "export_map",
+  "description": "Open the export flow for the user to save their map: kind 'image' (a shareable PNG with the visible share-code band) or 'json' (the sectioned project file). This opens the export dialog for the user to confirm and download — you do not receive the file. Use only when the user asks to export, save, or share their map.",
+  "parameters": {
+   "type": "object",
+   "properties": {
+    "kind": {
+     "type": "string",
+     "enum": [
+      "image",
+      "json"
+     ]
+    }
+   },
+   "required": [
+    "kind"
+   ]
+  }
+ },
+ {
+  "name": "suggest_reply",
+  "description": "When your closing message leaves ONE obvious next step (a yes/no offer, a single natural follow-up), call this with the short reply the user would most likely send, in the user's own language. It appears as a one-tap suggestion inside their reply box, which shows about 30 characters in a Latin script and about 15 in Chinese, Japanese or Korean and simply cuts off what does not fit — so keep it to a few words. Skip it whenever the next step is genuinely open.",
+  "parameters": {
+   "type": "object",
+   "properties": {
+    "reply": {
+     "type": "string",
+     "description": "The predicted user reply, verbatim-sendable. A few words: ~30 Latin characters, ~15 CJK."
+    }
+   },
+   "required": [
+    "reply"
+   ]
+  }
+ },
+ {
+  "name": "paint_terrain",
+  "description": "Paint mountain or water using shape + flat coordinates (e.g. shape \"rect\" with x1,y1,x2,y2). For a pond on flat grass, paint water at elevation 0 only: surrounding grass contains it; no mountain rim is needed. Mountain auto-builds support tiers 1..elevation (give only the FINAL elevation; mountain elevation 0 clears terrain). Elevated water needs supporting terrain and enclosing banks before this call finishes. Read partial results before continuing.",
+  "parameters": {
+   "type": "object",
+   "properties": {
+    "shape": {
+     "type": "string",
+     "enum": [
+      "rect",
+      "circle",
+      "line",
+      "cells"
+     ],
+     "description": "Area form: \"rect\" fills x1,y1..x2,y2 (inclusive corners); \"circle\" fills radius r around cx,cy; \"line\" strokes x1,y1..x2,y2 at width; \"cells\" reads the cells array."
+    },
+    "x1": {
+     "type": "integer"
+    },
+    "y1": {
+     "type": "integer"
+    },
+    "x2": {
+     "type": "integer"
+    },
+    "y2": {
+     "type": "integer"
+    },
+    "cx": {
+     "type": "integer"
+    },
+    "cy": {
+     "type": "integer"
+    },
+    "r": {
+     "type": "integer",
+     "minimum": 1
+    },
+    "width": {
+     "type": "integer",
+     "minimum": 1,
+     "description": "Line stroke width (default 1)."
+    },
+    "outline": {
+     "type": "boolean",
+     "description": "With rect or circle: paint only the 1-cell border ring (e.g. a mountain rim to contain water)."
+    },
+    "cells": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "properties": {
+       "x": {
+        "type": "integer"
+       },
+       "y": {
+        "type": "integer"
+       }
+      },
+      "required": [
+       "x",
+       "y"
+      ]
+     },
+     "description": "Explicit cell list, for shape \"cells\"."
+    },
+    "rect": {
+     "type": "object",
+     "properties": {
+      "x1": {
+       "type": "integer"
+      },
+      "y1": {
+       "type": "integer"
+      },
+      "x2": {
+       "type": "integer"
+      },
+      "y2": {
+       "type": "integer"
+      }
+     },
+     "required": [
+      "x1",
+      "y1",
+      "x2",
+      "y2"
+     ],
+     "description": "Nested alternative to shape \"rect\"."
+    },
+    "circle": {
+     "type": "object",
+     "properties": {
+      "cx": {
+       "type": "integer"
+      },
+      "cy": {
+       "type": "integer"
+      },
+      "r": {
+       "type": "integer",
+       "minimum": 1
+      }
+     },
+     "required": [
+      "cx",
+      "cy",
+      "r"
+     ],
+     "description": "Nested alternative to shape \"circle\"."
+    },
+    "line": {
+     "type": "object",
+     "properties": {
+      "x1": {
+       "type": "integer"
+      },
+      "y1": {
+       "type": "integer"
+      },
+      "x2": {
+       "type": "integer"
+      },
+      "y2": {
+       "type": "integer"
+      },
+      "width": {
+       "type": "integer",
+       "minimum": 1,
+       "description": "Stroke width (default 1)."
+      }
+     },
+     "required": [
+      "x1",
+      "y1",
+      "x2",
+      "y2"
+     ],
+     "description": "Nested alternative to shape \"line\"."
+    },
+    "terrain": {
+     "type": "string",
+     "enum": [
+      "mountain",
+      "water"
+     ]
+    },
+    "elevation": {
+     "type": "integer",
+     "minimum": 0,
+     "maximum": 8
+    },
+    "smooth": {
+     "type": "string",
+     "enum": [
+      "round",
+      "rect"
+     ],
+     "description": "Auto-trim the painted edges (rounded chamfer / 45-degree bevel) — use for natural-looking cliffs and banks."
+    }
+   },
+   "required": [
+    "terrain",
+    "elevation"
+   ]
+  }
+ },
+ {
+  "name": "erase_terrain",
+  "description": "Clear terrain (mountain/water) back to flat ground on cells.",
+  "parameters": {
+   "type": "object",
+   "properties": {
+    "shape": {
+     "type": "string",
+     "enum": [
+      "rect",
+      "circle",
+      "line",
+      "cells"
+     ],
+     "description": "Area form: \"rect\" fills x1,y1..x2,y2 (inclusive corners); \"circle\" fills radius r around cx,cy; \"line\" strokes x1,y1..x2,y2 at width; \"cells\" reads the cells array."
+    },
+    "x1": {
+     "type": "integer"
+    },
+    "y1": {
+     "type": "integer"
+    },
+    "x2": {
+     "type": "integer"
+    },
+    "y2": {
+     "type": "integer"
+    },
+    "cx": {
+     "type": "integer"
+    },
+    "cy": {
+     "type": "integer"
+    },
+    "r": {
+     "type": "integer",
+     "minimum": 1
+    },
+    "width": {
+     "type": "integer",
+     "minimum": 1,
+     "description": "Line stroke width (default 1)."
+    },
+    "outline": {
+     "type": "boolean",
+     "description": "With rect or circle: paint only the 1-cell border ring (e.g. a mountain rim to contain water)."
+    },
+    "cells": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "properties": {
+       "x": {
+        "type": "integer"
+       },
+       "y": {
+        "type": "integer"
+       }
+      },
+      "required": [
+       "x",
+       "y"
+      ]
+     },
+     "description": "Explicit cell list, for shape \"cells\"."
+    },
+    "rect": {
+     "type": "object",
+     "properties": {
+      "x1": {
+       "type": "integer"
+      },
+      "y1": {
+       "type": "integer"
+      },
+      "x2": {
+       "type": "integer"
+      },
+      "y2": {
+       "type": "integer"
+      }
+     },
+     "required": [
+      "x1",
+      "y1",
+      "x2",
+      "y2"
+     ],
+     "description": "Nested alternative to shape \"rect\"."
+    },
+    "circle": {
+     "type": "object",
+     "properties": {
+      "cx": {
+       "type": "integer"
+      },
+      "cy": {
+       "type": "integer"
+      },
+      "r": {
+       "type": "integer",
+       "minimum": 1
+      }
+     },
+     "required": [
+      "cx",
+      "cy",
+      "r"
+     ],
+     "description": "Nested alternative to shape \"circle\"."
+    },
+    "line": {
+     "type": "object",
+     "properties": {
+      "x1": {
+       "type": "integer"
+      },
+      "y1": {
+       "type": "integer"
+      },
+      "x2": {
+       "type": "integer"
+      },
+      "y2": {
+       "type": "integer"
+      },
+      "width": {
+       "type": "integer",
+       "minimum": 1,
+       "description": "Stroke width (default 1)."
+      }
+     },
+     "required": [
+      "x1",
+      "y1",
+      "x2",
+      "y2"
+     ],
+     "description": "Nested alternative to shape \"line\"."
+    }
+   }
+  }
+ },
+ {
+  "name": "place_object",
+  "description": "Place a catalog item with its top-left anchor at (x,y). Ramps snap automatically — aim at a cliff-edge cell. BRIDGES: aim at a GAP cell (water/void, mid-channel) — use the anchors from find_bridge_sites. Returns the final (possibly snapped) placement.",
+  "parameters": {
+   "type": "object",
+   "properties": {
+    "catalogId": {
+     "type": "string"
+    },
+    "x": {
+     "type": "integer"
+    },
+    "y": {
+     "type": "integer"
+    },
+    "rotation": {
+     "type": "integer",
+     "enum": [
+      0,
+      90,
+      180,
+      270
+     ]
+    }
+   },
+   "required": [
+    "catalogId",
+    "x",
+    "y"
+   ]
+  }
+ },
+ {
+  "name": "remove_object",
+  "description": "Remove a placed object by its id (from get_objects).",
+  "parameters": {
+   "type": "object",
+   "properties": {
+    "objectId": {
+     "type": "string"
+    }
+   },
+   "required": [
+    "objectId"
+   ]
+  }
+ },
+ {
+  "name": "rotate_object",
+  "description": "Rotate an existing rotatable object to an absolute rotation (re-validates placement).",
+  "parameters": {
+   "type": "object",
+   "properties": {
+    "objectId": {
+     "type": "string"
+    },
+    "rotation": {
+     "type": "integer",
+     "enum": [
+      0,
+      90,
+      180,
+      270
+     ]
+    }
+   },
+   "required": [
+    "objectId",
+    "rotation"
+   ]
+  }
+ },
+ {
+  "name": "trim_corner",
+  "description": "Cosmetic corner trim on a terrain cell: style 'fan' (rounded), 'tri' (45-degree bevel), 'square' (reset), 'empty' (cut away).",
+  "parameters": {
+   "type": "object",
+   "properties": {
+    "x": {
+     "type": "integer"
+    },
+    "y": {
+     "type": "integer"
+    },
+    "corner": {
+     "type": "string",
+     "enum": [
+      "TL",
+      "TR",
+      "BL",
+      "BR"
+     ]
+    },
+    "layer": {
+     "type": "string",
+     "enum": [
+      "terrain",
+      "road"
+     ],
+     "description": "What to trim at that cell (default 'terrain')."
+    },
+    "style": {
+     "type": "string",
+     "enum": [
+      "square",
+      "fan",
+      "tri",
+      "empty"
+     ]
+    }
+   },
+   "required": [
+    "x",
+    "y",
+    "corner",
+    "style"
+   ]
+  }
+ },
+ {
+  "name": "find_flat_areas",
+  "description": "Search the whole map for flat buildable spots where a footprint of minWidth x minHeight fits (grass zone, uniform elevation, no water, no objects; includes the +1 right/bottom margin the flat trait checks, so place_object at a returned anchor will pass). Use this instead of guessing where things fit.",
+  "parameters": {
+   "type": "object",
+   "properties": {
+    "minWidth": {
+     "type": "integer",
+     "minimum": 1
+    },
+    "minHeight": {
+     "type": "integer",
+     "minimum": 1
+    },
+    "elevation": {
+     "type": "integer",
+     "minimum": 0,
+     "maximum": 8,
+     "description": "Terrain elevation to search on (default 0 = flat ground)."
+    },
+    "nearX": {
+     "type": "integer",
+     "description": "Prefer anchors close to (nearX,nearY)."
+    },
+    "nearY": {
+     "type": "integer"
+    },
+    "near": {
+     "type": "object",
+     "properties": {
+      "x": {
+       "type": "integer"
+      },
+      "y": {
+       "type": "integer"
+      }
+     },
+     "description": "Nested alternative to nearX/nearY."
+    },
+    "limit": {
+     "type": "integer",
+     "minimum": 1,
+     "maximum": 10,
+     "description": "Max anchors to return (default 5, spread apart)."
+    }
+   },
+   "required": [
+    "minWidth",
+    "minHeight"
+   ]
+  }
+ },
+ {
+  "name": "scatter_objects",
+  "description": "Place many items at once. Choose pattern explicitly: \"scatter\" distributes across the entire area for groves and meadows; \"fill\" visits cells in row order until count is reached; \"grid\" uses every step-th cell. For separate flower beds, make one call per small bed rectangle with its intended species and enough count to fill that rectangle. A low count over a large rect makes a partial row, not a compact bed. Illegal spots are skipped. One undo step. Returns counts and placed anchors.",
+  "parameters": {
+   "type": "object",
+   "properties": {
+    "catalogIds": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     },
+     "description": "Pool to sample from (ONE id for ordered patterns; mix species only for natural scatter)."
+    },
+    "count": {
+     "type": "integer",
+     "minimum": 1,
+     "maximum": 200
+    },
+    "x1": {
+     "type": "integer"
+    },
+    "y1": {
+     "type": "integer"
+    },
+    "x2": {
+     "type": "integer"
+    },
+    "y2": {
+     "type": "integer"
+    },
+    "rect": {
+     "type": "object",
+     "properties": {
+      "x1": {
+       "type": "integer"
+      },
+      "y1": {
+       "type": "integer"
+      },
+      "x2": {
+       "type": "integer"
+      },
+      "y2": {
+       "type": "integer"
+      }
+     },
+     "required": [
+      "x1",
+      "y1",
+      "x2",
+      "y2"
+     ],
+     "description": "Scatter area; the flat corners x1,y1,x2,y2 mean the same."
+    },
+    "pattern": {
+     "type": "string",
+     "enum": [
+      "scatter",
+      "fill",
+      "grid"
+     ],
+     "description": "scatter = natural arrangement (default); fill = solid row-major fill; grid = a lattice of every step-th cell."
+    },
+    "step": {
+     "type": "integer",
+     "minimum": 2,
+     "maximum": 6,
+     "description": "Grid pitch for pattern \"grid\" (default 2: an open lattice)."
+    },
+    "spacing": {
+     "type": "integer",
+     "minimum": 0,
+     "description": "Extra min distance between placed items (default 0; trees already keep their own exclusion radius). Ignored by fill/grid."
+    }
+   },
+   "required": [
+    "catalogIds",
+    "count"
+   ]
+  }
+ },
+ {
+  "name": "sculpt_terrace",
+  "description": "Sculpt an organic terraced hill: 1-3 stacked tiers of blob-shaped mountain with rounded edge cuts. Use for irregular hills; paint_terrain can make precise or formal shapes. Same seed = same shape.",
+  "parameters": {
+   "type": "object",
+   "properties": {
+    "cx": {
+     "type": "integer"
+    },
+    "cy": {
+     "type": "integer"
+    },
+    "baseRadius": {
+     "type": "integer",
+     "minimum": 3,
+     "maximum": 12,
+     "description": "Footprint radius of tier 1."
+    },
+    "tiers": {
+     "type": "integer",
+     "minimum": 1,
+     "maximum": 3,
+     "description": "Elevation levels (default 2)."
+    },
+    "smooth": {
+     "type": "string",
+     "enum": [
+      "round",
+      "rect"
+     ],
+     "description": "Cliff corner style (default 'round')."
+    },
+    "seed": {
+     "type": "integer",
+     "description": "Shape seed (derived from the site when omitted, so the same call replays)."
+    }
+   },
+   "required": [
+    "cx",
+    "cy",
+    "baseRadius"
+   ]
+  }
+ },
+ {
+  "name": "sculpt_wall",
+  "description": "Raise a banded wall or tall plateau in one call. Bands step up +3 per inset ring, the crest stays flat and pavable, and flood:true sinks a crest pool inside its own rim. Use when the requested scene needs a tall backdrop; sculpt_terrace builds smaller organic hills.",
+  "parameters": {
+   "type": "object",
+   "properties": {
+    "x1": {
+     "type": "integer"
+    },
+    "y1": {
+     "type": "integer"
+    },
+    "x2": {
+     "type": "integer"
+    },
+    "y2": {
+     "type": "integer"
+    },
+    "edge": {
+     "type": "string",
+     "enum": [
+      "N",
+      "S",
+      "E",
+      "W"
+     ],
+     "description": "Site the wall AS the map's boundary: abutting this edge of the buildable grass, spanning it, depth rows deep (overrides the corners). A backing wall is a boundary condition, not a centerpiece."
+    },
+    "depth": {
+     "type": "integer",
+     "minimum": 7,
+     "maximum": 30,
+     "description": "Rows deep when edge is given (default 14)."
+    },
+    "crest": {
+     "type": "integer",
+     "minimum": 2,
+     "maximum": 8,
+     "description": "Crest elevation (default 6; lowered automatically if the rect is too shallow for the insets)."
+    },
+    "flood": {
+     "type": "boolean",
+     "description": "Sink a crest pool (water at crest elevation inside a 1-cell rim)."
+    },
+    "smooth": {
+     "type": "string",
+     "enum": [
+      "round",
+      "rect"
+     ],
+     "description": "round (default) trims the outer cliffs organically; rect keeps them crisp."
+    }
+   }
+  }
+ },
+ {
+  "name": "sink_pool",
+  "description": "Sink a POOL COURT in one legal stroke: a 1-cell bench rim (mountain at `elevation`) holding water at the bench's own height — the containment the water rules demand, so it cannot revert half-built. islets:true leaves a step-3 lattice of bench islets inside the water (the parterre grid; plant it with scatter_objects pattern \"grid\" step 3). For terraced pool courts; ground-level lakes stay paint_terrain/draw_figure work.",
+  "parameters": {
+   "type": "object",
+   "properties": {
+    "x1": {
+     "type": "integer"
+    },
+    "y1": {
+     "type": "integer"
+    },
+    "x2": {
+     "type": "integer"
+    },
+    "y2": {
+     "type": "integer"
+    },
+    "elevation": {
+     "type": "integer",
+     "minimum": 1,
+     "maximum": 3,
+     "description": "Bench and water height (default 1)."
+    },
+    "islets": {
+     "type": "boolean",
+     "description": "Leave the step-3 islet lattice inside the water."
+    },
+    "smooth": {
+     "type": "string",
+     "enum": [
+      "round",
+      "rect"
+     ],
+     "description": "round (default) trims the bench corners; rect keeps them crisp."
+    }
+   },
+   "required": [
+    "x1",
+    "y1",
+    "x2",
+    "y2"
+   ]
+  }
+ },
+ {
+  "name": "draw_figure",
+  "description": "Paint an ICONIC ground-water figure with true symmetry: heart, ring or crescent, centered at cx,cy, size cells across. Optional ringId places a single-species ring of trees/flowers around the outline (the classic peach ring). For lettering and custom figures, compose cells yourself with paint_terrain (the figure-landscape skill has the rules).",
+  "parameters": {
+   "type": "object",
+   "properties": {
+    "shape": {
+     "type": "string",
+     "enum": [
+      "heart",
+      "ring",
+      "crescent"
+     ]
+    },
+    "cx": {
+     "type": "integer"
+    },
+    "cy": {
+     "type": "integer"
+    },
+    "size": {
+     "type": "integer",
+     "minimum": 8,
+     "maximum": 48,
+     "description": "Width in cells."
+    },
+    "ringId": {
+     "type": "string",
+     "description": "Catalog id planted in a ring around the figure (one species; omit for bare water)."
+    },
+    "islandFor": {
+     "type": "string",
+     "description": "A building id to stand on a dry islet at the figure's heart (the house-in-a-pond set piece); the islet is sized for its footprint and margin, and a bridge reaches it via find_bridge_sites."
+    }
+   },
+   "required": [
+    "shape",
+    "cx",
+    "cy",
+    "size"
+   ]
+  }
+ },
+ {
+  "name": "carve_river",
+  "description": "Carve a MEANDERING river through waypoints (a smooth curve through every waypoint, constant width, rounded banks): Smart Build's river. It runs downhill from its higher end, drops over a terrace step in a framed waterfall, and opens into a small pool at a dry end. Use 3-5 waypoints with sideways offsets for natural bends; straight 2-point calls are for canals. Banks stay bridgeable where the width is 3-6.",
+  "parameters": {
+   "type": "object",
+   "properties": {
+    "points": {
+     "type": "array",
+     "minItems": 2,
+     "maxItems": 6,
+     "items": {
+      "type": "object",
+      "properties": {
+       "x": {
+        "type": "integer"
+       },
+       "y": {
+        "type": "integer"
+       }
+      },
+      "required": [
+       "x",
+       "y"
+      ]
+     },
+     "description": "Waypoints from source to mouth."
+    },
+    "width": {
+     "type": "integer",
+     "minimum": 2,
+     "maximum": 5,
+     "description": "Channel width (default 4)."
+    },
+    "smooth": {
+     "type": "string",
+     "enum": [
+      "round",
+      "rect"
+     ],
+     "description": "Bank corner style (default 'round')."
+    }
+   },
+   "required": [
+    "points"
+   ]
+  }
+ },
+ {
+  "name": "clear_area",
+  "description": "Make room: in ONE step, remove every (non-locked) object touching the given cells AND erase the terrain there back to flat grass. Use before reshaping an area instead of removing objects one by one. NEVER answer a refused placement by clearing a district you built — fix the exact cells instead. A clear removing more than 25 objects or covering more than 400 cells refuses unless demolish:true acknowledges the scale.",
+  "parameters": {
+   "type": "object",
+   "properties": {
+    "shape": {
+     "type": "string",
+     "enum": [
+      "rect",
+      "circle",
+      "line",
+      "cells"
+     ],
+     "description": "Area form: \"rect\" fills x1,y1..x2,y2 (inclusive corners); \"circle\" fills radius r around cx,cy; \"line\" strokes x1,y1..x2,y2 at width; \"cells\" reads the cells array."
+    },
+    "x1": {
+     "type": "integer"
+    },
+    "y1": {
+     "type": "integer"
+    },
+    "x2": {
+     "type": "integer"
+    },
+    "y2": {
+     "type": "integer"
+    },
+    "cx": {
+     "type": "integer"
+    },
+    "cy": {
+     "type": "integer"
+    },
+    "r": {
+     "type": "integer",
+     "minimum": 1
+    },
+    "width": {
+     "type": "integer",
+     "minimum": 1,
+     "description": "Line stroke width (default 1)."
+    },
+    "outline": {
+     "type": "boolean",
+     "description": "With rect or circle: paint only the 1-cell border ring (e.g. a mountain rim to contain water)."
+    },
+    "cells": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "properties": {
+       "x": {
+        "type": "integer"
+       },
+       "y": {
+        "type": "integer"
+       }
+      },
+      "required": [
+       "x",
+       "y"
+      ]
+     },
+     "description": "Explicit cell list, for shape \"cells\"."
+    },
+    "rect": {
+     "type": "object",
+     "properties": {
+      "x1": {
+       "type": "integer"
+      },
+      "y1": {
+       "type": "integer"
+      },
+      "x2": {
+       "type": "integer"
+      },
+      "y2": {
+       "type": "integer"
+      }
+     },
+     "required": [
+      "x1",
+      "y1",
+      "x2",
+      "y2"
+     ],
+     "description": "Nested alternative to shape \"rect\"."
+    },
+    "circle": {
+     "type": "object",
+     "properties": {
+      "cx": {
+       "type": "integer"
+      },
+      "cy": {
+       "type": "integer"
+      },
+      "r": {
+       "type": "integer",
+       "minimum": 1
+      }
+     },
+     "required": [
+      "cx",
+      "cy",
+      "r"
+     ],
+     "description": "Nested alternative to shape \"circle\"."
+    },
+    "line": {
+     "type": "object",
+     "properties": {
+      "x1": {
+       "type": "integer"
+      },
+      "y1": {
+       "type": "integer"
+      },
+      "x2": {
+       "type": "integer"
+      },
+      "y2": {
+       "type": "integer"
+      },
+      "width": {
+       "type": "integer",
+       "minimum": 1,
+       "description": "Stroke width (default 1)."
+      }
+     },
+     "required": [
+      "x1",
+      "y1",
+      "x2",
+      "y2"
+     ],
+     "description": "Nested alternative to shape \"line\"."
+    },
+    "demolish": {
+     "type": "boolean",
+     "description": "Acknowledge a large demolition (over 25 objects or 400 cells)."
+    }
+   }
+  }
+ },
+ {
+  "name": "find_speckle",
+  "description": "Find candidate planting patterns for optional review. Findings are aesthetic heuristics, not errors. Inspect relevant patches before deciding whether a local adjustment serves the request. Intentional mixed planting and small groups can remain; never clear a finding blindly.",
+  "parameters": {
+   "type": "object",
+   "properties": {}
+  }
+ },
+ {
+  "name": "find_bridge_sites",
+  "description": "Search for spots where a bridge can legally be placed (a straight gap of water/void/lower ground within the bridge's waterSpan, with flat EQUAL-height banks). Returns anchor cells you can pass directly to place_object. ALWAYS use this before placing a bridge — valid sites are rare and invisible in the token grid.",
+  "parameters": {
+   "type": "object",
+   "properties": {
+    "catalogId": {
+     "type": "string",
+     "description": "Bridge item id (determines deck width); default bridge-plank."
+    },
+    "nearX": {
+     "type": "integer",
+     "description": "Prefer sites close to (nearX,nearY)."
+    },
+    "nearY": {
+     "type": "integer"
+    },
+    "near": {
+     "type": "object",
+     "properties": {
+      "x": {
+       "type": "integer"
+      },
+      "y": {
+       "type": "integer"
+      }
+     },
+     "description": "Nested alternative to nearX/nearY."
+    },
+    "limit": {
+     "type": "integer",
+     "minimum": 1,
+     "maximum": 10
+    }
+   }
+  }
+ },
+ {
+  "name": "find_ramp_sites",
+  "description": "Scan for validated ramp placements connecting elevation tiers (the ramp equivalent of find_bridge_sites). Returns anchor cells, the catalog ramp item whose heightDrop matches each cliff, and which elevations it connects. Optional nearX/nearY and limit. Use before placing ramps instead of guessing cliff edges.",
+  "parameters": {
+   "type": "object",
+   "properties": {
+    "nearX": {
+     "type": "integer",
+     "description": "Prefer sites close to (nearX,nearY)."
+    },
+    "nearY": {
+     "type": "integer"
+    },
+    "near": {
+     "type": "object",
+     "properties": {
+      "x": {
+       "type": "integer"
+      },
+      "y": {
+       "type": "integer"
+      }
+     },
+     "description": "Nested alternative to nearX/nearY."
+    },
+    "limit": {
+     "type": "integer"
+    }
+   }
+  }
+ },
+ {
+  "name": "build_road",
+  "description": "Lay a road in one call: places one road tile per cell along a line given as flat x1,y1,x2,y2 (or explicit cells), skipping illegal cells. End-caps and bends are auto-trimmed like the manual road brush (smooth:\"off\" keeps them square). One undo step. Use instead of placing road cells one by one.",
+  "parameters": {
+   "type": "object",
+   "properties": {
+    "catalogId": {
+     "type": "string",
+     "enum": [
+      "path-overgrown-dirt",
+      "path-rustic-dirt",
+      "path-tilled-soil",
+      "path-blue-board",
+      "path-classic-basketweave-brick",
+      "path-classic-mosaic-brick",
+      "path-cobblestone",
+      "path-diamond-mosaic-brick",
+      "path-fan-shaped-brick",
+      "path-green-board",
+      "path-herringbone-clay-brick",
+      "path-park-stone",
+      "path-pink-board",
+      "path-yellow-board",
+      "path-floral-brick",
+      "path-garden-stone",
+      "path-geometric-terracotta",
+      "path-lattice-red-brick",
+      "path-maizeglow-brick",
+      "path-patterned-tile",
+      "path-radiant-star-stone",
+      "path-retro-block",
+      "path-seaside-wave",
+      "path-simple-brick",
+      "path-simple-flowerbed",
+      "path-square-brick",
+      "path-urban-asphalt",
+      "path-wavy-terracotta",
+      "path-flower-meadow"
+     ],
+     "description": "Road material (default: the first listed)."
+    },
+    "shape": {
+     "type": "string",
+     "enum": [
+      "line",
+      "cells"
+     ],
+     "description": "Path form: \"line\" strokes x1,y1..x2,y2 at width (bare corners mean the same); \"cells\" reads the cells array."
+    },
+    "x1": {
+     "type": "integer"
+    },
+    "y1": {
+     "type": "integer"
+    },
+    "x2": {
+     "type": "integer"
+    },
+    "y2": {
+     "type": "integer"
+    },
+    "width": {
+     "type": "integer",
+     "minimum": 1,
+     "description": "Line stroke width (default 1)."
+    },
+    "line": {
+     "type": "object",
+     "properties": {
+      "x1": {
+       "type": "integer"
+      },
+      "y1": {
+       "type": "integer"
+      },
+      "x2": {
+       "type": "integer"
+      },
+      "y2": {
+       "type": "integer"
+      },
+      "width": {
+       "type": "integer",
+       "minimum": 1
+      }
+     },
+     "required": [
+      "x1",
+      "y1",
+      "x2",
+      "y2"
+     ],
+     "description": "Nested alternative to shape \"line\"."
+    },
+    "cells": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "properties": {
+       "x": {
+        "type": "integer"
+       },
+       "y": {
+        "type": "integer"
+       }
+      },
+      "required": [
+       "x",
+       "y"
+      ]
+     }
+    },
+    "smooth": {
+     "type": "string",
+     "enum": [
+      "round",
+      "rect",
+      "off"
+     ],
+     "description": "End-cap/bend trim style (default 'round', the manual brush's Auto Trim)."
+    }
+   }
+  }
+ },
+ {
+  "name": "list_skills",
+  "description": "List the available build playbooks (proven multi-step recipes for villages, hills, rivers…). Cheap — call it when the user asks for a composite scene.",
+  "parameters": {
+   "type": "object",
+   "properties": {}
+  }
+ },
+ {
+  "name": "load_skill",
+  "description": "Load a technique or style reference from list_skills when relevant. Apply the parts that help the requested result; examples and optional features do not expand the task. Do not reload an already loaded skill.",
+  "parameters": {
+   "type": "object",
+   "properties": {
+    "name": {
+     "type": "string"
+    }
+   },
+   "required": [
+    "name"
+   ]
+  }
+ },
+ {
+  "name": "delegate_task",
+  "description": "Spawn a focused sub-agent with a FRESH context to execute one well-scoped build task, and get back its summary. Use for big requests: split them into independent parts (e.g. \"terrain the north hills\", \"build the village at (40,60)-(70,90)\", \"decorate the lakeshore\") and delegate each. The sub-agent sees the live map but NOT this conversation — the task text must be self-contained (locations, sizes, style). While it works, the panel names it by `label` if you gave one, else by the first line of `task` — so give a short `label` whenever `task` runs longer than a few words.",
+  "parameters": {
+   "type": "object",
+   "properties": {
+    "task": {
+     "type": "string",
+     "description": "Complete, self-contained instructions incl. coordinates/area and desired style."
+    },
+    "label": {
+     "type": "string",
+     "description": "Optional short name (a few words, e.g. \"north grove\") shown in the panel while the helper works. Omit only when task already reads as one."
+    }
+   },
+   "required": [
+    "task"
+   ]
+  }
+ },
+ {
+  "name": "undo",
+  "description": "Undo the last N edit steps (default 1). Each of your write tool calls is one step.",
+  "parameters": {
+   "type": "object",
+   "properties": {
+    "steps": {
+     "type": "integer",
+     "minimum": 1,
+     "maximum": 10
+    }
+   }
+  }
+ },
+ {
+  "name": "decorate_zone",
+  "description": "Decorate a rect in a professional theme using the procedural populator's decorators: orchard (fruit grids), farm (crop rows), garden (flower beds), hamlet (homes + gardens), waterfront (promenade), peak (lookout ring). Places MANY objects in one validated stroke. Use it instead of placing objects one by one.",
+  "parameters": {
+   "type": "object",
+   "properties": {
+    "x": {
+     "type": "integer"
+    },
+    "y": {
+     "type": "integer"
+    },
+    "w": {
+     "type": "integer"
+    },
+    "h": {
+     "type": "integer"
+    },
+    "theme": {
+     "type": "string",
+     "enum": [
+      "orchard",
+      "farm",
+      "garden",
+      "hamlet",
+      "waterfront",
+      "peak"
+     ]
+    },
+    "seed": {
+     "type": "integer"
+    }
+   },
+   "required": [
+    "x",
+    "y",
+    "w",
+    "h",
+    "theme"
+   ]
+  }
+ },
+ {
+  "name": "plant_forest",
+  "description": "Plant a layered forest (stands with glades, flora drifts) across the rect in one validated stroke. Species follow the ground the way a Smart Build planting does: a dominant species chosen for the ground, with accents suited to wetter, higher or edge ground. A large rect is planted as patches about 24 cells across, each led by its own species. density 0-1 controls tree/flora density.",
+  "parameters": {
+   "type": "object",
+   "properties": {
+    "x": {
+     "type": "integer"
+    },
+    "y": {
+     "type": "integer"
+    },
+    "w": {
+     "type": "integer"
+    },
+    "h": {
+     "type": "integer"
+    },
+    "density": {
+     "type": "number",
+     "minimum": 0,
+     "maximum": 1,
+     "description": "Vegetation density 0-1 (default 0.6)."
+    },
+    "seed": {
+     "type": "integer"
+    }
+   },
+   "required": [
+    "x",
+    "y",
+    "w",
+    "h"
+   ]
+  }
+ },
+ {
+  "name": "build_road_network",
+  "description": "Route a road network connecting the existing buildings through validated crossings (the procedural generator's region-portal router). Reads the current map's buildings and terrain to determine hub + hamlet nodes, scans for bridge/ramp crossing sites, then routes roads and any needed crossings in one stroke.",
+  "parameters": {
+   "type": "object",
+   "properties": {
+    "seed": {
+     "type": "integer",
+     "description": "Determinism seed (optional)."
+    }
+   }
+  }
+ },
+ {
+  "name": "frame_crossing",
+  "description": "Find the crossing site (bridge or ramp) nearest to (x,y), realize just that one crossing, and decorate it with a mirrored flora scene on both ends. Reports \"no crossing site found\" gracefully if no valid portal exists on the map.",
+  "parameters": {
+   "type": "object",
+   "properties": {
+    "x": {
+     "type": "integer"
+    },
+    "y": {
+     "type": "integer"
+    },
+    "seed": {
+     "type": "integer"
+    }
+   },
+   "required": [
+    "x",
+    "y"
+   ]
+  }
+ },
+ {
+  "name": "redo",
+  "description": "Redo the last N undone edit steps (default 1), like the editor Redo button.",
+  "parameters": {
+   "type": "object",
+   "properties": {
+    "steps": {
+     "type": "integer",
+     "minimum": 1,
+     "maximum": 10
+    }
+   }
+  }
+ }
+]

@@ -2,9 +2,9 @@
  * The frame's margins, and the one shadow it is allowed.
  *
  * Two facts a rendering test cannot reach, since jsdom lays nothing out and the margins are what a
- * drawing STANDS IN rather than something a component reports.
+ * drawing stands in rather than something a component reports.
  *
- * The margins are ONE number on the three edges the chrome stands on, measured to the ink that is
+ * The margins are one number on the three edges the chrome stands on, measured to the ink that is
  * always there. What the left one has to survive is the splat behind a selected block, which is drawn
  * wider than the block and centred on it: it hangs into the margin, and a margin narrower than that
  * overhang cuts it off at the window.
@@ -19,40 +19,42 @@
  * the two tests below are what keep it one.
  */
 import { describe, it, expect } from 'vitest';
-// @ts-ignore - node:fs is untyped here (no @types/node)
-import { readFileSync, readdirSync, statSync } from 'node:fs';
+import { createElement } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
+import { ShapeEdgeFilter } from '../../../ui/design/shape-edge';
+import { readFileSync } from 'node:fs';
 import {
   ASSISTANT_BLOCK, ASSISTANT_INK, ASSISTANT_ROW_TOP, HISTORY_BUTTONS, KIT_BUTTONS, LAYER_STEP_RIGHT,
   MODES, MODE_PLATE, MODE_ROW_BASE, MODE_ROW_LEFT, MODE_ROW_TOP, planRail, RAIL_FOLDS, railStack,
   RAIL_TOP, TOP_RIGHT, TOP_RIGHT_H, TOP_RIGHT_TOP, topRightHeight, topRightSlack, type RailPlan,
 } from '../../../ui/shell/frame';
-import { PLATE_DEPTH, plateMinDepth } from '../../../ui/shell/windows/LayerPanel';
+import { plateDepth, plateMinDepth } from '../../../ui/shell/controls/layer-plate';
 import {
-  INK, MAP_EDGE_ALPHA, MAP_LABEL, MAP_SHAPE_EDGE, SHAPE_EDGE, SHAPE_EDGE_FILTER, SHAPE_EDGE_ID,
+  INK, MAP_EDGE_ALPHA, MAP_LABEL, MAP_SHAPE_EDGE, SHAPE_EDGE_FILTER, SHAPE_EDGE_ID,
 } from '../../../ui/design/tokens';
 import {
-  EDGE, EDGE_LEFT, EDGE_RIGHT, EDGE_TOP, FRAME_MARGIN, LABEL_INK_DEPTH, MODE, MODE_SCALE,
+  EDGE, EDGE_LEFT, EDGE_RIGHT, EDGE_TOP, LABEL_INK_DEPTH, MODE, MODE_SCALE,
   PLATE_BAND, RAIL, RAIL_FLOOR, SHELF_TABS, ZOOM,
 } from '../../../ui/shell/units';
+import { repoFiles } from '../../_support/source-graph';
+
+/** The open square plate's depth, the deepest the layer control draws. */
+const PLATE_DEPTH = plateDepth('grid');
 
 const SHELL = 'src/ui/shell';
 
 function sources(dir: string): { path: string; text: string }[] {
-  return (readdirSync(dir) as string[]).flatMap((name) => {
-    const full = `${dir}/${name}`;
-    if (statSync(full).isDirectory()) return sources(full);
-    return /\.tsx?$/.test(name) ? [{ path: full, text: readFileSync(full, 'utf8') }] : [];
-  });
+  return repoFiles(dir).map((path) => ({ path, text: readFileSync(path, 'utf8') }));
 }
 
 /** The side margins align visible ink; the selected mode plate overhang makes their box gaps differ. */
 describe('the frame\'s margins', () => {
   it('put the two sides\' outermost ink on one line, which is not the same margin', () => {
-    expect(EDGE_LEFT).toBe(FRAME_MARGIN);
-    // The gutter is where a NAME's ink starts, not where its box does: a tab carries `padX` either
+    expect(EDGE_LEFT).toBe(74);
+    // The gutter is where a name's ink starts, not where its box does: a tab carries `padX` either
     // side of its word. Derived in `units.ts`, so the two cannot drift; asserted here so the
     // relation survives someone writing either number down as a literal.
-    expect(SHELF_TABS.left + SHELF_TABS.padX).toBe(FRAME_MARGIN);
+    expect(SHELF_TABS.left + SHELF_TABS.padX).toBe(EDGE_LEFT);
     // The line itself: the splat's own left edge with a mode selected, and the right margin.
     const overhang = (MODE_PLATE.w * MODE_SCALE - MODE.size) / 2;
     expect(EDGE_LEFT - overhang).toBeCloseTo(EDGE_RIGHT, 6);
@@ -60,13 +62,13 @@ describe('the frame\'s margins', () => {
     expect(EDGE_RIGHT).toBeLessThan(EDGE_LEFT - 8);
     // The bottom is its own: what stands there is a full-width shelf whose plate runs off the
     // window, not a cluster the frame has to hold clear of an edge.
-    expect(EDGE).toBeLessThan(FRAME_MARGIN);
+    expect(EDGE).toBeLessThan(EDGE_LEFT);
   });
 
   /**
    * The top is its own number, and this is the arithmetic that says why rather than prose saying so.
    *
-   * A side gutter costs width, which the frame has. The top costs the RIGHT-HAND COLUMN its run: the
+   * A side gutter costs width, which the frame has. The top costs the right-hand column its run: the
    * column hangs from the line the mode row and the corner share down to the shelf's plate, and its
    * three groups take what is left in the middle. Raise the top to the gutter and that middle is
    * gone — so the test does exactly that, on the window the interface is judged on, and checks that
@@ -74,7 +76,7 @@ describe('the frame\'s margins', () => {
    * this fails and the two edges can be reconsidered together.
    */
   it('do not include the top, because the right-hand column cannot pay for it', () => {
-    expect(EDGE_TOP).toBeLessThan(FRAME_MARGIN);
+    expect(EDGE_TOP).toBeLessThan(EDGE_LEFT);
     /** The smallest separation the column's three groups get, with the mode row hung at `top`. */
     const groupSpacing = (top: number): number => {
       const viewport = 900 / ZOOM;
@@ -87,12 +89,12 @@ describe('the frame\'s margins', () => {
       return (kitTop - layerBottom) / 2 - historyH / 2;
     };
     expect(groupSpacing(EDGE_TOP)).toBeGreaterThanOrEqual(RAIL.groupMin);
-    expect(groupSpacing(FRAME_MARGIN)).toBeLessThan(RAIL.groupMin);
+    expect(groupSpacing(EDGE_LEFT)).toBeLessThan(RAIL.groupMin);
   });
 
   it('are measured to the ink, so choosing a mode cannot eat the top one', () => {
-    // The row's box is exactly as deep as the tallest drawing it holds, which is a SELECTED mode, so
-    // the box top IS that drawing's ink top. Placed on the RESTING drawings instead,
+    // The row's box is exactly as deep as the tallest drawing it holds, which is a selected mode, so
+    // the box top is that drawing's ink top. Placed on the resting drawings instead,
     // choosing a mode grows its art up out of the row and leaves 9 px over it: the tightest gap in
     // the frame, and one that only appears once somebody uses the thing.
     expect(MODE_ROW_TOP).toBe(EDGE_TOP);
@@ -103,15 +105,15 @@ describe('the frame\'s margins', () => {
     const overhang = (MODE_PLATE.w * MODE_SCALE - MODE.size) / 2;
     expect(overhang).toBeGreaterThan(0);
     expect(MODE_ROW_LEFT - overhang).toBeGreaterThan(0);
-    // The plate stands proud ABOVE the block too, and the row hangs from the window's top edge.
+    // The plate stands proud above the block too, and the row hangs from the window's top edge.
     expect(MODE_ROW_BASE + (MODE_PLATE.drop - MODE_PLATE.h) * MODE_SCALE).toBeGreaterThan(0);
   });
 });
 
 /**
- * The two rows' separation is DERIVED, and from the state where they are tightest.
+ * The two rows' separation is derived, and from the state where they are tightest.
  *
- * Set as a constant to the BOX, 31 is 47 px of seen air at rest and 15 in the tight
+ * Set as a constant to the box, 31 is 47 px of seen air at rest and 15 in the tight
  * state, because a box carries slack over the drawing standing in it and the row above hangs a name
  * into the gap only sometimes. One number cannot be judged in two states at once, so the only thing
  * chosen here is the clearance and the rest falls out of the drawings' own sizes.
@@ -145,7 +147,7 @@ describe('nothing in the frame casts a shadow', () => {
     // (`MAP_SHAPE_EDGE`) and the spread-only ring a radius-box plate carries instead
     // (`plateShapeEdge` — zero offset, zero blur, so an outline and not a shadow).
     const exempt = ['MAP_SHAPE_EDGE', 'plateShapeEdge'];
-    // A line is allowed if it NAMES one of the two (a place that applies the treatment) or if it is
+    // A line is allowed if it names one of the two (a place that applies the treatment) or if it is
     // written inside one's declaration (the treatment's own body, which is built out of a list, so
     // the name is not on the line the property is on).
     const found = sources(SHELL).flatMap(({ path, text }) => {
@@ -160,7 +162,7 @@ describe('nothing in the frame casts a shadow', () => {
   });
 
   /**
-   * The edge is a DILATION, and the two tests below are what that has to keep meaning.
+   * The edge is a dilation, and the two tests below are what that has to keep meaning.
    *
    * A stack of offset copies is the usual way to fake an outline, and it fails here for a reason no
    * arrangement of offsets can fix: at this width every copy sits under a third of a device pixel
@@ -192,8 +194,8 @@ describe('nothing in the frame casts a shadow', () => {
       const mid = (lo + hi) / 2;
       if (erfc(mid / (blur * Math.SQRT2)) / 2 > 1 / slope) lo = mid; else hi = mid;
     }
-    // The one number the pair exists to produce, within a tenth of a pixel.
-    expect(lo).toBeCloseTo(SHAPE_EDGE, 1);
+    // The one number the pair exists to produce, half a css px, within a tenth of a pixel.
+    expect(lo).toBeCloseTo(0.5, 1);
   });
 
   /**
@@ -204,29 +206,20 @@ describe('nothing in the frame casts a shadow', () => {
   it('and it is the same ink a word\'s edge is drawn in', () => {
     const alphaHex = Math.round(MAP_EDGE_ALPHA * 255).toString(16).padStart(2, '0');
     expect(MAP_LABEL.WebkitTextStroke).toBe(`0.075em ${INK}${alphaHex}`);
-    // The filter is JSX, so the flood is read from the source the way the shadow rule above is.
-    // The alpha rides the FLOOD: putting it on the ramp instead would soften the boundary back
+    // The alpha rides the flood: putting it on the ramp instead would soften the boundary back
     // into the gradient the dilation exists to avoid.
-    const shell = sources(SHELL).find(({ path }) => path.endsWith('Shell.tsx'));
-    expect(shell?.text).toMatch(/<feFlood floodColor=\{INK\} floodOpacity=\{MAP_EDGE_ALPHA\}/);
+    const flood = /<feFlood\b[^>]*>/.exec(renderToStaticMarkup(createElement(ShapeEdgeFilter)))?.[0] ?? '';
+    expect(flood).toContain(`flood-color="${INK}"`);
+    expect(flood).toContain(`flood-opacity="${MAP_EDGE_ALPHA}"`);
   });
 });
 
 describe('the top of the window is one band', () => {
   /**
-   * THE TWO SIDES SHARE A LINE THROUGH THE MIDDLE OF WHAT IS DRAWN, and neither box edge.
-   *
-   * Either box edge reads wrong. Hung off the row's BASELINE the corner is 44 of ink
-   * against a block's 55 to 64, so its top falls far below theirs and it reads low. Centred in
-   * `MODE.height` it reads HIGH, because that band is sized for the SELECTED drawing and no resting
-   * block fills it — the five rest with their ink centres at 67 to 71 while the corner's landed at
-   * 63.5, nearly 6 px up.
-   *
-   * So the assertion is on the CENTRES, which is the alignment a person actually reads across the
-   * top of the window. A consequence worth stating, since it looks wrong in isolation: the corner's
-   * top sits BELOW every resting block's top and its bottom above their baseline. That is what
-   * centring a shorter shape on a taller one does, and chasing either edge back would misalign it
-   * again.
+   * The two sides share a line through the middle of what is drawn, not either box edge: off the
+   * baseline the shorter corner reads low, and centred in `MODE.height` (sized for the selected
+   * drawing) it reads high. So the ink centres are asserted. The corner's top then sits below every
+   * resting block's top and its bottom above their baseline, which is what centring does.
    */
   it('centres the corner ON THE INK it faces, not in the box behind it', () => {
     const restingCentres = MODES.map((art) => MODE_ROW_BASE - (art.h * MODE_SCALE) / 2);
@@ -235,14 +228,14 @@ describe('the top of the window is one band', () => {
     // It genuinely cannot fill the row: the corner is a good deal shallower, which is why the
     // question is where its middle goes rather than which edge it meets.
     expect(MODE.height - TOP_RIGHT_H).toBeGreaterThan(20);
-    // Centring in the BOX would put it here, which is not where it goes.
+    // Centring in the box would put it here, which is not where it goes.
     expect(TOP_RIGHT_TOP).not.toBeCloseTo(EDGE_TOP + (MODE.height - TOP_RIGHT_H) / 2, 1);
   });
 
   it('keeps the corner\'s own three on one line, which is what makes them a group', () => {
-    // Measured to the INK. The cluster's depth is the deepest ink standing on that line rather than
+    // Measured to the ink. The cluster's depth is the deepest ink standing on that line rather than
     // a box height the three do not share: each hangs its own slack below the line instead
-    // (`Shell.tsx:Piece`), which is what puts three different drawings on one line.
+    // (`src/ui/shell/controls/CornerActions.tsx:Piece`), which is what puts three different drawings on one line.
     expect(TOP_RIGHT_H).toBeCloseTo(
       Math.max(...TOP_RIGHT.map((art) => topRightHeight(art) - topRightSlack(art))), 6,
     );
@@ -253,21 +246,11 @@ describe('the top of the window is one band', () => {
   });
 
   /**
-   * The corner's three and the rail's ten are ONE family of utilities, and sized apart they read as
-   * two: 58 against 44, on the argument that a corner control is a whole drawing where a rail one is
-   * a glyph on a plate, compares the two at different parts of themselves — a rail control IS its
-   * plate.
-   *
-   * Within the corner, box-height sizing makes three sizes as well: at one box height a filled
-   * circle, a shape that is mostly a notch and a square filled corner to corner read 62, 54 and 65,
-   * the same mistake box-height sizing makes in the rail without `apparentSize`.
-   *
-   * `apparentSize` alone makes the opposite one. Normalising all three onto its own number renders
-   * the share anchor 53 css tall against 44 for the two discs, because the formula discounts area
-   * and an open shape is mostly not there — and the corner reads as one big control and two small
-   * ones. So each carries a `trim` judged by eye at rendered size, and this holds the SHAPE of that
-   * answer: three unequal corrections that land the three drawings within a pixel of the family's
-   * own size. Setting the trims equal fails the second assertion, which is the point of it.
+   * The corner's three and the rail's ten are one family of utilities, compared plate to plate. At
+   * one box height a filled circle, a notched shape and a filled square read as three sizes, and
+   * `apparentSize` alone overcorrects an open shape (it discounts area). So each carries a `trim`
+   * judged by eye at rendered size; this holds three unequal corrections landing the drawings within
+   * a pixel of the family size, and equal trims fail it.
    */
   it('brings the corner\'s three to one SIZE, by three corrections that are not equal', () => {
     // A rail button's own reading, so the two groups are one size without either holding a copy of
@@ -284,9 +267,9 @@ describe('the top of the window is one band', () => {
     const untrimmed = TOP_RIGHT.map((art) => (RAIL.topRight * art.h) / (art.apparent ?? art.h));
     expect(Math.max(...untrimmed) / Math.min(...untrimmed)).toBeGreaterThan(1.1);
     expect(new Set(TOP_RIGHT.map((art) => art.trim ?? 1)).size).toBe(TOP_RIGHT.length);
-    // Every drawing still declares the MEASUREMENT its correction is a correction to.
+    // Every drawing still declares the measurement its correction is a correction to.
     expect(TOP_RIGHT.every((art) => art.apparent !== undefined)).toBe(true);
-    // Sized by the BOX they still are not. Three boxes of three heights come out one height, so
+    // Sized by the box they still are not. Three boxes of three heights come out one height, so
     // each is being scaled by a different amount — which is the whole apparatus doing its job.
     const scales = TOP_RIGHT.map((art) => topRightHeight(art) / art.h);
     expect(Math.max(...scales) / Math.min(...scales)).toBeGreaterThan(1.1);
@@ -306,7 +289,7 @@ describe('the right-hand column', () => {
   it('starts level with the assistant on the other side of the window', () => {
     expect(RAIL_TOP).toBe(ASSISTANT_INK.top);
     // Ink to ink: the plate is a filled pill, so its own ink is its box and nothing is subtracted
-    // on this side. It is the RESTING character that is matched, the one normally there.
+    // on this side. It is the resting character that is matched, the one normally there.
     expect(ASSISTANT_INK.top).toBeCloseTo(
       ASSISTANT_ROW_TOP + MODE.height - ASSISTANT_BLOCK.h * MODE_SCALE, 6,
     );
@@ -319,7 +302,7 @@ describe('the right-hand column', () => {
   });
 
   /**
-   * THE STEPPER IS CENTRED ON THE BUTTONS, NOT SQUARED WITH THEIR RIGHT EDGE.
+   * The stepper is centred on the buttons, not squared with their right edge.
    *
    * Both are filled drawings whose ink is their own box — a disc fills its square and the stepper is
    * a stadium — so the line a person reads down the column is the two shapes' middles, and squaring
@@ -337,12 +320,12 @@ describe('the right-hand column', () => {
     const plan = (vh: number, open: boolean) => planRail(vh / ZOOM, {
       open, plateDepth: PLATE_DEPTH, plateMinDepth: plateMinDepth('grid'),
     });
-    /** How deep the pair stands in a given plan. It FOLDS on a short window, so it is not a
+    /** How deep the pair stands in a given plan. It folds on a short window, so it is not a
      *  constant, and reading it off the plan is what keeps every separation below measured against
      *  the arrangement the plan actually chose. */
     const pairDepth = (p: RailPlan) => railStack(Math.ceil(HISTORY_BUTTONS / p.historyFiles));
     /** The least of the plate worth showing: its head, its own padding, and one whole row of the
-     *  SQUARE's floors, which is the size these plans are made for. A plate cut above this is a head
+     *  Square's floors, which is the size these plans are made for. A plate cut above this is a head
      *  with no stack under it. */
     const PLATE_FIRST_ROW = plateMinDepth('grid');
     /** The three windows the arrangement is judged on. */
@@ -417,9 +400,9 @@ describe('the right-hand column', () => {
     });
 
     /**
-     * AND THE STEP IS THE PLATE'S DEPTH, NOT EVERYTHING THE PAIR COULD GIVE.
+     * And the step is the plate's depth, not everything the pair could give.
      *
-     * Whether the plate is seated at all is asked of the room the pair COULD yield, which is the
+     * Whether the plate is seated at all is asked of the room the pair could yield, which is the
      * lowest it can stand. Where it then stands is a different question with a smaller answer: it
      * steps down until the plate clears it and stops. Answering both with one number pushes undo and
      * redo down against the view kit on a window with 170 px of slack left in the lane, and three
@@ -460,7 +443,7 @@ describe('the right-hand column', () => {
     });
 
     it('breaks the kit into files only where one file will not fit', () => {
-      // SEVEN buttons, the hide toggle included: a single file is 362 css px against 309, and the
+      // Seven buttons, the hide toggle included: a single file is 362 css px against 309, and the
       // run only reaches that from about 965 device px of window height.
       expect(plan(720, false).kitFiles, 'a laptop cannot hold the seven in one').toBe(2);
       expect(plan(900, false).kitFiles, 'nor can a 900px window').toBe(2);
@@ -488,7 +471,7 @@ describe('the right-hand column', () => {
     });
 
     /**
-     * A FOLD IS A LAST RESORT, NOT A SAVING. Every arrangement the plan reaches for is one it could
+     * A fold is a last resort, not a saving. Every arrangement the plan reaches for is one it could
      * not avoid: at each window, the arrangement chosen is either the unfolded one or one whose
      * predecessor genuinely does not fit the run. Without this the ladder could quietly start one
      * rung down and nothing on screen would say so.
@@ -497,7 +480,7 @@ describe('the right-hand column', () => {
       const depth = (f: { kit: number; history: number }) => railStack(Math.ceil(KIT_BUTTONS / f.kit))
         + railStack(Math.ceil(HISTORY_BUTTONS / f.history));
       // The ladder is ordered by how much each rung gives up, so a rung is only right if the one
-      // before it does not fit. Asked of the LADDER rather than of a copy of it here: two spellings
+      // before it does not fit. Asked of the ladder rather than of a copy of it here: two spellings
       // of the order would let the plan drift from what this pins.
       expect(RAIL_FOLDS[0], 'the first rung folds nothing').toEqual({ kit: 1, history: 1 });
       for (let i = 1; i < RAIL_FOLDS.length; i++) {

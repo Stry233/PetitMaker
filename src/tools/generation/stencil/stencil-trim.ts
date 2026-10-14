@@ -11,8 +11,9 @@
  * The chooser expresses preference. It is consulted at corners the cut validators have already
  * offered (`auto-edge-cut.ts`), so everything it asks for is legal by the manual tool's own rules.
  */
-import type { MacroCoord, Stencil } from '../../../core/model/types';
-import type { CornerChooser } from '../../edge-cut/auto-edge-cut';
+import type { MacroCoord } from '../../../core/model/types';
+import type { Stencil } from '../recipe';
+import type { CornerChooser } from '../../trim/auto-edge-cut';
 
 /** Candidate areas as a share of one quadrant. */
 const SQUARE = 1;
@@ -33,7 +34,7 @@ const DIAG_AT = 0.4;
  * The chooser for one placed stencil, or null when the stencil carries no quadrant detail (a
  * hand-built one) — the caller falls back to the blanket mode.
  *
- * A corner OUTSIDE the stencil is left alone (`null`): the pass sweeps a one-cell ring past what it
+ * A corner outside the stencil is left alone (`null`): the pass sweeps a one-cell ring past what it
  * laid, and out there the picture has no opinion.
  */
 export function stencilChooser(origin: MacroCoord, stencil: Stencil): CornerChooser | null {
@@ -41,7 +42,7 @@ export function stencilChooser(origin: MacroCoord, stencil: Stencil): CornerChoo
   if (!quad) return null;
 
   // Which way the source's edge runs at a cell, from the coverage gradient (Sobel). A quantised
-  // diagonal is a staircase, and on a staircase the BEVEL is the smooth choice: each step's chamfer
+  // diagonal is a staircase, and on a staircase the bevel is the smooth choice: each step's chamfer
   // chains into one straight line, where a fan scallops and a mix of the two wobbles. An edge
   // running with the axes means the corner is a true corner of the drawing, and rounds.
   const cov = (x: number, y: number): number =>
@@ -60,7 +61,7 @@ export function stencilChooser(origin: MacroCoord, stencil: Stencil): CornerChoo
     if (sx < 0 || sy < 0 || sx >= width || sy >= height) return null;
     const q = (quad[(sy * width + sx) * 4 + corner] ?? 0) / 255;
     if (kind === 'inner') {
-      // The notch cell is OUTSIDE the glyph, so its quadrant is nearly inkless even at a genuinely
+      // The notch cell is outside the glyph, so its quadrant is nearly inkless even at a genuinely
       // round concave corner — the curve's ink lives in the stroke cells beside it. A fillet adds
       // no mass, only smoothing, so an offered notch always fills. On a diagonal the half-quadrant
       // bevel continues the staircase's line; elsewhere the source decides how big the fill is.

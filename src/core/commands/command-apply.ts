@@ -1,54 +1,95 @@
+import type { KernelEvents } from './events';
 import { EventBus } from './event-bus';
-import { bumpCellsVersion, bumpObjectsVersion, cloneCell, clonePlacedObject, createDefaultTerrainCell, getCell, setCell } from '../model/grid-model';
+import { bumpCellsVersion, bumpObjectsVersion, clearsTerrain, cloneCell, clonePlacedObject, commandGrid, createDefaultTerrainCell, getCell, setCell } from '../model/grid-model';
+import { cellSet, type CellSet } from '../grid/grids';
 import {
   CommandType,
-  TerrainType,
   type CellSnapshot,
   type Command,
-  type Corners,
-  type EditorEvents,
+  type GenerationMark,
   type GridState,
   type MacroCoord,
   type PlacedObject,
+  type TrimCornersCommand,
 } from '../model/types';
 import type { TaintDelta } from '../provenance/tracker';
-import { isSquareCorners, isEmptyCorners } from '../edge-cut/corner-index';
+import { PLACEMENT_GRID, TERRAIN_GRID } from '../game/profile';
 
 /**
- * The per-CommandType STATE MUTATION half of the executor: how a command (and a
+ * The per-CommandType state mutation half of the executor: how a command (and a
  * history entry's inverse) writes cells and adds/removes/mutates objects. Free
  * functions taking explicit state + eventBus, so the executor stays an
  * orchestrator (validate → apply → record → history → events).
  *
- * Invariants held here (NOT the executor's concern):
+ * Invariants held here (not the executor's concern):
+ * - The map shares nothing mutable with a command: it stores copies of a placed object and of
+ *   corner arrays, so a command in history or in a replay never changes with the map.
  * - `objects-changed` is emitted at the mutation site.
  * - History bookkeeping (undo/redo stacks, `cells-changed`/`history-*` events)
  *   and provenance taint threading stay in the executor and wrap these calls.
  */
+/** The objects one history step took off the map and put on it, each as it stood. An object
+ *  edited in place is in both, under one id. */
+export interface ObjectOps { removed: PlacedObject[]; added: PlacedObject[] }
+
 export interface HistoryEntry {
   cmd: Command;
   before: CellSnapshot[];
   after: CellSnapshot[];
-  /**
-   * The object add/removes revert and reapply replay instead of the per-command switch. Set on
-   * collapsed (grouped) entries, as the net across the group, so undo/redo of a batch (Clear,
-   * Generate) restores every object rather than only the representative `cmd`; and on a single
-   * command whose own fields cannot reverse its object effect (`unrecoverableObjectOps`: a road
-   * trimmed to all-empty, which the command names only by id). Absent otherwise.
-   */
-  objectOps?: { removed: PlacedObject[]; added: PlacedObject[] };
+  /** The step's object effect, which undo and redo replay: set on every entry whose command touched
+   *  an object, and on a collapsed group as the net across it. Absent when the step touched none. */
+  objectOps?: ObjectOps;
   taint?: TaintDelta;   // provenance delta for this entry; restored in lockstep with cells
+  /** The map's generation around this step, when the step changed it. Session-only: saved
+   *  histories leave it out. */
+  generation?: { before: GenerationMark; after: GenerationMark };
 }
 
-export function getAffectedCells(cmd: Command): MacroCoord[] {
+export function readGenerationMark(state: GridState): GenerationMark {
+  return {
+    ...(state.generation ? { record: state.generation } : {}),
+    ...(state.generationScope ? { scope: state.generationScope } : {}),
+  };
+}
+
+export function writeGenerationMark(state: GridState, mark: GenerationMark): void {
+  if (mark.record) state.generation = mark.record;
+  else delete state.generation;
+  if (mark.scope) state.generationScope = mark.scope;
+  else delete state.generationScope;
+}
+
+/** The cells `cmd` names, on the grid it names them on (`commandGrid`), read before it applies: an
+ *  object edit names its anchor and touches no terrain cell. */
+export function getAffectedCells(cmd: Command, state: GridState): CellSet[] {
+  return [cellSet(commandGrid(cmd), commandCells(cmd, (id) => state.objects.get(id)))];
+}
+
+/** The cells a history entry changed, read from its pre-images: its terrain snapshots and the anchor
+ *  of each object it put on or took off the map. A collapsed group keeps only its last command, so
+ *  the command alone would under-report it. */
+export function entryCells(entry: HistoryEntry): CellSet[] {
+  const sets: CellSet[] = [];
+  if (entry.before.length > 0) sets.push(cellSet(TERRAIN_GRID, entry.before.map((s) => s.coord)));
+  if (entry.objectOps) {
+    const added = new Set(entry.objectOps.added.map((o) => o.id));
+    const anchors = [...entry.objectOps.added, ...entry.objectOps.removed.filter((o) => !added.has(o.id))].map((o) => o.position);
+    if (anchors.length > 0) sets.push(cellSet(PLACEMENT_GRID, anchors));
+  }
+  return sets;
+}
+
+function commandCells(cmd: Command, removed: (id: string) => PlacedObject | undefined): MacroCoord[] {
   switch (cmd.type) {
     case CommandType.PaintTerrain:
     case CommandType.EraseTerrain:
       return cmd.cells;
     case CommandType.PlaceObject:
       return [cmd.object.position];
-    case CommandType.RemoveObject:
-      return [cmd.removedObject.position];
+    case CommandType.RemoveObject: {
+      const gone = removed(cmd.objectId);
+      return gone ? [gone.position] : [];
+    }
     case CommandType.TrimCorners:
       return [{ x: cmd.x, y: cmd.y }];
     default:
@@ -56,50 +97,44 @@ export function getAffectedCells(cmd: Command): MacroCoord[] {
   }
 }
 
-/** A copy of `cmd` sharing nothing mutable with the map it ran on. A placement command carries the
- *  object itself and a corner edit carries arrays assigned straight into a cell or road, and later
- *  edits write those in place, so a history entry or a replay holding the command as it stands
- *  would change with the map. */
-export function detachCommand(cmd: Command): Command {
+/** The id of the object `cmd` places, removes or edits, whose history entry records it before and
+ *  after as `objectOps`. */
+export function touchedObjectId(cmd: Command): string | undefined {
   switch (cmd.type) {
-    case CommandType.PlaceObject:
-      return { ...cmd, object: clonePlacedObject(cmd.object) };
-    case CommandType.RemoveObject:
-      return { ...cmd, removedObject: clonePlacedObject(cmd.removedObject) };
-    case CommandType.TrimCorners:
-      return {
-        ...cmd,
-        ...(cmd.beforeCorners ? { beforeCorners: [...cmd.beforeCorners] as Corners } : {}),
-        afterCorners: [...cmd.afterCorners] as Corners,
-      };
-    default:
-      return cmd;
+    case CommandType.PlaceObject: return cmd.object.id;
+    case CommandType.RemoveObject: return cmd.objectId;
+    case CommandType.TrimCorners: return cmd.objectId;
+    default: return undefined;
   }
 }
 
-const copyCorners = (corners: Corners | undefined): Corners | undefined => (corners ? [...corners] as Corners : undefined);
-
-/**
- * Object effects a command's own fields cannot reverse, as history `objectOps`. A road corner trim
- * to all-empty deletes the road, and the command carries only its id, so the entry keeps a copy of
- * the road as it stood. Read before `applyCommand`.
- */
-export function unrecoverableObjectOps(cmd: Command, state: GridState): HistoryEntry['objectOps'] {
-  if (cmd.type !== CommandType.TrimCorners || cmd.layer !== 'road' || !cmd.objectId) return undefined;
-  if (!isEmptyCorners(cmd.afterCorners)) return undefined;
-  const road = state.objects.get(cmd.objectId);
-  if (!road) return undefined;
-  return { removed: [clonePlacedObject(road)], added: [] };
+/** One `objects-changed` for a set of removals and additions, or none when both are empty. */
+function emitObjectsChanged(eventBus: EventBus<KernelEvents>, removed: string[], added: PlacedObject[]): void {
+  if (removed.length === 0 && added.length === 0) return;
+  eventBus.emit('objects-changed', { ...(removed.length ? { removed } : {}), ...(added.length ? { added } : {}) });
 }
 
-export function applyCommand(cmd: Command, state: GridState, eventBus: EventBus<EditorEvents>): void {
+/**
+ * How a corner trim lands on the map. The kernel stores corners and patch fields but leaves what a
+ * trim does with them (which cut clears a cell, what a patch replaces, when a road is deleted) to
+ * the game's terrain domain (`domain/edge-cut/trim-apply.ts:applyTrim`). It writes `state`, bumps
+ * the versions it changes and reports an object change through `objectsChanged`.
+ */
+export type TrimApplier = (
+  cmd: TrimCornersCommand, state: GridState, objectsChanged: (change: KernelEvents['objects-changed']) => void,
+) => void;
+
+/** Applies `cmd` to `state`; `trims` lands a corner trim, and `cause` tags the events it emits. */
+export function applyCommand(cmd: Command, state: GridState, eventBus: EventBus<KernelEvents>, trims: TrimApplier, cause?: string): void {
+  const objectsChanged = (change: KernelEvents['objects-changed']): void =>
+    eventBus.emit('objects-changed', cause === undefined ? change : { ...change, cause });
   switch (cmd.type) {
     case CommandType.PaintTerrain: {
       for (const coord of cmd.cells) {
         const cell = getCell(state.cells, coord.x, coord.y);
         if (cell) {
           if (cmd.ground !== undefined) { cell.zone = cmd.ground; delete cell.under; }
-          if (cmd.terrainType === TerrainType.Mountain && cmd.elevation === 0) {
+          if (clearsTerrain(cmd)) {
             cell.terrain = null;
           } else {
             cell.terrain = createDefaultTerrainCell(cmd.terrainType, cmd.elevation);
@@ -120,180 +155,65 @@ export function applyCommand(cmd: Command, state: GridState, eventBus: EventBus<
       break;
     }
     case CommandType.PlaceObject: {
-      state.objects.set(cmd.object.id, cmd.object);
-      bumpObjectsVersion(state, { added: [cmd.object] });
-      eventBus.emit('objects-changed', { added: [cmd.object] });
+      const placed = clonePlacedObject(cmd.object);
+      state.objects.set(placed.id, placed);
+      bumpObjectsVersion(state, { added: [placed] });
+      objectsChanged({ added: [placed] });
       break;
     }
     case CommandType.RemoveObject: {
       const gone = state.objects.get(cmd.objectId);
       state.objects.delete(cmd.objectId);
       bumpObjectsVersion(state, gone ? { removed: [gone] } : undefined);
-      eventBus.emit('objects-changed', { removed: [cmd.objectId] });
+      objectsChanged({ removed: [cmd.objectId] });
       break;
     }
-    case CommandType.TrimCorners: {
-      const isAllSquare = isSquareCorners(cmd.afterCorners);
-      const isAllEmpty = isEmptyCorners(cmd.afterCorners);
-      const normalized = isAllSquare ? undefined : cmd.afterCorners;
-      if (cmd.layer === 'terrain') {
-        const cell = getCell(state.cells, cmd.x, cmd.y);
-        if (cell && isAllEmpty) {
-          cell.terrain = null; // cycled fully off → cleared (the gamma's real base, if any, is restored by the tool via PaintTerrain)
-        } else if (cell && cmd.patchOnly && cmd.terrainType !== undefined && cmd.elevation !== undefined) {
-          // MATERIALISE a cosmetic Γ patch: the fillet renders at `elevation`, but its real support is
-          // `patchBase` (0 = a from-empty gamma, no base column painted; N-1 = it rounds a real block).
-          // Replaces whatever was here (empty, or the real lower block this fillet rounds) — an edge cut sets
-          // only corners + this cosmetic overlay; structuralTop comes from patchBase, never invented.
-          cell.terrain = { type: cmd.terrainType, elevation: cmd.elevation, patchOnly: true, corners: cmd.afterCorners, ...(cmd.patchBase !== undefined ? { patchBase: cmd.patchBase } : {}) };
-        } else if (cell?.terrain) {
-          if (isAllSquare && cell.terrain.type === TerrainType.None) {
-            cell.terrain = null; // a GROUND islet cut cycled back to square → plain ground again
-          } else {
-            cell.terrain.corners = normalized;
-            if (cmd.patchOnly !== undefined) cell.terrain.patchOnly = cmd.patchOnly;
-            if (cmd.patchBase !== undefined) cell.terrain.patchBase = cmd.patchBase;
-          }
-        } else if (cell && !isAllSquare && !isAllEmpty) {
-          // a GROUND cell gains an islet cut → materialise a `type: None` cell to carry the corners; it
-          // reads as ground (realSurface null) but renders grass rounded + the water it sits in behind.
-          cell.terrain = { type: TerrainType.None, elevation: 0, corners: cmd.afterCorners };
-        }
-        if (cell) bumpCellsVersion(state);
-        // cells-changed is emitted by execute() after applyCommand returns; no duplicate emit needed here.
-      } else if (cmd.layer === 'road' && cmd.objectId) {
-        const obj = state.objects.get(cmd.objectId);
-        if (isAllEmpty) {
-          state.objects.delete(cmd.objectId);
-          bumpObjectsVersion(state, obj ? { removed: [obj] } : undefined);
-          eventBus.emit('objects-changed', { removed: [cmd.objectId] });
-        } else if (obj) {
-          obj.corners = normalized;
-          if (cmd.patchOnly !== undefined) obj.patchOnly = cmd.patchOnly;
-          if (cmd.afterRotation !== undefined) obj.rotation = cmd.afterRotation;
-          // Edited in place: re-index it so the entry's rect/coating match the new rotation.
-          bumpObjectsVersion(state, { added: [obj] });
-          eventBus.emit('objects-changed', { removed: [cmd.objectId] });
-          eventBus.emit('objects-changed', { added: [obj] });
-        }
-      }
+    case CommandType.TrimCorners:
+      trims(cmd, state, objectsChanged);
       break;
-    }
     default:
       break;
   }
 }
 
+/** Replays `ops` onto the map: deletes `take` before restoring `put`, so an object in both (edited
+ *  in place) lands as `put` holds it. The map receives copies: history keeps its own objects, which
+ *  later in-place edits must not reach. */
+function replayObjects(take: PlacedObject[], put: PlacedObject[], state: GridState, eventBus: EventBus<KernelEvents>): void {
+  const placed = put.map(clonePlacedObject);
+  for (const o of take) state.objects.delete(o.id);
+  for (const o of placed) state.objects.set(o.id, o);
+  bumpObjectsVersion(state, { removed: take, added: placed });
+  emitObjectsChanged(eventBus, take.map((o) => o.id), placed);
+}
+
 /**
- * Reverts a single history entry's STATE: restores its `before` cell snapshots and undoes the
- * command's object-layer effect (Place→delete, Remove→re-add, road TrimCorners→restore
- * corners+rotation). Returns the affected cell coords. The caller (executor) owns taint
+ * Reverts a single history entry's state: restores its `before` cell snapshots and replays its
+ * `objectOps` backwards. Returns the affected cell coords. The caller (executor) owns taint
  * threading and history bookkeeping around this.
  */
-export function revertEntryState(entry: HistoryEntry, state: GridState, eventBus: EventBus<EditorEvents>): MacroCoord[] {
+export function revertEntryState(entry: HistoryEntry, state: GridState, eventBus: EventBus<KernelEvents>): MacroCoord[] {
+  if (entry.generation) writeGenerationMark(state, entry.generation.before);
   const coords: MacroCoord[] = [];
   for (const snap of entry.before) {
     setCell(state.cells, snap.coord.x, snap.coord.y, cloneCell(snap.cell));
     coords.push(snap.coord);
   }
   if (coords.length) bumpCellsVersion(state);
-  // Recorded object ops (a collapsed group's net, or an effect the command cannot reverse):
-  // replay them in reverse. Delete
-  // the added set BEFORE restoring the removed set so an in-place modify (same
-  // id in both, e.g. rotate) lands on the original instead of being wiped.
-  // The map receives copies: history keeps its own objects, which later in-place edits must not reach.
-  if (entry.objectOps) {
-    const restored = entry.objectOps.removed.map(clonePlacedObject);
-    for (const o of entry.objectOps.added) state.objects.delete(o.id);
-    for (const o of restored) state.objects.set(o.id, o);
-    bumpObjectsVersion(state, { removed: entry.objectOps.added, added: restored });
-    if (entry.objectOps.added.length) eventBus.emit('objects-changed', { removed: entry.objectOps.added.map(o => o.id) });
-    if (restored.length) eventBus.emit('objects-changed', { added: restored });
-    return coords;
-  }
-  const cmd = entry.cmd;
-  switch (cmd.type) {
-    case CommandType.PlaceObject:
-      state.objects.delete(cmd.object.id);
-      bumpObjectsVersion(state, { removed: [cmd.object] });
-      eventBus.emit('objects-changed', { removed: [cmd.object.id] });
-      break;
-    case CommandType.RemoveObject: {
-      const restored = clonePlacedObject(cmd.removedObject);
-      state.objects.set(restored.id, restored);
-      bumpObjectsVersion(state, { added: [restored] });
-      eventBus.emit('objects-changed', { added: [restored] });
-      break;
-    }
-    case CommandType.TrimCorners:
-      if (cmd.layer === 'road' && cmd.objectId) {
-        const obj = state.objects.get(cmd.objectId);
-        if (obj) {
-          obj.corners = copyCorners(cmd.beforeCorners);
-          if (cmd.beforeRotation !== undefined) obj.rotation = cmd.beforeRotation;
-          bumpObjectsVersion(state, { added: [obj] });
-          eventBus.emit('objects-changed', { removed: [cmd.objectId] });
-          eventBus.emit('objects-changed', { added: [obj] });
-        }
-      }
-      break;
-    default:
-      break;
-  }
+  if (entry.objectOps) replayObjects(entry.objectOps.added, entry.objectOps.removed, state, eventBus);
   return coords;
 }
 
-/**
- * Re-applies a single history entry's STATE: restores its `after` cell snapshots and re-applies the
- * command's object-layer effect. Inverse of revertEntryState. Taint + history bookkeeping stay
- * with the caller.
- */
-export function reapplyEntryState(entry: HistoryEntry, state: GridState, eventBus: EventBus<EditorEvents>): MacroCoord[] {
+/** Re-applies a single history entry's state: restores its `after` cell snapshots and replays its
+ *  `objectOps` forwards. Inverse of revertEntryState. */
+export function reapplyEntryState(entry: HistoryEntry, state: GridState, eventBus: EventBus<KernelEvents>): MacroCoord[] {
+  if (entry.generation) writeGenerationMark(state, entry.generation.after);
   const coords: MacroCoord[] = [];
   for (const snap of entry.after) {
     setCell(state.cells, snap.coord.x, snap.coord.y, cloneCell(snap.cell));
     coords.push(snap.coord);
   }
   if (coords.length) bumpCellsVersion(state);
-  // Recorded object ops (a collapsed group's net, or an effect the command cannot reverse):
-  // replay them forward.
-  if (entry.objectOps) {
-    const placed = entry.objectOps.added.map(clonePlacedObject);
-    for (const o of entry.objectOps.removed) state.objects.delete(o.id);
-    for (const o of placed) state.objects.set(o.id, o);
-    bumpObjectsVersion(state, { removed: entry.objectOps.removed, added: placed });
-    if (entry.objectOps.removed.length) eventBus.emit('objects-changed', { removed: entry.objectOps.removed.map(o => o.id) });
-    if (placed.length) eventBus.emit('objects-changed', { added: placed });
-    return coords;
-  }
-  const cmd = entry.cmd;
-  switch (cmd.type) {
-    case CommandType.PlaceObject: {
-      const placed = clonePlacedObject(cmd.object);
-      state.objects.set(placed.id, placed);
-      bumpObjectsVersion(state, { added: [placed] });
-      eventBus.emit('objects-changed', { added: [placed] });
-      break;
-    }
-    case CommandType.RemoveObject:
-      state.objects.delete(cmd.objectId);
-      bumpObjectsVersion(state, { removed: [cmd.removedObject] });
-      eventBus.emit('objects-changed', { removed: [cmd.objectId] });
-      break;
-    case CommandType.TrimCorners:
-      if (cmd.layer === 'road' && cmd.objectId) {
-        const obj = state.objects.get(cmd.objectId);
-        if (obj) {
-          obj.corners = isSquareCorners(cmd.afterCorners) ? undefined : copyCorners(cmd.afterCorners);
-          if (cmd.afterRotation !== undefined) obj.rotation = cmd.afterRotation;
-          bumpObjectsVersion(state, { added: [obj] });
-          eventBus.emit('objects-changed', { removed: [cmd.objectId] });
-          eventBus.emit('objects-changed', { added: [obj] });
-        }
-      }
-      break;
-    default:
-      break;
-  }
+  if (entry.objectOps) replayObjects(entry.objectOps.removed, entry.objectOps.added, state, eventBus);
   return coords;
 }

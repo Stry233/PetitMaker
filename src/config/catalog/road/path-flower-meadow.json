@@ -1,0 +1,53 @@
+{
+  "id": "path-flower-meadow",
+  "category": "road",
+  "icon": "path-flower-meadow",
+  "name": {
+    "en": "Flower Meadow Path",
+    "zh": "花野栖居花径路",
+    "ja": "花畑の小道",
+    "ru": "Цветочная луговая дорожка",
+    "th": "ทางทุ่งดอกไม้",
+    "id": "Jalan Padang Bunga",
+    "fr": "Chemin de prairie fleurie"
+  },
+  "color": "#599f91",
+  "width": 1,
+  "height": 1,
+  "loadValue": 0,
+  "rotatable": false,
+  "placementMode": "brush",
+  "traits": [
+    {
+      "type": "flat"
+    },
+    {
+      "type": "surfaceCoating"
+    },
+    {
+      "type": "plantable"
+    }
+  ],
+  "roadMaterial": {
+    "feather": 0.045,
+    "edge": {
+      "color": "#ffffff",
+      "pattern": {
+        "kind": "image",
+        "image": "meadow-border",
+        "repeat": 2
+      }
+    },
+    "layers": [
+      {
+        "inset": 0.2,
+        "color": "#ffffff",
+        "pattern": {
+          "kind": "image",
+          "image": "path-flower-meadow",
+          "repeat": 5
+        }
+      }
+    ]
+  }
+}

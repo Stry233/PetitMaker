@@ -5,39 +5,21 @@
  */
 import { useEffect, useId, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type PointerEvent } from 'react';
 import { motion } from 'framer-motion';
-import { LOSS_COLOR } from '../../../../core/model/constants';
+import { LOSS_COLOR } from '../../../../view/shared/viewport/view-constants';
 import type { GridState, MapTemplate } from '../../../../core/model/types';
 import { useT } from '../../../../i18n/context';
-import { requestTransferPreview } from '../../../../kit/operations';
-import type { TransferPreview } from '../../../../kit/operations/planet-preview';
+import { requestTransferPreview } from '../../../../editor/operations';
+import { cachedTransferPreview, rememberTransferPreview, transferPreviewKey } from '../../../../editor/operations/transfer-map';
+import type { TransferPreview } from '../../../../tools/generation/run';
 import { cssMotion } from '../../../design/motion';
 import { cursors, font, interactionProfiles, radii } from '../../../design/styles';
 import { roleFont } from '../../../design/text-weight';
 import { skin, windowChip } from '../../../design/window-skin';
-import { planetBounds } from '../../../primitives/planet-painter';
+import { planetBounds } from '../../../../view/map2d/capture/planet-painter';
 import { PlanetPreview } from './PlanetPreview';
+import { onAfterPaint } from '../../../../platform/async/after-paint';
 
 export type Carry = 'carry' | 'fresh';
-
-/** One transfer preview per map version and destination; a view change never asks again. */
-const previews = new WeakMap<GridState, { cells: number; objects: number; ignoreLoad: boolean; byTarget: Map<string, TransferPreview> }>();
-
-function cachedPreview(state: GridState, target: MapTemplate): TransferPreview | null {
-  const entry = previews.get(state);
-  if (!entry || entry.cells !== (state.cellsVersion ?? 0) || entry.objects !== (state.objectsVersion ?? 0) || entry.ignoreLoad !== !!state.ignoreChunkLoad) return null;
-  return entry.byTarget.get(target.id) ?? null;
-}
-
-function remember(state: GridState, target: MapTemplate, preview: TransferPreview) {
-  const cells = state.cellsVersion ?? 0;
-  const objects = state.objectsVersion ?? 0;
-  let entry = previews.get(state);
-  if (!entry || entry.cells !== cells || entry.objects !== objects || entry.ignoreLoad !== !!state.ignoreChunkLoad) {
-    entry = { cells, objects, ignoreLoad: !!state.ignoreChunkLoad, byTarget: new Map() };
-    previews.set(state, entry);
-  }
-  entry.byTarget.set(target.id, preview);
-}
 
 /**
  * The build as it would arrive on `target`, or null while it is being worked out. The transfer
@@ -47,33 +29,30 @@ function remember(state: GridState, target: MapTemplate, preview: TransferPrevie
  */
 export function useCarryPreview(state: GridState | null, target: MapTemplate, active: boolean, settleMs = 0): TransferPreview | null {
   const [, setDone] = useState(0);
-  const cellsVersion = state?.cellsVersion ?? 0;
-  const objectsVersion = state?.objectsVersion ?? 0;
-  const ignoreLoad = !!state?.ignoreChunkLoad;
-  const ready = active && state ? cachedPreview(state, target) : null;
+  const key = state ? transferPreviewKey(state) : '';
+  const ready = active && state ? cachedTransferPreview(state, target) : null;
   useEffect(() => {
-    if (!active || !state || cachedPreview(state, target)) return undefined;
-    const signal = { cancelled: false };
+    if (!active || !state || cachedTransferPreview(state, target)) return undefined;
+    const controller = new AbortController();
+    const { signal } = controller;
     let settle: ReturnType<typeof setTimeout> | undefined;
-    let frame: number | undefined;
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    // A frame callback runs before that frame paints; a timer set inside it runs after.
+    let cancelPaint = () => {};
     const whenIdle = () => new Promise<void>((resolve) => {
-      settle = setTimeout(() => { frame = requestAnimationFrame(() => { timer = setTimeout(resolve, 0); }); }, settleMs);
+      settle = setTimeout(() => { cancelPaint = onAfterPaint(resolve); }, settleMs);
     });
     void requestTransferPreview(state, target, { signal, whenIdle }).then((preview) => {
       // An edit since the request is a newer map than the one the answer was worked out from.
-      if (!preview || signal.cancelled || (state.cellsVersion ?? 0) !== cellsVersion || (state.objectsVersion ?? 0) !== objectsVersion || !!state.ignoreChunkLoad !== ignoreLoad) return;
-      remember(state, target, preview);
+      if (!preview || signal.aborted) return;
+      if (transferPreviewKey(state) !== key) return;
+      rememberTransferPreview(state, target, preview);
       setDone((n) => n + 1);
     });
     return () => {
-      signal.cancelled = true;
+      controller.abort();
       if (settle !== undefined) clearTimeout(settle);
-      if (frame !== undefined) cancelAnimationFrame(frame);
-      if (timer !== undefined) clearTimeout(timer);
+      cancelPaint();
     };
-  }, [active, state, cellsVersion, objectsVersion, ignoreLoad, target, settleMs]);
+  }, [active, state, key, target, settleMs]);
   return ready;
 }
 
@@ -142,7 +121,7 @@ export function PlanetCarryStep({ target, preview, carry, onCarry, labelledBy }:
   return (
     <div role="radiogroup" aria-labelledby={labelledBy} style={optionsStyle}>
       <Option {...option('carry')} testId="planet-carry-option" label={t('planet.carry_option')}
-        badge={lost > 0 ? t(lost === 1 ? 'planet.cells_dropped_one' : 'planet.cells_dropped', { n: lost }) : null}>
+        badge={lost > 0 ? t('planet.cells_dropped', { n: lost }) : null}>
         {(onTap) => (
           <PlanetPreview template={target} fit={fit} pending={!preview} onTap={onTap}
             {...(preview ? { state: preview.state, dropped: preview.dropped } : {})} />

@@ -1,45 +1,10 @@
 /** Font-weight selection and topology-preserving cleanup for text stencils. */
 import { bridgesDaylight, COVERAGE_ON, TOUCHED_INK, scriptOf, type Stencil } from './stencil';
-import { textGraphemes } from './stencil-text-segments';
-import { NEIGHBORS4_NESW } from '../../../core/model/grid-model';
-
-interface GlyphBox { width: number; height: number }
-
-function glyphCount(text: string): number {
-  return Math.max(1, textGraphemes(text).length);
-}
-
-export function glyphExtent(text: string, box: GlyphBox): number {
-  const n = glyphCount(text);
-  return Math.max(1, Math.min(box.height - 1, (box.width - 1) / n));
-}
-
-// Discrete shipped weights quantize this range; the stem floor still applies at small sizes.
-const SHARE = {
-  simple: { thin: 0.09, bold: 0.115 },
-  dense: { thin: 0.06, bold: 0.13 },
-  picture: { thin: 0, bold: 0 },
-} as const;
+import { glyphExtent, strokeShare, type GlyphBox } from './stencil-stem';
+import { NEIGHBORS4_NESW } from '../../../core/grid/directions';
 
 /** Minimum stem coverage in cell units before selecting a heavier face. */
 const DRAWABLE_STEM = 0.75;
-
-const THIN_AT = 10;
-const BOLD_AT = 48;
-
-function strokeShare(text: string, box: GlyphBox): number {
-  const script = scriptOf(text);
-  if (script === 'picture') return 0;
-  const { thin, bold } = SHARE[script];
-  const t = Math.min(1, Math.max(0, (glyphExtent(text, box) - THIN_AT) / (BOLD_AT - THIN_AT)));
-  return thin + (bold - thin) * t;
-}
-
-export function strokeTarget(text: string, box: GlyphBox): number {
-  const share = strokeShare(text, box);
-  if (share === 0) return 0;
-  return Math.max(1, Math.round(glyphExtent(text, box) * share));
-}
 
 /** Cap height and stem width are fractions of an em, measured from the shipped faces. */
 interface Face { cap: number; stems: readonly (readonly [number, number])[] }
@@ -57,7 +22,7 @@ export function glyphWeight(text: string, box: GlyphBox): number {
   if (script === 'picture') return 400;
   const face = FACE[script];
   const want = strokeShare(text, box) * face.cap;
-  // The stem the face draws, in CELLS: the rasterizer fits the ink to the box, so a cap of `extent`
+  // The stem the face draws, in cells: the rasterizer fits the ink to the box, so a cap of `extent`
   // cells draws its stems at the same share of that as the face draws them of its em.
   const cells = (stem: number): number => glyphExtent(text, box) * stem / face.cap;
   let best = face.stems[0]!, bestD = Infinity;
@@ -158,7 +123,7 @@ function smoothTextShape(s: Stencil): void {
 }
 
 /** Remove outline nubs and dents without altering topology or thinning a wire. */
-export function smoothOutline(s: Stencil): number {
+function smoothOutline(s: Stencil): number {
   const { width: w, height: h, coverage } = s;
   const outside = outsideGround(s);
   const on = new Uint8Array(w * h);
@@ -195,7 +160,7 @@ export function smoothOutline(s: Stencil): number {
 }
 
 /** Use one bridge side along each diagonal chain, keeping room for counters and nearby strokes. */
-export function bridgeDiagonals(s: Stencil, ink: Uint8Array): number {
+function bridgeDiagonals(s: Stencil, ink: Uint8Array): number {
   const { width: w, height: h, coverage } = s;
   const outside = outsideGround(s);
   const on = (x: number, y: number): boolean =>

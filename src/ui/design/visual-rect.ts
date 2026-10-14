@@ -1,4 +1,4 @@
-import { toLayoutRect } from '../../core/runtime/viewport-space';
+import { toLayoutRect } from '../../platform/device/viewport-space';
 /**
  * Element rects in screen pixels under CSS `zoom`. Chromium before 128 reports a zoomed subtree's
  * rects in that subtree's own CSS pixels; standardized engines report screen pixels. One probe at
@@ -59,7 +59,7 @@ function zoomChain(el: Element): { zoom: number; transformed: boolean } {
 }
 
 /** The product of the element's own and every ancestor's computed `zoom`. */
-export function effectiveZoom(el: Element): number {
+function effectiveZoom(el: Element): number {
   return zoomChain(el).zoom;
 }
 

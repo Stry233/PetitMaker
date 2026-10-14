@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type OpenAI from 'openai';
-import { responsesInput, streamResponses } from '../../../agent/providers/openai-responses';
-import type { AdapterRequest } from '../../../agent/providers/types';
+import { streamResponses } from '../../../agent/providers/openai-responses';
+import type { AdapterRequest } from '../../../agent/core/adapter';
 import type { ProviderMessage } from '../../../agent/core/project-messages';
 const create = vi.fn();
 const client = { responses: { create } } as unknown as OpenAI;
@@ -13,6 +13,13 @@ async function collect(request = req, signal = new AbortController().signal) {
   const result = [];
   for await (const event of streamResponses(client, request, signal, 'secret-test-key')) result.push(event);
   return result;
+}
+/** The input the transport sends for `messages`. */
+async function sentInput(messages: ProviderMessage[], sameModel: boolean): Promise<unknown[]> {
+  create.mockClear();
+  create.mockResolvedValue(events([]));
+  await collect({ ...req, messages, sameModel });
+  return (create.mock.calls[0]![0] as { input: unknown[] }).input;
 }
 afterEach(() => vi.resetAllMocks());
 
@@ -29,18 +36,18 @@ describe('Responses tool transport', () => {
     expect(result[3]).toMatchObject({ t: 'done', stop: 'tool-calls', final: [{ callId: 'call_1', args: { x: 3 } }], raw: { dialect: 'responses', output: [reasoning, fn] }, usage: { input: 30, output: 10, cacheRead: 4 } });
     expect(create.mock.calls[0]![0]).toMatchObject({ store: false, stream: true, include: ['reasoning.encrypted_content'], reasoning: { effort: 'high', summary: 'auto' }, tools: [{ type: 'function', strict: false }] });
   });
-  it('replays same-model reasoning and call IDs, then all results before tool images', () => {
+  it('replays same-model reasoning and call IDs, then all results before tool images', async () => {
     const messages: ProviderMessage[] = [
       { role: 'assistant', text: '', toolCalls: [{ callId: 'call_1', name: 'paint_terrain', args: { x: 3 } }], raw: { dialect: 'responses', output: [reasoning, fn] } },
       { role: 'tool', results: [{ callId: 'call_1', name: 'paint_terrain', content: 'done', isError: false, image: 'data:image/png;base64,AA==' }] },
     ];
-    const same = responsesInput(messages, true);
+    const same = await sentInput(messages, true);
     expect(same.slice(0, 2)).toEqual([reasoning, fn]);
     expect(same[2]).toMatchObject({ type: 'function_call_output', call_id: 'call_1' });
     expect(same[3]).toMatchObject({ role: 'user', content: [{ type: 'input_image' }] });
-    expect(JSON.stringify(responsesInput(messages, false))).not.toContain('opaque');
+    expect(JSON.stringify(await sentInput(messages, false))).not.toContain('opaque');
     messages[0] = { ...messages[0], toolCalls: [] } as ProviderMessage;
-    expect(JSON.stringify(responsesInput(messages, true))).not.toContain('opaque');
+    expect(JSON.stringify(await sentInput(messages, true))).not.toContain('opaque');
   });
   it('does not duplicate streamed answer text at completion', async () => {
     create.mockResolvedValue(events([{ type: 'response.output_text.delta', item_id: 'msg_1', delta: 'Ready' }, { type: 'response.completed', response: { output: [{ type: 'message', id: 'msg_1', content: [{ type: 'output_text', text: 'Ready' }] }] } }]));

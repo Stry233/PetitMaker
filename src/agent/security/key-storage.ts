@@ -1,36 +1,16 @@
 /**
- * Agent provider settings and key persistence. Keys are sealed with the browser vault when
- * available and otherwise stored with reversible base64 obfuscation. Client-side code can use any
- * locally stored key; `docs/THREAT_MODEL.md` describes that boundary.
+ * Provider key persistence inside the assistant's settings record. Keys are sealed with the browser
+ * vault when available and otherwise stored with reversible base64 obfuscation. Client-side code
+ * can use any locally stored key; `docs/THREAT_MODEL.md` describes that boundary.
  */
-import { PROVIDER_META, PROVIDER_IDS, providerBaseUrls, type ProviderId } from '../providers/defaults';
-import { sealSecret, openSecret, type SealedBlob } from '../../core/runtime/vault';
-import { sanitizeEndpointUrl } from '../../core/runtime/endpoint-url';
-import { readStoredPref, writePref } from '../../core/runtime/prefs';
+import type { ProviderId } from '../providers/defaults';
+import { sealSecret, openSecret, type SealedBlob } from '../../platform/storage/vault';
+import { readStoredPref, writePref } from '../../platform/storage/prefs';
 
 /** The stored settings record, or null when it is unset or storage is unavailable. */
-function storedSettings(): string | null {
+export function storedSettings(): string | null {
   const stored = readStoredPref('agentSettings');
   return stored.available ? stored.raw : null;
-}
-
-export type Oversight = 'strict' | 'checkpoint' | 'yolo';
-
-export interface AgentSettings {
-  provider: ProviderId;
-  model: Record<ProviderId, string>;
-  effort?: Record<string, string>;
-  keys: Partial<Record<ProviderId, string>>;
-  /** Compatibility mirror of `oversight === 'strict'`. */
-  askBeforeEdits: boolean;
-  /** Approval policy: every edit, checkpoints, or sketches only. */
-  oversight: Oversight;
-  /** OpenAI-compatible custom endpoint. Stored as a non-secret field. */
-  customBaseUrl?: string;
-  /** Explicitly configured authentication for the custom endpoint. Omission requires a key. */
-  customAuth?: 'none';
-  /** Registry URL that accepted each region-specific provider key. Stored as a non-secret field. */
-  regionBaseUrl?: Partial<Record<ProviderId, string>>;
 }
 
 const enc = (s: string): string => btoa(unescape(encodeURIComponent(s)));
@@ -42,100 +22,38 @@ const dec = (s: string): string => {
   }
 };
 
-/** Non-secret fields plus either obfuscated or vault-sealed keys. */
-interface StoredRecord {
-  provider?: ProviderId;
-  model?: Record<ProviderId, string>;
-  effort?: Record<string, string>;
+/** The key fields of the stored settings record: obfuscated or vault-sealed keys. */
+export interface StoredKeys {
   keys?: Record<string, string>;
   keysSealed?: SealedBlob;
-  askBeforeEdits?: boolean;
-  /** Wider than `Oversight` so renamed stored values can be migrated. */
-  oversight?: string;
-  customBaseUrl?: string;
-  customAuth?: 'none';
-  regionBaseUrl?: Record<string, string>;
 }
 
-/** Accept stored regional hosts only when the provider registry declares them. */
-function readRegionBaseUrl(rec: StoredRecord['regionBaseUrl']): AgentSettings['regionBaseUrl'] {
-  if (!rec || typeof rec !== 'object') return undefined;
-  const out: Partial<Record<ProviderId, string>> = {};
-  for (const [id, url] of Object.entries(rec)) {
-    if (!PROVIDER_IDS.includes(id as ProviderId)) continue;
-    if (providerBaseUrls(id as ProviderId).includes(url)) out[id as ProviderId] = url;
+/** The obfuscated keys a stored record holds; vault-sealed keys arrive through `hydrateSealedKeys`. */
+export function readObfuscatedKeys(rec: StoredKeys): Partial<Record<ProviderId, string>> {
+  const keys: Partial<Record<ProviderId, string>> = {};
+  for (const [k, v] of Object.entries(rec.keys ?? {})) {
+    const decoded = dec(v);
+    if (decoded) keys[k as ProviderId] = decoded;
   }
-  return Object.keys(out).length > 0 ? out : undefined;
+  return keys;
 }
 
-const OVERSIGHTS: readonly string[] = ['strict', 'checkpoint', 'yolo'];
-
-/** Stored names mapped to their current approval policy on load. */
-const RENAMED_OVERSIGHTS: Record<string, Oversight> = { autopilot: 'yolo' };
-
-/** Read the current policy, then the compatibility mirror, then the default. */
-function readOversight(rec: Pick<StoredRecord, 'oversight' | 'askBeforeEdits'>): Oversight {
-  const stored = rec.oversight;
-  if (stored) {
-    if (OVERSIGHTS.includes(stored)) return stored as Oversight;
-    const renamed = RENAMED_OVERSIGHTS[stored];
-    if (renamed) return renamed;
-  }
-  return rec.askBeforeEdits === true ? 'strict' : 'checkpoint';
+/** What one credential store knows about the sealed blob on disk. */
+export interface SealState {
+  /** Distinguishes a deliberately empty keyring from one awaiting startup hydration. */
+  hydrated: boolean;
+  /**
+   * An unread sealed blob is preserved across settings saves until it can be opened. A key removed
+   * while its blob is unread may reappear if vault access later returns.
+   */
+  sealedUnread: boolean;
+  /** Signature of the keys the last hydration opened, or null when none were readable. */
+  signature: string | null;
 }
 
-function defaultAgentSettings(): AgentSettings {
-  return {
-    provider: 'claude',
-    // Models remain empty until discovered from a connected provider or entered by the user.
-    model: Object.fromEntries(PROVIDER_IDS.map((id) => [id, ''])) as Record<ProviderId, string>,
-    keys: {},
-    askBeforeEdits: false,
-    oversight: 'checkpoint',
-  };
+export function newSealState(): SealState {
+  return { hydrated: false, sealedUnread: false, signature: null };
 }
-
-export function loadAgentSettings(): AgentSettings {
-  try {
-    const raw = storedSettings();
-    if (!raw) return defaultAgentSettings();
-    const parsed = JSON.parse(raw) as StoredRecord;
-    const base = defaultAgentSettings();
-    // Vault-sealed keys arrive asynchronously through `hydrateSealedKeys`.
-    const keys: AgentSettings['keys'] = {};
-    for (const [k, v] of Object.entries(parsed.keys ?? {})) {
-      const decoded = dec(v);
-      if (decoded) keys[k as ProviderId] = decoded;
-    }
-    const oversight = readOversight(parsed);
-    return {
-      provider: parsed.provider && parsed.provider in PROVIDER_META ? parsed.provider : base.provider,
-      model: { ...base.model, ...parsed.model },
-      effort: parsed.effort && typeof parsed.effort === 'object' ? Object.fromEntries(Object.entries(parsed.effort).filter(([key, value]) => key.length < 500 && typeof value === 'string' && /^(?:[a-z]+|budget:\d{1,7})$/.test(value))) : {},
-      keys,
-      askBeforeEdits: oversight === 'strict',
-      oversight,
-      // Stored free-text endpoints receive the same normalization as newly typed values.
-      customBaseUrl: typeof parsed.customBaseUrl === 'string' ? sanitizeEndpointUrl(parsed.customBaseUrl) || undefined : undefined,
-      ...(parsed.customAuth === 'none' ? { customAuth: 'none' as const } : {}),
-      regionBaseUrl: readRegionBaseUrl(parsed.regionBaseUrl),
-    };
-  } catch {
-    return defaultAgentSettings();
-  }
-}
-
-/** Distinguishes a deliberately empty keyring from one awaiting startup hydration. */
-let keysHydrated = false;
-export function markKeysHydrated(): void {
-  keysHydrated = true;
-}
-
-/**
- * An unread sealed blob is preserved across settings saves until it can be opened. A key removed
- * while its blob is unread may reappear if vault access later returns.
- */
-let sealedUnread = false;
 
 /** Canonical form of a keyring, comparable across saves. */
 function keyringSignature(keys: Partial<Record<ProviderId, string>>): string {
@@ -143,43 +61,61 @@ function keyringSignature(keys: Partial<Record<ProviderId, string>>): string {
   return JSON.stringify(pairs);
 }
 
-/** Signature of the keys the last hydration opened, or null when none were readable. */
-let hydratedSignature: string | null = null;
-
 /** Decrypt stored keys for the startup merge. */
-export async function hydrateSealedKeys(): Promise<Partial<Record<ProviderId, string>> | null> {
+export async function hydrateSealedKeys(seal: SealState): Promise<Partial<Record<ProviderId, string>> | null> {
   try {
     const stored = readStoredPref('agentSettings');
     // Unreadable storage leaves the unread-blob state as it was: the blob may still be there.
     if (!stored.available) {
-      hydratedSignature = null;
+      seal.signature = null;
       return null;
     }
-    const rec = JSON.parse(stored.raw ?? 'null') as StoredRecord | null;
+    const rec = JSON.parse(stored.raw ?? 'null') as StoredKeys | null;
     if (!rec?.keysSealed) {
-      sealedUnread = false;
+      seal.sealedUnread = false;
       return null;
     }
     const plain = await openSecret(rec.keysSealed);
-    sealedUnread = plain === null;
+    seal.sealedUnread = plain === null;
     if (plain === null) {
-      hydratedSignature = null;
+      seal.signature = null;
       return null;
     }
     const keys = JSON.parse(plain) as Partial<Record<ProviderId, string>>;
-    hydratedSignature = keyringSignature(keys);
+    seal.signature = keyringSignature(keys);
     return keys;
   } catch {
-    hydratedSignature = null;
+    seal.signature = null;
     return null;
   }
 }
 
+/** The key fields a settings save writes for `keyring`: the obfuscated keys, left out while the
+ *  sealed blob still holds exactly these keys, and the sealed blob to keep. */
+export function keysToStore(keyring: Partial<Record<ProviderId, string>>, seal: SealState): StoredKeys {
+  const keys: Record<string, string> = {};
+  for (const [k, v] of Object.entries(keyring)) if (v) keys[k] = enc(v);
+  // The sealed blob still holds exactly these keys, so the obfuscated copy is left out.
+  const sealedIsCurrent = seal.hydrated
+    && seal.signature !== null
+    && seal.signature === keyringSignature(keyring);
+  // Preserve sealed keys while hydration is pending or the blob is unreadable.
+  let keysSealed: SealedBlob | undefined;
+  if (!seal.hydrated || seal.sealedUnread || sealedIsCurrent || Object.keys(keys).length > 0) {
+    try {
+      keysSealed = (JSON.parse(storedSettings() ?? 'null') as StoredKeys | null)?.keysSealed;
+    } catch {
+      /* corrupted record → write fresh */
+    }
+  }
+  return { keys: sealedIsCurrent && keysSealed ? undefined : keys, keysSealed };
+}
+
 /** Seal obfuscated keys without overwriting a newer settings save. */
-async function upgradeToSealed(): Promise<void> {
+export async function upgradeToSealed(seal: SealState): Promise<void> {
   const stored = readStoredPref('agentSettings');
   if (!stored.available || !stored.raw) return;
-  const rec = JSON.parse(stored.raw) as StoredRecord;
+  const rec = JSON.parse(stored.raw) as StoredKeys;
   const obf = rec.keys ?? {};
   if (Object.keys(obf).length === 0) return;
   const plain: Record<string, string> = {};
@@ -188,7 +124,7 @@ async function upgradeToSealed(): Promise<void> {
     if (decoded) plain[k] = decoded;
   }
   // Merge a newly readable old blob under the live keyring before resealing.
-  if (sealedUnread && rec.keysSealed) {
+  if (seal.sealedUnread && rec.keysSealed) {
     const reopened = await openSecret(rec.keysSealed);
     if (!reopened) return;
     try {
@@ -196,50 +132,16 @@ async function upgradeToSealed(): Promise<void> {
     } catch {
       /* unreadable content → the live keys alone */
     }
-    sealedUnread = false;
+    seal.sealedUnread = false;
   }
   const sealed = await sealSecret(JSON.stringify(plain));
   if (!sealed) return; // Keep the obfuscated fallback when the vault is unavailable.
   const now = readStoredPref('agentSettings');
   if (!now.available) return;
-  const cur = JSON.parse(now.raw ?? 'null') as StoredRecord | null;
+  const cur = JSON.parse(now.raw ?? 'null') as StoredKeys | null;
   if (!cur || JSON.stringify(cur.keys) !== JSON.stringify(rec.keys)) return; // A newer save owns the upgrade.
   delete cur.keys;
   cur.keysSealed = sealed;
   if (!writePref('agentSettings', JSON.stringify(cur))) return;
-  hydratedSignature = keyringSignature(plain as Partial<Record<ProviderId, string>>);
-}
-
-/** Writes the record and reports whether it landed; private-mode storage throws from `setItem`. */
-export function saveAgentSettings(s: AgentSettings): boolean {
-  const keys: Record<string, string> = {};
-  for (const [k, v] of Object.entries(s.keys)) if (v) keys[k] = enc(v);
-  // The sealed blob still holds exactly these keys, so the obfuscated copy is left out.
-  const sealedIsCurrent = keysHydrated
-    && hydratedSignature !== null
-    && hydratedSignature === keyringSignature(s.keys);
-  // Preserve sealed keys while hydration is pending or the blob is unreadable.
-  let keysSealed: SealedBlob | undefined;
-  if (!keysHydrated || sealedUnread || sealedIsCurrent || Object.keys(keys).length > 0) {
-    try {
-      keysSealed = (JSON.parse(storedSettings() ?? 'null') as StoredRecord | null)?.keysSealed;
-    } catch {
-      /* corrupted record → write fresh */
-    }
-  }
-  // Written synchronously before the asynchronous vault upgrade. When storage is disabled or full,
-  // the settings stay session-only.
-  const written = writePref(
-    'agentSettings',
-    JSON.stringify({
-      provider: s.provider, model: s.model, effort: s.effort, keys: sealedIsCurrent && keysSealed ? undefined : keys, keysSealed,
-      askBeforeEdits: s.oversight === 'strict', // Compatibility mirror.
-      oversight: s.oversight,
-      customBaseUrl: s.customBaseUrl,
-      customAuth: s.customAuth,
-      regionBaseUrl: s.regionBaseUrl,
-    }),
-  );
-  void upgradeToSealed().catch(() => {});
-  return written;
+  seal.signature = keyringSignature(plain as Partial<Record<ProviderId, string>>);
 }

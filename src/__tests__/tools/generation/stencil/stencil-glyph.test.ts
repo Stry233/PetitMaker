@@ -1,42 +1,35 @@
 /**
- * A STENCILLED LETTER HAS TO SURVIVE BEING BUILT, and the two ways it did not are what this holds.
+ * A stencilled letter survives being built. Small text once arrived with broken strokes and large
+ * text with a chewed outline, both invisible in a cell count, so these invariants are topological
+ * and read off the committed terrain:
  *
- * Reported from the shipped build: small text arrived with its strokes broken, large text with a
- * chewed outline. Both were engine defects rather than font ones, and both are invisible in a cell
- * count — a broken letter has the same ink as a whole one, and a gnawed edge has the same shape to
- * within a cell. So the invariants are TOPOLOGICAL and they are read off the terrain the run actually
- * commits, not off the raster it started from:
- *
- *  - the ink is one piece per piece of the glyph, counted the way the MAP counts (a corner touch is
- *    two blocks with ground between them, whatever a raster dump looks like);
+ *  - the ink is one piece per piece of the glyph, counted as the map counts (a corner touch is two
+ *    blocks);
  *  - a counter the face's raster held is still open, and no new one has been sealed;
- *  - the outline carries no lone bumps or bites, the shapes the corner trim turns into decorated lumps;
- *  - the stroke lands on the width the region asked for rather than a cell under it;
+ *  - the outline carries no lone bumps or bites;
+ *  - the stroke lands on the width the region asked for;
  *  - and the run commits, with no post-stroke violation.
  *
- * NO BROWSER. The fixture is real font rasters, drawn once through the shipped faces by the project's
- * own evaluation harness and committed; everything downstream of the canvas — the glyph finishing, the
- * stencil plan, the generator's corner trims — runs here over those bytes. The measures are the
- * harness's own (`_stencil-metrics.ts`), so a threshold here and a column in its log cannot mean two
- * different things.
+ * The fixture is real font rasters drawn through the shipped faces and committed; everything
+ * downstream of the canvas runs here, with the harness's own measures (`_stencil-metrics.ts`).
  */
 import { describe, it, expect } from 'vitest';
-// @ts-ignore - node:fs is untyped here (no @types/node)
 import { readFileSync } from 'node:fs';
 import {
   buildGlyph, components, decodeFixture, holes, maskOf, placementGain, raggedness, rawMask,
   scoreGlyph, skeletonRecall, STENCIL_THRESHOLDS, straightness, strokeWidths,
   type RasterFixture, type RasterFixtureFile,
 } from './_stencil-metrics';
-import { airCells, COVERAGE_ON, GLYPH_LEGIBLE, glyphLegible, textMinBox, textMinSide, type Stencil } from '../../../../tools/generation/stencil/stencil';
-import { bridgeDiagonals, finishGlyph, glyphExtent, smoothOutline } from '../../../../tools/generation/stencil/stencil-stroke';
+import { airCells, COVERAGE_ON, GLYPH_LEGIBLE, glyphLegible, textMinBox, type Stencil } from '../../../../tools/generation/stencil/stencil';
+import { finishGlyph } from '../../../../tools/generation/stencil/stencil-stroke';
+import { glyphExtent } from '../../../../tools/generation/stencil/stencil-stem';
 
-const file = JSON.parse(readFileSync('src/__tests__/fixtures/stencil-rasters.json', 'utf8') as string) as RasterFixtureFile;
+const file = JSON.parse(readFileSync('src/__tests__/fixtures/stencil/stencil-rasters.json', 'utf8') as string) as RasterFixtureFile;
 const FIXTURES = decodeFixture(file);
 const name = (f: RasterFixture): string => `${f.text} at ${f.width}x${f.height}`;
 
 /**
- * THE MATRIX GOES UNDER THE FLOOR ON PURPOSE. A floor is only worth anything if what lies beneath it
+ * The matrix goes under the floor on purpose. A floor is only worth anything if what lies beneath it
  * was measured too, so the sizes below what a text asks for (`stencil.ts:textMinBox`) are built and
  * scored like everything else and then reported rather than judged: at ten cells an ideograph has
  * strokes the face's own raster could not hold, and nothing downstream can put them back.
@@ -50,7 +43,7 @@ describe('a letter arrives on the map in one piece', () => {
       const built = buildGlyph(fixture);
       const score = scoreGlyph(fixture, built);
 
-      // WHATEVER THE SIZE, a run commits and leaves something standing: under the floor the letter is
+      // Whatever the size, a run commits and leaves something standing: under the floor the letter is
       // whatever the region can hold, but it is never nothing and never illegal.
       expect(score.violations, 'post-stroke violations').toBe(0);
       expect(score.cells, 'ink committed').toBeGreaterThan(0);
@@ -58,14 +51,14 @@ describe('a letter arrives on the map in one piece', () => {
 
       if (!score.underFloor) {
         expect(score.pieces, 'pieces of ink').toBeLessThanOrEqual(score.piecesWanted);
-        // Against what the face DREW at this size, not against the letter's true count: a counter with
+        // Against what the face drew at this size, not against the letter's true count: a counter with
         // no cell to be in is the region's resolution, while a counter the raster held and the
         // processing closed is this code's doing.
         expect(score.counters, 'counters').toBe(score.countersHeld);
         expect(score.isolated, 'cells standing alone').toBeLessThanOrEqual(score.isolatedHeld);
         const ragged = (score.nubs + score.notches) / score.cells;
         expect(ragged, 'outline damage per cell of ink').toBeLessThanOrEqual(STENCIL_THRESHOLDS.raggedPerCell);
-        // THE LETTER'S GAPS ARE THE LETTER. A weight the grid cannot hold fuses two strokes into one
+        // The letter's gaps are the letter. A weight the grid cannot hold fuses two strokes into one
         // and every other measure here still passes, since the reference is drawn at the same weight.
         expect(score.separation, 'the drawing\'s own stroke separation')
           .toBeGreaterThanOrEqual(STENCIL_THRESHOLDS.separation);
@@ -74,7 +67,7 @@ describe('a letter arrives on the map in one piece', () => {
             .toBeLessThanOrEqual(STENCIL_THRESHOLDS.density);
         }
         expect(score.recall, 'the reference glyph\'s own skeleton').toBeGreaterThanOrEqual(STENCIL_THRESHOLDS.recall);
-        // A STRAIGHT PART OF THE DRAWING COMES OUT STRAIGHT. Measured over the runs the reference's
+        // A straight part of the drawing comes out straight. Measured over the runs the reference's
         // own edge holds to one direction, which covers a stem, a bar and a 45 degree diagonal alike.
         expect(score.straight.deviation, 'a straight edge, in cells off its line')
           .toBeLessThanOrEqual(STENCIL_THRESHOLDS.straightDeviation);
@@ -89,8 +82,8 @@ describe('the stroke lands on the width the region asked for', () => {
     it(`${name(fixture)}`, () => {
       const built = buildGlyph(fixture);
       const { median } = strokeWidths(built.ink);
-      // NEVER NARROWER THAN THE FACE DREW IT, which is the promise now that nothing reshapes a stroke:
-      // every pass left in the finishing only ever ADDS a cell, to join a diagonal or to take a bite
+      // Never narrower than the face drew it, which is the promise now that nothing reshapes a stroke:
+      // every pass left in the finishing only ever adds a cell, to join a diagonal or to take a bite
       // out of an outline. Measured against the raster's own width rather than against the design
       // target because the measure — the shorter of the row run and the column run through a cell —
       // reads a 45 degree stroke at twice its thickness, and the two pictures share that bias.
@@ -100,16 +93,16 @@ describe('the stroke lands on the width the region asked for', () => {
   }
 
   it('and no letter comes out bolder than a fifth of itself', () => {
-    // THE READING A VISITOR MADE: "the stroke is too bold, the path is not clear". A stencilled letter
+    // The reading a visitor made: "the stroke is too bold, the path is not clear". A stencilled letter
     // whose strokes pass about a fifth of its own height has eaten the ground between them, and the
-    // face's BOLD instance did exactly that at every size — measured on letters with no diagonal, so
+    // face's bold instance did exactly that at every size — measured on letters with no diagonal, so
     // the width measure is reading a stroke rather than a 45 degree crossing.
     for (const fixture of FIXTURES) {
       if (!['I', 'E', 'L'].includes(fixture.text)) continue;
       const score = scoreGlyph(fixture, buildGlyph(fixture));
       if (score.underFloor) continue;
       const extent = glyphExtent(fixture.text, { width: fixture.width, height: fixture.height });
-      // A QUARTER at the small end, where one whole cell of a nine-cell letter is already 0.11 and the
+      // A quarter at the small end, where one whole cell of a nine-cell letter is already 0.11 and the
       // next cell up is 0.22: the grid, not the weight, decides there. A fifth from twenty cells on,
       // where the weight is the only thing that can make a stroke heavier.
       const bar = extent >= 19 ? 0.2 : 0.25;
@@ -120,8 +113,8 @@ describe('the stroke lands on the width the region asked for', () => {
 });
 
 /**
- * WHAT THE FLOORS BUY, which is the other half of declaring one. Each is the size at which the
- * measures above start holding, and the evidence is that they hold AT it: below, the letter is
+ * What the floors buy, which is the other half of declaring one. Each is the size at which the
+ * measures above start holding, and the evidence is that they hold at it: below, the letter is
  * whatever the region can hold and the matrix says so.
  */
 describe('a region at the floor its text asks for carries the letter', () => {
@@ -129,8 +122,8 @@ describe('a region at the floor its text asks for carries the letter', () => {
     FIXTURES.find((f) => f.text === text && f.height === size);
 
   it('serves EVERY letter in eight cells, which is what a gate asked before one is typed must do', () => {
-    expect(textMinSide('E')).toBe(8);
-    expect(textMinSide('M')).toBe(8);
+    expect(textMinBox('E').height).toBe(8);
+    expect(textMinBox('M').height).toBe(8);
     for (const letter of ['I', 'E', 'L', 'N', 'Z', 'X', 'M', 'Q', 'z', 'a']) {
       const fixture = at(letter, 8);
       expect(fixture, `${letter} at the floor is in the matrix`).toBeDefined();
@@ -139,7 +132,7 @@ describe('a region at the floor its text asks for carries the letter', () => {
         .toBeGreaterThanOrEqual(STENCIL_THRESHOLDS.separation);
       expect(score.recall, `${letter} at eight`).toBeGreaterThanOrEqual(STENCIL_THRESHOLDS.recall);
     }
-    // AND CANNOT AT SIX, which is the reason for the floor rather than an assertion about it: an E is
+    // And cannot at six, which is the reason for the floor rather than an assertion about it: an E is
     // three bars and two gaps and would serve at five, but an M is two stems and a V in the same
     // square and fuses into a block. The gate cannot know which letter is coming.
     for (const letter of ['M', 'z', 'X']) {
@@ -151,7 +144,7 @@ describe('a region at the floor its text asks for carries the letter', () => {
   });
 
   it('leaves the air out where the region cannot spare it', () => {
-    // The floor IS the ink, so nothing is left over for the cell of air the fit keeps at every larger
+    // The floor is the ink, so nothing is left over for the cell of air the fit keeps at every larger
     // size: a five-cell region less its air would leave four rows for a letter that needs five.
     expect(airCells('E', { width: 5, height: 5 }), 'at the floor').toBe(0);
     expect(airCells('E', { width: 6, height: 6 }), 'one cell up').toBe(1);
@@ -160,7 +153,7 @@ describe('a region at the floor its text asks for carries the letter', () => {
   });
 
   it('keeps word spacing below the conservative native-outline bound', () => {
-    expect(textMinSide('HELLO')).toBe(10);
+    expect(textMinBox('HELLO').height).toBe(10);
     expect(textMinBox('HELLO').width).toBe(50);
     const whole = scoreGlyph(at('HELLO', 10)!, buildGlyph(at('HELLO', 10)!));
     expect(whole.pieces, 'five letters, five pieces').toBe(whole.piecesWanted);
@@ -174,8 +167,8 @@ describe('a region at the floor its text asks for carries the letter', () => {
   });
 
   it('preserves separate raster components below the conservative dense-text bound', () => {
-    expect(textMinSide('谷地')).toBe(14);
-    expect(textMinSide('A谷'), 'one dense character makes the whole word dense').toBe(14);
+    expect(textMinBox('谷地').height).toBe(14);
+    expect(textMinBox('A谷').height, 'one dense character makes the whole word dense').toBe(14);
     const whole = scoreGlyph(at('谷地', 14)!, buildGlyph(at('谷地', 14)!));
     expect(whole.pieces).toBe(whole.piecesWanted);
     const fixture = at('谷地', 10)!;
@@ -259,14 +252,14 @@ describe('nothing in the finishing may take the letter apart', () => {
     ]);
     expect(components(maskFor(s), 8)).toBe(1);
     expect(components(maskFor(s), 4)).toBe(5);
-    bridgeDiagonals(s, Uint8Array.from(s.coverage));
+    finishGlyph(s);
     expect(components(maskFor(s), 4)).toBe(1);
   });
 
   it('leaves a shape that is already joined exactly as it was', () => {
     const rows = ['..###..', '..###..', '..###..'];
     const s = stencilOf(rows);
-    expect(bridgeDiagonals(s, Uint8Array.from(s.coverage))).toBe(0);
+    finishGlyph(s);
     expect(maskFor(s).on).toEqual(maskFor(stencilOf(rows)).on);
   });
 
@@ -278,12 +271,12 @@ describe('nothing in the finishing may take the letter apart', () => {
       '.####.',
     ]);
     expect(raggedness(maskFor(body)).nubs).toBe(1);
-    smoothOutline(body);
+    finishGlyph(body);
     expect(raggedness(maskFor(body)).nubs).toBe(0);
 
     const wire = stencilOf(['..#...', '..#...', '..#...', '..#...']);
     const before = Uint8Array.from(wire.coverage);
-    smoothOutline(wire);
+    finishGlyph(wire);
     expect(wire.coverage, 'a one-cell stroke is the drawing, not damage').toEqual(before);
   });
 
@@ -293,7 +286,7 @@ describe('nothing in the finishing may take the letter apart', () => {
       '#####',
       '#####',
     ]);
-    smoothOutline(dent);
+    finishGlyph(dent);
     expect(maskFor(dent).on.every((v) => v === 1), 'a dent with nothing behind it fills').toBe(true);
 
     const counter = stencilOf(['#####', '##.##', '#####']);
@@ -354,14 +347,14 @@ describe('nothing in the finishing may take the letter apart', () => {
 });
 
 /**
- * WHAT THE PLACEMENT SEARCH IS WORTH, measured against something it did not place.
+ * What the placement search is worth, measured against something it did not place.
  *
  * The fit is a heuristic: it puts the glyph where the fewest cells sit near the threshold, which is a
  * good proxy for keeping the drawing and is not the same thing as keeping it. So the claim tested here
  * is the one the measurements support, and no more (`_stencil-metrics.ts:placementGain` reads the ink
  * a placement kept against the ink the face drew, which is the one reading no placement enters):
- * AT EVERY SIZE the fit carries more of the drawing on average than leaving the glyph centred, and it
- * wins about twice as many cells as it loses. It does NOT win every cell, and pinning that it did
+ * at every size the fit carries more of the drawing on average than leaving the glyph centred, and it
+ * wins about twice as many cells as it loses. It does not win every cell, and pinning that it did
  * would be pinning a coincidence — a search that optimises decisiveness will sometimes decide a cell
  * the other way from the drawing.
  */
@@ -388,7 +381,7 @@ describe('putting the glyph where the grid can hold it keeps more of the drawing
 
   it('is the difference between a letter and a smear at the small end', () => {
     // The cells the fit exists for, with the bars at the measured numbers rather than near them.
-    // Centred, an E six cells tall puts its bars between rows and keeps a FIFTH of the ink it was
+    // Centred, an E six cells tall puts its bars between rows and keeps a fifth of the ink it was
     // drawn with (0.213, and an L 0.209); fitted, both keep over nine tenths (0.908 and 0.955). The
     // bounds of 0.85 and 0.35 distinguish material loss from hundredth-scale drift.
     for (const text of ['E', 'L']) {
@@ -428,7 +421,7 @@ describe('what was drawn straight is built straight', () => {
 
   it('a clean diagonal stays clean, and joins on ONE side the whole way down', () => {
     // A 45 degree stroke is a chain of corner touches, and every one of them has to be joined or the
-    // map draws a dotted line. WHICH side the join takes is what makes the difference between a
+    // map draws a dotted line. Which side the join takes is what makes the difference between a
     // staircase and a wobble: decided per cell it can flip partway down, so it is decided per run.
     const rows = [
       '#.......',
@@ -472,9 +465,9 @@ describe('what was drawn straight is built straight', () => {
 });
 
 /**
- * THE RULE THE SHELF REFUSES A CARD ON, held against real drawn letters.
+ * The rule the shelf refuses a card on, held against real drawn letters.
  *
- * The measurement itself needs a canvas, so what a suite can hold is the DECISION: given the numbers
+ * The measurement itself needs a canvas, so what a suite can hold is the decision: given the numbers
  * a glyph actually comes out with, which cards a region would offer. The fixture is those numbers for
  * fourteen glyph sets at ten sizes, so the rule is exercised on the same letters the app draws.
  */
@@ -524,7 +517,7 @@ describe('a card is offered by what its own letter can do', () => {
   });
 
   it('reads the same two bars the matrix is judged by', () => {
-    // ONE SOURCE. A card that offered what the matrix calls illegible, or refused what it passes,
+    // One source. A card that offered what the matrix calls illegible, or refused what it passes,
     // would be two answers to one question.
     expect(GLYPH_LEGIBLE.separation).toBe(STENCIL_THRESHOLDS.separation);
     expect(GLYPH_LEGIBLE.density).toBe(STENCIL_THRESHOLDS.density);

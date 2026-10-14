@@ -1,15 +1,17 @@
 /*
- * The command sequences behind removing, rotating and peeling one block: validate, execute, and
+ * The command sequences behind removing, moving, rotating and peeling one block: validate, execute, and
  * collapse into a single undo step.
  *
  * A rotation is a remove plus a place of the same id, so it has to collapse or undo would stop
  * between them. The result carries the spin the caller animates: an animation belongs to a view,
  * and this runs below one.
  */
+import { removeObjectCommand } from '../../core/model/command-build';
 import { type MacroCell, type PlacedObject, type GridState, type Refusal, type Rotation } from '../../core/model/types';
 import type { CommandExecutor } from '../../core/commands/command-executor';
-import { peelCommand } from '../paint/terrain-peel';
-import { planObjectRotation, removeObjectCommand } from './object-placer';
+import { peelCommand } from '../placement/terrain-peel';
+import { planObjectMove, planObjectRotation } from '../placement/probe';
+import { stripCoatingsFor } from '../placement/coatings';
 
 interface ActionResult {
   ok: boolean;
@@ -54,6 +56,28 @@ export function rotateObject(
     // Collapse the remove+place into one undo step (rotate is one action).
     tx.commit();
     return { ok: true, refusal: null, spin };
+  });
+}
+
+/**
+ * Move `obj` so its anchor lands on (x, y), as a single undo step: lift it, coat over any road the
+ * destination covers as placing the item fresh would, and place it, so undo puts the road back with
+ * the object. Judged on the snapped destination: a drop whose snapped pose is the current one is a
+ * no-op (`ok: false`, no refusal), and a refused one leaves the object where it stood.
+ */
+export function moveObject(
+  executor: CommandExecutor, state: GridState, obj: PlacedObject, x: number, y: number,
+): ActionResult {
+  const { cmd, errors, preview } = planObjectMove(executor, state, obj, x, y);
+  if (preview.position.x === obj.position.x && preview.position.y === obj.position.y
+      && preview.rotation === obj.rotation) return { ok: false, refusal: null };
+  if (errors.length > 0) return { ok: false, refusal: { cmd, errors } };
+  return executor.transaction({}, (tx): ActionResult => {
+    executor.execute(removeObjectCommand(obj));
+    stripCoatingsFor(executor, state, cmd.object);
+    executor.execute(cmd);
+    tx.commit();
+    return { ok: true, refusal: null };
   });
 }
 

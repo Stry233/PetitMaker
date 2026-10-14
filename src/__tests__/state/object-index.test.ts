@@ -1,5 +1,5 @@
 /**
- * The object index is memoized per GridState and PATCHED from `state.objectsDelta`
+ * The object index is memoized per GridState and patched from `state.objectsDelta`
  * rather than rebuilt, because rebuilding costs one catalog lookup + rect + chunk
  * bucketing per object and a stroke mutates objects once per cell (a road fill on a
  * decorated map spent ~85% of its time rebuilding).
@@ -10,13 +10,14 @@
  */
 import { describe, it, expect } from 'vitest';
 import { bumpObjectsVersion } from '../../core/model/grid-model';
-import { ItemCategory, type GridState, type PlacedObject } from '../../core/model/types';
+import type { GridState, PlacedObject } from '../../core/model/types';
 import { entriesCovering, entriesNear, getObjectIndex, objectAt, type ObjectIndex } from '../../state/object-index';
-import { PLAZA_ID } from '../../core/model/constants';
-import { registerCatalogItem } from '../../state/catalog';
-import { makeState } from '../rules/_helpers';
+import { __setCatalogItem } from '../../state/catalog';
+import { makeState } from '../_support/map-state';
+import { ANCHOR_LANDMARK } from '../_support/anchor';
+import { ItemCategory } from '../../config/catalog/categories';
 
-registerCatalogItem({
+__setCatalogItem({
   id: 'hs-hit-test-deck', category: ItemCategory.Facility, name: { en: 'HalfStep Hit-Test Deck' },
   width: 1, height: 1, loadValue: 0, rotatable: false, placementMode: 'point',
   traits: [{ type: 'halfStep' }],
@@ -47,7 +48,7 @@ function rebuilt(state: GridState): ObjectIndex {
 }
 
 /** Everything a consumer can observe, in consumer-visible form (ords may differ
- *  between a patched and a rebuilt index; the ORDER they impose may not). */
+ *  between a patched and a rebuilt index; the order they impose may not). */
 function shape(index: ObjectIndex, state: GridState): unknown {
   return {
     order: index.entries.map(e => e.obj.id),
@@ -57,7 +58,7 @@ function shape(index: ObjectIndex, state: GridState): unknown {
     cells: [...index.byCell].map(([k, b]) => `${k}:${b.map(e => e.obj.id).sort().join(',')}`).sort(),
     // the actual query surface, over a rect spanning the whole populated area
     near: entriesNear(index, { x: 0, y: 0, w: state.template.width, h: state.template.height }).map(e => e.obj.id),
-    // AND THE FINE ONE, CELL BY CELL. `byCell` has consumers of its own (`entriesCovering`,
+    // And the fine one, cell by cell. `byCell` has consumers of its own (`entriesCovering`,
     // `objectAt`), so a patch that maintained every other structure and forgot this one would leave
     // the suite green while a placement was judged against an object that had been removed. Swept
     // rather than sampled: the bug it guards is exactly a cell nobody thought to ask about.
@@ -180,7 +181,7 @@ describe('object-index: falls back to a rebuild rather than serving a stale inde
   });
 
   it('rebuilds when a version was skipped, even where the delta looks applicable', () => {
-    // A delta only describes ITS OWN step. Two size-neutral swaps with no read
+    // A delta only describes its own step. Two size-neutral swaps with no read
     // between them leave a delta that a one-behind cache could apply cleanly —
     // right object count, every removal present — and still be wrong about the
     // step it never saw. Only the version check separates the two.
@@ -212,26 +213,26 @@ describe('objectAt', () => {
     expect(objectAt(getObjectIndex(state), { x: 5, y: 4 })).toBeNull();
   });
 
-  it('answers with the FIRST object in insertion order where footprints stack', () => {
-    // A coating is coated OVER, so a road and the object above it legally share a cell; hit-testing
+  it('selects the solid above a coating regardless of insertion order', () => {
+    // A coating is coated over, so a road and the object above it legally share a cell; hit-testing
     // must not depend on chunk-bucket order.
     const state = makeState(30, 30);
     add(state, road('r', 7, 7));
     add(state, tree('t', 7, 7));
-    expect(objectAt(getObjectIndex(state), { x: 7, y: 7 })?.id).toBe('r');
+    expect(objectAt(getObjectIndex(state), { x: 7, y: 7 })?.id).toBe('t');
   });
 
   it('finds a locked object, because locked governs modification and not hit-testing', () => {
     // The 3D view picks by mesh id and never consulted a locked filter, so the plaza was
-    // selectable there and not in 2D: the same click answered two ways per view. A FRACTIONAL
+    // selectable there and not in 2D: the same click answered two ways per view. A fractional
     // footprint (the plaza's) is covered here too — it carries its own width/height.
     const state = makeState(20, 20);
     const plaza: PlacedObject = {
-      id: PLAZA_ID, catalogId: PLAZA_ID, position: { x: 4.5, y: 4.5 }, width: 3, height: 3,
+      id: ANCHOR_LANDMARK.id, catalogId: ANCHOR_LANDMARK.id, position: { x: 4.5, y: 4.5 }, width: 3, height: 3,
       rotation: 0, elevation: 0, locked: true,
     };
     add(state, plaza);
-    expect(objectAt(getObjectIndex(state), { x: 5, y: 5 })?.id).toBe(PLAZA_ID);
+    expect(objectAt(getObjectIndex(state), { x: 5, y: 5 })?.id).toBe(ANCHOR_LANDMARK.id);
   });
 
   it('skips an object whose catalogId is unknown, since it has no footprint to test', () => {
@@ -241,7 +242,7 @@ describe('objectAt', () => {
   });
 
   it('hit-tests a half-anchored deck by CELL OVERLAP, not by whether the cell origin sits inside it', () => {
-    // A 1-wide deck anchored at x=10.5 spans [10.5, 11.5): it partially covers BOTH macro
+    // A 1-wide deck anchored at x=10.5 spans [10.5, 11.5): it partially covers both macro
     // columns 10 and 11 (`footprintCells`' floor/ceil expansion agrees), so a click on either
     // must hit it. An origin-inside-rect test finds column 11 alone (origin 11 lands inside the
     // span; 10 does not, and 12 is past its end), so it disagrees with what is drawn on column 10
@@ -263,7 +264,7 @@ describe('objectAt', () => {
   });
 
   /**
-   * A REMOVAL HAS TO REACH EVERY STRUCTURE, and this asks the finest one directly.
+   * A removal has to reach every structure, and this asks the finest one directly.
    *
    * `objectAt` reads the per-CELL bucket, so a patch that dropped an entry from the entries list,
    * the chunk buckets and the road map but left the cell bucket alone would report an object that
@@ -276,7 +277,7 @@ describe('objectAt', () => {
     const state = makeState(30, 30);
     const deck: PlacedObject = { id: 'd', catalogId: 'hs-hit-test-deck', position: { x: 10.5, y: 5 }, rotation: 0, elevation: 0 };
     const plaza: PlacedObject = {
-      id: PLAZA_ID, catalogId: PLAZA_ID, position: { x: 4.5, y: 4.5 }, width: 3, height: 3,
+      id: ANCHOR_LANDMARK.id, catalogId: ANCHOR_LANDMARK.id, position: { x: 4.5, y: 4.5 }, width: 3, height: 3,
       rotation: 0, elevation: 0, locked: true,
     };
     add(state, tree('a', 20, 20), deck, plaza);

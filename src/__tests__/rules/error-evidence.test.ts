@@ -1,9 +1,9 @@
 /**
- * The evidence contract on ValidationError: `cells` = the cells that CAUSE the
- * violation (complete, never a bare click anchor), `rects` = the exact drawn BODY where the cause
- * is an object rather than a cell, and `grid` tells the renderer which grid either renders on
- * ('micro' = terrain micro-grid, 'macro' = object/zone grid; absent → the command-type default).
- * Pinned per rule here; the renderer half lives in __tests__/canvas/overlay-flash.test.ts.
+ * The evidence contract on ValidationError: `cells` = the cells that cause the
+ * violation (complete, never a bare click anchor), `rects` = the exact drawn body where the cause
+ * is an object rather than a cell, and `grid` names the grid either lies on ('terrain' or
+ * 'object'), which every error states.
+ * Pinned per rule here; the renderer half lives in __tests__/view/shared/overlay/overlay-flash.test.ts.
  */
 import { describe, it, expect } from 'vitest';
 import { traitPlacementRule } from '../../rules/placement';
@@ -12,34 +12,35 @@ import { placementOverlapRule } from '../../rules/placement-overlap';
 import { placementMaxCountRule } from '../../rules/placement-max-count';
 import { lockedObjectRule } from '../../rules/locked-object';
 import { chunkLoadViolations } from '../../rules/chunk-load';
-import { CommandType, ItemCategory, TerrainType, type Rotation } from '../../core/model/types';
+import { CommandType, TerrainType, type Rotation } from '../../core/model/types';
 import type { PaintTerrainCommand } from '../../core/model/types';
 import type { MacroCoord, PlacedObject, PlaceObjectCommand, RemoveObjectCommand } from '../../core/model/types';
-import { makeState, setTerrain } from './_helpers';
-import { registerCatalogItem } from '../../state/catalog';
-import { PLAZA_RECT } from '../fixtures/planet';
+import { makeState, setTerrain } from '../_support/map-state';
+import { __setCatalogItem } from '../../state/catalog';
+import { PLAZA_RECT } from '../_support/planet';
+import { ItemCategory } from '../../config/catalog/categories';
 
-registerCatalogItem({
+__setCatalogItem({
   id: 'ev-house', category: ItemCategory.Building, name: { en: 'Evidence House' },
   width: 2, height: 2, loadValue: 0, rotatable: true, placementMode: 'point',
   traits: [{ type: 'flat' }],
 });
-registerCatalogItem({
+__setCatalogItem({
   id: 'ev-pier', category: ItemCategory.Facility, name: { en: 'Evidence Pier' },
   width: 2, height: 1, loadValue: 0, rotatable: false, placementMode: 'point',
   traits: [{ type: 'noFloat' }],
 });
-registerCatalogItem({
+__setCatalogItem({
   id: 'ev-path', category: ItemCategory.Road, name: { en: 'Evidence Path' },
   width: 2, height: 1, loadValue: 0, rotatable: false, placementMode: 'point',
   traits: [{ type: 'surfaceCoating' }],
 });
-registerCatalogItem({
+__setCatalogItem({
   id: 'ev-tree', category: ItemCategory.Tree, name: { en: 'Evidence Tree' },
   width: 1, height: 1, loadValue: 0, rotatable: false, placementMode: 'point',
   traits: [{ type: 'exclusionRadius', radius: 2 }],
 });
-registerCatalogItem({
+__setCatalogItem({
   id: 'ev-unique', category: ItemCategory.Building, name: { en: 'Evidence Unique' },
   width: 2, height: 1, loadValue: 0, maxCount: 1, rotatable: true, placementMode: 'point',
   traits: [],
@@ -47,8 +48,7 @@ registerCatalogItem({
 
 function place(catalogId: string, x: number, y: number, rotation: Rotation = 0): PlaceObjectCommand {
   return {
-    type: CommandType.PlaceObject, timestamp: 0,
-    object: { id: 'candidate', catalogId, position: { x, y }, rotation, elevation: 0 },
+    type: CommandType.PlaceObject,     object: { id: 'candidate', catalogId, position: { x, y }, rotation, elevation: 0 },
   };
 }
 
@@ -71,7 +71,7 @@ describe('evidence cells: V-PLACE-TRAIT', () => {
     expect(has(errors[0]!.cells, 7, 6)).toBe(true);
     expect(has(errors[0]!.cells, 6, 5)).toBe(true);
     expect(has(errors[0]!.cells, 5, 5)).toBe(false); // the anchor itself is level — not evidence
-    expect(errors[0]!.grid).toBe('micro');
+    expect(errors[0]!.grid).toBe('terrain');
   });
 
   it('flat reports water cells as evidence', () => {
@@ -80,7 +80,7 @@ describe('evidence cells: V-PLACE-TRAIT', () => {
     const errors = traitPlacementRule.validate(place('ev-house', 5, 5), state);
     expect(errors).toHaveLength(1);
     expect(has(errors[0]!.cells, 6, 6)).toBe(true);
-    expect(errors[0]!.grid).toBe('micro');
+    expect(errors[0]!.grid).toBe('terrain');
   });
 
   it('noFloat reports exactly the cells with no real surface', () => {
@@ -90,7 +90,7 @@ describe('evidence cells: V-PLACE-TRAIT', () => {
     const errors = traitPlacementRule.validate(place('ev-pier', 5, 5), state);
     expect(errors).toHaveLength(1);
     expect(errors[0]!.cells).toEqual([{ x: 6, y: 5 }]);
-    expect(errors[0]!.grid).toBe('micro');
+    expect(errors[0]!.grid).toBe('terrain');
   });
 
   it('surfaceCoating reports exactly the water/missing cells', () => {
@@ -100,7 +100,7 @@ describe('evidence cells: V-PLACE-TRAIT', () => {
     const errors = traitPlacementRule.validate(place('ev-path', 5, 5), state);
     expect(errors).toHaveLength(1);
     expect(errors[0]!.cells).toEqual([{ x: 6, y: 5 }]);
-    expect(errors[0]!.grid).toBe('micro');
+    expect(errors[0]!.grid).toBe('terrain');
   });
 
   it('exclusionRadius reports the footprints of ALL conflicting objects', () => {
@@ -112,7 +112,7 @@ describe('evidence cells: V-PLACE-TRAIT', () => {
     expect(has(errors[0]!.cells, 5, 5)).toBe(true);
     expect(has(errors[0]!.cells, 8, 6)).toBe(true);
     expect(has(errors[0]!.cells, 6, 6)).toBe(false); // the attempted spot is not the evidence
-    expect(errors[0]!.grid).toBe('macro');
+    expect(errors[0]!.grid).toBe('object');
   });
 });
 
@@ -126,7 +126,7 @@ describe('evidence cells: V-PLACE-OVERLAP', () => {
     expect(errors).toHaveLength(1);
     expect(errors[0]!.cells).toEqual([{ x: 6, y: 6 }]);
     expect(errors[0]!.rects).toEqual([{ x: 6, y: 6, w: 1, h: 1 }]);
-    expect(errors[0]!.grid).toBe('macro');
+    expect(errors[0]!.grid).toBe('object');
   });
 
   it('a half-grid blocker reports the true overlap, which no whole cell can name', () => {
@@ -140,7 +140,7 @@ describe('evidence cells: V-PLACE-OVERLAP', () => {
     const errors = placementOverlapRule.validate(place('ev-house', 5, 5), state);
     expect(errors).toHaveLength(1);
     expect(errors[0]!.rects).toEqual([{ x: 5.5, y: 5.5, w: 1.5, h: 1.5 }]);
-    // The whole-cell evidence rounds OUT of that body — which is why the flash draws the rect.
+    // The whole-cell evidence rounds out of that body — which is why the flash draws the rect.
     expect(errors[0]!.cells).toEqual([
       { x: 5, y: 5 }, { x: 6, y: 5 }, { x: 5, y: 6 }, { x: 6, y: 6 },
     ]);
@@ -160,19 +160,18 @@ describe('evidence cells: V-PLACE-OVERLAP', () => {
 
 describe('evidence cells: V-PLACE-BLOCK', () => {
   const paintAt = (cells: { x: number; y: number }[]): PaintTerrainCommand => ({
-    type: CommandType.PaintTerrain, timestamp: 0,
-    cells, terrainType: TerrainType.Water, elevation: 0,
+    type: CommandType.PaintTerrain,     cells, terrainType: TerrainType.Water, elevation: 0,
   });
 
   it('flashes the blocking object\'s footprint on the object grid, not the paint cell', () => {
     // A 2x1 pier at (5,5): painting the terrain cell under it must point at the
-    // OBJECT that is in the way — its whole footprint, aligned to its sprite.
+    // Object that is in the way — its whole footprint, aligned to its sprite.
     const state = makeState();
     state.objects.set('p', existing('ev-pier', 'p', 5, 5));
     const errors = objectBlocksTerrainRule.validate(paintAt([{ x: 5, y: 5 }]), state);
     expect(errors).toHaveLength(1);
     expect(errors[0]!.cells).toEqual([{ x: 5, y: 5 }, { x: 6, y: 5 }]);
-    expect(errors[0]!.grid).toBe('macro');
+    expect(errors[0]!.grid).toBe('object');
   });
 
   it('flashes the blocker\'s exact fractional rect', () => {
@@ -187,7 +186,7 @@ describe('evidence cells: V-PLACE-BLOCK', () => {
     const errors = objectBlocksTerrainRule.validate(paintAt([{ x: Math.floor(PLAZA_RECT.x) + 4, y: Math.floor(PLAZA_RECT.y) + 2 }]), state);
     expect(errors).toHaveLength(1);
     expect(errors[0]!.rects).toEqual([{ ...PLAZA_RECT }]);
-    expect(errors[0]!.grid).toBe('macro');
+    expect(errors[0]!.grid).toBe('object');
     // and the whole-cell evidence still names every cell the plaza touches, for the readers
     // that cannot draw a fractional body (the agent's echo).
     const cells = errors[0]!.cells;
@@ -218,7 +217,7 @@ describe('evidence cells: non-spatial rules use the whole footprint', () => {
     const errors = placementMaxCountRule.validate(place('ev-unique', 5, 5, 90), state);
     expect(errors).toHaveLength(1);
     expect(errors[0]!.cells).toEqual([{ x: 5, y: 5 }, { x: 5, y: 6 }]);
-    expect(errors[0]!.grid).toBe('macro');
+    expect(errors[0]!.grid).toBe('object');
   });
 
   it('V-LOCK-02 flashes the locked object\'s full footprint', () => {
@@ -229,13 +228,47 @@ describe('evidence cells: non-spatial rules use the whole footprint', () => {
     };
     state.objects.set(plaza.id, plaza);
     const cmd: RemoveObjectCommand = {
-      type: CommandType.RemoveObject, timestamp: 0, objectId: plaza.id, removedObject: plaza,    };
+      type: CommandType.RemoveObject, objectId: plaza.id };
     const errors = lockedObjectRule.validate(cmd, state);
     expect(errors).toHaveLength(1);
     expect(errors[0]!.cells).toEqual([
       { x: 3, y: 3 }, { x: 4, y: 3 }, { x: 3, y: 4 }, { x: 4, y: 4 },
     ]);
-    expect(errors[0]!.grid).toBe('macro');
+    expect(errors[0]!.grid).toBe('object');
+  });
+
+  describe('an object on the half grid reports whole cells and its exact body', () => {
+    const halfPlaza: PlacedObject = {
+      id: '__plaza__', catalogId: '__plaza__', position: { x: 3.5, y: 3.5 }, width: 2, height: 2,
+      rotation: 0, elevation: 0, locked: true,
+    };
+    const covered = [3, 4, 5].flatMap((y) => [3, 4, 5].map((x) => ({ x, y })));
+
+    it('V-LOCK-02', () => {
+      const state = makeState();
+      state.objects.set(halfPlaza.id, halfPlaza);
+      const [error] = lockedObjectRule.validate({ type: CommandType.RemoveObject, objectId: halfPlaza.id }, state);
+      expect(error!.cells).toEqual(covered);
+      expect(error!.rects).toEqual([{ x: 3.5, y: 3.5, w: 2, h: 2 }]);
+    });
+
+    it('V-PLACE-MAX', () => {
+      const state = makeState();
+      state.objects.set('u1', existing('ev-unique', 'u1', 2, 2));
+      const cmd = place('ev-unique', 5, 5);
+      cmd.object.position = { x: 5.5, y: 5 };
+      const [error] = placementMaxCountRule.validate(cmd, state);
+      expect(error!.cells).toEqual([{ x: 5, y: 5 }, { x: 6, y: 5 }, { x: 7, y: 5 }]);
+      expect(error!.rects).toEqual([{ x: 5.5, y: 5, w: 2, h: 1 }]);
+    });
+
+    it('V-CHUNK-01', () => {
+      const candidate: PlacedObject = { id: 'c', catalogId: 'ev-house', position: { x: 5.5, y: 5 }, rotation: 0, elevation: 0 };
+      const [error] = chunkLoadViolations(makeState(), candidate, 999_999);
+      expect(error!.cells.every((c) => Number.isInteger(c.x) && Number.isInteger(c.y))).toBe(true);
+      expect(error!.cells).toHaveLength(6);
+      expect(error!.rects).toEqual([{ x: 5.5, y: 5, w: 2, h: 2 }]);
+    });
   });
 
   it('V-CHUNK-01 flashes the full attempted footprint', () => {
@@ -249,6 +282,6 @@ describe('evidence cells: non-spatial rules use the whole footprint', () => {
     expect(errors[0]!.cells).toEqual([
       { x: 5, y: 5 }, { x: 6, y: 5 }, { x: 5, y: 6 }, { x: 6, y: 6 },
     ]);
-    expect(errors[0]!.grid).toBe('macro');
+    expect(errors[0]!.grid).toBe('object');
   });
 });

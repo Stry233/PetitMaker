@@ -3,9 +3,7 @@
  * Only `writeAll` writes to the filesystem; imports and render helpers have no side effects.
  */
 
-// @ts-ignore - node:fs is untyped here (no @types/node)
 import { cpSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
-// @ts-ignore - node:path is untyped here (no @types/node)
 import { join } from 'node:path';
 
 import { DOCS, docNodes, type DocId } from '../src/legal/registry';
@@ -14,17 +12,15 @@ import { validateLegalConfig } from '../src/legal/validate-config';
 import { escapeHtml, renderHtml } from '../src/legal/markdown-html';
 import { inlineText, type MdNode } from '../src/legal/markdown';
 import { alternateLinks, socialTags } from './site-html.mts';
-import { canonicalPagePath, isIndexablePage, pagePath, translatedPageUrls } from '../src/legal/site-paths';
-import { DEPLOY_TARGETS } from '../src/legal/deploy-targets';
+import { DOC_IDS, canonicalPagePath, isIndexablePage, pagePath, translatedPageUrls } from '../src/legal/site-paths';
+import { DEPLOY_TARGETS } from '../src/platform/build/deploy-targets';
 import { en } from '../src/i18n/locales/en';
 import { zh } from '../src/i18n/locales/zh';
-import { localeTag } from '../src/i18n/translations';
-import { brandName } from '../src/version';
+import { localeTag } from '../src/i18n/locale-info';
+import { registerLocaleTable } from '../src/i18n/translations';
+import { brandName } from '../src/i18n/brand';
 import { toDocumentCspMeta } from '../security/headers-policy';
-import { BROWN_TEXT, CREAM, FRAME_INK, SURFACE_SECONDARY, TEXT_PRIMARY } from '../src/core/runtime/brand-palette';
-
-// Local ambient type avoids adding Node types to the browser compilation.
-declare const process: { cwd(): string };
+import { BROWN_TEXT, FRAME_INK, PLATE, SURFACE_SECONDARY, TEXT_PRIMARY, rgbaOf } from '../src/assets/brand-palette';
 
 export type Lang = 'en' | 'zh';
 
@@ -32,27 +28,13 @@ export function resolveMode(env: Record<string, string | undefined>): 'release' 
   return env.PETIT_RELEASE === '1' ? 'release' : 'dev';
 }
 
-/** Shared document order for footer navigation, page generation, and the sitemap. */
-export const ALL_DOC_IDS: DocId[] = [
-  'privacy',
-  'terms',
-  'license',
-  'third-party',
-  'asset-licenses',
-  'about',
-  'security',
-  'contact',
-  'changelog',
-];
+/** The locale tables the About window reads, for the static pages. */
+const PAGE_COPY: Readonly<Record<Lang, Readonly<Record<string, string>>>> = { en, zh };
+/** A document's title in a page language. */
+const docTitle = (id: DocId, lang: Lang): string => PAGE_COPY[lang][DOCS[id].titleKey]!;
 
-/** A document's title in a page language, from the locale table the About modal reads. */
-const docTitle = (id: DocId, lang: Lang): string => ({ en, zh })[lang][DOCS[id].titleKey]!;
-
-/** Short affiliation disclaimer repeated in every static page footer. */
-const DISCLAIMER: Record<Lang, string> = {
-  en: 'This is an unofficial, non-commercial fan project. It is not affiliated with, endorsed by, or sponsored by miHoYo / HoYoverse (COGNOSPHERE PTE. LTD.).',
-  zh: '本项目为非官方、非商业性质的同人项目，与米哈游及其海外品牌 HoYoverse（COGNOSPHERE PTE. LTD.）无任何关联，未获得其认可或赞助。',
-};
+/** The affiliation disclaimer every static page footer repeats, worded as the About window words it. */
+const disclaimer = (lang: Lang): string => PAGE_COPY[lang]['about.disclaimer']!.split('{app}').join(brandName(lang));
 
 /** First paragraph as plain text, capped at `maxLen` characters for the meta description. */
 export function metaDescription(nodes: MdNode[], maxLen = 155): string {
@@ -67,7 +49,7 @@ const STYLE_CSS = `
 * { box-sizing: border-box; }
 body {
   margin: 0;
-  background: ${CREAM};
+  background: ${PLATE};
   color: ${TEXT_PRIMARY};
   /* system CJK stack — no webfont download on policy pages */
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
@@ -78,7 +60,7 @@ body {
 header.top {
   display: flex; align-items: center; justify-content: space-between; gap: 16px;
   padding-bottom: 16px; margin-bottom: 24px;
-  border-bottom: 1px solid rgba(67,65,62,0.12); /* colors.inkBorder */
+  border-bottom: 1px solid ${rgbaOf(FRAME_INK, 0.12)};
 }
 header.top a.back { color: ${FRAME_INK}; font-weight: 800; text-decoration: none; }
 header.top a.back:hover { text-decoration: underline; }
@@ -121,7 +103,7 @@ footer.legal p { margin: 0 0 6px; }
 `.trim();
 
 function footerNavHtml(effLang: Lang, cfg: LegalConfig): string {
-  const items = ALL_DOC_IDS.map((id) => {
+  const items = DOC_IDS.map((id) => {
     const meta = DOCS[id];
     const linkLang: Lang = effLang === 'zh' && meta.source.zh !== null ? 'zh' : 'en';
     const path = pagePath(meta.slug, linkLang, cfg.canonicalOrigin);
@@ -144,7 +126,7 @@ function filingRowsHtml(cfg: LegalConfig): string {
 
 function updatedLineHtml(id: DocId, lang: Lang, cfg: LegalConfig): string {
   const meta = DOCS[id];
-  if (!meta.schema.requiresEffectiveDate) return '';
+  if (!meta.dated) return '';
   const date = (cfg.effectiveDates as Record<string, string>)[id] ?? '';
   const version = (cfg.policyVersions as Record<string, string>)[id] ?? '';
   const text = lang === 'zh' ? `生效日期 ${date}，版本 ${version}` : `Effective ${date}, version ${version}`;
@@ -159,6 +141,8 @@ export function pageHtml(id: DocId, lang: Lang, cfg: LegalConfig): string {
   const effLang: Lang = hasZh ? lang : 'en';
 
   const title = docTitle(id, effLang);
+  // The registry reads a document language's words from the loaded tables; the app loads zh lazily.
+  registerLocaleTable('zh', zh);
   const nodes = docNodes(id, effLang, cfg, title);
   // `docNodes` supplies a synthetic h1 when needed, so one node means the body is empty.
   if (nodes.length <= 1) {
@@ -168,8 +152,8 @@ export function pageHtml(id: DocId, lang: Lang, cfg: LegalConfig): string {
   const h1Html = renderHtml([h1Node!]);
   const bodyHtml = renderHtml(restNodes).replace(/href="(\/[^"#?]*)([?#][^"]*)?"/g, (_all, path: string, suffix = '') =>
     `href="${canonicalPagePath(path, cfg.canonicalOrigin) ?? path}${suffix}"`);
-  const description = id === 'changelog' ? (effLang === 'zh' ? zh : en)['site.changelog_description']! : metaDescription(nodes);
   const brand = brandName(effLang);
+  const description = id === 'changelog' ? (effLang === 'zh' ? zh : en)['site.changelog_description']!.split('{app}').join(brand) : metaDescription(nodes);
 
   const enPath = pagePath(meta.slug, 'en', cfg.canonicalOrigin);
   const zhPath = hasZh ? pagePath(meta.slug, 'zh', cfg.canonicalOrigin) : null;
@@ -215,8 +199,8 @@ ${updatedLineHtml(id, effLang, cfg)}${bodyHtml}
 </main>
 <footer class="legal">
 <nav>${footerNavHtml(effLang, cfg)}</nav>
-<p>${escapeHtml(DISCLAIMER[effLang])}</p>
-${filingRowsHtml(cfg)}<p>© ${escapeHtml(cfg.operatorDisplayName)}</p>
+<p>${escapeHtml(disclaimer(effLang))}</p>
+${filingRowsHtml(cfg)}<p>© ${escapeHtml(`${cfg.operatorName.en} / ${cfg.operatorName.zh}`)}</p>
 </footer>
 </div>
 </body>
@@ -235,7 +219,7 @@ export interface PlannedPage {
 export function pagePlan(cfg?: Pick<LegalConfig, 'canonicalOrigin'>): PlannedPage[] {
   const origin = cfg?.canonicalOrigin ?? DEPLOY_TARGETS.global.canonicalOrigin;
   const pages: PlannedPage[] = [];
-  for (const id of ALL_DOC_IDS) {
+  for (const id of DOC_IDS) {
     const meta = DOCS[id];
     pages.push({ id, lang: 'en', slug: meta.slug, path: pagePath(meta.slug, 'en', origin) });
     if (meta.source.zh !== null) {
@@ -295,7 +279,7 @@ function writeTextFile(distDir: string, relPath: string, contents: string): void
  * Release mode rejects configuration problems; unresolved content tokens always fail; injected `now` makes security.txt deterministic.
  */
 export function writeAll(distDir: string, cfg: LegalConfig, mode: 'release' | 'dev', now: Date = new Date()): void {
-  const problems = validateLegalConfig(cfg, mode);
+  const problems = validateLegalConfig(cfg);
   if (problems.length > 0) {
     if (mode === 'release') {
       throw new Error(`legal-pages: config invalid for release:\n${problems.map((p) => `  - ${p}`).join('\n')}`);

@@ -1,19 +1,21 @@
-import { EDITION_COPY } from '../../../../../core/runtime/edition';
+import { EDITION_COPY } from '../../../../../platform/build/edition';
+import { WindowHeader, windowFrame } from '../../../../primitives/Window';
+import { ActionButton } from '../../../../primitives/ActionButton';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
-import { motion, useReducedMotionConfig } from 'framer-motion';
+import { useReducedMotionConfig } from 'framer-motion';
 import { useT } from '../../../../../i18n/context';
+import { timedHint } from '../../../../../i18n/timed-hint';
 import { ModalShell } from '../../../../primitives/ModalShell';
 import { TimedButton } from '../../../../primitives/TimedButton';
 import { ScrollArea } from '../../../../primitives/ScrollArea';
 import { useScrollGeometry } from '../../../../primitives/scroll-geometry';
-import { buttonMotion, cursors } from '../../../../design/styles';
-import { skin, windowCard, windowFooterGhost, windowFooterPrimary, windowTitle } from '../../../../design/window-skin';
+import { cursors, UNAVAILABLE } from '../../../../design/styles';
+import { skin, windowFooterPrimary } from '../../../../design/window-skin';
 import { roleFont } from '../../../../design/text-weight';
 
 const READING_MS = 7000;
 
-export function ExportNotice({ open, onDecision, format = 'image', hasPetitGlyph = false }: { open: boolean; onDecision: (accepted: boolean) => void; format?: 'image' | 'json'; hasPetitGlyph?: boolean }) {
+function ExportNotice({ open, onDecision, format = 'image', hasPetitGlyph = false }: { open: boolean; onDecision: (accepted: boolean) => void; format?: 'image' | 'json'; hasPetitGlyph?: boolean }) {
   const t = useT();
   const reduced = useReducedMotionConfig();
   const [entered, setEntered] = useState(false);
@@ -59,15 +61,16 @@ export function ExportNotice({ open, onDecision, format = 'image', hasPetitGlyph
 
   const seconds = Math.ceil((READING_MS - elapsed) / 1000);
   const ready = open && entered && seconds === 0 && atEnd;
-  return createPortal(
-    <ModalShell helpTarget={{ page: 'share', anchor: 'share-confirm' }} open={open} onClose={() => onDecision(false)} onEntered={onEntered} width={530} maxVwPct={94} maxVh={88}
-      cardStyle={{ ...windowCard, padding: '24px 26px 20px', display: 'flex', flexDirection: 'column', minHeight: 0 }} ariaLabel={t('export.notice.title')}>
-      <h2 style={{ ...windowTitle, margin: '0 0 16px', flex: '0 0 auto' }}>{t('export.notice.title')}</h2>
+  return (
+    <ModalShell helpTarget={{ page: 'share', anchor: 'share-confirm' }} open={open} onClose={() => onDecision(false)} onEntered={onEntered} size="panel" width={530}
+      cardStyle={{ ...windowFrame, minHeight: 0 }} ariaLabel={t('export.notice.title')}>
+      <WindowHeader title={<h2 style={{ margin: 0, font: 'inherit' }}>{t('export.notice.title')}</h2>} reserve
+        close={{ label: t('hint.close'), onPress: () => onDecision(false) }} style={{ marginBottom: 16, flex: '0 0 auto' }} />
       <ScrollArea ref={content} gutter="stable" surface={skin.plate} tabIndex={0} role="region" aria-label={t('export.notice.title')}
         style={{ minHeight: 0, ...roleFont('body'), lineHeight: 1.65, color: skin.plateInk }}>
         <div>
           <p style={{ margin: '0 0 14px' }}>{t('export.notice.intro', { app: t('app.name') })}</p>
-          <ol style={{ margin: 0, paddingInlineStart: 22, display: 'grid', gap: 12 }}>
+          <ol style={{ margin: 0, paddingInlineStart: 20, display: 'grid', gap: 12 }}>
             <li>{t('export.notice.honesty')}</li>
             <li>{t('export.notice.respect')}</li>
             <li>{t(EDITION_COPY.exportResponsibility)}</li>
@@ -77,17 +80,17 @@ export function ExportNotice({ open, onDecision, format = 'image', hasPetitGlyph
         </div>
       </ScrollArea>
       <div style={{ marginTop: 20, display: 'flex', flexWrap: 'wrap', gap: 10, flex: '0 0 auto' }}>
-        <TimedButton after={0} disabled={!ready} external={seconds > 0 ? {
+        <ActionButton appearance="secondary" style={{ flex: '1 0 140px' }} onClick={() => onDecision(false)}>{t('export.notice.cancel')}</ActionButton>
+        <TimedButton after={0} hint={timedHint(t, 0)} disabled={!ready} external={seconds > 0 ? {
           fraction: (reduced ? Math.floor(elapsed / 1000) * 1000 : elapsed) / READING_MS,
           spanMs: open && entered && readingVisible ? READING_MS : 0,
         } : undefined}
           onPress={() => { if (ready) onDecision(true); }}
-          style={{ ...windowFooterPrimary, flex: '1 0 180px', minWidth: 0, opacity: ready ? 1 : 0.65, cursor: ready ? cursors.clickable : cursors.default }}>
+          style={{ ...windowFooterPrimary, flex: '1 0 180px', minWidth: 0, opacity: ready ? 1 : UNAVAILABLE, cursor: ready ? cursors.clickable : cursors.default }}>
           {seconds > 0 ? t('export.notice.wait', { seconds }) : !atEnd ? t('export.notice.scroll') : t('export.notice.confirm')}
         </TimedButton>
-        <motion.button style={{ ...windowFooterGhost, flex: '1 0 140px' }} onClick={() => onDecision(false)} {...buttonMotion}>{t('export.notice.cancel')}</motion.button>
       </div>
-    </ModalShell>, document.body,
+    </ModalShell>
   );
 }
 

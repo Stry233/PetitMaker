@@ -1,12 +1,14 @@
 import { describe, it, expect } from 'vitest';
 import { zoneRestrictionRule } from '../../rules/zone-restriction';
-import { CellZone, CommandType, ItemCategory, TerrainType, type EraseTerrainCommand, type PaintTerrainCommand } from '../../core/model/types';
-import { registerCatalogItem } from '../../state/catalog';
-import { makeState, setZone, setTerrain, paintCmd, placeCmd, makeObject } from './_helpers';
+import { CommandType, TerrainType, type EraseTerrainCommand, type PaintTerrainCommand } from '../../core/model/types';
+import { CellZone } from '../../core/game/zones';
+import { __setCatalogItem } from '../../state/catalog';
+import { makeState, setZone, setTerrain, paintCmd, placeCmd, makeObject } from '../_support/map-state';
 import { createDefaultRegistry, createPlanetRegistry } from '../../rules/index';
+import { ItemCategory } from '../../config/catalog/categories';
 
 function fixture(id: string, width: number, height: number) {
-  registerCatalogItem({
+  __setCatalogItem({
     id, category: ItemCategory.Building, name: { en: 'x', zh: 'x' }, width, height, loadValue: 0, rotatable: false, placementMode: 'point', traits: [],
   });
 }
@@ -42,7 +44,7 @@ describe('V-ZONE-01: Zone Restriction', () => {
   it('rejects PlaceObject when ANY footprint cell is non-Grass (not just the anchor)', () => {
     fixture('zone-fix-2x2', 2, 2);
     const state = makeState();
-    setZone(state, 6, 6, CellZone.Beach); // a covered cell, NOT the (5,5) anchor
+    setZone(state, 6, 6, CellZone.Beach); // a covered cell, not the (5,5) anchor
     const errors = zoneRestrictionRule.validate(placeCmd(makeObject('zone-fix-2x2', 5, 5)), state);
     expect(errors.length).toBeGreaterThan(0);
     expect(errors.some((e) => e.cells[0]!.x === 6 && e.cells[0]!.y === 6)).toBe(true);
@@ -66,7 +68,7 @@ describe('V-ZONE-01: Zone Restriction', () => {
     const right = makeState(); setZone(right, 6, 5, CellZone.Boundary); // border right → no right-bleed
     expect(paint(right)).toHaveLength(0);
     // Erase never bleeds (it removes terrain) → allowed even with a border above.
-    expect(zoneRestrictionRule.validate({ type: CommandType.EraseTerrain, timestamp: 0, cells: [{ x: 5, y: 5 }] }, up)).toHaveLength(0);
+    expect(zoneRestrictionRule.validate({ type: CommandType.EraseTerrain, cells: [{ x: 5, y: 5 }] }, up)).toHaveLength(0);
   });
   it('reports errors for each invalid cell in a multi-cell command', () => {
     const state = makeState();
@@ -78,18 +80,18 @@ describe('V-ZONE-01: Zone Restriction', () => {
 
   it('rejects painting a grass cell whose UP-LEFT diagonal is non-grass (top-left micro-block bleed)', () => {
     // At a convex beach corner the up + left neighbours are grass but the diagonal is beach; the terrain
-    // block's top-left micro-block (rendered -HALF_TILE up-left) lands on that beach → must be rejected.
+    // block's top-left micro-block (rendered half a cell up-left) lands on that beach → must be rejected.
     const state = makeState();
     setZone(state, 4, 4, CellZone.Beach); // diagonal up-left of (5,5); (5,4) and (4,5) stay grass
     expect(zoneRestrictionRule.validate(paintCmd([{ x: 5, y: 5 }], TerrainType.Mountain, 1), state)).toHaveLength(1);
-    // erase does NOT bleed (no -HALF render), so it stays allowed on the same cell
-    const erase = { type: CommandType.EraseTerrain, timestamp: 0, cells: [{ x: 5, y: 5 }] } as const;
+    // erase does not bleed (no -HALF render), so it stays allowed on the same cell
+    const erase = { type: CommandType.EraseTerrain, cells: [{ x: 5, y: 5 }] } as const;
     expect(zoneRestrictionRule.validate(erase as never, state)).toHaveLength(0);
   });
 });
 
 describe('V-ZONE-01: a ground edit keeps the coast under a block grass', () => {
-  const toSea = (x: number, y: number): EraseTerrainCommand => ({ type: CommandType.EraseTerrain, timestamp: 0, cells: [{ x, y }], ground: CellZone.Void });
+  const toSea = (x: number, y: number): EraseTerrainCommand => ({ type: CommandType.EraseTerrain, cells: [{ x, y }], ground: CellZone.Void });
   const toSand = (x: number, y: number): PaintTerrainCommand => ({ ...paintCmd([{ x, y }], TerrainType.Mountain, 0), ground: CellZone.Beach });
   const island = () => { const state = makeState(); setTerrain(state, 5, 5, TerrainType.Mountain, 1); return state; };
 
@@ -122,7 +124,7 @@ describe('V-ZONE-01: a ground edit keeps the coast under a block grass', () => {
 
   it('allows the edit when the same command clears the block', () => {
     const state = island();
-    const both: EraseTerrainCommand = { type: CommandType.EraseTerrain, timestamp: 0, cells: [{ x: 4, y: 4 }, { x: 5, y: 5 }], ground: CellZone.Void };
+    const both: EraseTerrainCommand = { type: CommandType.EraseTerrain, cells: [{ x: 4, y: 4 }, { x: 5, y: 5 }], ground: CellZone.Void };
     expect(zoneRestrictionRule.validate(both, state)).toEqual([]);
   });
 

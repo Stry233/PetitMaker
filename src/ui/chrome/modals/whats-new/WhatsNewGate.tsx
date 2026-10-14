@@ -6,10 +6,11 @@
  */
 import { useEffect, useRef } from 'react';
 import { useEditorStore } from '../../../../state/store';
-import { APP_VERSION } from '../../../../version';
+import { APP_VERSION } from '../../../../platform/build/build-info';
 import { arrivalOpens } from '../../floating/arrival-gate';
 import { hasSeenTour } from '../../tour/use-tour';
-import { currentNotes, lastSeenVersion, recordSeenVersion } from './current';
+import { currentNotes } from './current';
+import { lastSeenVersion, recordSeenVersion } from '../../../../io/storage/seen-version-facts';
 import { whatsNewDue } from './notes';
 import { anyModalOpen } from '../../../../state/slices/shell';
 

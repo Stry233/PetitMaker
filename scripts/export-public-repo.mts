@@ -13,11 +13,8 @@
 // --verify does not rerun the whole suite: a release requires it to have passed on this commit
 // first. It needs this checkout's own node_modules to compute the scope.
 
-// @ts-ignore - node:fs is untyped here (no @types/node)
 import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-// @ts-ignore - node:path is untyped here (no @types/node)
 import { dirname, join, relative, resolve, sep } from 'node:path';
-// @ts-ignore - node:child_process is untyped here (no @types/node)
 import { execFileSync, spawnSync } from 'node:child_process';
 
 import {
@@ -26,6 +23,7 @@ import {
   DENYLIST_SPOTCHECK,
   findAgentDocPointers,
   findAiAttribution,
+  findWithheldPointers,
   findByBasename,
   findLeakedPaths,
   isProbablyText,
@@ -39,9 +37,7 @@ import {
   type ManifestGlobs,
 } from './export-public-repo-core.mts';
 
-declare const process: { argv: string[]; cwd(): string; exitCode?: number };
-
-interface Args { out?: string; verify: boolean; listTests: boolean; assumeChanged: string[] }
+interface Args { out?: string; verify: boolean; listTests: boolean; assumeChanged: string[]; assumeClean: boolean }
 
 function parseArgs(argv: string[]): Args {
   if (argv.includes('--allow-open-audit')) {
@@ -52,12 +48,14 @@ function parseArgs(argv: string[]): Args {
   const listTests = argv.includes('--list-verify-tests');
   // Treats a path as changed since the commit, as a publication refresh would leave it.
   const assumeChanged = argv.flatMap((arg, i) => (arg === '--assume-changed' && argv[i + 1] ? [argv[i + 1]!] : []));
+  // Reads the working tree as the commit, so only the --assume-changed paths count as changed.
+  const assumeClean = argv.includes('--assume-clean');
   if (!out && !listTests) {
     throw new Error(
-      'usage: vite-node scripts/export-public-repo.mts --out <dir> [--verify] | --list-verify-tests [--assume-changed <path>]...'
+      'usage: vite-node scripts/export-public-repo.mts --out <dir> [--verify] | --list-verify-tests [--assume-clean] [--assume-changed <path>]...'
     );
   }
-  return { out, verify: argv.includes('--verify'), listTests, assumeChanged };
+  return { out, verify: argv.includes('--verify'), listTests, assumeChanged, assumeClean };
 }
 
 /** `git ls-files -z` — NUL-separated so filenames with non-ASCII bytes aren't quote-escaped. */
@@ -122,8 +120,10 @@ async function relatedTests(rootDir: string, seeds: readonly string[]): Promise<
 }
 
 /** The public tests whose inputs can differ between the snapshot and this checkout's commit. */
-async function snapshotTestScope(rootDir: string, tracked: readonly string[], published: readonly string[], assumeChanged: readonly string[]): Promise<string[]> {
-  const changed = [...new Set([...gitChangedFiles(rootDir), ...assumeChanged])];
+async function snapshotTestScope(
+  rootDir: string, tracked: readonly string[], published: readonly string[], assumeChanged: readonly string[], assumeClean = false,
+): Promise<string[]> {
+  const changed = [...new Set([...(assumeClean ? [] : gitChangedFiles(rootDir)), ...assumeChanged])];
   const sources = published
     .filter((p) => /\.[cm]?[jt]sx?$/.test(p))
     .map((path) => ({ path, text: readFileSync(join(rootDir, path), 'utf8') as string }));
@@ -131,9 +131,8 @@ async function snapshotTestScope(rootDir: string, tracked: readonly string[], pu
   return selectSnapshotTests(published, seeds, await relatedTests(rootDir, seeds));
 }
 
-// The snapshot runs its own install, the full production build (whose `tsc -b` typechecks every
-// shipped source and test, so an import of a withheld file fails here), the scripts typecheck, and
-// the scoped tests.
+// The snapshot runs its own install, the full production build, the public typecheck programs (app,
+// scripts and tests, so an import of a withheld file fails here) and the scoped tests.
 function runVerify(outDir: string, tests: readonly string[]): void {
   console.log(`[export-public-repo] --verify: install, build, typecheck and ${tests.length} scoped test file(s) in ${outDir}`);
   for (const test of tests) console.log(`  ${test}`);
@@ -142,7 +141,7 @@ function runVerify(outDir: string, tests: readonly string[]): void {
     for (const args of [
       ['ci', '--ignore-scripts'],
       ['run', 'build'],
-      ['exec', '--', 'tsc', '--noEmit', '-p', 'tsconfig.scripts.json'],
+      ['run', 'lint'],
       ['exec', '--', 'vitest', 'run', ...tests],
     ]) {
       const result = spawnSync('npm', args, { cwd: outDir, stdio: 'inherit' });
@@ -152,7 +151,7 @@ function runVerify(outDir: string, tests: readonly string[]): void {
     }
   } finally {
     // Restore the output to publishable source files after verification.
-    for (const artifact of ['.git', 'node_modules', 'dist', 'tsconfig.tsbuildinfo', '.bundle-packages.json']) {
+    for (const artifact of ['.git', 'node_modules', 'dist', '.tsbuild', 'artifacts']) {
       rmSync(join(outDir, artifact), { recursive: true, force: true });
     }
   }
@@ -160,12 +159,12 @@ function runVerify(outDir: string, tests: readonly string[]): void {
 }
 
 async function main(): Promise<void> {
-  const { out, verify, listTests, assumeChanged } = parseArgs(process.argv.slice(2));
+  const { out, verify, listTests, assumeChanged, assumeClean } = parseArgs(process.argv.slice(2));
   const rootDir = process.cwd();
   if (listTests) {
     const manifest = parseManifest(readFileSync(join(rootDir, 'docs', 'internal', 'deployment', 'public-repo-manifest.md'), 'utf8'));
     const tracked = gitTrackedFiles(rootDir);
-    console.log(JSON.stringify(await snapshotTestScope(rootDir, tracked, selectPublicPaths(tracked, manifest), assumeChanged)));
+    console.log(JSON.stringify(await snapshotTestScope(rootDir, tracked, selectPublicPaths(tracked, manifest), assumeChanged, assumeClean)));
     return;
   }
   const status = auditStatus(rootDir);
@@ -227,6 +226,18 @@ async function main(): Promise<void> {
         `agent-instruction file the public repository does not have. State the fact in the shipped ` +
         `file and keep the pointer in the agent doc:\n` +
         pointers.map(({ path, name }) => `  ${path}: ${name}`).join('\n')
+    );
+  }
+
+  // A shipped document's instructions must work in the snapshot, which withholds the private tree.
+  const docs = copiedText.filter(({ path }) => path.endsWith('.md'));
+  const scripts = (JSON.parse(readFileSync(join(rootDir, 'package.json'), 'utf8')) as { scripts?: Record<string, string> }).scripts ?? {};
+  const withheld = findWithheldPointers(docs, tracked, manifest, scripts);
+  if (withheld.length > 0) {
+    throw new Error(
+      `[export-public-repo] WITHHELD POINTER: ${withheld.length} shipped document reference(s) name ` +
+        `a path or script the public repository does not have:\n` +
+        withheld.map(({ path, name }) => `  ${path}: ${name}`).join('\n')
     );
   }
 

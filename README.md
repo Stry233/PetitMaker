@@ -88,7 +88,7 @@ This share image contains the complete map data. **[Download the original image]
 
 The band at the bottom is a **PetitGlyph** code, which stores the map and its planning annotations in the image. Error correction tolerates some resizing and JPEG or WebP compression. Preserve the original file for reliable sharing; platform processing may make a code unreadable. Import verifies the data before restoring the map. Processing takes place in the browser, and the image is not uploaded.
 
-For a separate backup, export a JSON save. Planning annotations are included by default and can be omitted with their own switch; Notes separately controls the title, description and author. Plain images cannot restore an editable map. Browser storage is separate for the mainland China and international sites, so use exported files to move a map between them.
+For a separate backup, export a JSON save. Planning annotations are included by default and can be omitted with their own switch; Title and description separately adds the map's title and description. Plain images cannot restore an editable map. Browser storage is separate for the mainland China and international sites, so use exported files to move a map between them.
 
 ## Turn the plan into an illustration
 
@@ -169,7 +169,7 @@ Agent edits use the same rule checks as manual edits. If an operation is invalid
 <div align="center">
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="./docs/media/underhood-dark.svg">
-  <img src="./docs/media/underhood-light.svg" alt="Layered source-tree diagram. Editors appear at the top, followed by UI and legal, agent with IO and API, kit, canvas, tools, i18n, rules, state, configuration with assets, and core. A highlighted path leads from the editors through rules to core commands, and a side label states that imports point downward." width="900">
+  <img src="./docs/media/underhood-light.svg" alt="Layered source-tree diagram. Editors appear at the top, followed by UI, legal, agent with IO and API, editor, pipelines, view, tools, i18n, rules, state, configuration with assets, platform, and core. A highlighted path leads from the editors through rules to core commands, and a side label states that imports point downward." width="900">
 </picture>
 </div>
 
@@ -195,8 +195,8 @@ npm run dev          # Vite dev server
 <summary>Other commands (test, lint, build)</summary>
 
 ```bash
-npm run test:run     # Vitest (all tests)
-npm run lint         # TypeScript type-check (app and scripts)
+npm run test:run     # Vitest unit tests
+npm run lint         # TypeScript type-check and ESLint (app, scripts and tests)
 npm run build        # Production build
 ```
 

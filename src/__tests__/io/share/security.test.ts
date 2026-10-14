@@ -4,13 +4,13 @@ import { buildShareCode } from '../../../io/share/export';
 import { importFromRaster, importFromBytes } from '../../../io/share/import';
 import { DEFAULT_LIMITS } from '../../../io/share/errors';
 import { encodePng } from '../../../io/share/raster/png-raster';
-import { deserialize } from '../../../io/json-codec';
+import { deserialize } from '../../_support/save-file';
 import { getMapTemplate } from '../../../config/maps';
-// @ts-ignore - node:fs is untyped here (no @types/node)
 import { readFileSync } from 'node:fs';
+import { exportable } from '../../_support/exportable';
 
 function fixture() {
-  const raw = readFileSync('src/__tests__/io/__fixtures__/petit-planet-hexia-1782022830197.json', 'utf8');
+  const raw = readFileSync('src/__tests__/fixtures/saves/petit-planet-hexia-1782022830197.json', 'utf8');
   return deserialize(raw, getMapTemplate((JSON.parse(raw) as { templateId?: string }).templateId));
 }
 
@@ -20,6 +20,15 @@ describe('security & robustness', () => {
     const r = await importFromBytes(bytes);
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.error.code).toBe('not-an-image');
+  });
+
+  it("importFromBytes keeps the PNG reader's own refusal code", async () => {
+    const png = await encodePng({ width: 4, height: 4, data: new Uint8Array(64).fill(200) });
+    const damaged = png.slice();
+    damaged[20] = damaged[20]! ^ 0xff; // inside IHDR, so its CRC no longer matches
+    const r = await importFromBytes(damaged);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error.code).toBe('corrupt');
   });
 
   it('a blank (no-code) raster fails cleanly, no crash', async () => {
@@ -50,7 +59,7 @@ describe('security & robustness', () => {
 
   it('an over-tight maxCanonicalBytes limit rejects a real code without crashing', async () => {
     const state = fixture();
-    const code = await buildShareCode(state, null, { appVersion: '1.0-test', saveVersion: 3 }, 1600);
+    const code = await buildShareCode(exportable(state), null, { appVersion: '1.0-test', saveVersion: 3 }, 1600);
     expect(code).not.toBeNull();
     const png = await encodePng({ width: code!.width, height: code!.height, data: code!.rgba });
     const r = await importFromBytes(png, { ...DEFAULT_LIMITS, maxCanonicalBytes: 8 });
@@ -59,7 +68,7 @@ describe('security & robustness', () => {
 
   it('tampering random bytes in a real code never yields a crash, only a typed result', async () => {
     const state = fixture();
-    const code = await buildShareCode(state, null, { appVersion: '1.0-test', saveVersion: 3 }, 1600);
+    const code = await buildShareCode(exportable(state), null, { appVersion: '1.0-test', saveVersion: 3 }, 1600);
     expect(code).not.toBeNull();
     const rgba = new Uint8Array(code!.rgba);
     // Flip every 37th byte hard — gross corruption, not a scattered-noise robustness probe.

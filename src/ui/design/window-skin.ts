@@ -9,7 +9,7 @@
  * The drawing is flat: filled shapes, no gradient and not one stroke anywhere in the document. So a
  * surface here is a fill and a radius, and where two cream areas have to read apart they differ by
  * fill (`skin.inset`) or carry `skin.line`, never a border. The one exception is how a panel meets
- * the MAP: there it wears `PANEL_EDGE`, the hairline every unplated word and drawing wears, and
+ * the map: there it wears `PANEL_EDGE`, the hairline every unplated word and drawing wears, and
  * casts nothing.
  *
  * Two things the design source has no opinion on stay on the house tokens in `ui/design/styles.ts`: the
@@ -17,17 +17,17 @@
  * already had.
  */
 import type { CSSProperties } from 'react';
-import { colors, cursors, font, radii } from './styles';
+import { cursors, font, radii, UNAVAILABLE } from './styles';
 import { roleFont } from './text-weight';
-import { ACTIVE, INK, INSET, LINE, ON_DARK, PANEL_EDGE, PLATE, PLATE_INK, TRACK } from './tokens';
+import { ACTIVE, INK, INSET, LINE, ON_DARK, PANEL_EDGE, PLATE, PLATE_INK, TRACK, FRAME_INK, MUTED, DANGER_SURFACE, DANGER_INK } from './tokens';
 
 /** The modal card: the cream plate a `ModalShell` (and the portrait guard) is drawn on. */
 export const cozyPanel: CSSProperties = {
-  background: colors.panelCream,
+  background: PLATE,
   borderRadius: radii.panel,
   border: PANEL_EDGE,
   boxShadow: 'none',
-  color: colors.frameDark,
+  color: FRAME_INK,
   fontFamily: font.family,
 };
 
@@ -51,8 +51,8 @@ export const skin = {
    * recede in a warm brown instead: About's version line, the keyboard legend and the import note
    * all take it from here.
    */
-  muted: colors.brownText,
-  /** A surface sitting ON the plate. */
+  muted: MUTED,
+  /** A surface sitting on the plate. */
   inset: INSET,
   /** A divider inside a plate. */
   line: LINE,
@@ -87,7 +87,7 @@ export const windowInset: CSSProperties = {
 /** A one-line text field on the plate, rounded by itself (so it takes no field-wrap focus marker). */
 export const windowField: CSSProperties = {
   fontFamily: font.family, ...roleFont('field'), color: skin.ink, background: skin.inset,
-  border: `1.5px solid ${skin.line}`, borderRadius: radii.md, padding: '9px 11px',
+  border: `1.5px solid ${skin.line}`, borderRadius: radii.md, padding: '8px 10px',
   outline: 'none', width: '100%', boxSizing: 'border-box',
 };
 
@@ -99,15 +99,15 @@ export function windowPill(variant: PillVariant = 'quiet', disabled = false, on:
   const base: CSSProperties = {
     fontFamily: font.family,
     ...roleFont('chip'),
-    padding: '7px 14px',
+    padding: '6px 14px',
     borderRadius: radii.pill,
     border: 'none',
     whiteSpace: 'nowrap',
     cursor: disabled ? cursors.blocked : cursors.clickable,
-    opacity: disabled ? 0.4 : 1,
+    opacity: disabled ? UNAVAILABLE : 1,
   };
   if (variant === 'active') return { ...base, background: skin.active, color: skin.ink };
-  if (variant === 'danger') return { ...base, background: colors.dangerBg, color: colors.dangerText };
+  if (variant === 'danger') return { ...base, background: DANGER_SURFACE, color: DANGER_INK };
   return { ...base, background: on === 'inset' ? skin.plate : skin.inset, color: skin.plateInk };
 }
 
@@ -117,7 +117,7 @@ export function windowChip(on: WindowSurface = 'plate'): CSSProperties {
   return {
     fontFamily: font.family,
     ...roleFont('chip'),
-    padding: '5px 12px',
+    padding: '4px 12px',
     borderRadius: radii.pill,
     background: on === 'inset' ? skin.plate : skin.inset,
     color: skin.ink,
@@ -146,8 +146,8 @@ export const windowPrimary: CSSProperties = {
   background: skin.ink,
   color: skin.plate,
   border: 'none',
-  borderRadius: 14,
-  padding: '11px 30px',
+  borderRadius: radii.field,
+  padding: '10px 28px',
   ...roleFont('action'),
   fontFamily: font.family,
   alignSelf: 'center',
@@ -182,47 +182,3 @@ export const windowFooterTertiary: CSSProperties = {
   background: 'transparent',
 };
 
-/** A floating menu of choices (the language picker, the preset picker).
- *
- *  It takes the INSET fill, not the plate's. A menu opens OVER the card that carries its trigger,
- *  and a raised surface conventionally goes lighter than the one it floats above — but the plate
- *  is already at 0.95 luminance, so lighter is at most 1.047 away and the two read as one field
- *  with a shadow drawn on it. Depth here can only be spent downward, so the rule is the one every
- *  other control follows: a thing standing on a plate is one step off it, whether it lies flat on
- *  the plate or hovers over it.
- *
- *  What says WHICH is the hairline every panel here wears, not a shadow — a menu reads as the step
- *  down from the plate it opened over. */
-export const windowMenu: CSSProperties = {
-  background: skin.inset,
-  borderRadius: radii.lg,
-  border: PANEL_EDGE,
-  boxShadow: 'none',
-  padding: 6,
-  display: 'flex',
-  flexDirection: 'column',
-  gap: 2,
-};
-
-export function windowMenuItem(active: boolean): CSSProperties {
-  return {
-    ...roleFont(active ? 'menu' : 'label'),
-    fontFamily: font.family,
-    border: 'none',
-    cursor: cursors.clickable,
-    textAlign: 'left',
-    padding: '8px 14px',
-    borderRadius: radii.md,
-    // An inactive item matches the menu rather than being transparent, so the hover tint animates
-    // from a colour instead of flashing in.
-    background: active ? skin.active : skin.inset,
-    color: active ? skin.ink : skin.plateInk,
-    whiteSpace: 'nowrap',
-  };
-}
-
-/** What a menu item's hover animates its background to: the plate cream, one step UP the ramp from
- *  the menu it sits in, so the row under the pointer comes forward. */
-export function windowMenuItemHover(active: boolean): string {
-  return active ? skin.active : skin.plate;
-}

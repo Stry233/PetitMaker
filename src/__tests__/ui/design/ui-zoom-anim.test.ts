@@ -1,14 +1,15 @@
+// @vitest-environment jsdom
 // ui-zoom-anim — the shared application-layer tween for uiZoom. The store's
-// uiZoom is the persisted TARGET (written once per user action); this module
-// eases a LIVE value toward it so every consumer (menu scale, chrome scale,
+// uiZoom is the persisted target (written once per user action); this module
+// eases a live value toward it so every consumer (menu scale, chrome scale,
 // centre offset) animates in lockstep, whichever path set the target (the
 // Settings slider's release commit, Ctrl+/-, the reset chip, arrow keys).
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { useEditorStore } from '../../../state/store';
-import { setReducedMotion, __resetMotionState } from '../../../core/runtime/motion-state';
+import { setReducedMotion, __resetMotionState } from '../../../platform/channels/motion-state';
 import { useAnimatedUiZoom, useUiZooming, __resetUiZoomAnim } from '../../../ui/design/ui-zoom-anim';
-import { setStoreState } from '../../_store';
+import { setStoreState } from '../../_support/store';
 
 beforeEach(() => {
   vi.useFakeTimers();
@@ -52,7 +53,7 @@ describe('useAnimatedUiZoom', () => {
     expect(midway).toBeLessThan(1.8);
 
     // Retarget down to 0.6 before convergence — the live value should move
-    // DOWN from `midway`, never jump back up toward 1.8 first.
+    // Down from `midway`, never jump back up toward 1.8 first.
     act(() => { useEditorStore.getState().setUiZoom(0.6); });
     act(() => { vi.advanceTimersByTime(16); });
     expect(result.current).toBeLessThan(midway);
@@ -99,5 +100,34 @@ describe('useUiZooming (the layout/px-rounding gate)', () => {
     act(() => { useEditorStore.getState().setUiZoom(2); });
     act(() => { vi.advanceTimersByTime(16); });
     expect(result.current).toBe(false);
+  });
+});
+
+describe('the follow is time-based', () => {
+  /** Drives the loop by hand at `hz` for `ms` of elapsed time and returns the live value. */
+  function runAt(hz: number, ms: number): number {
+    const frames: FrameRequestCallback[] = [];
+    const raf = vi.spyOn(window, 'requestAnimationFrame').mockImplementation((cb) => { frames.push(cb); return frames.length; });
+    const { result, unmount } = renderHook(() => useAnimatedUiZoom());
+    act(() => { useEditorStore.getState().setUiZoom(1.5); });
+    const step = 1000 / hz;
+    for (let i = 1; i <= Math.round(ms / step) && frames.length > 0; i++) {
+      const cb = frames.shift()!;
+      act(() => { cb(i * step); });
+    }
+    const value = result.current;
+    unmount();
+    raf.mockRestore();
+    setStoreState({ uiZoom: 1 });
+    __resetUiZoomAnim();
+    return value;
+  }
+
+  it('covers the same distance in the same time at 60 Hz and at 120 Hz', () => {
+    const at60 = runAt(60, 100);
+    const at120 = runAt(120, 100);
+    expect(at60).toBeGreaterThan(1);
+    expect(at60).toBeLessThan(1.5);
+    expect(Math.abs(at60 - at120)).toBeLessThan(0.02);
   });
 });

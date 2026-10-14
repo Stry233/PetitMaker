@@ -5,12 +5,12 @@
  */
 import { describe, it, expect } from 'vitest';
 import { CommandType, type GridState, type PlacedObject } from '../../core/model/types';
-import { makeExecutor, makeState, placeCmd } from './_helpers';
-import { planObjectMove, planObjectRotation } from '../../tools/objects/object-placer';
+import { makeExecutor, makeState, placeCmd } from '../_support/map-state';
+import { planObjectMove, planObjectRotation } from '../../tools/placement/probe';
 import { rotateObject } from '../../tools/objects/actions';
 import { deleteGroup, moveGroup, rotateGroup } from '../../tools/objects/group-actions';
 import { getMapStats } from '../../state/map-stats';
-import { CHUNK_LOAD_LIMIT } from '../../core/model/game-profile';
+import { CHUNK_LOAD_LIMIT } from '../../core/game/profile';
 
 const flower = (id: string, x: number, y: number): PlacedObject => ({
   id, catalogId: 'flower-protea', position: { x, y }, rotation: 0, elevation: 0,
@@ -51,7 +51,7 @@ describe('V-CHUNK-01 on transforms in an overloaded region', () => {
   it('lets a group move and turn within its overloaded region', () => {
     const state = overloaded();
     const exec = makeExecutor(state);
-    const moved = moveGroup(exec, state, ['f0', 'f1', 'f2'], 0, -3);
+    const moved = moveGroup(exec, state, ['f0', 'f1', 'f2'], { dx: 0, dy: -3 });
     expect(moved.refusal).toBeNull();
     expect(state.objects.get('f0')!.position).toEqual({ x: 0, y: 3 });
     const turned = rotateGroup(exec, state, ['f0', 'f1', 'f2'], 1);
@@ -62,14 +62,14 @@ describe('V-CHUNK-01 on transforms in an overloaded region', () => {
     const state = overloaded();
     const exec = makeExecutor(state);
     expect(exec.execute(placeCmd(flower('new', 2, 2))).errors.map((e) => e.ruleId)).toEqual(['V-CHUNK-01']);
-    expect(moveGroup(exec, state, ['f0'], 0, -3).refusal).toBeNull();
+    expect(moveGroup(exec, state, ['f0'], { dx: 0, dy: -3 }).refusal).toBeNull();
     expect(exec.execute(placeCmd(flower('new', 2, 2))).errors.map((e) => e.ruleId)).toEqual(['V-CHUNK-01']);
   });
 
   it('charges a different item in full even where the stroke removed another', () => {
     const state = overloaded();
     const exec = makeExecutor(state);
-    expect(exec.execute({ type: CommandType.RemoveObject, timestamp: 0, objectId: 'f0', removedObject: state.objects.get('f0')! }).success).toBe(true);
+    expect(exec.execute({ type: CommandType.RemoveObject, objectId: 'f0' }).success).toBe(true);
     expect(exec.execute(placeCmd(flower('other', 2, 2))).errors.map((e) => e.ruleId)).toEqual(['V-CHUNK-01']);
   });
 
@@ -77,7 +77,6 @@ describe('V-CHUNK-01 on transforms in an overloaded region', () => {
     const state = overloaded();
     const exec = makeExecutor(state);
     expect(deleteGroup(exec, state, ['f0']).deleted).toBe(1);
-    expect(state.liftedObjects?.size ?? 0).toBe(0);
     expect(exec.execute(placeCmd(flower('new', 2, 2))).errors.map((e) => e.ruleId)).toEqual(['V-CHUNK-01']);
   });
 
@@ -86,6 +85,6 @@ describe('V-CHUNK-01 on transforms in an overloaded region', () => {
     const state = overloaded(full);
     const exec = makeExecutor(state);
     expect(planObjectMove(exec, state, state.objects.get('f0')!, 20, 10).errors.map((e) => e.ruleId)).toEqual(['V-CHUNK-01']);
-    expect(moveGroup(exec, state, ['f0'], 20, 4).refusal).not.toBeNull();
+    expect(moveGroup(exec, state, ['f0'], { dx: 20, dy: 4 }).refusal).not.toBeNull();
   });
 });

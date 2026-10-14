@@ -4,7 +4,7 @@
  * keeps only its compressed bytes, never the whole picture.
  */
 import { Zlib } from 'fflate';
-import { crc32 } from '../share/crypto/crc32';
+import { crc32 } from '../../core/base/crc32';
 
 const SIGNATURE = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]);
 /** Filter types tried per band: None, Sub, Up, Paeth. Average rarely wins on flat art. */

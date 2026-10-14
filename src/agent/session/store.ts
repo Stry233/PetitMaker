@@ -1,9 +1,10 @@
 /** Zustand bridge from the append-only session log and its in-flight stream to React. */
 import { create, type StoreApi, type UseBoundStore } from 'zustand';
 import { createLog, subscribe, type SessionLog } from '../core/log';
-import { isJobActive } from '../core/loop';
-import { deriveView, type PanelView } from '../core/project-view';
-import type { Part } from '../core/types';
+import { isJobActive } from '../core/job-reads';
+import { deriveView, type PanelView, type ProjectionFacts } from '../core/project-view';
+import { jobOwnsMap } from '../core/view-types';
+import type { ChildProgress, Part } from '../core/types';
 import { eraseRecords } from './erase-records';
 import {
   clearMarks, loadLog, loadMarks, NO_MARKS, saveLog, saveMarks, type StorageHealth,
@@ -17,8 +18,8 @@ interface AgentSessionState {
   epoch: number;
   setLive(parts: readonly Part[] | null): void;
   /** Ephemeral delegated-helper progress. It is neither persisted nor folded into the panel log. */
-  childLive: { task: string; opName?: string; ops: number; label?: string } | null;
-  setChildLive(p: { task: string; opName?: string; ops: number; label?: string } | null): void;
+  childLive: ChildProgress | null;
+  setChildLive(p: ChildProgress | null): void;
   /** Storage condition shown to the user. Corruption persists until dismissed or cleared. */
   storageNotice: 'pruned' | 'lost' | 'corrupt' | null;
   /** Unreadable stored bytes retained for the recovery export until the notice is cleared. */
@@ -37,6 +38,8 @@ interface AgentSessionState {
   clearRecords(orderSeqs: readonly number[]): void;
   /** Flushes pending storage and adopts a stored log unless the current log has an active job. */
   hydrate(): void;
+  /** The tool facts the projection reads, present once the lazy tool surface has loaded. */
+  toolFacts: ProjectionFacts | undefined;
 }
 
 // The module-level timer and subscription follow whichever log the singleton store adopts.
@@ -87,14 +90,9 @@ function withSeq(set: ReadonlySet<number>, seq: number): ReadonlySet<number> {
   return set.has(seq) ? set : new Set([...set, seq]);
 }
 
-const NO_READ_TOOLS: ReadonlySet<string> = new Set();
-let readTools: ReadonlySet<string> = NO_READ_TOOLS;
-
-/** Installs the read-only tool names once the lazy panel schema has loaded. */
-export function setReadTools(names: ReadonlySet<string>): void {
-  if (names === readTools) return;
-  readTools = names;
-  useAgentSession.setState((s) => ({ epoch: s.epoch + 1 }));
+/** Installs the tool facts the projection reads once the lazy tool surface has loaded. */
+export function setToolFacts(facts: ProjectionFacts | undefined): void {
+  if (facts !== useAgentSession.getState().toolFacts) useAgentSession.setState({ toolFacts: facts });
 }
 
 /** Updates the storage notice; a successful write clears capacity failures but not corruption. */
@@ -148,6 +146,7 @@ export const useAgentSession: UseBoundStore<StoreApi<AgentSessionState>> = creat
     restored: false,
     filed: NO_SEQS,
     cleared: NO_SEQS,
+    toolFacts: undefined,
     fileAway: (orderSeq) => {
       const filed = withSeq(get().filed, orderSeq);
       if (filed === get().filed) return;
@@ -208,7 +207,7 @@ export const useAgentSession: UseBoundStore<StoreApi<AgentSessionState>> = creat
       // Record marks are valid only with the log whose order sequence they reference.
       if (!loaded) clearMarks();
       const marks = loaded ? loadMarks() : NO_MARKS;
-      // Older releases hid cleared records without erasing their provider context.
+      // A stored cleared mark erases its record's provider context as well as hiding it.
       const retained = loaded ? eraseRecords(loaded, new Set(marks.cleared)) : createLog();
       adopt(retained);
       if (loaded && retained !== loaded) applyStorageHealth(saveLog(retained));
@@ -221,7 +220,7 @@ export const useAgentSession: UseBoundStore<StoreApi<AgentSessionState>> = creat
 interface PanelViewCacheEntry {
   epoch: number;
   live: readonly Part[] | null;
-  readTools: ReadonlySet<string>;
+  facts: ProjectionFacts | undefined;
   view: PanelView;
 }
 
@@ -231,10 +230,16 @@ const cache = new WeakMap<SessionLog, PanelViewCacheEntry>();
 /** Returns the shared cached panel projection for the current store inputs. */
 export function panelView(state: AgentSessionState): PanelView {
   const entry = cache.get(state.log);
-  if (entry && entry.epoch === state.epoch && entry.live === state.live && entry.readTools === readTools) {
+  const facts = state.toolFacts;
+  if (entry && entry.epoch === state.epoch && entry.live === state.live && entry.facts === facts) {
     return entry.view;
   }
-  const view = deriveView(state.log, { live: state.live ?? undefined, readTools });
-  cache.set(state.log, { epoch: state.epoch, live: state.live, readTools, view });
+  const view = deriveView(state.log, { live: state.live ?? undefined, facts });
+  cache.set(state.log, { epoch: state.epoch, live: state.live, facts, view });
   return view;
+}
+
+/** Whether an assistant job is live in `state`. A log restored from storage has no job behind it. */
+export function jobRunningIn(state: AgentSessionState): boolean {
+  return !state.restored && jobOwnsMap(panelView(state).phase);
 }

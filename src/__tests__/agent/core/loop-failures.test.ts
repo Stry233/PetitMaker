@@ -1,9 +1,10 @@
+import { stubFacts } from '../../_support/tool-facts';
 import { describe, expect, it } from 'vitest';
-import { createScriptedAdapter, type ScriptedTurn } from '../../../agent/eval/scripted-adapter';
+import { createScriptedAdapter, type ScriptedTurn } from '../../_support/agent/scripted-adapter';
 import { append, createLog, eventsOf, type SessionLog } from '../../../agent/core/log';
 import type { ExecutedResult, LoopDeps, ToolExecutor } from '../../../agent/core/loop';
 import { runJob } from '../../../agent/core/loop';
-import type { Adapter, AdapterRequest } from '../../../agent/providers/types';
+import type { Adapter, AdapterRequest } from '../../../agent/core/adapter';
 
 /** The failure-mode suite for `runJob`: the retry ladder, exhaustion, unretryable errors, a
  *  mid-run abort, overflow-driven compaction, a bad-args batch, the verbatim-retry and revert
@@ -27,8 +28,7 @@ function makeExecutor(opts: {
       calls.push(call);
       return opts.result ? opts.result(call) : { content: `did ${call.name}`, isError: false };
     },
-    isWrite: (name) => writeNames.has(name),
-    isWide: (name) => wideNames.has(name),
+    facts: stubFacts(writeNames, wideNames),
     describe: (call) => `run ${call.name}`,
   };
 }
@@ -40,7 +40,6 @@ function makeDeps(overrides: Partial<LoopDeps> & { adapter: LoopDeps['adapter'];
     tools: [],
     oversight: 'yolo',
     sameModel: true,
-    budgetTokens: 100_000,
     signal: new AbortController().signal,
     undoStackSize: () => 0,
     ...overrides,
@@ -60,13 +59,13 @@ function toolTurn(calls: { callId: string; name: string; args?: Record<string, u
   };
 }
 
-/** A turn that produced ONLY reasoning before the provider cut it off at its output limit: no
+/** A turn that produced only reasoning before the provider cut it off at its output limit: no
  *  text, no tool call, so it reads as empty to anything that only looks at those two. */
 function reasoningTurn(text: string): ScriptedTurn {
   return { events: [{ t: 'reasoning', delta: text }, { t: 'done', stop: 'length' }] };
 }
 
-/** A turn that produced ONLY reasoning and then ENDED of its own accord: the model thought, and
+/** A turn that produced only reasoning and then ended of its own accord: the model thought, and
  *  nothing it thought reached the user. Silent, but not idle, and not cut off either. */
 function thinkingTurn(text: string): ScriptedTurn {
   return { events: [{ t: 'reasoning', delta: text }, { t: 'done', stop: 'stop' }] };
@@ -111,11 +110,14 @@ function fakeSleep(): { sleep: (ms: number, signal: AbortSignal) => Promise<void
   return { calls, sleep: async (ms) => { calls.push(ms); } };
 }
 
-/** Wraps a `ScriptedAdapter` to snapshot each request with `structuredClone` AT THE MOMENT it is
+/** Wraps a `ScriptedAdapter` to snapshot each request with `structuredClone` at the moment it is
  *  sent: the adapter's own `requests` array aliases the live objects the loop built, so comparing
  *  entries read back at the end of a test would trivially "pass" even if a later mutation (or a
  *  rebuilt request that happens to share structure) made two turns look identical after the fact. */
-function withRequestSnapshots(adapter: Adapter & { requests: AdapterRequest[] }): { adapter: Adapter & { requests: AdapterRequest[] }; snapshots: AdapterRequest[] } {
+function withRequestSnapshots(adapter: Adapter & { requests: AdapterRequest[] }): {
+  adapter: Adapter & { requests: AdapterRequest[] };
+  snapshots: AdapterRequest[];
+} {
   const snapshots: AdapterRequest[] = [];
   const wrapped: Adapter & { requests: AdapterRequest[] } = {
     requests: adapter.requests,
@@ -154,7 +156,7 @@ describe('runJob failure modes', () => {
   });
 
   /**
-   * ONE 429 TEACHES THE SESSION ITS PACE, and nothing before one costs a millisecond.
+   * One 429 teaches the session its pace, and nothing before one costs a millisecond.
    *
    * A forty-turn autopilot job spends a request per turn, which on a shared per-minute budget is the
    * same limit discovered over and over — the ladder answers each refusal, and only a gap between
@@ -197,7 +199,7 @@ describe('runJob failure modes', () => {
     expect(easyCalls, 'a fast local model stays fast').toEqual([]);
   });
 
-  it('2. attempts exhaust at MAX_TURN_RETRIES: 4 retry events, then the 5th attempt lands an incident', async () => {
+  it('2. attempts exhaust at MAX_TURN_ATTEMPTS: 4 retry events, then the 5th attempt lands an incident', async () => {
     const log = createLog(() => 0);
     seedOrder(log, 'go');
     const turns: ScriptedTurn[] = Array.from({ length: 5 }, () => ({ error: { cls: 'rate-limit', detail: 'still limited' } }));
@@ -209,7 +211,7 @@ describe('runJob failure modes', () => {
     const outcome = await runJob(log, deps);
 
     expect(outcome).toBe('incident');
-    expect(adapter.requests).toHaveLength(5); // 1 initial + 4 retries: MAX_TURN_RETRIES total attempts
+    expect(adapter.requests).toHaveLength(5); // 1 initial + 4 retries: MAX_TURN_ATTEMPTS total attempts
     const retryEvents = eventsOf(log).filter((e) => e.kind === 'retry');
     expect(retryEvents.map((e) => (e.kind === 'retry' ? e.attempt : -1))).toEqual([1, 2, 3, 4]);
     expect(eventsOf(log).some((e) => e.kind === 'incident')).toBe(true);
@@ -267,9 +269,9 @@ describe('runJob failure modes', () => {
 
   it('5. an overflow error runs compaction (visible between the failed and replayed requests) and replays on the compacted window, with no retry event', async () => {
     const log = createLog(() => 0);
-    // A compactable TWO-EXCHANGE fixture: a completed prior exchange, then the job's own order.
+    // A compactable two-exchange fixture: a completed prior exchange, then the job's own order.
     // `compact` reads the whole log (not job-scoped), so this gives it two groups to fold between
-    // while `runJob`'s own turn/empty counters (scoped to the LAST order) see only the second.
+    // while `runJob`'s own turn/empty counters (scoped to the last order) see only the second.
     append(log, { kind: 'order', text: 'an earlier job', mapContext: '' });
     append(log, {
       kind: 'assistant', stop: 'tool-calls',
@@ -337,7 +339,7 @@ describe('runJob failure modes', () => {
     const call = { callId0: 'c1', callId1: 'c2', name: 'paint_terrain', args: { x: 1 } };
     const adapter = createScriptedAdapter([
       toolTurn([{ callId: call.callId0, name: call.name, args: call.args }]),
-      // The write between the two failures is what lets the second one EXECUTE at all: an
+      // The write between the two failures is what lets the second one execute at all: an
       // unchanged map answers an identical retry with the repeat refusal instead.
       toolTurn([{ callId: 'w1', name: 'place_object', args: { x: 5 } }]),
       toolTurn([{ callId: call.callId1, name: call.name, args: call.args }]),
@@ -446,7 +448,7 @@ describe('runJob failure modes', () => {
     // are already in the log (no assistant event yet, since the turn has never once succeeded),
     // as if an earlier process died and a fresh runJob call is now resuming it. The in-memory
     // `attempt` counter must reseed from this count rather than starting over at 0, or the ladder
-    // would grant 4 more attempts than MAX_TURN_RETRIES allows across the reload.
+    // would grant 4 more attempts than MAX_TURN_ATTEMPTS allows across the reload.
     for (let attempt = 1; attempt <= 4; attempt++) {
       append(log, { kind: 'retry', attempt, cls: 'rate-limit', delayMs: 1000 });
     }
@@ -469,7 +471,7 @@ describe('runJob failure modes', () => {
     const log = createLog(() => 0);
     seedOrder(log, 'go');
     // The live repeat cycle: the turn stops on `length` with a tool call, whose reissue result is
-    // appended, but `DROPPED_STOPS` drops the turn AND that result from the replay window, so with
+    // appended, but `DROPPED_STOPS` drops the turn and that result from the replay window, so with
     // no note the second request is byte-identical to the first, the model re-emits the same
     // oversized call, and the job grinds on to MAX_TURNS. The nudge rides the `appendSystemNote`
     // channel, which is outside the drop window by construction.
@@ -523,7 +525,7 @@ describe('runJob failure modes', () => {
     const log = createLog(() => 0);
     seedOrder(log, 'go');
     // An extended-thinking provider can hit its output cap while still reasoning, before any text
-    // or tool call lands. Such a turn has neither, so it also reads as EMPTY: with the empty gate
+    // or tool call lands. Such a turn has neither, so it also reads as empty: with the empty gate
     // standing first in runJob's order, three of them would settle `jobEnd {outcome:'done'}` with
     // no summary at all, reporting success for a job that never answered. A truncated turn is the
     // model being cut off, not choosing silence, so it is not an empty turn.
@@ -584,7 +586,7 @@ describe('runJob failure modes', () => {
     seedOrder(log, 'go');
     // Transparent skipping (`continue` where the counter says `break`) would read this tail as
     // three empties in a row and settle `done` on the fourth turn, with the job never answered.
-    // A truncated turn is not a hole in the empty run, it ENDS it: whatever silence preceded the
+    // A truncated turn is not a hole in the empty run, it ends it: whatever silence preceded the
     // cut belongs to a stretch the model has since been nudged out of.
     const scripted = createScriptedAdapter([
       EMPTY_TURN, EMPTY_TURN, reasoningTurn('thinking'), EMPTY_TURN, textTurn('finally'),
@@ -596,7 +598,7 @@ describe('runJob failure modes', () => {
     expect(outcome).toBe('done');
     expect(snapshots).toHaveLength(5); // skip-counting would stop at 4, having given up early
     expect(eventsOf(log).find((e) => e.kind === 'jobEnd')).toMatchObject({ outcome: 'done', summary: 'finally' });
-    expect(noteAt(snapshots, 4)).toMatch(/no text and no tool calls/); // a streak of ONE, freshly counted
+    expect(noteAt(snapshots, 4)).toMatch(/no text and no tool calls/); // a streak of one, freshly counted
   });
 
   it('14. a turn that only REASONED is told so, not told it produced nothing', async () => {

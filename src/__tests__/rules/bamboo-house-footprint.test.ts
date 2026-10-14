@@ -3,11 +3,15 @@ import { TerrainType } from '../../core/model/types';
 import { getPlacedObjectSize } from '../../state/object-geometry';
 import { placementOverlapRule } from '../../rules/placement-overlap';
 import { traitPlacementRule } from '../../rules/placement';
-import { deserialize, serialize } from '../../io/json-codec';
-import { makeObject, makeState, placeCmd, setTerrain } from './_helpers';
+import { serialize } from '../../io/save/json-codec';
+import { deserialize } from '../_support/save-file';
+import { makeObject, makeState, placeCmd, setTerrain } from '../_support/map-state';
 
-it.each([0, 90, 180, 270] as const)('reserves Yunguo’s fifth row and column at %s degrees', rotation => {
-  const house = makeObject('building-bamboo-cabin', 4, 4, rotation);
+const cases = ['building-bamboo-cabin', 'building-plush-cabin'].flatMap(id =>
+  ([0, 90, 180, 270] as const).map(rotation => ({ id, rotation })));
+
+it.each(cases)('reserves $id’s fifth row and column at $rotation degrees', ({ id, rotation }) => {
+  const house = makeObject(id, 4, 4, rotation);
   expect(getPlacedObjectSize(house)).toEqual({ w: 5, h: 5 });
   const state = makeState(24, 24);
   state.objects.set(house.id, house);

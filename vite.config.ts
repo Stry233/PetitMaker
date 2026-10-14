@@ -8,14 +8,16 @@ import { transformHomepage } from './scripts/site-html.mts';
 import { STAMP_PATH, resolveBuildInfo, resolveVersion, unstampedMessage } from './scripts/build-info-core.mts';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { bundleReportPlugin } from './security/bundle-report-plugin.ts';
+import { fileURLToPath } from 'node:url';
+import { bundleReportPlugin } from './scripts/bundle-report-plugin.mts';
+import { WORKER_FILES_TOKEN, moderationDir, moderationFingerprint, workerFileCollector, workerFileInjector } from './scripts/warm-build.mts';
 import {
   HEADERS_POLICY,
   parseExtraConnectSrc,
   toCspMeta,
   withExtraConnectSrc, withExtraFontSrc,
 } from './security/headers-policy.ts';
-import { activeTarget } from './src/legal/deploy-targets.ts';
+import { activeTarget } from './src/platform/build/deploy-targets.ts';
 
 // Local endpoints extend only the development CSP; production uses the canonical policy.
 function devCspExtensionPlugin(rawConnect: string | undefined, rawFont: string | undefined) {
@@ -63,6 +65,23 @@ function pkgVersion(): string {
   }
 }
 
+/** The repository root, with forward slashes, for the root-anchored serving rules below. */
+const ROOT = fileURLToPath(new URL('.', import.meta.url)).replace(/\\/g, '/').replace(/\/$/, '');
+
+/**
+ * The pages the dependency scan starts from: the app and the development harness pages. Vite's
+ * default scans every HTML file under the root, which reaches a nested worktree's own index.html
+ * and node_modules and pre-bundles a second React.
+ */
+export const DEP_SCAN_ENTRIES = ['index.html', 'scripts/internal/**/*.html'];
+
+/**
+ * Vite's default deny list, plus nested worktrees and any dependency tree under tool output.
+ * Anchored at the root so a checkout that is itself a nested worktree still serves its own files;
+ * harness Vite caches under tool output stay servable.
+ */
+export const SERVE_DENY = ['.env', '.env.*', '*.{crt,pem}', '**/.git/**', `${ROOT}/.claude/**`, `${ROOT}/artifacts/**/node_modules/**`];
+
 const { info: BUILD_INFO, stamped: BUILD_IS_STAMPED } = resolveBuildInfo({ readStamp });
 // Resolve once so generated HTML and the app receive the same deployment target.
 const TARGET = activeTarget();
@@ -104,6 +123,9 @@ export default defineConfig(({ mode, command }) => {
   const viteEnv = loadEnv(mode, process.cwd(), 'VITE_');
   const petitEnv = loadEnv(mode, process.cwd(), 'PETIT_');
   const exportSiteMark = (process.env.PETIT_EXPORT_SITE_MARK ?? petitEnv.PETIT_EXPORT_SITE_MARK) === '1';
+  // The web build fingerprints the map check's folder and lists each worker's files for the warm schedule.
+  const webBuild = !lite && command === 'build';
+  const moderationFolder = webBuild ? moderationDir() : 'moderation/';
   // Production must identify a source build; local development can run before its first stamp.
   if (!BUILD_IS_STAMPED) {
     if (command === 'build') throw new Error(unstampedMessage(true));
@@ -126,6 +148,7 @@ export default defineConfig(({ mode, command }) => {
       ...(lite ? [liteCompatibilityPlugin()] : []),
       react(),
       ...(!lite ? [artworkBuildPlugin(), bundleReportPlugin(), webEditionBoundary()] : []),
+      ...(webBuild ? [workerFileInjector(), moderationFingerprint(moderationFolder)] : []),
       ...(!lite ? [devCspExtensionPlugin(
         viteEnv.VITE_EXTRA_CONNECT_SRC ?? process.env.VITE_EXTRA_CONNECT_SRC,
         viteEnv.VITE_EXTRA_FONT_SRC ?? process.env.VITE_EXTRA_FONT_SRC,
@@ -135,22 +158,23 @@ export default defineConfig(({ mode, command }) => {
       dropUnusedOrtBinariesPlugin(),
     ],
     resolve: {
-      alias: [
-        ...(lite ? liteAliases : []),
-        { find: '@', replacement: resolve('src') },
-      ],
+      alias: lite ? liteAliases : [],
     },
     optimizeDeps: {
+      entries: DEP_SCAN_ENTRIES,
       // Worker-only imports escape the initial scan; discovering them during inference reloads the page.
       include: lite ? [] : ['onnxruntime-web/webgpu', 'onnxruntime-web', 'opencc-js/t2cn', 'obscenity', '@2toad/profanity', '@tensorflow/tfjs', '@tensorflow/tfjs-backend-wasm', 'nsfwjs/core', 'tesseract.js', 'wasm-feature-detect', 'cuss', 'linkify-it', 're2js'],
     },
     server: {
       /**
-       * Ignore nested worktrees and scratch metadata. Their config-file writes would otherwise
+       * Ignore nested worktrees, scratch metadata and tool output. Their writes would otherwise
        * trigger full dev-server reloads and interrupt live assistant sessions. Vite adds its own
-       * defaults for dependency, cache and version-control directories.
+       * defaults for dependency, cache and version-control directories. The patterns match absolute
+       * paths, so they are anchored at the root: a checkout that is itself a nested worktree still
+       * watches its own files.
        */
-      watch: { ignored: ['**/.claude/**', '**/.superpowers/**'] },
+      watch: { ignored: ['.claude', '.superpowers', 'artifacts'].map((dir) => `${ROOT}/${dir}/**`) },
+      fs: { deny: SERVE_DENY },
     },
     define: {
       ...(lite ? { 'import.meta.url': 'document.baseURI' } : {}),
@@ -163,10 +187,12 @@ export default defineConfig(({ mode, command }) => {
       __BUILD_NUMBER__: JSON.stringify(BUILD_INFO.buildNumber),
       __BUILD_SHA__: JSON.stringify(BUILD_INFO.sha),
       __BUILD_DATE__: JSON.stringify(BUILD_INFO.date),
+      __PETIT_MODERATION_DIR__: JSON.stringify(moderationFolder),
+      __PETIT_WORKER_FILES__: JSON.stringify(webBuild ? WORKER_FILES_TOKEN : ''),
     },
     // Module workers: the stylize inference worker code-splits (it loads one of two ONNX runtime
     // builds), which Rollup cannot do inside an IIFE.
-    worker: { format: 'es' },
+    worker: { format: 'es', plugins: () => (webBuild ? [workerFileCollector()] : []) },
     build: {
       outDir: lite ? 'dist-lite' : 'dist',
       ...(lite ? { target: ['es2017', 'chrome61'], cssTarget: 'chrome61', cssCodeSplit: false } : {}),

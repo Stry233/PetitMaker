@@ -1,22 +1,14 @@
 // Generates static documents, robots, sitemap, and security.txt after Vite.
 // PETIT_RELEASE=1 enables release validation; path-based previews keep only their noindex app.
 
-// @ts-ignore - node:fs is untyped here (no @types/node)
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-// @ts-ignore - node:path is untyped here (no @types/node)
 import { join } from 'node:path';
 
 import { LEGAL } from '../src/legal/config';
-import { DEPLOY_TARGETS, targetById } from '../src/legal/deploy-targets';
+import { DEPLOY_TARGETS, targetById } from '../src/platform/build/deploy-targets';
 import { pagePlan, writeAll, resolveMode } from './legal-pages-core.mts';
 import { redirectsFile } from './redirects-core.mts';
 import { webManifest } from './site-html.mts';
-
-declare const process: {
-  cwd(): string;
-  env: Record<string, string | undefined>;
-  exitCode?: number;
-};
 
 async function main(): Promise<void> {
   if (process.env.PETIT_BASE_PATH && process.env.PETIT_BASE_PATH !== '/') return;

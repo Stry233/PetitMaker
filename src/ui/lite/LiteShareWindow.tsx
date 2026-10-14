@@ -1,34 +1,23 @@
+import { useWindow } from '../chrome/modals/use-window';
 import { useT } from '../../i18n/context';
-import { useEditorStore } from '../../state/store';
-import { sendXhsImage, xhsImageActionAvailable, type XhsImageAction } from '../../io/xhs';
+import { deliverToXiaohongshu, xiaohongshuImageActionAvailable } from '../../editor/export/xiaohongshu';
 import { ModalShell, useModalEntered } from '../primitives/ModalShell';
-import { windowCard, windowTitle } from '../design/window-skin';
+import { WindowHeader, windowFrame } from '../primitives/Window';
 import { ExportPanel } from '../chrome/modals/export/ExportModal';
-
-function deliverImage(image: Blob, action: XhsImageAction): Promise<void> {
-  return new Promise<string>((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result));
-    reader.onerror = () => reject(reader.error);
-    reader.readAsDataURL(image);
-  }).then(data => sendXhsImage(data, action));
-}
 
 export function LiteShareWindow() {
   const t = useT();
-  const open = useEditorStore(s => s.modals.share || s.modals.export);
-  const setModal = useEditorStore(s => s.setModal);
-  const close = () => { setModal('share', false); setModal('export', false); };
+  const { open, close } = useWindow('share');
   const deliveries = (['save', 'note'] as const).map(action => ({
     id: action,
     label: t(action === 'save' ? 'lite.save_album' : 'lite.open_note'),
-    available: xhsImageActionAvailable(action),
-    send: (image: Blob) => deliverImage(image, action),
+    available: xiaohongshuImageActionAvailable(action),
+    send: (image: Blob) => deliverToXiaohongshu(image, action),
   }));
   const { entered, onEntered } = useModalEntered(open);
-  return <ModalShell helpTarget={{ page: 'share' }} open={open} onClose={close} onEntered={onEntered} width={980} height={848} maxVwPct={94} maxVhPct={92}
-    cardStyle={{ ...windowCard, padding: '24px 26px 20px', display: 'flex', flexDirection: 'column', overflow: 'hidden' }} ariaLabel={t('share.title')}>
-    <h2 style={{ ...windowTitle, margin: '0 0 10px' }}>{t('share.title')}</h2>
+  return <ModalShell helpTarget={{ page: 'share' }} open={open} onClose={close} onEntered={onEntered} size="workspace"
+    cardStyle={{ ...windowFrame, overflow: 'hidden' }} ariaLabel={t('share.title')}>
+    <WindowHeader title={<h2 style={{ margin: 0, font: 'inherit' }}>{t('share.title')}</h2>} reserve close={{ label: t('hint.close'), onPress: close }} style={{ marginBottom: 10 }} />
     {!deliveries.some(delivery => delivery.available) && <p role="status">{t('lite.preview_only')}</p>}
     <ExportPanel open={open} entered={entered} onDone={close} deliveries={deliveries} />
   </ModalShell>;

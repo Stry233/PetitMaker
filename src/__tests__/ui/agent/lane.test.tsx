@@ -1,8 +1,9 @@
+// @vitest-environment jsdom
 /**
  * The helper lane: what a `delegate_task` child is doing, said inside the parent's
  * own ticket, and the roll-up its own row keeps once the child is gone.
  *
- * The lane renders from a `LaneView`, which is the SHAPE rather than any one carrier: the live half
+ * The lane renders from a `LaneView`, which is the shape rather than any one carrier: the live half
  * comes off `store.childLive` today and the trouble faces are drawn here from a fixture, so they
  * ship testable ahead of the carrier that will report them.
  *
@@ -12,14 +13,19 @@
 import { describe, it, expect } from 'vitest';
 import { render } from '@testing-library/react';
 import { I18nProvider } from '../../../i18n/context';
-import { Lane, laneRollup, type LaneView } from '../../../ui/agent/Lane';
-import { OpRow, OpsList } from '../../../ui/agent/OpRow';
-import { colors } from '../../../ui/design/styles';
+import { Lane, laneRollup, type LaneView } from '../../../ui/agent/record/Lane';
+import { OpsList } from '../../../ui/agent/record/OpRow';
+import { DANGER_INK } from '../../../ui/design/tokens';
 import { translateFor } from '../../../i18n/context';
 import type { OpRow as OpRowData } from '../../../agent/core/project-view';
+import type { TextKey } from '../../../i18n/keys';
+
+/** One operation row as every list draws it: a single-row `OpsList`. */
+function OpRow({ op, lane }: { op: OpRowData; lane?: LaneView }) {
+  return <OpsList ops={[op]} {...(lane ? { lane } : {})} />;
+}
 
 const backing = new Map<string, string>();
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 (globalThis as any).localStorage = {
   getItem: (k: string) => backing.get(k) ?? null,
   setItem: (k: string, v: string) => void backing.set(k, String(v)),
@@ -41,7 +47,7 @@ function makeLane(over: Partial<LaneView> = {}): LaneView {
   return { task: 'planting the grove', ops: 4, opName: 'plant_forest', ...over };
 }
 
-const t = (key: string, params?: Record<string, string | number>) => translateFor('en', key, params);
+const t = (key: TextKey, params?: Record<string, string | number>) => translateFor('en', key, params);
 
 describe('Lane: the head', () => {
   it('names the helper by its task, counts its steps and turns a spinner while it works', () => {
@@ -52,8 +58,8 @@ describe('Lane: the head', () => {
   });
 
   /**
-   * A LANE OPENS AT ZERO AND STAYS THERE FOR ITS WHOLE FIRST THINK: `executor.ts` reports the child
-   * BEFORE running it, so the first lane the panel sees carries `ops: 0` until the child's first tool
+   * A lane opens at zero and stays there for its whole first think: `executor.ts` reports the child
+   * before running it, so the first lane the panel sees carries `ops: 0` until the child's first tool
    * result — seconds to minutes on a reasoning model. "0 steps" beside a live spinner is a count of
    * an absence, the same class every other count in the panel suppresses; the seat stays, so nothing
    * moves when the first step lands.
@@ -97,7 +103,7 @@ describe('Lane: the head', () => {
   });
 
   /** No label at all (an older call, or a model that skipped it): the name falls back to the first
-   *  LINE of the task, not the whole thing — a task that carries its own line breaks must not spill
+   *  Line of the task, not the whole thing — a task that carries its own line breaks must not spill
    *  a second line's words into what is meant to read as a name. */
   it('falls back to the first line of the task when the model gave no label', () => {
     const lane = makeLane({ label: undefined, task: 'line one of the order\nline two, never shown here' });
@@ -134,7 +140,7 @@ describe('Lane: the line', () => {
   it('reads the whole line in the danger ink when the helper is in trouble, and chips the cause', () => {
     const { getByTestId } = renderWithI18n(<Lane lane={makeLane({ error: 'ground not flat' })} />);
     expect(getByTestId('lane').getAttribute('data-erring')).toBe('true');
-    expect(asColor(getByTestId('lane-line').style.color)).toBe(asColor(colors.dangerText));
+    expect(asColor(getByTestId('lane-line').style.color)).toBe(asColor(DANGER_INK));
     expect(getByTestId('op-chip').textContent).toBe('This step could not be completed.');
   });
 });
@@ -154,7 +160,7 @@ describe('the delegate row and its lane', () => {
     expect(other.queryByTestId('lane')).toBeNull();
   });
 
-  /** THE CAUSE READS TWICE: a folded op list can hide the lane, and a refusal the user cannot see is
+  /** The cause reads twice: a folded op list can hide the lane, and a refusal the user cannot see is
    *  a refusal that did not happen as far as they know. */
   it('mirrors the helper\'s trouble onto the delegate row\'s own chip', () => {
     const { getAllByTestId } = renderWithI18n(
@@ -177,8 +183,8 @@ describe('the delegate row and its lane', () => {
     expect(getByTestId('op-chip').textContent).toBe('2 steps');
   });
 
-  /** `OpsList` hands the SAME live lane to every row in the job — there is only ever one child
-   *  in flight, but a job that delegated twice carries one SETTLED delegate row beside the running
+  /** `OpsList` hands the same live lane to every row in the job — there is only ever one child
+   *  in flight, but a job that delegated twice carries one settled delegate row beside the running
    *  one, and the settled row must not wear a lane that is not its own (and must keep its own
    *  rollup, which a wrongly-drawn lane would suppress). */
   it('draws the live lane on the row that is still running, and rolls up the settled one beside it', () => {

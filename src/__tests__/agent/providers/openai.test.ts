@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { QUIRKS, type Quirks } from '../../../agent/providers/defaults';
 import type { ProviderMessage } from '../../../agent/core/project-messages';
 import type { StreamEvent } from '../../../agent/core/types';
-import type { AdapterRequest } from '../../../agent/providers/types';
+import type { AdapterRequest } from '../../../agent/core/adapter';
 
 const { createMock, ctorMock, listMock, responsesMock } = vi.hoisted(() => ({
   createMock: vi.fn(),
@@ -23,7 +23,7 @@ vi.mock('openai', () => {
   return { default: MockOpenAI };
 });
 
-import { createOpenAIAdapter, toOpenAIMessages } from '../../../agent/providers/openai';
+import { __resetProseEndpoints, createOpenAIAdapter } from '../../../agent/providers/openai';
 
 /** A `client.chat.completions.create(...)` stand-in: async-iterable over scripted raw chunks,
  *  mirroring the real `Stream<ChatCompletionChunk>`. */
@@ -53,21 +53,23 @@ async function collect(gen: AsyncGenerator<StreamEvent>): Promise<StreamEvent[]>
 }
 
 describe('providers/openai: streaming', () => {
+  afterEach(__resetProseEndpoints);
+
   it('routes official reasoning models to Responses and preserves custom gateway chat routing', async () => {
     responsesMock.mockResolvedValue(fakeChunkStream([{ type: 'response.completed', response: { output: [{ type: 'message', id: 'm1', content: [{ type: 'output_text', text: 'Ready' }] }] } }]));
-    const official = createOpenAIAdapter({ apiKey: 'sk-test', quirks: QUIRKS.openai });
+    const official = createOpenAIAdapter({ apiKey: 'sk-test', providerId: 'openai', quirks: QUIRKS.openai });
     const result = await collect(official.stream(baseRequest({ model: 'gpt-6-astra' }), new AbortController().signal));
     expect(result).toContainEqual({ t: 'text', delta: 'Ready' });
     expect(responsesMock).toHaveBeenCalledTimes(1);
     expect(createMock).not.toHaveBeenCalled();
     createMock.mockResolvedValue(fakeChunkStream([{ choices: [{ index: 0, delta: { content: 'Custom' }, finish_reason: 'stop' }] }]));
-    const custom = createOpenAIAdapter({ apiKey: 'sk-test', quirks: QUIRKS.custom, baseUrl: 'https://gateway.example/v1' });
+    const custom = createOpenAIAdapter({ apiKey: 'sk-test', providerId: 'custom', quirks: QUIRKS.custom, baseUrl: 'https://gateway.example/v1' });
     expect(await collect(custom.stream(baseRequest({ model: 'gpt-6-astra' }), new AbortController().signal))).toContainEqual({ t: 'text', delta: 'Custom' });
     expect(createMock).toHaveBeenCalledTimes(1);
   });
 
   afterEach(() => {
-    // RESET, not clear: `clearAllMocks` leaves a queued `mockResolvedValueOnce` standing, so one
+    // Reset, not clear: `clearAllMocks` leaves a queued `mockResolvedValueOnce` standing, so one
     // failing retry test would feed its unconsumed value to the next test and cascade.
     vi.resetAllMocks();
   });
@@ -79,7 +81,7 @@ describe('providers/openai: streaming', () => {
       { choices: [{ index: 0, delta: {}, finish_reason: 'stop' }] },
     ]));
 
-    const adapter = createOpenAIAdapter({ apiKey: 'sk-test', baseUrl: 'https://api.deepseek.com', quirks: QUIRKS.deepseek });
+    const adapter = createOpenAIAdapter({ apiKey: 'sk-test', baseUrl: 'https://api.deepseek.com', providerId: 'deepseek', quirks: QUIRKS.deepseek });
     const events = await collect(adapter.stream(baseRequest(), new AbortController().signal));
 
     expect(events).toEqual([
@@ -97,8 +99,8 @@ describe('providers/openai: streaming', () => {
       { choices: [{ index: 0, delta: { reasoning: 'routed model thinks' }, finish_reason: 'stop' }] },
     ]));
 
-    const zhipu = createOpenAIAdapter({ apiKey: 'sk-test', baseUrl: 'https://api.z.ai/api/paas/v4', quirks: QUIRKS.zhipu });
-    const router = createOpenAIAdapter({ apiKey: 'sk-test', baseUrl: 'https://openrouter.ai/api/v1', quirks: QUIRKS.openrouter });
+    const zhipu = createOpenAIAdapter({ apiKey: 'sk-test', baseUrl: 'https://api.z.ai/api/paas/v4', providerId: 'zhipu', quirks: QUIRKS.zhipu });
+    const router = createOpenAIAdapter({ apiKey: 'sk-test', baseUrl: 'https://openrouter.ai/api/v1', providerId: 'openrouter', quirks: QUIRKS.openrouter });
 
     expect(await collect(zhipu.stream(baseRequest(), new AbortController().signal))).toEqual([
       { t: 'reasoning', delta: 'zhipu thinks' },
@@ -117,8 +119,8 @@ describe('providers/openai: streaming', () => {
     createMock.mockResolvedValueOnce(fakeChunkStream(bothFields));
     createMock.mockResolvedValueOnce(fakeChunkStream(bothFields));
 
-    const deepseek = createOpenAIAdapter({ apiKey: 'sk-test', baseUrl: 'https://api.deepseek.com', quirks: QUIRKS.deepseek });
-    const router = createOpenAIAdapter({ apiKey: 'sk-test', baseUrl: 'https://openrouter.ai/api/v1', quirks: QUIRKS.openrouter });
+    const deepseek = createOpenAIAdapter({ apiKey: 'sk-test', baseUrl: 'https://api.deepseek.com', providerId: 'deepseek', quirks: QUIRKS.deepseek });
+    const router = createOpenAIAdapter({ apiKey: 'sk-test', baseUrl: 'https://openrouter.ai/api/v1', providerId: 'openrouter', quirks: QUIRKS.openrouter });
 
     expect(await collect(deepseek.stream(baseRequest(), new AbortController().signal))).toEqual([
       { t: 'reasoning', delta: 'from reasoning_content' },
@@ -136,7 +138,7 @@ describe('providers/openai: streaming', () => {
       { choices: [{ index: 0, delta: { content: 'hi' }, finish_reason: 'stop' }] },
     ]));
 
-    const adapter = createOpenAIAdapter({ apiKey: 'sk-test', baseUrl: 'https://api.openai.com/v1', quirks: QUIRKS.openai });
+    const adapter = createOpenAIAdapter({ apiKey: 'sk-test', baseUrl: 'https://api.openai.com/v1', providerId: 'openai', quirks: QUIRKS.openai });
     const events = await collect(adapter.stream(baseRequest(), new AbortController().signal));
 
     expect(events).toEqual([
@@ -156,7 +158,7 @@ describe('providers/openai: streaming', () => {
       { choices: [{ index: 0, delta: {}, finish_reason: 'tool_calls' }] },
     ]));
 
-    const adapter = createOpenAIAdapter({ apiKey: 'sk-test', baseUrl: 'https://api.openai.com/v1', quirks: QUIRKS.openai });
+    const adapter = createOpenAIAdapter({ apiKey: 'sk-test', baseUrl: 'https://api.openai.com/v1', providerId: 'openai', quirks: QUIRKS.openai });
     const events = await collect(adapter.stream(baseRequest(), new AbortController().signal));
 
     expect(events).toEqual([
@@ -176,8 +178,8 @@ describe('providers/openai: streaming', () => {
     ]);
   });
 
-  /** Chunks lifted from a live Ivy (vLLM-style) gateway's SSE: every chunk's choice carries BOTH a
-   *  cumulative `message` and a `delta`, a tool call arrives COMPLETE in one chunk (id + name + whole
+  /** Chunks lifted from a live Ivy (vLLM-style) gateway's SSE: every chunk's choice carries both a
+   *  cumulative `message` and a `delta`, a tool call arrives complete in one chunk (id + name + whole
    *  arguments), and no tool call carries an `index`. Several calls in one turn are several such
    *  chunks, so keying the accumulator on `index` alone merged them all into one buffer of
    *  concatenated JSON. */
@@ -192,7 +194,7 @@ describe('providers/openai: streaming', () => {
       { choices: [{ index: 0, message: { role: 'assistant', content: '' }, delta: { role: 'assistant', content: '' }, finish_reason: 'tool_calls' }], usage: { prompt_tokens: 14020, completion_tokens: 155, total_tokens: 14175 } },
     ]));
 
-    const adapter = createOpenAIAdapter({ apiKey: 'none', baseUrl: 'http://gateway.example/v1', quirks: QUIRKS.custom });
+    const adapter = createOpenAIAdapter({ apiKey: 'none', baseUrl: 'http://gateway.example/v1', providerId: 'custom', quirks: QUIRKS.custom });
     const events = await collect(adapter.stream(baseRequest(), new AbortController().signal));
 
     expect(events).toEqual([
@@ -221,7 +223,7 @@ describe('providers/openai: streaming', () => {
       { choices: [{ index: 0, delta: {}, finish_reason: 'tool_calls' }] },
     ]));
 
-    const adapter = createOpenAIAdapter({ apiKey: 'none', baseUrl: 'http://gateway.example/v1', quirks: QUIRKS.custom });
+    const adapter = createOpenAIAdapter({ apiKey: 'none', baseUrl: 'http://gateway.example/v1', providerId: 'custom', quirks: QUIRKS.custom });
     const events = await collect(adapter.stream(baseRequest(), new AbortController().signal));
 
     expect(events).toEqual([
@@ -238,7 +240,7 @@ describe('providers/openai: streaming', () => {
       { choices: [{ index: 0, delta: {}, finish_reason: 'tool_calls' }] },
     ]));
 
-    const adapter = createOpenAIAdapter({ apiKey: 'sk-test', baseUrl: 'https://api.openai.com/v1', quirks: QUIRKS.openai });
+    const adapter = createOpenAIAdapter({ apiKey: 'sk-test', baseUrl: 'https://api.openai.com/v1', providerId: 'openai', quirks: QUIRKS.openai });
     const events = await collect(adapter.stream(baseRequest(), new AbortController().signal));
 
     expect(events[events.length - 1]).toEqual({
@@ -254,7 +256,7 @@ describe('providers/openai: streaming', () => {
       { choices: [{ index: 0, delta: {}, finish_reason: 'tool_calls' }] },
     ]));
 
-    const adapter = createOpenAIAdapter({ apiKey: 'sk-test', baseUrl: 'https://openrouter.ai/api/v1', quirks: QUIRKS.openrouter });
+    const adapter = createOpenAIAdapter({ apiKey: 'sk-test', baseUrl: 'https://openrouter.ai/api/v1', providerId: 'openrouter', quirks: QUIRKS.openrouter });
     const events = await collect(adapter.stream(baseRequest(), new AbortController().signal));
 
     expect(events).toEqual([
@@ -272,7 +274,7 @@ describe('providers/openai: streaming', () => {
     createMock.mockResolvedValueOnce(fakeChunkStream(oneIdLessCallChunks));
     createMock.mockResolvedValueOnce(fakeChunkStream(oneIdLessCallChunks));
 
-    const adapter = createOpenAIAdapter({ apiKey: 'sk-test', baseUrl: 'https://openrouter.ai/api/v1', quirks: QUIRKS.openrouter });
+    const adapter = createOpenAIAdapter({ apiKey: 'sk-test', baseUrl: 'https://openrouter.ai/api/v1', providerId: 'openrouter', quirks: QUIRKS.openrouter });
     const firstEvents = await collect(adapter.stream(baseRequest(), new AbortController().signal));
     const secondEvents = await collect(adapter.stream(baseRequest(), new AbortController().signal));
 
@@ -290,7 +292,7 @@ describe('providers/openai: streaming', () => {
       { choices: [{ index: 0, delta: {}, finish_reason: 'length' }] },
     ]));
 
-    const adapter = createOpenAIAdapter({ apiKey: 'sk-test', baseUrl: 'https://api.openai.com/v1', quirks: QUIRKS.openai });
+    const adapter = createOpenAIAdapter({ apiKey: 'sk-test', baseUrl: 'https://api.openai.com/v1', providerId: 'openai', quirks: QUIRKS.openai });
     const events = await collect(adapter.stream(baseRequest(), new AbortController().signal));
 
     expect(events).toEqual([
@@ -302,11 +304,11 @@ describe('providers/openai: streaming', () => {
   it('maps a usage-bearing final chunk onto the done event, including the cached-prompt read', async () => {
     createMock.mockResolvedValue(fakeChunkStream([
       { choices: [{ index: 0, delta: { content: 'hi' }, finish_reason: 'stop' }] },
-      // The usage chunk carries NO choice at all, which is how the wire sends it.
+      // The usage chunk carries no choice at all, which is how the wire sends it.
       { choices: [], usage: { prompt_tokens: 1200, completion_tokens: 84, total_tokens: 1284, prompt_tokens_details: { cached_tokens: 1024 } } },
     ]));
 
-    const adapter = createOpenAIAdapter({ apiKey: 'sk-test', baseUrl: 'https://api.deepseek.com', quirks: QUIRKS.deepseek });
+    const adapter = createOpenAIAdapter({ apiKey: 'sk-test', baseUrl: 'https://api.deepseek.com', providerId: 'deepseek', quirks: QUIRKS.deepseek });
     const events = await collect(adapter.stream(baseRequest(), new AbortController().signal));
 
     expect(events).toEqual([
@@ -323,7 +325,7 @@ describe('providers/openai: streaming', () => {
       { choices: [{ index: 0, delta: {}, finish_reason: 'stop' }] },
     ]));
 
-    const adapter = createOpenAIAdapter({ apiKey: 'sk-test', baseUrl: 'https://api.openai.com/v1', quirks: QUIRKS.openai });
+    const adapter = createOpenAIAdapter({ apiKey: 'sk-test', baseUrl: 'https://api.openai.com/v1', providerId: 'openai', quirks: QUIRKS.openai });
 
     expect(await collect(adapter.stream(baseRequest(), new AbortController().signal))).toEqual([
       { t: 'done', stop: 'stop', final: [], usage: { input: 10, output: 2, cacheRead: undefined } },
@@ -336,13 +338,13 @@ describe('providers/openai: streaming', () => {
   it('asks for streamed usage where the quirk is set and omits the parameter for a custom gateway', async () => {
     createMock.mockResolvedValue(fakeChunkStream([]));
 
-    const zhipu = createOpenAIAdapter({ apiKey: 'sk-test', baseUrl: 'https://api.z.ai/api/paas/v4', quirks: QUIRKS.zhipu });
+    const zhipu = createOpenAIAdapter({ apiKey: 'sk-test', baseUrl: 'https://api.z.ai/api/paas/v4', providerId: 'zhipu', quirks: QUIRKS.zhipu });
     await collect(zhipu.stream(baseRequest(), new AbortController().signal));
     const [zhipuParams] = createMock.mock.calls[0] as [Record<string, unknown>];
     expect(zhipuParams.stream_options).toEqual({ include_usage: true });
 
     createMock.mockClear();
-    const custom = createOpenAIAdapter({ apiKey: 'sk-test', baseUrl: 'https://my-gateway.example/v1', quirks: QUIRKS.custom });
+    const custom = createOpenAIAdapter({ apiKey: 'sk-test', baseUrl: 'https://my-gateway.example/v1', providerId: 'custom', quirks: QUIRKS.custom });
     await collect(custom.stream(baseRequest(), new AbortController().signal));
     const [customParams] = createMock.mock.calls[0] as [Record<string, unknown>];
     expect('stream_options' in customParams).toBe(false);
@@ -357,7 +359,7 @@ describe('providers/openai: streaming', () => {
       { choices: [{ index: 0, delta: { content: 'served anyway' }, finish_reason: 'stop' }] },
     ]));
 
-    const adapter = createOpenAIAdapter({ apiKey: 'sk-test', baseUrl: 'https://my-gateway.example/v1', quirks: QUIRKS.qwen });
+    const adapter = createOpenAIAdapter({ apiKey: 'sk-test', baseUrl: 'https://my-gateway.example/v1', providerId: 'qwen', quirks: QUIRKS.qwen });
     const events = await collect(adapter.stream(baseRequest(), new AbortController().signal));
 
     expect(events).toEqual([
@@ -377,7 +379,7 @@ describe('providers/openai: streaming', () => {
       { choices: [{ index: 0, delta: { content: 'ok' }, finish_reason: 'stop' }] },
     ]));
 
-    const adapter = createOpenAIAdapter({ apiKey: 'sk-test', baseUrl: 'https://my-gateway.example/v1', quirks: QUIRKS.qwen });
+    const adapter = createOpenAIAdapter({ apiKey: 'sk-test', baseUrl: 'https://my-gateway.example/v1', providerId: 'qwen', quirks: QUIRKS.qwen });
     await collect(adapter.stream(baseRequest(), new AbortController().signal));
     expect(createMock).toHaveBeenCalledTimes(2);
 
@@ -395,7 +397,7 @@ describe('providers/openai: streaming', () => {
   it('never eats a real 400: a rejection that names something other than stream_options fails loudly on the first try', async () => {
     createMock.mockRejectedValue(Object.assign(new Error('Invalid value for model: no-such-model'), { status: 400 }));
 
-    const adapter = createOpenAIAdapter({ apiKey: 'sk-test', baseUrl: 'https://api.deepseek.com', quirks: QUIRKS.deepseek });
+    const adapter = createOpenAIAdapter({ apiKey: 'sk-test', baseUrl: 'https://api.deepseek.com', providerId: 'deepseek', quirks: QUIRKS.deepseek });
     const events = await collect(adapter.stream(baseRequest(), new AbortController().signal));
 
     expect(createMock).toHaveBeenCalledTimes(1);
@@ -410,7 +412,7 @@ describe('providers/openai: streaming', () => {
   it('constructs the client with maxRetries 0, dangerouslyAllowBrowser, and every x-stainless telemetry header nulled', async () => {
     createMock.mockResolvedValue(fakeChunkStream([]));
 
-    const adapter = createOpenAIAdapter({ apiKey: 'sk-test', baseUrl: 'https://api.deepseek.com', quirks: QUIRKS.deepseek });
+    const adapter = createOpenAIAdapter({ apiKey: 'sk-test', baseUrl: 'https://api.deepseek.com', providerId: 'deepseek', quirks: QUIRKS.deepseek });
     await collect(adapter.stream(baseRequest(), new AbortController().signal));
 
     expect(ctorMock).toHaveBeenCalledWith({
@@ -434,7 +436,7 @@ describe('providers/openai: streaming', () => {
   it('passes no baseURL to the SDK constructor when the caller omits one (the openai provider, whose SDK carries its own default)', async () => {
     createMock.mockResolvedValue(fakeChunkStream([]));
 
-    const adapter = createOpenAIAdapter({ apiKey: 'sk-test', quirks: QUIRKS.openai });
+    const adapter = createOpenAIAdapter({ apiKey: 'sk-test', providerId: 'openai', quirks: QUIRKS.openai });
     await collect(adapter.stream(baseRequest(), new AbortController().signal));
 
     expect(ctorMock).toHaveBeenCalledWith(expect.objectContaining({ baseURL: undefined }));
@@ -446,7 +448,7 @@ describe('providers/openai: streaming', () => {
     ]));
 
     const quirks: Quirks = { ...QUIRKS.openai, imageInToolResult: true };
-    const adapter = createOpenAIAdapter({ apiKey: 'sk-test', baseUrl: 'https://api.openai.com/v1', quirks });
+    const adapter = createOpenAIAdapter({ apiKey: 'sk-test', baseUrl: 'https://api.openai.com/v1', providerId: 'openai', quirks });
     const messages: ProviderMessage[] = [
       {
         role: 'tool',
@@ -476,7 +478,7 @@ describe('providers/openai: streaming', () => {
     });
     createMock.mockRejectedValue(err);
 
-    const adapter = createOpenAIAdapter({ apiKey: 'sk-test', baseUrl: 'https://api.openai.com/v1', quirks: QUIRKS.openai });
+    const adapter = createOpenAIAdapter({ apiKey: 'sk-test', baseUrl: 'https://api.openai.com/v1', providerId: 'openai', quirks: QUIRKS.openai });
     const events = await collect(adapter.stream(baseRequest(), new AbortController().signal));
 
     expect(events).toHaveLength(1);
@@ -501,7 +503,7 @@ describe('providers/openai: streaming', () => {
       },
     });
 
-    const adapter = createOpenAIAdapter({ apiKey: 'sk-test', baseUrl: 'https://api.openai.com/v1', quirks: QUIRKS.openai });
+    const adapter = createOpenAIAdapter({ apiKey: 'sk-test', baseUrl: 'https://api.openai.com/v1', providerId: 'openai', quirks: QUIRKS.openai });
     const events = await collect(adapter.stream(baseRequest(), controller.signal));
 
     expect(events).toEqual([
@@ -511,17 +513,13 @@ describe('providers/openai: streaming', () => {
   });
 
   /**
-   * A GATEWAY THAT CANNOT CARRY A TOOL CALL ON ITS STREAMING PATH.
+   * A gateway that cannot carry a tool call on its streaming path, as recorded against a live Open
+   * WebUI gateway: unstreamed it answers `finish_reason: "tool_calls"` with a `tool_calls` array,
+   * streamed it sends the same call as `delta.content` with `finish_reason: "stop"`. Unnormalized,
+   * that is an answer whose text is the JSON.
    *
-   * The shapes below are the ones recorded against a live Open WebUI gateway: the same request body
-   * answers `finish_reason: "tool_calls"` with a proper `tool_calls` array unstreamed, and streams
-   * the identical call as `delta.content` with `finish_reason: "stop"` and no `tool_calls` anywhere.
-   * Unnormalized, that turn is an ANSWER whose text is the JSON — a well-formed turn with a call in
-   * the wrong channel, which no error shape covers.
-   *
-   * Every test here uses its OWN base URL: the endpoint memory is module-wide
-   * (deliberately, so a per-job adapter does not relearn it), so a shared URL would let one test's
-   * lesson decide another test's transport.
+   * Each test uses its own base URL: the endpoint memory is module-wide, so a shared URL would let
+   * one test's lesson pick another's transport.
    */
   const PROSE_CALL = '{"name": "find_flat_areas", "arguments": {"minWidth": 7, "minHeight": 4, "elevation": 0, "near": {"x": 76, "y": 58}, "limit": 5}}';
   const PROSE_ARGS = { minWidth: 7, minHeight: 4, elevation: 0, near: { x: 76, y: 58 }, limit: 5 };
@@ -537,7 +535,7 @@ describe('providers/openai: streaming', () => {
       { choices: [{ index: 0, delta: {}, finish_reason: 'stop' }] },
     ]));
 
-    const adapter = createOpenAIAdapter({ apiKey: 'sk-test', baseUrl: 'https://prose-a.example/v1', quirks: QUIRKS.custom });
+    const adapter = createOpenAIAdapter({ apiKey: 'sk-test', baseUrl: 'https://prose-a.example/v1', providerId: 'custom', quirks: QUIRKS.custom });
     const events = await collect(adapter.stream(searchRequest(), new AbortController().signal));
 
     expect(events.some((e) => e.t === 'text'), 'the call is never the assistant\'s words').toBe(false);
@@ -561,10 +559,10 @@ describe('providers/openai: streaming', () => {
       { choices: [{ index: 0, delta: { content: '{"name":"find_flat_areas"}' }, finish_reason: 'stop' }] },
     ]));
 
-    // Two endpoints, because the FIRST prose turn takes its own endpoint off the streaming path.
-    const withString = await collect(createOpenAIAdapter({ apiKey: 'sk-test', baseUrl: 'https://prose-b1.example/v1', quirks: QUIRKS.custom })
+    // Two endpoints, because the first prose turn takes its own endpoint off the streaming path.
+    const withString = await collect(createOpenAIAdapter({ apiKey: 'sk-test', baseUrl: 'https://prose-b1.example/v1', providerId: 'custom', quirks: QUIRKS.custom })
       .stream(searchRequest(), new AbortController().signal));
-    const withNone = await collect(createOpenAIAdapter({ apiKey: 'sk-test', baseUrl: 'https://prose-b2.example/v1', quirks: QUIRKS.custom })
+    const withNone = await collect(createOpenAIAdapter({ apiKey: 'sk-test', baseUrl: 'https://prose-b2.example/v1', providerId: 'custom', quirks: QUIRKS.custom })
       .stream(searchRequest(), new AbortController().signal));
 
     expect(withString.find((e) => e.t === 'done')).toMatchObject({
@@ -584,7 +582,7 @@ describe('providers/openai: streaming', () => {
       { choices: [{ index: 0, delta: {}, finish_reason: 'stop' }] },
     ]));
 
-    const adapter = createOpenAIAdapter({ apiKey: 'sk-test', baseUrl: 'https://prose-c.example/v1', quirks: QUIRKS.custom });
+    const adapter = createOpenAIAdapter({ apiKey: 'sk-test', baseUrl: 'https://prose-c.example/v1', providerId: 'custom', quirks: QUIRKS.custom });
     const events = await collect(adapter.stream(searchRequest(), new AbortController().signal));
 
     expect(events).toEqual([
@@ -605,7 +603,7 @@ describe('providers/openai: streaming', () => {
       { choices: [{ index: 0, delta: {}, finish_reason: 'tool_calls' }] },
     ]));
 
-    const adapter = createOpenAIAdapter({ apiKey: 'sk-test', baseUrl: 'https://prose-d.example/v1', quirks: QUIRKS.custom });
+    const adapter = createOpenAIAdapter({ apiKey: 'sk-test', baseUrl: 'https://prose-d.example/v1', providerId: 'custom', quirks: QUIRKS.custom });
     const truncated = await collect(adapter.stream(searchRequest(), new AbortController().signal));
     const withRealCall = await collect(adapter.stream(searchRequest(), new AbortController().signal));
 
@@ -640,10 +638,10 @@ describe('providers/openai: streaming', () => {
       usage: { prompt_tokens: 900, completion_tokens: 40, total_tokens: 940 },
     });
 
-    const first = createOpenAIAdapter({ apiKey: 'sk-test', baseUrl: 'https://prose-e.example/v1', quirks: QUIRKS.custom });
+    const first = createOpenAIAdapter({ apiKey: 'sk-test', baseUrl: 'https://prose-e.example/v1', providerId: 'custom', quirks: QUIRKS.custom });
     const firstEvents = await collect(first.stream(searchRequest(), new AbortController().signal));
-    // A FRESH ADAPTER, because the runner builds one per job: the lesson has to outlive the instance.
-    const second = createOpenAIAdapter({ apiKey: 'sk-test', baseUrl: 'https://prose-e.example/v1', quirks: QUIRKS.custom });
+    // A fresh adapter, because the runner builds one per job: the lesson has to outlive the instance.
+    const second = createOpenAIAdapter({ apiKey: 'sk-test', baseUrl: 'https://prose-e.example/v1', providerId: 'custom', quirks: QUIRKS.custom });
     const secondEvents = await collect(second.stream(searchRequest(), new AbortController().signal));
 
     expect(firstEvents.find((e) => e.t === 'done')).toMatchObject({ quirks: ['tool-call-as-prose'] });
@@ -673,7 +671,7 @@ describe('providers/openai: streaming', () => {
     });
     createMock.mockResolvedValueOnce({ choices: [] });
 
-    const adapter = createOpenAIAdapter({ apiKey: 'sk-test', baseUrl: 'https://prose-f.example/v1', quirks: QUIRKS.custom });
+    const adapter = createOpenAIAdapter({ apiKey: 'sk-test', baseUrl: 'https://prose-f.example/v1', providerId: 'custom', quirks: QUIRKS.custom });
     await collect(adapter.stream(searchRequest(), new AbortController().signal));
     const unstreamedProse = await collect(adapter.stream(searchRequest(), new AbortController().signal));
     const empty = await collect(adapter.stream(searchRequest(), new AbortController().signal));
@@ -696,15 +694,26 @@ describe('providers/openai: streaming', () => {
       },
     });
 
-    const adapter = createOpenAIAdapter({ apiKey: 'sk-test', baseUrl: 'https://api.openai.com/v1', quirks: QUIRKS.openai });
+    const adapter = createOpenAIAdapter({ apiKey: 'sk-test', baseUrl: 'https://api.openai.com/v1', providerId: 'openai', quirks: QUIRKS.openai });
     const ids = await adapter.listModels(new AbortController().signal);
 
     expect(ids).toEqual(['gpt-4o', 'gpt-4o-mini']);
   });
 });
 
-describe('providers/openai: toOpenAIMessages', () => {
-  it('maps system + user/assistant/tool history two-pass: tool results before any follow-up user message, images as a labeled follow-up user message', () => {
+/** The chat messages a custom endpoint's adapter sends for `messages` under `system`. */
+async function sentChat(system: string, messages: ProviderMessage[]): Promise<unknown[]> {
+  createMock.mockReset();
+  createMock.mockResolvedValue(fakeChunkStream([{ choices: [{ index: 0, delta: { content: 'ok' }, finish_reason: 'stop' }] }]));
+  const adapter = createOpenAIAdapter({ apiKey: 'sk-test', providerId: 'custom', quirks: QUIRKS.custom, baseUrl: 'https://gateway.example/v1' });
+  await collect(adapter.stream(baseRequest({ system, messages }), new AbortController().signal));
+  return (createMock.mock.calls[0] as [{ messages: unknown[] }])[0].messages;
+}
+
+describe('providers/openai: the history it sends', () => {
+  afterEach(() => { vi.resetAllMocks(); __resetProseEndpoints(); });
+
+  it('maps system + user/assistant/tool history two-pass: tool results before any follow-up user message, images as a labeled follow-up user message', async () => {
     const messages: ProviderMessage[] = [
       { role: 'user', text: 'build a tower' },
       { role: 'assistant', text: '', toolCalls: [{ callId: 'call_1', name: 'view_map', args: {} }] },
@@ -714,7 +723,7 @@ describe('providers/openai: toOpenAIMessages', () => {
       },
     ];
 
-    expect(toOpenAIMessages('SYSTEM', messages)).toEqual([
+    expect(await sentChat('SYSTEM', messages)).toEqual([
       { role: 'system', content: 'SYSTEM' },
       { role: 'user', content: 'build a tower' },
       { role: 'assistant', tool_calls: [{ id: 'call_1', type: 'function', function: { name: 'view_map', arguments: '{}' } }] },
@@ -729,18 +738,18 @@ describe('providers/openai: toOpenAIMessages', () => {
     ]);
   });
 
-  it('prefixes an error result\'s content with "Error: "', () => {
+  it('prefixes an error result\'s content with "Error: "', async () => {
     const messages: ProviderMessage[] = [
       { role: 'tool', results: [{ callId: 'call_2', name: 'place_object', content: 'blocked', isError: true }] },
     ];
 
-    expect(toOpenAIMessages('SYSTEM', messages)).toEqual([
+    expect(await sentChat('SYSTEM', messages)).toEqual([
       { role: 'system', content: 'SYSTEM' },
       { role: 'tool', tool_call_id: 'call_2', content: 'Error: blocked' },
     ]);
   });
 
-  it('batches every tool result before any image follow-up, in two passes', () => {
+  it('batches every tool result before any image follow-up, in two passes', async () => {
     const messages: ProviderMessage[] = [
       {
         role: 'tool',
@@ -751,7 +760,7 @@ describe('providers/openai: toOpenAIMessages', () => {
       },
     ];
 
-    expect(toOpenAIMessages('SYS', messages)).toEqual([
+    expect(await sentChat('SYS', messages)).toEqual([
       { role: 'system', content: 'SYS' },
       { role: 'tool', tool_call_id: 'call_1', content: 'ok' },
       { role: 'tool', tool_call_id: 'call_2', content: 'also ok' },
@@ -765,25 +774,25 @@ describe('providers/openai: toOpenAIMessages', () => {
     ]);
   });
 
-  it('ignores a history assistant turn\'s raw field even when sameModel would be true (reasoning is never replayed on this dialect)', () => {
+  it('ignores a history assistant turn\'s raw field even when sameModel would be true (reasoning is never replayed on this dialect)', async () => {
     const messages: ProviderMessage[] = [
       { role: 'assistant', text: 'ok', toolCalls: [], raw: [{ type: 'reasoning', text: 'should never appear' }] },
     ];
 
-    expect(toOpenAIMessages('SYS', messages)).toEqual([
+    expect(await sentChat('SYS', messages)).toEqual([
       { role: 'system', content: 'SYS' },
       { role: 'assistant', content: 'ok' },
     ]);
   });
 
-  it('never emits content: null on a history assistant turn: omitted beside tool_calls, an empty string on a turn with neither', () => {
+  it('never emits content: null on a history assistant turn: omitted beside tool_calls, an empty string on a turn with neither', async () => {
     const messages: ProviderMessage[] = [
       { role: 'assistant', text: '', toolCalls: [{ callId: 'call_1', name: 'view_map', args: {} }] },
       { role: 'assistant', text: '', toolCalls: [] },
       { role: 'assistant', text: 'said and called', toolCalls: [{ callId: 'call_2', name: 'view_map', args: {} }] },
     ];
 
-    const out = toOpenAIMessages('SYS', messages);
+    const out = await sentChat('SYS', messages);
     expect(out[1]).toEqual({ role: 'assistant', tool_calls: [{ id: 'call_1', type: 'function', function: { name: 'view_map', arguments: '{}' } }] });
     expect(Object.keys(out[1] as object)).not.toContain('content');
     expect(out[2]).toEqual({ role: 'assistant', content: '' });
@@ -793,13 +802,13 @@ describe('providers/openai: toOpenAIMessages', () => {
     });
   });
 
-  it('sends a plain user message as a string, or as text+image parts when images are present', () => {
+  it('sends a plain user message as a string, or as text+image parts when images are present', async () => {
     const messages: ProviderMessage[] = [
       { role: 'user', text: 'build a tower' },
       { role: 'user', text: 'like this', images: ['data:image/png;base64,QUJD'] },
     ];
 
-    expect(toOpenAIMessages('SYS', messages)).toEqual([
+    expect(await sentChat('SYS', messages)).toEqual([
       { role: 'system', content: 'SYS' },
       { role: 'user', content: 'build a tower' },
       {
@@ -810,5 +819,32 @@ describe('providers/openai: toOpenAIMessages', () => {
         ],
       },
     ]);
+  });
+});
+
+describe('the protocol a turn is sent over', () => {
+  afterEach(() => { vi.resetAllMocks(); __resetProseEndpoints(); });
+
+  /** Which endpoint one turn of `model` reaches at `baseUrl`. */
+  async function route(baseUrl: string, model: string, capabilities?: AdapterRequest['capabilities']): Promise<'responses' | 'chat'> {
+    responsesMock.mockResolvedValue(fakeChunkStream([{ type: 'response.completed', response: { output: [] } }]));
+    createMock.mockResolvedValue(fakeChunkStream([{ choices: [{ index: 0, delta: { content: 'ok' }, finish_reason: 'stop' }] }]));
+    const providerId = baseUrl.includes('api.openai.com') ? 'openai' : 'custom';
+    const adapter = createOpenAIAdapter({ apiKey: 'sk-test', providerId, quirks: QUIRKS[providerId], baseUrl });
+    await collect(adapter.stream(baseRequest({ model, ...(capabilities ? { capabilities } : {}) }), new AbortController().signal));
+    const used = responsesMock.mock.calls.length > 0 ? 'responses' : 'chat';
+    vi.resetAllMocks();
+    return used;
+  }
+
+  it('routes a reasoning model on OpenAI\'s own host over the Responses protocol', async () => {
+    expect(await route('https://api.openai.com/v1', 'gpt-5-mini')).toBe('responses');
+    expect(await route('https://api.openai.com/v1/', 'o3')).toBe('responses');
+    expect(await route('https://api.openai.com/v1', 'gpt-4.1', { reasoning: true })).toBe('responses');
+  });
+
+  it('keeps chat completions for other models and for every other host', async () => {
+    expect(await route('https://api.openai.com/v1', 'gpt-4.1-mini')).toBe('chat');
+    expect(await route('https://gateway.example/v1', 'gpt-5-mini', { reasoning: true })).toBe('chat');
   });
 });

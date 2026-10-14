@@ -1,36 +1,18 @@
+// @vitest-environment jsdom
 /**
- * `cursors.css` must name every element a browser's own stylesheet gives a cursor to.
+ * `cursors.css` names every element a browser's own stylesheet gives a cursor, since a UA declaration
+ * on an element beats the cursor inherited from `html` (Firefox's `label { cursor: default }`).
  *
- * `cursor` is inherited, so the `html` rule covers the whole page — except on an element whose UA
- * stylesheet declares a cursor ITSELF, because a UA declaration on the element beats any value
- * inherited from an ancestor. Those elements are the entire coverage problem, and the list of them
- * cannot be reasoned out: it is whatever two shipping engines happen to declare, it differs between
- * them, and a sheet read by eye lets `label` (Firefox: `label { cursor: default }`) stay OS-
- * drawn behind every field caption in the export modals.
- *
- * ── How UA_STYLED was derived, and how to re-derive it ──────────────────────────────────────────
- * A throwaway page renders one probe of every HTML element that can carry a cursor — sectioning,
- * text, grouping, table and list elements, every interactive element, every `input[type]`, `a` with
- * and without `href`, `[contenteditable]`, `[role]`, `[aria-disabled]`, and a disabled variant of
- * every form control — sets ONE distinctive `cursor: url("data:…")` on `html` and nothing else, and
- * reads `getComputedStyle(el).cursor` for each. Anything that does not compute to that distinctive
- * value has a UA declaration on it, and is a row below.
- *
- * Run it in BOTH engines (a headless Firefox and a headless Chromium-family browser), POST the
- * results back to a local server, and take the UNION: `gecko` and `blink` below are what each one
- * answered, `null` where that engine left the element inheriting. To update this table, re-run that
- * enumeration on current browsers rather than adding a row by inspection.
- *
- * Elements the enumeration flagged that are absent: `track` and `input[type="hidden"]` generate no
- * box, so no pointer is ever over them and the value read back is a computed property on an
- * unrendered element rather than a cursor a user can see.
+ * To re-derive UA_STYLED: render one probe of every element that can carry a cursor (including each
+ * `input[type]`, `a` with and without `href`, `[contenteditable]`, `[role]`, `[aria-disabled]` and
+ * disabled controls), set one distinctive `cursor: url("data:…")` on `html` alone, and read each
+ * `getComputedStyle(el).cursor` in headless Firefox and a Chromium-family browser. `gecko` and `blink`
+ * hold each engine's answer, `null` where it inherits. `track` and `input[type="hidden"]` generate no
+ * box and are omitted. Re-run the enumeration rather than adding a row by inspection.
  */
 import { describe, it, expect } from 'vitest';
-// @ts-ignore - node:fs is untyped here (no @types/node)
 import { readFileSync } from 'node:fs';
-import { DOM_CURSORS, type DomCursorId } from '../../../core/runtime/cursor-spec';
-
-declare const process: { cwd(): string };
+import { DOM_CURSORS, type DomCursorId } from '../../../assets/cursors/cursor-spec';
 
 const SHEET = readFileSync(`${process.cwd()}/src/ui/design/cursors/cursors.css`, 'utf8');
 
@@ -347,7 +329,7 @@ describe('the disabled backstop', () => {
   });
 
   it('outranks every rule above it, rather than only tying with them', () => {
-    // Source order settles a tie, so a rule ABOVE with higher specificity would beat the backstop
+    // Source order settles a tie, so a rule above with higher specificity would beat the backstop
     // and pin the enabled cursor onto a control that is refusing. `aria-disabled` is meaningful on
     // a widget or a link, so that is the set swept; `<label>` carries no role that supports it.
     const aria = UA_STYLED.filter((e) => probeElement(e.html).matches('button, input, select, textarea, option, optgroup, a[href]'));

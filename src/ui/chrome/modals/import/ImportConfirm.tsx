@@ -4,19 +4,20 @@ import { windowFooterPrimary, windowFooterGhost, skin, windowTitle } from '../..
  * installs it. Every import path shows this one card, whether the file came through the Import
  * window or was dropped on the page, so a map is never replaced on a drop alone.
  */
+import { ActionButton } from '../../../primitives/ActionButton';
 import { useEffect, useState, type CSSProperties } from 'react';
-import { motion } from 'framer-motion';
 import { useT } from '../../../../i18n/context';
-import type { ImportPreview } from '../../../../io/import-file';
-import { renderThumbnail } from '../../../../canvas/thumbnail';
-import { colors, radii, buttonMotion } from '../../../design/styles';
+import type { ImportPreview } from '../../../../io/import/file';
+import { renderThumbnail } from '../../../../view/map2d/capture/thumbnail';
+import { radii } from '../../../design/styles';
+import { DANGER_SURFACE, ERROR, ON_DARK } from '../../../design/tokens';
 import { roleFont } from '../../../design/text-weight';
 
 /** Long side of the preview picture, in css px; the card is 520 wide. */
 const THUMBNAIL_PX = 440;
 
 const confirmPanel: CSSProperties = {
-  background: colors.dangerBg,
+  background: DANGER_SURFACE,
   borderRadius: radii.lg,
   padding: '12px 16px',
   ...roleFont('body'),
@@ -25,8 +26,8 @@ const confirmPanel: CSSProperties = {
 
 const dangerReplaceButton: CSSProperties = {
   ...windowFooterPrimary,
-  background: colors.statusError,
-  color: colors.white,
+  background: ERROR,
+  color: ON_DARK,
 };
 
 const picture: CSSProperties = {
@@ -74,12 +75,12 @@ export function ImportConfirm({ preview, name, replacing, busy, onConfirm, onCan
       </div>
       {replacing && <div role="alert" style={confirmPanel}>{t('import.confirm_replace')}</div>}
       <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
-        <motion.button type="button" style={windowFooterGhost} onClick={onCancel} {...buttonMotion}>
+        <ActionButton style={windowFooterGhost} onClick={onCancel}>
           {t('import.drop_cancel')}
-        </motion.button>
-        <motion.button type="button" style={replacing ? dangerReplaceButton : windowFooterPrimary} aria-busy={busy || undefined} onClick={() => { if (!busy) onConfirm(); }} {...buttonMotion}>
+        </ActionButton>
+        <ActionButton style={replacing ? dangerReplaceButton : windowFooterPrimary} aria-busy={busy || undefined} onClick={() => { if (!busy) onConfirm(); }}>
           {t(replacing ? 'import.drop_replace' : 'import.confirm_import')}
-        </motion.button>
+        </ActionButton>
       </div>
     </div>
   );

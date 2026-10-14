@@ -57,7 +57,7 @@ describe('createSkippableSleeper', () => {
     const sleeper = createSkippableSleeper();
     const controller = new AbortController();
 
-    // Registered on the SAME signal ahead of the sleep call, so it runs ahead of the sleeper's own
+    // Registered on the same signal ahead of the sleep call, so it runs ahead of the sleeper's own
     // onAbort listener when the signal fires: the race in which `resolve` can beat the rejection.
     controller.signal.addEventListener('abort', () => sleeper.skip());
 

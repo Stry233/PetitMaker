@@ -2,8 +2,8 @@ import { describe, it, expect } from 'vitest';
 import { chunkLoadViolations, chunkLoadRule } from '../../rules/chunk-load';
 import { CommandType, type PlacedObject, type PlaceObjectCommand } from '../../core/model/types';
 import { getCatalogItem } from '../../state/catalog';
-import { makeState } from './_helpers';
-import { CHUNK_LOAD_LIMIT } from '../../core/model/game-profile';
+import { makeState } from '../_support/map-state';
+import { CHUNK_LOAD_LIMIT } from '../../core/game/profile';
 
 function obj(id: string, x: number, y: number, catalogId = 'flower-protea'): PlacedObject {
   return { id, catalogId, position: { x, y }, rotation: 0, elevation: 0 };
@@ -53,8 +53,7 @@ describe('chunkLoadViolations (footprint-aware enforcement logic)', () => {
       state.objects.set(`existing-${i}`, obj(`existing-${i}`, i % 10, Math.floor(i / 10)));
     }
     const cmd: PlaceObjectCommand = {
-      type: CommandType.PlaceObject, timestamp: 0,
-      object: obj('candidate', 12, 12),
+      type: CommandType.PlaceObject,       object: obj('candidate', 12, 12),
     };
     expect(chunkLoadRule.validate(cmd, state)).toHaveLength(1);
     state.ignoreChunkLoad = true;

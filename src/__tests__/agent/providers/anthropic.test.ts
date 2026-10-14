@@ -2,7 +2,7 @@ import type Anthropic from '@anthropic-ai/sdk';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ProviderMessage } from '../../../agent/core/project-messages';
 import type { StreamEvent } from '../../../agent/core/types';
-import type { AdapterRequest } from '../../../agent/providers/types';
+import type { AdapterRequest } from '../../../agent/core/adapter';
 
 const { streamMock, ctorMock, listMock } = vi.hoisted(() => ({
   streamMock: vi.fn(),
@@ -21,11 +21,14 @@ vi.mock('@anthropic-ai/sdk', () => {
   return { default: MockAnthropic };
 });
 
-import { createAnthropicAdapter, toAnthropicMessages, withConversationBreakpoint } from '../../../agent/providers/anthropic';
+import { createAnthropicAdapter } from '../../../agent/providers/anthropic';
 
 /** A `client.messages.stream(...)` stand-in: async-iterable over scripted raw SDK events, plus
  *  `finalMessage()`. Mirrors the real MessageStream's dual surface (iterate live, await the end). */
-function fakeSdkStream(events: unknown[], finalMessage: () => unknown): { [Symbol.asyncIterator]: () => AsyncGenerator<unknown>; finalMessage: () => Promise<unknown> } {
+function fakeSdkStream(events: unknown[], finalMessage: () => unknown): {
+  [Symbol.asyncIterator]: () => AsyncGenerator<unknown>;
+  finalMessage: () => Promise<unknown>;
+} {
   return {
     async *[Symbol.asyncIterator]() {
       for (const e of events) yield e;
@@ -263,8 +266,24 @@ describe('providers/anthropic: streaming', () => {
   });
 });
 
-describe('providers/anthropic: toAnthropicMessages', () => {
-  it('echoes a history assistant turn\'s raw content verbatim only when sameModel; otherwise rebuilds text+tool_use from the neutral fields', () => {
+/** The conversation the adapter hands the SDK for `messages`. */
+async function sentMessages(messages: ProviderMessage[], sameModel = true): Promise<Anthropic.MessageParam[]> {
+  streamMock.mockClear();
+  streamMock.mockReturnValue(fakeSdkStream([], () => ({
+    content: [],
+    stop_reason: 'end_turn',
+    usage: { input_tokens: 1, output_tokens: 1, cache_read_input_tokens: null, cache_creation_input_tokens: null },
+  })));
+  await collect(createAnthropicAdapter({ apiKey: 'sk-ant-test' }).stream(baseRequest({ messages, sameModel }), new AbortController().signal));
+  return (streamMock.mock.calls[0] as [{ messages: Anthropic.MessageParam[] }])[0].messages;
+}
+
+/** A trailing user line that takes the cache breakpoint, so the turns before it read as converted. */
+const TAIL: ProviderMessage = { role: 'user', text: 'go on' };
+const MARKED_TAIL: Anthropic.MessageParam = { role: 'user', content: [{ type: 'text', text: 'go on', cache_control: { type: 'ephemeral' } }] };
+
+describe('providers/anthropic: the conversation it sends', () => {
+  it('echoes a history assistant turn\'s raw content verbatim only when sameModel; otherwise rebuilds text+tool_use from the neutral fields', async () => {
     const raw = [
       { type: 'thinking', thinking: 'plan the move', signature: 'sig-abc' },
       { type: 'text', text: 'ok' },
@@ -272,11 +291,12 @@ describe('providers/anthropic: toAnthropicMessages', () => {
     ];
     const messages: ProviderMessage[] = [
       { role: 'assistant', text: 'ok', toolCalls: [{ callId: 'call_2', name: 'x', args: { a: 1 } }], raw },
+      TAIL,
     ];
 
-    expect(toAnthropicMessages(messages, true)).toEqual([{ role: 'assistant', content: raw }]);
+    expect(await sentMessages(messages, true)).toEqual([{ role: 'assistant', content: raw }, MARKED_TAIL]);
 
-    expect(toAnthropicMessages(messages, false)).toEqual([
+    expect(await sentMessages(messages, false)).toEqual([
       {
         role: 'assistant',
         content: [
@@ -284,10 +304,11 @@ describe('providers/anthropic: toAnthropicMessages', () => {
           { type: 'tool_use', id: 'call_2', name: 'x', input: { a: 1 } },
         ],
       },
+      MARKED_TAIL,
     ]);
   });
 
-  it('batches tool results into one user message of tool_result blocks, in order, with is_error mapped and images nested inside the block', () => {
+  it('batches tool results into one user message of tool_result blocks, in order, with is_error mapped and images nested inside the block', async () => {
     const messages: ProviderMessage[] = [
       {
         role: 'tool',
@@ -297,9 +318,10 @@ describe('providers/anthropic: toAnthropicMessages', () => {
           { callId: 'call_3', name: 'c', content: 'view attached', isError: false, image: 'data:image/png;base64,QUJD' },
         ],
       },
+      TAIL,
     ];
 
-    expect(toAnthropicMessages(messages, true)).toEqual([
+    expect(await sentMessages(messages)).toEqual([
       {
         role: 'user',
         content: [
@@ -316,16 +338,18 @@ describe('providers/anthropic: toAnthropicMessages', () => {
           },
         ],
       },
+      MARKED_TAIL,
     ]);
   });
 
-  it('sends a plain user message as string content, or with images nested alongside the text when present', () => {
+  it('sends a plain user message as string content, or with images nested alongside the text when present', async () => {
     const messages: ProviderMessage[] = [
       { role: 'user', text: 'build a tower' },
       { role: 'user', text: 'like this', images: ['data:image/png;base64,QUJD'] },
+      TAIL,
     ];
 
-    expect(toAnthropicMessages(messages, true)).toEqual([
+    expect(await sentMessages(messages)).toEqual([
       { role: 'user', content: 'build a tower' },
       {
         role: 'user',
@@ -334,68 +358,62 @@ describe('providers/anthropic: toAnthropicMessages', () => {
           { type: 'text', text: 'like this' },
         ],
       },
+      MARKED_TAIL,
     ]);
   });
 });
 
-describe('providers/anthropic: withConversationBreakpoint', () => {
-  it('marks a trailing string-content user message by promoting it to one cache_control text block, touching nothing else', () => {
-    const earlier: Anthropic.MessageParam = { role: 'assistant', content: [{ type: 'text', text: 'ok' }] };
-    const messages: Anthropic.MessageParam[] = [earlier, { role: 'user', content: 'and now a bridge' }];
-
-    const marked = withConversationBreakpoint(messages);
+describe('providers/anthropic: the conversation cache breakpoint', () => {
+  it('marks a trailing string-content user message by promoting it to one cache_control text block, touching nothing else', async () => {
+    const marked = await sentMessages([{ role: 'assistant', text: 'ok', toolCalls: [] }, { role: 'user', text: 'and now a bridge' }]);
 
     expect(marked).toEqual([
-      earlier,
+      { role: 'assistant', content: [{ type: 'text', text: 'ok' }] },
       { role: 'user', content: [{ type: 'text', text: 'and now a bridge', cache_control: { type: 'ephemeral' } }] },
     ]);
-    expect(marked[0]).toBe(earlier);
   });
 
-  it('marks the LAST block of a trailing tool_result message, leaving its earlier blocks as the very objects they were', () => {
-    const first = { type: 'tool_result' as const, tool_use_id: 'call_1', content: 'ok' };
-    const messages: Anthropic.MessageParam[] = [
-      { role: 'user', content: 'go' },
-      { role: 'user', content: [first, { type: 'tool_result', tool_use_id: 'call_2', content: 'also ok' }] },
-    ];
-
-    const marked = withConversationBreakpoint(messages);
+  it('marks the LAST block of a trailing tool_result message, leaving its earlier blocks unmarked', async () => {
+    const marked = await sentMessages([
+      { role: 'user', text: 'go' },
+      { role: 'tool', results: [{ callId: 'call_1', name: 'a', content: 'ok', isError: false }, { callId: 'call_2', name: 'b', content: 'also ok', isError: false }] },
+    ]);
 
     expect(marked).toEqual([
       { role: 'user', content: 'go' },
       {
         role: 'user',
-        content: [first, { type: 'tool_result', tool_use_id: 'call_2', content: 'also ok', cache_control: { type: 'ephemeral' } }],
+        content: [
+          { type: 'tool_result', tool_use_id: 'call_1', is_error: false, content: 'ok' },
+          { type: 'tool_result', tool_use_id: 'call_2', is_error: false, content: 'also ok', cache_control: { type: 'ephemeral' } },
+        ],
       },
     ]);
-    const content = marked[1]?.content as Anthropic.ContentBlockParam[];
-    expect(content[0]).toBe(first);
   });
 
-  it('skips a trailing message whose last block cannot carry a breakpoint and marks the nearest earlier one, never mutating the input', () => {
-    const messages: Anthropic.MessageParam[] = [
-      { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'call_1', content: 'ok' }] },
-      { role: 'assistant', content: [{ type: 'text', text: 'thinking it over' }, { type: 'thinking', thinking: 'plan', signature: 'sig' }] },
-    ];
-    const before = structuredClone(messages);
+  it('skips a trailing message whose last block cannot carry a breakpoint and marks the nearest earlier one, never mutating the logged raw', async () => {
+    const raw = [{ type: 'text', text: 'thinking it over' }, { type: 'thinking', thinking: 'plan', signature: 'sig' }];
+    const before = structuredClone(raw);
 
-    const marked = withConversationBreakpoint(messages);
+    const marked = await sentMessages([
+      { role: 'tool', results: [{ callId: 'call_1', name: 'a', content: 'ok', isError: false }] },
+      { role: 'assistant', text: 'thinking it over', toolCalls: [], raw },
+    ]);
 
     expect(marked[0]).toEqual({
       role: 'user',
-      content: [{ type: 'tool_result', tool_use_id: 'call_1', content: 'ok', cache_control: { type: 'ephemeral' } }],
+      content: [{ type: 'tool_result', tool_use_id: 'call_1', is_error: false, content: 'ok', cache_control: { type: 'ephemeral' } }],
     });
-    expect(marked[1]).toBe(messages[1]);
-    expect(messages).toEqual(before);
-    expect(marked).not.toBe(messages);
+    expect(marked[1]?.content).toBe(raw);
+    expect(raw).toEqual(before);
   });
 
-  it('returns the history untouched when nothing in it can carry a breakpoint', () => {
-    const messages: Anthropic.MessageParam[] = [
-      { role: 'assistant', content: [{ type: 'thinking', thinking: 'plan', signature: 'sig' }] },
-    ];
+  it('sends the history untouched when nothing in it can carry a breakpoint', async () => {
+    const raw = [{ type: 'thinking', thinking: 'plan', signature: 'sig' }];
 
-    expect(withConversationBreakpoint(messages)).toBe(messages);
-    expect(withConversationBreakpoint([])).toEqual([]);
+    const marked = await sentMessages([{ role: 'assistant', text: '', toolCalls: [], raw }]);
+    expect(marked).toEqual([{ role: 'assistant', content: raw }]);
+    expect(marked[0]?.content).toBe(raw);
+    expect(await sentMessages([])).toEqual([]);
   });
 });

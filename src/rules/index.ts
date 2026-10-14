@@ -1,5 +1,6 @@
 import type { AnyRule } from '../core/model/types';
-import { RuleRegistry } from './registry';
+import { RuleRegistry, type RuleSetName } from './registry';
+import type { RuleDispatcher } from '../core/model/rule-dispatcher';
 import { zoneRestrictionRule } from './zone-restriction';
 import { groundLockRule } from './ground-lock';
 import { planetGroundRule } from './planet-ground';
@@ -18,22 +19,16 @@ import { waterfallAdjacentUniformityRule } from './waterfall-uniformity';
 import { objectOnCoatingRule } from './object-on-coating';
 
 /**
- * Creates a RuleRegistry with all game rules in canonical order.
+ * Every rule in canonical registration order.
  *
  * Pre-command order: lock → elevation → floating → block → trait placement → ground lock → zone → overlap → max-count → chunk
  * Post-stroke order: base-support → water-containment → waterfall-adjacent-uniformity → object-on-coating
  *
- * Order matters for pre-command rules: lock check runs first so locked-layer
- * errors take priority.
- *
- * traitPlacementRule runs before zoneRestrictionRule AND placementOverlapRule because the
- * waterSpan/heightDrop traits intentionally SNAP the object's position/rotation/spanLength
- * during validation (auto-orienting bridges and ramps). Both zone and overlap must check the
- * SNAPPED footprint, not the raw click position — else a ramp/bridge snaps onto a non-grass zone
- * (beach/boundary) and is accepted there.
+ * Pre-command order sets the order of a refusal's errors, so locked-layer errors come first. Every
+ * rule judges the command as it lands: the registry resolves it (a bridge or ramp snapped onto its
+ * span) before any rule runs.
  */
-/** Every rule in canonical registration order (see the order note above). */
-const ALL_RULES: AnyRule[] = [
+const ALL_RULES = [
   layerLockRule,
   lockedObjectRule,
   elevationRangeRule,
@@ -50,28 +45,35 @@ const ALL_RULES: AnyRule[] = [
   waterContainmentRule,
   waterfallAdjacentUniformityRule,
   objectOnCoatingRule,
-];
+] satisfies readonly AnyRule[];
 
-export function createDefaultRegistry(): RuleRegistry {
-  const registry = new RuleRegistry();
-  for (const rule of ALL_RULES) registry.register(rule);
+/** The id of every rule a registry may hold; a refusal's `ruleId` is one of these unless its
+ *  maker names its own. */
+export type RuleId = (typeof ALL_RULES)[number]['id'] | typeof planetGroundRule.id;
+
+/** The registry for a named rule set, built the same on any thread. `default` holds every rule in
+ *  that order; `planet`, the session's, drops V-GROUND-LOCK so layer 0 is editable and holds the
+ *  ground under objects with V-PLANET-01, registered last. */
+export function createRuleRegistry(set: RuleSetName): RuleRegistry {
+  const registry = new RuleRegistry(set);
+  for (const rule of ALL_RULES) if (set === 'default' || rule !== groundLockRule) registry.register(rule);
+  if (set === 'planet') registry.register(planetGroundRule);
   return registry;
+}
+
+/** A registry holding every rule in that order. */
+export function createDefaultRegistry(): RuleRegistry {
+  return createRuleRegistry('default');
 }
 
 /** The planet session's rules: layer 0 is editable, and the ground under objects is held. */
 export function createPlanetRegistry(): RuleRegistry {
-  const registry = new RuleRegistry();
-  for (const rule of ALL_RULES) if (rule !== groundLockRule) registry.register(rule);
-  registry.register(planetGroundRule);
-  return registry;
+  return createRuleRegistry('planet');
 }
 
-/** id → agent-facing explanation, derived from each rule's own `agentHint` (the
- *  single source of truth). The system prompt lists these and the agent tool
- *  layer appends them to rejection feedback, so a policy's wording lives in ONE
- *  place: its rule file. */
-export const RULE_HINTS: Record<string, string> = Object.fromEntries(
-  ALL_RULES.filter((r) => r.agentHint).map((r) => [r.id, r.agentHint!]),
-);
+/** The named set `rules` was built as, or null for one no other thread can rebuild. */
+export function ruleSetOf(rules: RuleDispatcher): RuleSetName | null {
+  return rules instanceof RuleRegistry ? rules.ruleSet : null;
+}
 
-export { RuleRegistry } from './registry';
+export { RuleRegistry, type RuleSetName } from './registry';

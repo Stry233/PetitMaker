@@ -1,29 +1,23 @@
-// Pure export-manifest parsing, glob matching and file-set classification. The manifest content is
-// authoritative; this module interprets it. Keeping these helpers outside the CLI lets tests import
-// them without running copy operations or subprocesses.
+// Export-manifest parsing, glob matching and file-set classification. The manifest content is
+// authoritative; this module interprets it. Every function is pure except `listFiles` and
+// `auditStatus`, which read the repository tree; copying and subprocesses stay in the CLI, so tests
+// import this module without running either.
 
-// @ts-ignore - node:fs is untyped here (no @types/node)
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
-// @ts-ignore - node:path is untyped here (no @types/node)
 import { join, relative, sep } from 'node:path';
 
 // ---------------------------------------------------------------------------
-// Minimal glob matcher — intentionally small, no dependency added.
-//
-// Supported syntax:
-//   - `**`  matches zero or more path segments (only meaningful as a whole segment, i.e.
-//           preceded/followed by `/` or at a pattern boundary — `foo/**`, `**/foo`, `a/**/b`).
-//   - `*`   matches zero or more characters WITHIN a single path segment (never crosses `/`).
+// Minimal glob matcher.
+//   - `**`  matches zero or more whole path segments (`foo/**`, `**/foo`, `a/**/b`).
+//   - `*`   matches zero or more characters within a single path segment (never crosses `/`).
 //   - anything else is matched literally (regex metacharacters are escaped).
-//
-// NOT supported (by design — every manifest glob below avoids needing these): `?` single-char
-// wildcard, brace expansion (`{a,b}`), character classes (`[abc]`), extglob, negation. If the
-// manifest ever needs one of those, extend this matcher and its unit tests first.
+// No `?` wildcard, brace expansion, character classes, extglob or negation: no manifest glob
+// needs one, and adding one starts with this matcher and its unit tests.
 // ---------------------------------------------------------------------------
 
-const DOUBLESTAR_SLASH = ''; // placeholder for a leading/embedded "**/" segment
-const SLASH_DOUBLESTAR = ''; // placeholder for a trailing "/**" segment
-const BARE_DOUBLESTAR = ''; // placeholder for a standalone "**" with no adjacent slash
+const DOUBLESTAR_SLASH = '\u0001'; // placeholder for a leading/embedded "**/" segment
+const SLASH_DOUBLESTAR = '\u0002'; // placeholder for a trailing "/**" segment
+const BARE_DOUBLESTAR = '\u0003'; // placeholder for a standalone "**" with no adjacent slash
 
 /** Every file under `dir`, relative to `base` with forward slashes, in directory order. Entries
  *  named in `skip` are left out at every depth. */
@@ -39,8 +33,8 @@ export function listFiles(dir: string, skip: readonly string[] = [], base = dir)
 }
 
 function escapeRegExpLiteral(s: string): string {
-  // Escape regex metacharacters EXCEPT '*' and '/', which the steps below handle specially.
-  // '?' IS escaped here (treated as a literal character, never a wildcard) — this matcher
+  // Escape regex metacharacters except '*' and '/', which the steps below handle specially.
+  // '?' is escaped here (treated as a literal character, never a wildcard) — this matcher
   // intentionally doesn't support "?" single-char globbing; see the module doc comment.
   return s.replace(/[.+^${}()|[\]\\?]/g, '\\$&');
 }
@@ -133,7 +127,7 @@ export function isInternalPath(path: string, manifest: ManifestGlobs): boolean {
 /**
  * Every tracked path must be classified as public XOR internal. Returns:
  *   - unclassified: matches neither list (hygiene bug — a new file was never filed into a tier)
- *   - conflicting: matches BOTH a public glob and an internal glob (manifest authoring bug —
+ *   - conflicting: matches both a public glob and an internal glob (manifest authoring bug —
  *     an internal glob is unintentionally shadowing something meant to ship, or vice versa)
  */
 export function classifyPaths(
@@ -169,7 +163,7 @@ export const DENYLIST_SPOTCHECK: readonly string[] = [
   'AGENTS.md',
   'CLAUDE.md',
   'docs/internal',
-  'docs/internal/PRD.md',
+  'docs/internal/deprecated/PRD.md',
   'docs/internal/deprecated/build.md',
   'docs/internal/deprecated/EXTENSIBILITY.md',
   'docs/internal/deprecated/CODE_REVIEW.md',
@@ -212,10 +206,59 @@ export function findAgentDocPointers(
   return hits;
 }
 
+/** A repository path as a document writes one: a run of path characters holding a slash or a dot,
+ *  which names a file, a folder (a dot folder too), a bare file name or a glob. */
+const PATH_TOKEN = /(?:\*{1,2}|[\w-])*(?:[./](?:\*{1,2}|[\w-])+)+\/?/g;
+/** `npm run <script>` in prose or a command block. */
+const NPM_RUN = /\bnpm run ([\w:-]+)/g;
+
+/** The tracked paths a document token names: the path itself, everything under it as a folder,
+ *  the paths a glob token matches, or the paths ending in it. */
+function pathsNamedBy(token: string, tracked: readonly string[]): string[] {
+  const bare = token.replace(/\/$/, '');
+  if (bare.includes('*')) {
+    // A glob opens with a star or holds a slash; `word.**` is Markdown bold after a sentence.
+    if (!bare.startsWith('*') && !bare.includes('/')) return [];
+    const glob = bare.includes('/') ? bare : `**/${bare}`;
+    return tracked.filter((p) => matchesGlob(p, glob));
+  }
+  const exact = tracked.filter((p) => p === bare || p.startsWith(`${bare}/`));
+  if (exact.length) return exact;
+  return tracked.filter((p) => p.endsWith(`/${bare}`));
+}
+
+/**
+ * Finds shipped documents that send a public reader to something the snapshot withholds: a path,
+ * folder or glob every tracked match of which stays internal, or an `npm run` script whose command
+ * names one. A token naming no tracked path, or at least one public path, is left alone.
+ */
+export function findWithheldPointers(
+  docs: ReadonlyArray<{ path: string; text: string }>,
+  tracked: readonly string[],
+  manifest: ManifestGlobs,
+  npmScripts: Readonly<Record<string, string>>,
+): Array<{ path: string; name: string }> {
+  const withheld = (token: string): boolean => {
+    const named = pathsNamedBy(token, tracked);
+    return named.length > 0 && named.every((p) => !isPublicPath(p, manifest));
+  };
+  const hits: Array<{ path: string; name: string }> = [];
+  for (const { path, text } of docs) {
+    const names = new Set<string>();
+    for (const [token] of text.matchAll(PATH_TOKEN)) if (withheld(token)) names.add(token);
+    for (const [, script] of text.matchAll(NPM_RUN)) {
+      const command = npmScripts[script!];
+      if (command && [...command.matchAll(PATH_TOKEN)].some(([token]) => withheld(token))) names.add(`npm run ${script}`);
+    }
+    for (const name of names) hits.push({ path, name });
+  }
+  return hits;
+}
+
 /**
  * Commit-trailer style AI attribution. The public repository's history is created fresh
  * by the publish workflow, so the private repo's trailers never reach it — but a trailer
- * pasted into a FILE (a changelog entry, a doc quoting a commit) would, so the export
+ * pasted into a file (a changelog entry, a doc quoting a commit) would, so the export
  * refuses to copy one. Authorship is declared once, in the project's own documents,
  * rather than repeated per commit.
  *
@@ -234,22 +277,12 @@ export const AI_ATTRIBUTION_MARKERS: readonly string[] = [
 /**
  * What applying a snapshot to the public checkout must do, decided per existing path.
  *
- * The public repository is not a mirror of this one. It keeps its own history and may
- * hold files that were never here — issue templates, a funding file, a code of conduct,
- * anything added through GitHub's UI — and those must survive a publish. Deleting
- * nothing is equally wrong, because a file this repository published and later dropped
- * would stay published forever.
- *
- * A path is ours to retire only when BOTH signals agree: the previous publish commit
- * contained it, AND the manifest still calls it public. Either alone is wrong. The
- * publish commit's TREE is the whole repository at that moment, so it lists the
- * maintainer's own files too (taking it as the ownership signal deletes their bug-report
- * template); the manifest alone would let us delete a file we never put there. Requiring
- * both means the only thing a sync can remove is something it once wrote and no longer ships.
- *
- * The residue is reported rather than guessed at: a path we published whose manifest entry
- * has since been removed is `orphaned` — still published, no longer claimed, so a
- * maintainer decides. A first publish (no previous publish commit) deletes nothing.
+ * The public repository keeps its own history and may hold files that were never here
+ * (issue templates, a funding file, anything added through GitHub's UI), and those survive
+ * a publish. A path is ours to retire only when the previous publish commit contained it
+ * and the manifest still calls it public, so a sync removes only what it once wrote and no
+ * longer ships. A path we published whose manifest entry has since been removed is
+ * `orphaned`, left for a maintainer to decide. A first publish deletes nothing.
  */
 export interface PublicSyncPlan {
   /** Files the snapshot provides (copied over whatever is there). */
@@ -277,7 +310,7 @@ export function planPublicSync(
     if (snapshot.has(path)) continue;
     // A recorded removal is a decision already taken, so it outranks every other rule.
     if (matchesAny(path, manifest.retired)) { deletions.push(path); continue; }
-    // A path the manifest calls INTERNAL cannot have been published by us, so its presence
+    // A path the manifest calls internal cannot have been published by us, so its presence
     // in our tree only means it was in the repository when we committed — it is the public
     // repository's own (this is what `.github/ISSUE_TEMPLATE/**` looks like from here).
     if (!ours.has(path) || isInternalPath(path, manifest)) foreign.push(path);
@@ -344,7 +377,7 @@ export function publicGitignore(): string {
     '*.njsproj',
     '*.sln',
     '*.sw?',
-    'tsconfig.tsbuildinfo',
+    '.tsbuild/',
     '',
     '# Logs and coverage',
     '*.log',
@@ -358,11 +391,12 @@ export function publicGitignore(): string {
     '# Python cache',
     '__pycache__/',
     '*.pyc',
+    '.ruff_cache/',
     '',
   ].join('\n');
 }
 export interface AuditStatus {
-  /** True unless the ledger has one CLOSED status and no unresolved permission rows. */
+  /** True unless the ledger has one `CLOSED` status and no unresolved permission rows. */
   open: boolean;
   /** Count of table rows whose permission-basis column is still "none-yet". */
   noneYetCount: number;
@@ -434,7 +468,6 @@ export function queryImportTargets(path: string, text: string): string[] {
   for (const m of [...text.matchAll(QUERY_IMPORT), ...text.matchAll(LITERAL_MODULE_URL)]) {
     const spec = m[1]!;
     if (spec.startsWith('./') || spec.startsWith('../')) out.push(normalizePosix(`${dir}/${spec}`));
-    else if (spec.startsWith('@/')) out.push(normalizePosix(`src/${spec.slice(2)}`));
   }
   return out;
 }

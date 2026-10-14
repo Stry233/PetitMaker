@@ -7,8 +7,7 @@ export enum ProvSource {
 
 /** The disclosure labels a whole map can carry — all phrased positively at the copy layer. */
 export type DisclosureClass =
-  | 'human_created' | 'procedural' | 'contains_ai_assisted'
-  | 'ai_with_human_edits' | 'mixed_human_ai'
+  | 'human_created' | 'procedural' | 'contains_ai_assisted' | 'mixed_human_ai'
   | 'ai_used_no_remaining_ai_content' | 'unknown';
 
 export const TaintFlag = {
@@ -18,29 +17,34 @@ export const TaintFlag = {
 export const hasFlag = (bits: number, f: number): boolean => (bits & f) !== 0;
 export const setFlag = (bits: number, f: number): number => bits | f;
 
-export interface AiMeta { provider?: string; model?: string; toolCallId?: string; userApproved?: boolean }
-export interface ProceduralMeta { seed: number; algorithm: string; configHash: string }
+interface AiMeta { provider?: string; model?: string; toolCallId?: string; userApproved?: boolean }
+interface ProceduralMeta { seed: number; algorithm: string; configHash: string }
 
 export interface OperationScope {
   bbox: { x1: number; y1: number; x2: number; y2: number } | null;
+  /** `terrain` is the op's cells and `edgeCutCorners` those of a cosmetic op. `water` and `road` are
+   *  reserved: always 0, kept because saved ledgers carry them. */
   counts: { terrain: number; water: number; road: number; edgeCutCorners: number; objAdded: number; objModified: number; objDeleted: number };
   layers: number[]; zones: number[];
   objectIds?: string[];
   coverageCells: number;
 }
 
-export type OpStatus = 'applied' | 'reverted' | 'partial';
+/** The version a build without an injected stamp reports (unit tests, bare script imports). The app
+ *  passes its own version into the tracker; core never reads the build identity itself. */
+export const UNSTAMPED_APP_VERSION = '0.0.0';
+
+type OpStatus = 'applied' | 'reverted';
 export type ActorType = 'user' | 'system' | 'ai' | 'imported';
 
 export interface ProvenanceOperation {
+  /** `parents` is reserved: always empty, kept because saved ledgers carry it. */
   id: string; parents: string[]; timestamp: number;
   appVersion: string; schemaVersion: number;
   source: ProvSource; actor: ActorType; disclosure: DisclosureClass;
-  tool?: string; strokeId?: string; status: OpStatus; derived?: boolean;
+  tool?: string; status: OpStatus; derived?: boolean;
   scope: OperationScope;
-  beforeHash?: string; afterHash?: string;
   ai?: AiMeta; procedural?: ProceduralMeta;
-  promptHash?: string; inputHash?: string; outputHash?: string;
 }
 
 /** The three classes of authorship a unit's contribution is split across. */
@@ -56,12 +60,13 @@ export interface UnitTaint {
 export interface MapProvenanceSummary {
   containsAi: boolean; containsProcedural: boolean;
   aiEverUsed: boolean; aiUsedNoRemaining: boolean;
-  aiTerrainPct: number; aiObjectCount: number; aiAreaPct: number; proceduralAreaPct: number;
-  counts: { aiWrites: number; aiAccepted: number; proceduralRuns: number; analysisOnlyCalls: number };
+  /** The shares of content cells with AI and with procedural contribution, in whole percent. */
+  aiTerrainPct: number; aiObjectCount: number; proceduralAreaPct: number;
   humanAfterAi: boolean; aiAfterHuman: boolean;
-  dominant: DisclosureClass; exportDisclosure: DisclosureClass;
+  exportDisclosure: DisclosureClass;
 }
 
+/** `aiAnalysisUsed` and `analysisOnlyCalls` are save fields no editor path sets; saves carry them through. */
 export interface SessionFlags {
   aiAnalysisUsed: boolean; aiWritesUsed: boolean;
   aiAcceptedCount: number; proceduralRuns: number; analysisOnlyCalls: number;

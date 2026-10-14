@@ -1,9 +1,12 @@
-// Pure footer-template model for the export footer line. A template is a small string of literal
-// text and {tokens}; the special {fill} token splits it into a LEFT-aligned and a RIGHT-aligned
-// part (so the footer can read e.g. "Map name ............ 2026-06-28 · 1600×1080"). Tokens resolve
-// to live map facts at paint time. No DOM here — the editor and the painter both build on this.
+/**
+ * The export footer line's template model. A template is literal text and {tokens}; the {fill}
+ * token splits it into a left-aligned and a right-aligned part, so the footer can read
+ * "Map name ............ 2026-06-28 1600×1080". Tokens resolve to live map facts at paint time; the
+ * editor and the painter both build on this, and it touches no DOM.
+ */
+import type { I18nKey } from '../../i18n/keys';
 
-export interface FooterToken { id: string; labelKey: string }
+export interface FooterToken { id: string; labelKey: I18nKey }
 
 /** The fill token id — everything after it is right-aligned. */
 export const FOOTER_FILL = 'fill';
@@ -49,11 +52,6 @@ export function parseFooter(tpl: string): FooterSeg[] {
   }
   if (last < tpl.length) segs.push({ t: 'text', v: tpl.slice(last) });
   return segs;
-}
-
-/** Serialize segments back to a template string (literal braces are not allowed in text). */
-export function serializeFooter(segs: FooterSeg[]): string {
-  return segs.map((s) => (s.t === 'text' ? s.v.replace(/[{}]/g, '') : `{${s.id}}`)).join('');
 }
 
 /** Resolve a template to its left/right-aligned strings, substituting token values. Unknown tokens

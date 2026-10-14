@@ -4,7 +4,9 @@ import { TiledMap, type RegionPx } from '../../../io/export/tiled-map';
 /** A context that records where each captured tile is drawn. */
 function recorder() {
   const draws: Array<{ region: RegionPx; dx: number; dy: number; dw: number; dh: number }> = [];
-  const ctx = { drawImage: vi.fn((img: { region: RegionPx }, ...a: number[]) => { draws.push({ region: img.region, dx: a[4]!, dy: a[5]!, dw: a[6]!, dh: a[7]! }); }) } as unknown as CanvasRenderingContext2D;
+  const ctx = {
+    drawImage: vi.fn((img: { region: RegionPx }, ...a: number[]) => { draws.push({ region: img.region, dx: a[4]!, dy: a[5]!, dw: a[6]!, dh: a[7]! }); }),
+  } as unknown as CanvasRenderingContext2D;
   return { ctx, draws };
 }
 

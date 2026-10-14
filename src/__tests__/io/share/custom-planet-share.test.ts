@@ -2,24 +2,27 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 const raster = vi.hoisted(() => ({ current: null as { pixels: Uint8Array; width: number; height: number } | null }));
 // jsdom has no createImageBitmap; the raster reader hands over the rendered code's pixels.
-vi.mock('../../../io/raster-image', () => ({ readRasterImage: async () => ({ ...raster.current!, pixels: new Uint8Array(raster.current!.pixels) }) }));
+vi.mock('../../../io/import/raster', () => ({ readRasterImage: async () => ({ ...raster.current!, pixels: new Uint8Array(raster.current!.pixels) }) }));
 import { encodeMapPayload, decodeMapPayload, type ShareCodeMeta } from '../../../io/share/codec/payload';
 import { encodeTemplateRecord, decodeTemplateRecord } from '../../../io/share/codec/template-record';
 import { MODEL_VARIANTS, modelCanRepresent } from '../../../io/share/codec/map-coder';
 import { tokensOf, parseToken } from '../../../io/share/codec/grid-io';
-import { canonicalize, canonicalBytes } from '../../../io/share/canonical';
+import { canonicalize, canonicalBytes } from '../../../io/save/canonical';
 import { buildShareCode } from '../../../io/share/export';
 import { importFromBytes } from '../../../io/share/import';
-import { inspectImportFile } from '../../../io/import-file';
-import { validateImportedState } from '../../../io/share/validate';
-import { ShareError } from '../../../io/share/errors';
+import { inspectImportFile } from '../../../io/import/file';
+import { ImportError } from '../../../io/save/import-error';
+import { ShareTooLargeError } from '../../../io/share/errors';
 import { encodePng } from '../../../io/share/raster/png-raster';
-import { listPlanets } from '../../../io/planet-library';
-import { planetFixture, worstCasePlanet, NO_PLAZA, pondMask } from '../../fixtures/planet';
+import { listPlanets } from '../../../io/storage/planet-library';
+import { planetFixture, worstCasePlanet, NO_PLAZA, pondMask, landmarkAt } from '../../_support/planet';
 import { getMapTemplate } from '../../../config/maps';
-import { createGridState, planetTemplateId } from '../../../core/model/planet';
-import { CellZone, TerrainType } from '../../../core/model/types';
-import { landmarkAt } from '../../fixtures/planet';
+import { planetTemplateId } from '../../../core/model/planet';
+import { createGridState } from '../../../core/model/template';
+import { TerrainType } from '../../../core/model/types';
+import { CellZone } from '../../../core/game/zones';
+import { templateAnchor } from '../../../core/model/landmarks';
+import { exportable } from '../../_support/exportable';
 
 const META: ShareCodeMeta = { appVersion: '1.0-test', saveVersion: 3 };
 
@@ -39,10 +42,10 @@ describe('share codes on custom planets', () => {
   });
 
   it('round-trip a planet with a pond, which a fresh map lays as water on its grass', async () => {
-    const t = planetFixture({ plaza: landmarkAt(12.5, 3.5, 90), water: pondMask([[30, 20], [31, 20]]) });
+    const t = planetFixture({ plaza: landmarkAt(12.5, 3.5, 90), water: pondMask([[40, 20], [41, 20]]) });
     const state = createGridState(t);
-    expect(state.cells[20]![30]!.terrain).toEqual({ type: TerrainType.Water, elevation: 0 });
-    expect(state.cells[20]![32]!.terrain).toBeNull();
+    expect(state.cells[20]![40]!.terrain).toEqual({ type: TerrainType.Water, elevation: 0 });
+    expect(state.cells[20]![42]!.terrain).toBeNull();
     const out = await decodeMapPayload(await encodeMapPayload(state, null, META));
     expect(out.template).toEqual(t);
     expect(decodeTemplateRecord(encodeTemplateRecord(t))).toEqual(t);
@@ -50,7 +53,7 @@ describe('share codes on custom planets', () => {
   });
 
   it.each([90, 270] as const)('round-trip a plaza turned %s degrees', async (rotation) => {
-    const t = planetFixture({ plaza: landmarkAt(12.5, 3.5, rotation) });
+    const t = planetFixture({ plaza: landmarkAt(12.5, 3, rotation) });
     const state = createGridState(t);
     const out = await decodeMapPayload(await encodeMapPayload(state, null, META));
     expect(out.template).toEqual(t);
@@ -91,7 +94,7 @@ describe('share codes on custom planets', () => {
 
   it('opens a file whose planet is not in the library', async () => {
     const state = createGridState(planetFixture());
-    const code = await buildShareCode(state, null, META, 1600);
+    const code = await buildShareCode(exportable(state), null, META, 1600);
     raster.current = { pixels: code!.rgba, width: code!.width, height: code!.height };
     expect(listPlanets()).toEqual([]);
     const inspection = await inspectImportFile(new File(['x'], 'map.png', { type: 'image/png' }), 'map.png');
@@ -107,7 +110,7 @@ describe('share codes on custom planets', () => {
 
   it('decodes a share image without adding its planet to the library', async () => {
     const state = createGridState(planetFixture());
-    const code = await buildShareCode(state, null, META, 1600);
+    const code = await buildShareCode(exportable(state), null, META, 1600);
     const png = await encodePng({ width: code!.width, height: code!.height, data: code!.rgba });
     const result = await importFromBytes(png);
     expect(result.ok && result.state.template.id).toBe(state.template.id);
@@ -128,30 +131,24 @@ describe('share codes on custom planets', () => {
     await expect(decodeMapPayload(stripped)).rejects.toMatchObject({ code: 'corrupt' });
   });
 
-  it('accepts a valid custom template and rejects an unknown built-in id', () => {
-    const state = createGridState(planetFixture());
-    const info = { templateId: state.template.id, templateHash: 0, catalogHash: 0 };
-    expect(() => validateImportedState(state, { ...info, template: state.template })).not.toThrow();
-    expect(() => validateImportedState(state, info)).toThrow(ShareError);
-  });
-
   it('reports a planet too large for any code as the ordinary too-large failure', async () => {
     let s = 7;
     const next = () => (s = (Math.imul(s, 1664525) + 1013904223) >>> 0);
     const size = 256;
-    const zones = Array.from({ length: size }, () => Array.from({ length: size }, () => (next() % 5) as CellZone));
+    const kinds = [CellZone.Void, CellZone.Beach, CellZone.Grass, CellZone.Boundary];
+    const zones = Array.from({ length: size }, () => Array.from({ length: size }, () => kinds[next() % kinds.length]!));
     const terrain = Uint8Array.from({ length: size * size }, () => next() % 9);
-    const body = { width: size, height: size, zones, plaza: NO_PLAZA, terrain, chunkGrid: { origin: { x: 0, y: 0 }, columns: 16, rows: 16 } };
+    const body = { width: size, height: size, zones, landmarks: [], terrain, chunkGrid: { origin: { x: 0, y: 0 }, columns: 16, rows: 16 } };
     const t = { id: planetTemplateId(body), name: { en: 'Noise' }, ...body };
     const state = createGridState(t);
     state.notes = { title: 'Noise' };
-    await expect(buildShareCode(state, null, META, 1600)).rejects.toMatchObject({ code: 'decode-failed' });
+    await expect(buildShareCode(exportable(state), null, META, 1600)).rejects.toBeInstanceOf(ShareTooLargeError);
   });
 });
 
 describe('the template record', () => {
   const corrupt = (fn: () => unknown) => {
-    try { fn(); } catch (e) { return e instanceof ShareError && e.code === 'corrupt'; }
+    try { fn(); } catch (e) { return e instanceof ImportError && e.code === 'corrupt'; }
     return false;
   };
 
@@ -160,7 +157,7 @@ describe('the template record', () => {
     const zones = base.zones.map((r) => [...r]);
     zones[1]![1] = CellZone.Beach;
     zones[2]![2] = CellZone.Boundary;
-    const body = { width: base.width, height: base.height, zones, plaza: NO_PLAZA, chunkGrid: { origin: { x: -16, y: 32 }, columns: 3, rows: 2 } };
+    const body = { width: base.width, height: base.height, zones, landmarks: [], chunkGrid: { origin: { x: -16, y: 32 }, columns: 3, rows: 2 } };
     const t = { id: planetTemplateId(body), name: { en: 'Reef' }, ...body };
     const back = decodeTemplateRecord(encodeTemplateRecord(t));
     expect(back).toEqual(t);
@@ -173,9 +170,9 @@ describe('the template record', () => {
   });
 
   it('round-trips a rotated plaza on the half grid', () => {
-    const t0 = planetFixture({ plaza: landmarkAt(12.5, 3.5, 180, 2) });
+    const t0 = planetFixture({ plaza: landmarkAt(12.5, 3, 180) });
     const back = decodeTemplateRecord(encodeTemplateRecord(t0));
-    expect(back.plaza).toEqual(t0.plaza);
+    expect(templateAnchor(back)!).toEqual(templateAnchor(t0)!);
     expect(back.id).toBe(t0.id);
   });
 

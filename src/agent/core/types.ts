@@ -1,4 +1,5 @@
-/** Provider-neutral stream and event-log types. Pure data with no imports. */
+/** Provider-neutral stream and event-log types, with the small pure readings every projection shares. */
+import type { RegionBounds } from '../../core/grid/rect';
 
 /** `config` identifies an invalid connection; `model` identifies a model unavailable there. */
 export type ErrorClass =
@@ -76,6 +77,18 @@ export function parseStages(raw: unknown): PlanStage[] | undefined {
   return stages.length > 0 ? stages : undefined;
 }
 
+/**
+ * Where a `stage` event's index leaves a plan of `stageCount` stages: `done` counts completed stages
+ * (the stage count once all are complete) and `current` is the stage in hand.
+ */
+export function stageProgress(index: number, stageCount: number): { done: number; current: number } {
+  const done = Math.min(Math.max(index, 0), stageCount);
+  return { done, current: Math.min(done, Math.max(stageCount - 1, 0)) };
+}
+
+/** Default token estimate for text: about four characters a token. */
+export const estimateTokens = (s: string): number => Math.ceil(s.length / 4);
+
 export type GateAnswer = 'allow' | 'allow-always' | 'skip' | 'words';
 
 export type JobOutcome = 'done' | 'capped' | 'aborted' | 'incident';
@@ -87,11 +100,17 @@ export interface SkillRef { name: string; kind: SkillKind; title: string }
 /** How a delegated helper's child operation ended. */
 export type ChildOpStatus = 'ok' | 'error' | 'revert';
 
+/** What a tool may do to the map: `read` leaves it, `write` edits what its arguments name, `wide`
+ *  edits beyond them (a region clear, a routed network, the shared history, a helper's burst). */
+export type ToolAccess = 'read' | 'write' | 'wide';
+
 /** Structured tool-result details used by the local view, never sent to the provider. */
 export interface ToolResultDetail {
   cells?: number; objects?: number; reverted?: boolean; regionBlocked?: boolean;
   /** Post-stroke rollback left commands applied; counts describe the retained changes. */
   partialRevert?: true;
+  /** The content opens with a summary banner; the reason a reader can act on starts on its next line. */
+  banner?: true;
   /** Identity of a successfully loaded skill. */
   skill?: SkillRef;
   /** Marks a result carrying a loop-authored retry, revert or repeat-refusal nudge. */
@@ -106,8 +125,12 @@ export interface ToolResultDetail {
   violations?: { ruleId: string; message: string; params?: Record<string, string | number> }[];
 }
 
+/** A running helper job as the panel's lane shows it: its task, optional short label, the
+ *  operation in flight and how many it has run. */
+export interface ChildProgress { task: string; opName?: string; ops: number; label?: string }
+
 /** Region snapshot attached to an order when it is submitted. */
-export interface OrderRegion { count: number; x1: number; y1: number; x2: number; y2: number }
+export type OrderRegion = RegionBounds;
 
 /** Choice-card caption with an optional map rectangle for its preview. */
 export interface GateOption { cap: string; rect?: { x1: number; y1: number; x2: number; y2: number } }
@@ -129,6 +152,9 @@ export type SessionEvent = Base & (
   | { kind: 'gateAsked'; gateId: string; scope: 'tool' | 'plan'; callId?: string; summary: string; turnSeq?: number;
       quickAnswers?: string[]; options?: GateOption[] }
   | { kind: 'gateAnswered'; gateId: string; answer: GateAnswer; words?: string }
+  // The content check refused the user's queued note (`steerSeq`) or typed gate answer (`gateId`):
+  // the note is never delivered, the answer counts as a skip, and `reply` is the line shown instead.
+  | { kind: 'noteRefused'; steerSeq?: number; gateId?: string; reply: string }
   | { kind: 'plan'; stages: PlanStage[]; revision: number }
   | { kind: 'stage'; index: number }
   | { kind: 'checkpoint'; undoIndex: number; label: 'job' | 'stage' | 'write'; stageIndex?: number }

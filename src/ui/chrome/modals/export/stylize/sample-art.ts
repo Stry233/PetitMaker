@@ -1,13 +1,9 @@
 /*
- * The face a style direction wears before its real sample exists, and the one
- * ratio every picture box in this window is drawn at.
- *
- * The committed samples (`sample-assets.ts`) are generated from this project's own map, so they
- * ARE the direction. This painter is what stands in their place while an asset is absent: paper,
- * grain, three pencil strokes and the pack's own palette as a row of dabs. It says PALETTE and
- * nothing else on purpose — a fake little planet painted here would be a picture of a map the
- * provider never drew.
+ * The stand-in a style direction wears while its committed sample is absent (paper, grain, three strokes
+ * and the pack's palette as dabs: it shows the palette and nothing else), and the one ratio every
+ * picture box in this window is drawn at.
  */
+import { INK, rgbaOf } from '../../../../design/tokens';
 
 /** The 2D share-image map band's own ratio. Every thumbnail, sample, card and canvas in this
  *  window is drawn at it, never stretched: a picture of the map at a different shape is a picture
@@ -33,8 +29,9 @@ function rng(seed: number): () => number {
 /** One hand-drawn line: a run of short segments each nudged off the straight, which is what reads
  *  as a stroke rather than as a rule. */
 function wobbleLine(
-  ctx: CanvasRenderingContext2D, x: number, y: number, len: number, amp: number, seed: number,
+  ctx: CanvasRenderingContext2D, from: { x: number; y: number }, len: number, amp: number, seed: number,
 ): void {
+  const { x, y } = from;
   const r = rng(seed);
   const steps = 14;
   ctx.beginPath();
@@ -66,13 +63,13 @@ export function paintSampleArt(canvas: HTMLCanvasElement, art: SampleArt): void 
   ctx.fillRect(0, 0, w, h);
 
   const grain = rng(11);
-  ctx.fillStyle = 'rgba(87,73,53,0.05)';
+  ctx.fillStyle = rgbaOf(INK, 0.05);
   for (let i = 0; i < 60; i += 1) ctx.fillRect(grain() * w, grain() * h, 1.2, 1.2);
 
-  ctx.strokeStyle = 'rgba(87,73,53,0.45)';
+  ctx.strokeStyle = rgbaOf(INK, 0.45);
   ctx.lineWidth = Math.max(1.2, w * 0.014);
   ctx.lineCap = 'round';
-  for (let k = 0; k < 3; k += 1) wobbleLine(ctx, w * 0.12, h * (0.3 + k * 0.18), w * (0.42 + k * 0.05), h * 0.03, 23 + k);
+  for (let k = 0; k < 3; k += 1) wobbleLine(ctx, { x: w * 0.12, y: h * (0.3 + k * 0.18) }, w * (0.42 + k * 0.05), h * 0.03, 23 + k);
 
   const dabs = art.palette.slice(0, 4);
   const radius = Math.max(2.6, w * 0.032);

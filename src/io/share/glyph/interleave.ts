@@ -19,7 +19,7 @@ export function deinterleave(stream: Uint8Array, nBlocks: number, blockLen: numb
   return blocks;
 }
 
-/** Map a flat set of damaged STREAM indices back to per-block indices (for RS erasures). */
+/** Map a flat set of damaged stream indices back to per-block indices (for RS erasures). */
 export function deinterleaveErasures(streamErasures: number[], nBlocks: number, blockLen: number): number[][] {
   const per: number[][] = Array.from({ length: nBlocks }, () => []);
   for (const idx of streamErasures) {

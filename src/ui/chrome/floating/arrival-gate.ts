@@ -3,10 +3,11 @@
  *
  * The notice is a greeting, so it never competes: it waits behind anything that owns the screen or
  * asks the visitor a question, and an arrival announced during any of that is held rather than
- * dropped (`core/runtime/arrival-bus`). Pure, so the whole of "may it show yet" can be read and
+ * dropped (`ui/session/arrival-bus`). Pure, so the whole of "may it show yet" can be read and
  * tested in one place — the component only collects the facts.
  */
-import type { Arrival, ArrivalKind, ArrivalLine } from '../../../core/runtime/arrival-bus';
+import type { Arrival, ArrivalKind, ArrivalLine } from '../../session/arrival-bus';
+import type { I18nKey } from '../../../i18n/keys';
 
 export interface ArrivalFacts {
   /** The boot splash still covers the app. */
@@ -26,7 +27,7 @@ export interface ArrivalFacts {
 }
 
 /*
- * THE SAVED-SESSION OFFER IS NOT A GATE. It asks whether to pick the last map back up; the notice
+ * The saved-session offer is not a gate. It asks whether to pick the last map back up; the notice
  * says which planet is under you, which is true either way. So they stand together, and answering
  * one answers the other: resuming re-announces the arrival as 'restored' into the notice already up,
  * and a hand on the notice declines the offer through the shell's own dismissal.
@@ -44,7 +45,7 @@ export function arrivalOpens(f: ArrivalFacts): boolean {
 
 /** The phrase the notice opens with, above the planet's name. A lead-in, so each locale writes
  *  whatever reads as one in that language. */
-export const ARRIVAL_LEAD_KEY: Record<ArrivalKind, string> = {
+export const ARRIVAL_LEAD_KEY: Record<ArrivalKind, I18nKey> = {
   boot: 'arrival.here',
   restored: 'arrival.here',
   transferred: 'arrival.arrived',
@@ -59,7 +60,7 @@ const RESTORED_LINES: readonly ArrivalLine[] = [{ key: 'arrival.restored' }];
  * The lines the phrase gives way to, in the order they are said, or none. Never shown beside the
  * phrase and never chained into one row: the eyebrow says one line at a time.
  *
- * KEYS, not words: 'restored' names its own, a transfer carries the ones it was announced with, and
+ * Keys, not words: 'restored' names its own, a transfer carries the ones it was announced with, and
  * either is resolved at render, so the words follow a locale changed while the notice is up.
  */
 export function arrivalLines(arrival: Arrival): readonly ArrivalLine[] {

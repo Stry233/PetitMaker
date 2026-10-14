@@ -1,5 +1,5 @@
 /**
- * THE PICTURES THAT ARE OURS — fixed art the stencil measures are taken over, written here as
+ * The pictures that are ours — fixed art the stencil measures are taken over, written here as
  * characters and a colour key so there is nothing to fetch and nothing borrowed.
  *
  * Three pieces of pixel art and one synthetic photograph, which is the pair the image path has to
@@ -99,12 +99,12 @@ export function pixels(art: Art, scale: number): SourcePixels {
 }
 
 /**
- * A synthetic PHOTOGRAPH: continuous tone across the whole range, no colour repeated in any quantity
+ * A synthetic photograph: continuous tone across the whole range, no colour repeated in any quantity
  * — three sinusoids at incommensurate periods, which is a gradient a palette genuinely cannot say
  * and the case error diffusion exists for.
  *
  * Deterministic by construction (no RNG), and it is what pins the classifier's other end: a picture
- * like this must NOT be read as a drawing.
+ * like this must not be read as a drawing.
  */
 export function photograph(side = 128): SourcePixels {
   const data = new Uint8Array(side * side * 4);

@@ -4,7 +4,7 @@
  * folder. Same glob pattern as `src/assets/cursors/cursor-art.ts` and `src/assets/icon-urls.ts`
  * (eager, `?url`, keyed by basename).
  *
- * The glob is EAGER, so a PNG in this folder ships whether anything reads it or not — unused art
+ * The glob is eager, so a PNG in this folder ships whether anything reads it or not — unused art
  * must be deleted, not left beside the set.
  */
 const modules = import.meta.glob('./*.png', {

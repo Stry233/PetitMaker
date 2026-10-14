@@ -1,51 +1,43 @@
 /**
- * The BUILDING-ANCHOR regions dressed: a region where the building comes first and the place is
+ * The building-anchor regions dressed: a region where the building comes first and the place is
  * composed around it.
  *
- * The style target is what these styles are cut to: the planting beside a building is a SMALL NUMBER
- * OF SPECIES REPEATED, not a mixture (1 to 7 distinct species within three cells of a footprint,
- * median 2.5), and where trees appear they appear in counts of eight —
- * four each side of a mirrored pair. So an anchor region plants less than a theme region and repeats
+ * The planting beside a building is a small number of species repeated, not a mixture (1 to 7
+ * distinct species within three cells of a footprint, median 2.5), and where trees appear they appear
+ * in counts of eight, four each side of a mirrored pair. So an anchor region plants less than a theme region and repeats
  * itself more.
  *
- * THE HEDGE is the one element that is not tiled: a run of one species tracing each building's
+ * The hedge is the one element that is not tiled: a run of one species tracing each building's
  * outline one cell out, which is the garden ring a home reads with. It is laid before the tiling and
  * the tiling fills what is left, so a house always carries its own frame even where the region's
  * ground is too broken for a block.
  */
-import type { Rng } from '../../../../core/model/rng';
-import type { Rect } from '../../../../core/model/types';
+import type { Rect } from '../../../../core/grid/rect';
 import type { AnchorKind } from '../types';
-import { inCanvas, type KitCanvas, type KitStyle, type PlantMark } from './types';
+import { inCanvas, type KitCanvas, type KitSpec, type PlantMark } from './types';
 
-export function anchorStyle(kind: AnchorKind, rng: Rng): KitStyle {
-  switch (kind) {
-    // Homes with gardens between them: hedges, a bed or two, shade.
-    case 'residential':
-      return {
-        tile: { w: 4, h: 4 }, appetite: 0.6,
-        mix: [['border', 2], ['bed', 2], ['open', 4], ['grove', 3]],
-      };
-    // The player's own, and the one private garden on the map.
-    case 'own-house':
-      return {
-        tile: { w: 4, h: 5 }, appetite: 0.7,
-        mix: [['bed', 3], ['border', 1], ['open', 3], ['grove', 2]],
-      };
-    // A visited building: a forecourt to arrive in, planting held to the sides.
-    case 'museum':
-      return {
-        tile: { w: 5, h: 5 }, appetite: 0.8, aisle: true,
-        mix: [['border', 2], ['bed', 3], ['open', 3], ['orchard', 2]],
-      };
-    // A shop stands in a one-layer terrace ring; the ground inside stays walkable.
-    case 'shop':
-      return {
-        tile: { w: 5, h: 5 }, appetite: 0.7, ring: rng.int(2) === 0,
-        mix: [['border', 2], ['bed', 2], ['open', 4], ['grove', 2]],
-      };
-  }
-}
+export const ANCHOR_KITS: Record<AnchorKind, KitSpec> = {
+  // Homes with gardens between them: hedges, a bed or two, shade.
+  residential: {
+    tile: { w: 4, h: 4 }, appetite: 0.6,
+    mix: [['border', 2], ['bed', 2], ['open', 4], ['grove', 3]],
+  },
+  // The player's own, and the one private garden on the map.
+  'own-house': {
+    tile: { w: 4, h: 5 }, appetite: 0.7,
+    mix: [['bed', 3], ['border', 1], ['open', 3], ['grove', 2]],
+  },
+  // A visited building: a forecourt to arrive in, planting held to the sides.
+  museum: {
+    tile: { w: 5, h: 5 }, appetite: 0.8, aisle: true,
+    mix: [['border', 2], ['bed', 3], ['open', 3], ['orchard', 2]],
+  },
+  // A shop stands in a one-layer terrace ring; the ground inside stays walkable.
+  shop: {
+    tile: { w: 5, h: 5 }, appetite: 0.7, ring: (rng) => rng.int(2) === 0,
+    mix: [['border', 2], ['bed', 2], ['open', 4], ['grove', 2]],
+  },
+};
 
 /** The ring of one species one cell out from each building, on the cells the canvas offers. */
 export function hedgeMarks(canvas: KitCanvas, buildings: readonly Rect[]): PlantMark[] {

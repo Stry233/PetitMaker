@@ -2,15 +2,17 @@
  * How thick a letter's strokes come out, which is what decides whether a small region can carry
  * text at all.
  *
- * WEIGHT FOLLOWS THE ROOM the glyph is given — thin in a small region, bold in a large one — and it is
- * the WHOLE of the control. Drawn at one heavy weight, an E in a modest region arrives four cells thick
+ * Weight follows the room the glyph is given — thin in a small region, bold in a large one — and it is
+ * the whole of the control. Drawn at one heavy weight, an E in a modest region arrives four cells thick
  * with both counters closed up; a quantised letter has one honest way to be lighter, and reshaping the
  * strokes afterwards costs more than it buys (`stencil-glyph.test.ts` measures that).
  */
 import { describe, it, expect } from 'vitest';
 import type { Stencil } from '../../../../tools/generation/stencil/stencil';
 import { covered } from '../../../../tools/generation/stencil/stencil';
-import { finishGlyph, GLYPH_WEIGHTS, glyphExtent, glyphWeight, strokeTarget } from '../../../../tools/generation/stencil/stencil-stroke';
+import { finishGlyph, GLYPH_WEIGHTS, glyphWeight } from '../../../../tools/generation/stencil/stencil-stroke';
+import { glyphExtent } from '../../../../tools/generation/stencil/stencil-stem';
+import { strokeTarget } from './_stencil-metrics';
 
 function stencilOf(rows: string[]): Stencil {
   const height = rows.length, width = rows[0]!.length;
@@ -41,7 +43,7 @@ describe('the room one glyph gets', () => {
 
 describe('stroke weight follows the room, thin to bold', () => {
   it('draws the one Latin instance the grid can hold, at every size a region is worth writing in', () => {
-    // THE FACE SHIPS TWO, and the heavier one is a slab on this grid: measured over the matrix it takes
+    // The face ships two, and the heavier one is a slab on this grid: measured over the matrix it takes
     // an M at eight cells from a readable letter to a solid block and puts half a large region under ink
     // where the lighter one puts a third. So "bold in a large region" is as bold as this face goes.
     for (const n of [8, 12, 20, 32, 56, 96]) expect(glyphWeight('E', box(n, n)), `${n} cells`).toBe(500);
@@ -110,7 +112,7 @@ describe('stroke weight follows the room, thin to bold', () => {
     // A dense Han glyph packs seven stroke rows into the square an E spends on three, so it needs its counters kept
     // open far more than it needs weight — and the small end is where that decides anything.
     expect(strokeTarget('谷地', box(24, 12))).toBeLessThanOrEqual(strokeTarget('EF', box(24, 12)));
-    // At the large end the two curves are NOT ordered by script, and that is the Latin face's doing
+    // At the large end the two curves are not ordered by script, and that is the Latin face's doing
     // rather than a decision about ideographs: its curve tops out at the one instance the grid can hold,
     // which is lighter than where the dense curve legitimately goes.
     expect(strokeTarget('E', box(56, 56)) / 55).toBeLessThanOrEqual(0.14);

@@ -1,28 +1,21 @@
+// @vitest-environment jsdom
 /**
  * What the game shell does when the window runs out of room, and what it offers a visitor who
- * reloads.
+ * reloads. jsdom lays nothing out, so this pins decisions: the assistant is one block of a row of
+ * six that opens nothing until pressed and leaves the selected mode alone; the choice survives a
+ * reload; the panel's floor follows the bar that is showing; a caption under the leftmost control
+ * stops at the frame's margin; the vignette is outside the frame's zoom; and the restore offer is
+ * opt-in and made only for a save with real content.
  *
- * The assertions here are on the DECISIONS, not on the pixels: jsdom lays nothing out, so a rect
- * assertion would only restate the constants. What is worth pinning is that the assistant is one
- * block of a row of six and opens nothing until it is pressed, that pressing it leaves the selected
- * mode alone, that the choice survives a reload, that the panel's floor follows the bar that is
- * showing rather than one number for all five modes, that a caption under the leftmost control
- * stops sliding at the frame's margin, that the viewport's vignette is not inside the frame's own
- * zoom, and that the restore offer exists, is opt-in, and is only made for a save with real
- * content.
- *
- * Where that offer STANDS is pinned here too, because it is placed by an argument rather than by a
- * measurement: the bottom-left corner is bare map only while nothing else claims it, and the two
- * things that can are a bottom bar and the assistant's panel. The card is placed by two constants
- * (jsdom lays nothing out), so what the assertions are really about is which corner it names and
- * what happens to it when each of those two arrives.
+ * The offer stands in the bottom-left corner, bare map until a bottom bar or the assistant's panel
+ * claims it; the assertions cover which corner it names and what each arrival does to it.
  */
 import { describe, it, expect, beforeAll, beforeEach, afterEach, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 
-import { ToolType } from '../../../core/model/types';
-import { PREF_STORAGE_KEYS } from '../../../core/runtime/prefs';
-import { declineRestoreOffer } from '../../../core/runtime/restore-offer';
+import { ToolType } from '../../../state/editing/vocabulary';
+import { PREF_STORAGE_KEYS } from '../../../platform/storage/prefs';
+import { declineRestoreOffer } from '../../../ui/session/restore-offer';
 import { I18nProvider, translate } from '../../../i18n/context';
 import { createShellSlice } from '../../../state/slices/shell';
 import { useEditorStore } from '../../../state/store';
@@ -30,20 +23,21 @@ import { TOUR_SEEN_KEY } from '../../../ui/chrome/tour/use-tour';
 import { VIGNETTE_DEPTH } from '../../../ui/design/tokens';
 import { footReserve } from '../../../ui/shell/panel-frame';
 import { MODES } from '../../../ui/shell/frame';
-import { RestoreShelf, RESTORE_AFTER_S } from '../../../ui/shell/bars/RestoreShelf';
+import { RestoreShelf } from '../../../ui/shell/bars/generate/RestoreShelf';
 import { Shell } from '../../../ui/shell/Shell';
 import { captionShift, EDGE_LEFT } from '../../../ui/shell/units';
+import { activeToolOf } from '../../../state/editing/edit-mode';
 
-vi.mock('../../../canvas/thumbnail', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('../../../canvas/thumbnail')>()),
+vi.mock('../../../view/map2d/capture/thumbnail', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../../view/map2d/capture/thumbnail')>()),
   renderThumbnail: () => new Promise<null>(() => {}),
 }));
 
 /** The autosave the shell is offered at mount. A real one would mean serializing a map through the
- *  codec, which is a different subject entirely: what these tests need is that there IS one. */
+ *  codec, which is a different subject entirely: what these tests need is that there is one. */
 const offered = vi.hoisted(() => ({ save: null as unknown }));
-vi.mock('../../../io/autosave', async (importOriginal) => ({
-  ...await importOriginal<typeof import('../../../io/autosave')>(),
+vi.mock('../../../io/storage/autosave', async (importOriginal) => ({
+  ...await importOriginal<typeof import('../../../io/storage/autosave')>(),
   readRestorableAutosave: () => offered.save,
 }));
 
@@ -65,19 +59,19 @@ function mountShell() {
 
 /** The assistant's own block in the mode row. */
 function assistantBlock(): HTMLElement {
-  return screen.getByLabelText(translate('generate.algo_agent'));
+  return screen.getByLabelText(translate('mode.assistant'));
 }
 
 /**
- * OPEN THE PANEL ONCE BEFORE ANY OF IT IS TIMED.
+ * Open the panel once before any of it is timed.
  *
  * The panel is the app's one lazy chunk, and two costs ride on the first mount of its life, neither
  * of them the product's. `import()` here is a live transform of the whole assistant graph rather
  * than a fetch of a built one (measured 0.6-1.0s with the shell warm, 3.1-3.6s cold, against the 1s
- * an async query allows by default); and React's `lazy` payload suspends on its FIRST render however
+ * an async query allows by default); and React's `lazy` payload suspends on its first render however
  * warm the module is, so a mount is what moves it to resolved, not an import. Paying both here
  * leaves every assertion below measuring the shell's own work: the async ones stop racing a
- * compiler, and the one that reads the panel SYNCHRONOUSLY (a returning visitor's, further down)
+ * compiler, and the one that reads the panel synchronously (a returning visitor's, further down)
  * stops passing merely for having run after another test.
  */
 beforeAll(async () => {
@@ -179,7 +173,7 @@ describe('a mode block', () => {
 
   /**
    * A block is a toggle, not a radio: pressing the mode in force puts it away and the editor is
-   * back at REST — no bar, no armed tool. Rest is a state the visitor can reach on purpose, not
+   * back at rest — no bar, no armed tool. Rest is a state the visitor can reach on purpose, not
    * only the one they start in.
    */
   it('puts its own mode away when it is the one in force', () => {
@@ -193,7 +187,7 @@ describe('a mode block', () => {
     expect(useEditorStore.getState().editMode.mode).toBeNull();
     expect(mountain.getAttribute('aria-pressed')).toBe('false');
     // Rest means rest: nothing is armed, so the map takes no marks.
-    expect(useEditorStore.getState().activeTool).toBe(ToolType.Hand);
+    expect(activeToolOf(useEditorStore.getState())).toBe(ToolType.Hand);
 
     // A different block still switches, rather than needing the old one turned off first.
     fireEvent.click(mountain);
@@ -205,7 +199,7 @@ describe('a mode block', () => {
 describe('the viewport vignette', () => {
   /** An edge is shaded because something stands there. With no mode chosen nothing does at the
    *  bottom, so that edge's shading is carried below the fold rather than darkening bare map — and
-   *  it TRAVELS there, on the bottom bar's own beat, rather than the bottom of the screen changing
+   *  it travels there, on the bottom bar's own beat, rather than the bottom of the screen changing
    *  colour on its own. */
   it('carries its shading below the fold while the bottom of the screen is empty', async () => {
     mountShell();
@@ -251,9 +245,14 @@ describe('the restore offer', () => {
       <RestoreShelf state={{} as never} onRestore={onRestore} onDismiss={onDismiss} />
     </I18nProvider>,
   );
+  /** The seconds the offer tells a screen reader it waits before pressing itself. */
+  const announcedWait = (): number => {
+    const button = document.querySelector('[aria-describedby]')!;
+    return Number(/\d+/.exec(document.getElementById(button.getAttribute('aria-describedby')!)!.textContent!)![0]);
+  };
 
   /**
-   * THE SAVED MAP IS THE CARD, and the card is the control: a candidate card at 1.8x standing up
+   * The saved map is the card, and the card is the control: a candidate card at 1.8x standing up
    * out of the shelf plate, with the words in a column beside it and the two answers as pills
    * under the words. A click on the picture resumes, exactly as a click on a candidate builds.
    */
@@ -267,7 +266,7 @@ describe('the restore offer', () => {
     expect(card.getAttribute('aria-label')).toContain(translate('restore.resume'));
     expect(screen.getByText(translate('restore.title'))).toBeTruthy();
     expect(screen.getByText(translate('restore.body'))).toBeTruthy();
-    // The pills are SIBLINGS of the card, not children: a button may not nest in a button.
+    // The pills are siblings of the card, not children: a button may not nest in a button.
     const fresh = screen.getByTestId('restore-fresh');
     expect(fresh.tagName).toBe('BUTTON');
     expect(card.contains(fresh), 'no button nested in a button').toBe(false);
@@ -319,9 +318,9 @@ describe('the restore offer', () => {
       const dismiss = vi.fn();
       shelf(restore, dismiss);
       expect(restore).not.toHaveBeenCalled();
-      // IGNORING THE OFFER MEANS RESUME: the default falls toward the recoverable option, since New
+      // Ignoring the offer means resume: the default falls toward the recoverable option, since New
       // brings back a clean map while declining destroys what was saved.
-      await act(async () => { await vi.advanceTimersByTimeAsync((RESTORE_AFTER_S + 1) * 1000); });
+      await act(async () => { await vi.advanceTimersByTimeAsync((announcedWait() + 1) * 1000); });
       expect(restore).toHaveBeenCalled();
       expect(dismiss).not.toHaveBeenCalled();
     } finally {
@@ -330,7 +329,7 @@ describe('the restore offer', () => {
   });
 
   /**
-   * A COUNTDOWN MAY ONLY RUN OVER TIME THE CARD WAS ON SCREEN FOR.
+   * A countdown may only run over time the card was on screen for.
    *
    * The frame is drawn behind the boot splash, so the offer is standing (and counting) while a
    * visitor is still watching the island being built. A clock running under the splash hands them
@@ -347,13 +346,13 @@ describe('the restore offer', () => {
         </I18nProvider>
       );
       const view = render(draw(true));
-      await act(async () => { await vi.advanceTimersByTimeAsync((RESTORE_AFTER_S + 1) * 1000); });
+      await act(async () => { await vi.advanceTimersByTimeAsync((announcedWait() + 1) * 1000); });
       expect(restore, 'nobody has seen the offer yet').not.toHaveBeenCalled();
 
       view.rerender(draw(false));
-      // And the WHOLE of it is still there to spend, rather than the remainder of a clock that ran
+      // And the whole of it is still there to spend, rather than the remainder of a clock that ran
       // behind the splash: a second short of the full wait is a second short.
-      await act(async () => { await vi.advanceTimersByTimeAsync((RESTORE_AFTER_S - 1) * 1000); });
+      await act(async () => { await vi.advanceTimersByTimeAsync((announcedWait() - 1) * 1000); });
       expect(restore).not.toHaveBeenCalled();
       await act(async () => { await vi.advanceTimersByTimeAsync(2000); });
       expect(restore).toHaveBeenCalled();
@@ -371,13 +370,13 @@ describe('the restore offer', () => {
       // A visitor tabbing through lands on Start fresh and hesitates: the offer must wait for
       // them, not resume itself out from under a control they are still reading.
       fireEvent.focus(screen.getByTestId('restore-fresh'));
-      await act(async () => { await vi.advanceTimersByTimeAsync((RESTORE_AFTER_S + 1) * 1000); });
+      await act(async () => { await vi.advanceTimersByTimeAsync((announcedWait() + 1) * 1000); });
       expect(restore).not.toHaveBeenCalled();
       expect(dismiss).not.toHaveBeenCalled();
 
       // Moving focus off the pill releases the hold, same as a pointer leaving it.
       fireEvent.blur(screen.getByTestId('restore-fresh'));
-      await act(async () => { await vi.advanceTimersByTimeAsync((RESTORE_AFTER_S + 1) * 1000); });
+      await act(async () => { await vi.advanceTimersByTimeAsync((announcedWait() + 1) * 1000); });
       expect(restore).toHaveBeenCalled();
     } finally {
       vi.useRealTimers();
@@ -424,7 +423,7 @@ describe('where the restore offer stands', () => {
   });
 
   /** The one dismissal, offered to a surface standing outside this shell: the arrival notice's OK
-   *  is a hand saying where it is, which answers this card too. It goes through the SAME path the
+   *  is a hand saying where it is, which answers this card too. It goes through the same path the
    *  card's own "start fresh" takes rather than a second one, which is what this pins. */
   it('offers its own dismissal to whatever stands beside it', async () => {
     mountShell();
@@ -435,7 +434,7 @@ describe('where the restore offer stands', () => {
     expect(() => declineRestoreOffer()).not.toThrow();
   });
 
-  /** ENGAGING THE ASSISTANT IS AN ANSWER, not merely a panel drawn over the corner. It goes through
+  /** Engaging the assistant is an answer, not merely a panel drawn over the corner. It goes through
    *  `dismissRestore` itself (discarding the saved session, same as opening the menu or choosing a
    *  mode), so the card must not come back once the panel is put away. */
   it('is dismissed for good once the assistant panel opens, and stays gone once it closes', async () => {
@@ -478,7 +477,7 @@ function freshShellSlice() {
 const LEGACY_OPEN_KEY = 'petit-planet-assistant-open';
 
 /**
- * PUTTING THE INTERFACE AWAY. What is worth pinning is the line: the frame goes, and the one button
+ * Putting the interface away. What is worth pinning is the line: the frame goes, and the one button
  * that put it away does not, so there is a way back where the way out was. Everything modal stands
  * outside this frame and is untouched by construction, which is the reason that line was drawn
  * there.

@@ -1,13 +1,14 @@
 import { describe, it, expect } from 'vitest';
 import { generateMaze } from '../../../../tools/generation/maze/maze-generator';
-import { CellZone, TerrainType, CommandType, type EditorEvents } from '../../../../core/model/types';
+import { TerrainType, CommandType } from '../../../../core/model/types';
+import { type EditorEvents } from '../../../../state/editing/events';
+import { CellZone } from '../../../../core/game/zones';
 import type { Command, MacroCoord, ValidationResult } from '../../../../core/model/types';
-import { makeState, setZone } from '../../../rules/_helpers';
+import { makeState, setZone } from '../../../_support/map-state';
 import { getCell } from '../../../../core/model/grid-model';
-import { CommandExecutor } from '../../../../core/commands/command-executor';
 import { EventBus } from '../../../../core/commands/event-bus';
 import { createDefaultRegistry } from '../../../../rules';
-import { roadLookup } from '../../../../state/object-index';
+import { createExecutor } from '../../../../state/executor';
 
 function simpleExecutor(state: ReturnType<typeof makeState>) {
   return (cmd: Command): ValidationResult => {
@@ -79,10 +80,11 @@ function reachableFromOutside(state: ReturnType<typeof makeState>, w: number, h:
 describe('Maze gates', () => {
   it('lets a walker in from outside and reach every passage', () => {
     const state = makeState(24, 24);
-    const { gates } = generateMaze(state, 42, 1, 1, gateRegionCells(), simpleExecutor(state), {
+    const { gates } = generateMaze({ state, execute: simpleExecutor(state) }, {
+      seed: 42, maxElevation: 1, corridorWidth: 1, region: gateRegionCells(), mazeGates: {
       entrance: { x: 2, y: 10 },
       exit: { x: 18, y: 10 },
-    });
+    } });
 
     const reached = reachableFromOutside(state, 24, 24);
     // The reported gates are the cells the walker actually comes through.
@@ -106,7 +108,7 @@ describe('Maze gates', () => {
    *  walk the carve holds — which is a pair of ends the run finds, not a side it picks. */
   it('opens exactly two ways in when none are supplied, and reports both', () => {
     const state = makeState(24, 24);
-    const { gates } = generateMaze(state, 42, 1, 1, gateRegionCells(), simpleExecutor(state));
+    const { gates } = generateMaze({ state, execute: simpleExecutor(state) }, { seed: 42, maxElevation: 1, corridorWidth: 1, region: gateRegionCells() });
 
     const runs = openings(state);
     expect(runs.length).toBe(2);
@@ -123,24 +125,30 @@ describe('Maze gates', () => {
   it('reports the same gates for the same seed, and reports a gate the caller did not ask for as null', () => {
     const runs = [0, 1].map(() => {
       const state = makeState(24, 24);
-      return generateMaze(state, 99, 1, 1, gateRegionCells(), simpleExecutor(state)).gates;
+      return generateMaze({ state, execute: simpleExecutor(state) }, { seed: 99, maxElevation: 1, corridorWidth: 1, region: gateRegionCells() }).gates;
     });
     expect(runs[0]).toEqual(runs[1]);
 
     const state = makeState(24, 24);
-    const { gates } = generateMaze(state, 99, 1, 1, gateRegionCells(), simpleExecutor(state), { entrance: { x: 6, y: 5 } });
+    const { gates } = generateMaze(
+      { state, execute: simpleExecutor(state) },
+      { seed: 99, maxElevation: 1, corridorWidth: 1, region: gateRegionCells(), mazeGates: { entrance: { x: 6, y: 5 } } },
+    );
     expect(gates.exit).toBeNull();
     expect(gates.entrance).not.toBeNull();
   });
 
   /**
-   * AN INTERIOR END IS A DESTINATION, not a badly-aimed gate: the DROP decides, and a place inside is a
-   * place to REACH, which costs no terrain at all since a corridor is already walkable. Snapping the
+   * An interior end is a destination, not a badly-aimed gate: the drop decides, and a place inside is a
+   * place to reach, which costs no terrain at all since a corridor is already walkable. Snapping the
    * coordinate to the border ring instead would silently move the end to the map's edge.
    */
   it('takes an interior coordinate as a destination, cutting no hole for it', () => {
     const state = makeState(24, 24);
-    const { gates } = generateMaze(state, 42, 1, 1, gateRegionCells(), simpleExecutor(state), { entrance: { x: 6, y: 5 } });
+    const { gates } = generateMaze(
+      { state, execute: simpleExecutor(state) },
+      { seed: 42, maxElevation: 1, corridorWidth: 1, region: gateRegionCells(), mazeGates: { entrance: { x: 6, y: 5 } } },
+    );
 
     expect(openings(state)).toEqual([]);
     const landed = gates.entrance!;
@@ -155,10 +163,11 @@ describe('Maze gates', () => {
    *  end's own marker stands on. The wall it is cut in is one cell thick whatever the corridors are. */
   it('cuts a one-cell hole whatever the corridor width', () => {
     const state = makeState(24, 24);
-    const { gates } = generateMaze(state, 42, 1, 3, gateRegionCells(), simpleExecutor(state), {
+    const { gates } = generateMaze({ state, execute: simpleExecutor(state) }, {
+      seed: 42, maxElevation: 1, corridorWidth: 3, region: gateRegionCells(), mazeGates: {
       entrance: { x: 10, y: 2 },
       exit: { x: 10, y: 18 },
-    });
+    } });
 
     const runs = openings(state);
     expect(runs.length).toBe(2);
@@ -169,20 +178,44 @@ describe('Maze gates', () => {
 
   it('keeps gated walls rule-valid through the real executor', () => {
     const state = makeState(40, 40);
-    for (let i = 0; i < 40; i++) { setZone(state, i, 0, CellZone.Beach); setZone(state, i, 39, CellZone.Beach); setZone(state, 0, i, CellZone.Beach); setZone(state, 39, i, CellZone.Beach); }
+    for (let i = 0; i < 40; i++) {
+      setZone(state, i, 0, CellZone.Beach);
+      setZone(state, i, 39, CellZone.Beach);
+      setZone(state, 0, i, CellZone.Beach);
+      setZone(state, 39, i, CellZone.Beach);
+    }
     const bus = new EventBus<EditorEvents>();
     let fails = 0;
     bus.on('validation-failed', () => { fails++; });
-    const exec = new CommandExecutor(state, bus, createDefaultRegistry(), roadLookup(state));
-    const start = exec.getUndoStackSize();
-    const { placed, skipped } = generateMaze(state, 7, 3, 2, null, (c) => exec.execute(c), {
+    const exec = createExecutor(state, createDefaultRegistry(), bus);
+    const start = exec.beginStroke();
+    const { placed, skipped } = generateMaze({ state, execute: (c) => exec.execute(c) }, {
+      seed: 7, maxElevation: 3, corridorWidth: 2, region: null, mazeGates: {
       entrance: { x: 20, y: 20 },
       exit: { x: 1, y: 20 },
-    });
-    expect(exec.commitStroke(start)).toEqual([]);
+    } });
+    expect(start.commit()).toEqual([]);
     expect(placed).toBeGreaterThan(0);
     expect(skipped).toBe(0);
     expect(fails).toBe(0);
+  });
+
+  it('leaves out a wall whose only off-grass neighbour is the up-left diagonal', () => {
+    const state = makeState(40, 40);
+    // Lone beach cells: the cell down-right of each sees grass up and left, beach only on the diagonal.
+    const beach = [[9, 9], [14, 21], [25, 12], [30, 28], [11, 31], [21, 5], [5, 17], [27, 33]] as const;
+    for (const [x, y] of beach) setZone(state, x, y, CellZone.Beach);
+    const bus = new EventBus<EditorEvents>();
+    let fails = 0;
+    bus.on('validation-failed', () => { fails++; });
+    const exec = createExecutor(state, createDefaultRegistry(), bus);
+    const { placed, skipped } = generateMaze({ state, execute: (c) => exec.execute(c) }, {
+      seed: 7, maxElevation: 2, corridorWidth: 1, region: null,
+    });
+    expect(placed).toBeGreaterThan(0);
+    expect(skipped).toBe(0);
+    expect(fails).toBe(0);
+    for (const [x, y] of beach) expect(getCell(state.cells, x + 1, y + 1)?.terrain ?? null).toBeNull();
   });
 });
 
@@ -197,7 +230,7 @@ describe('Maze generator', () => {
       for (let x = 9; x <= 12; x++)
         region.push({ x, y });
 
-    const result = generateMaze(state, 42, 1, 1, region, simpleExecutor(state));
+    const result = generateMaze({ state, execute: simpleExecutor(state) }, { seed: 42, maxElevation: 1, corridorWidth: 1, region: region });
     expect(result.placed).toBeGreaterThan(0);
 
     const regionSet = new Set(region.map(c => `${c.x},${c.y}`));
@@ -221,30 +254,35 @@ describe('Maze generator', () => {
       for (let x = 12; x <= 15; x++)
         region.push({ x, y });
 
-    const result = generateMaze(state, 42, 1, 1, region, simpleExecutor(state));
+    const result = generateMaze({ state, execute: simpleExecutor(state) }, { seed: 42, maxElevation: 1, corridorWidth: 1, region: region });
     expect(result.placed).toBeGreaterThan(0);
   });
 
   it('generates maze for full map when no region specified', () => {
     const state = makeState(15, 15);
-    const result = generateMaze(state, 42, 1, 1, null, simpleExecutor(state));
+    const result = generateMaze({ state, execute: simpleExecutor(state) }, { seed: 42, maxElevation: 1, corridorWidth: 1, region: null });
     expect(result.placed).toBeGreaterThan(0);
   });
 
-  // Through the REAL rule executor on a map with a non-grass (beach) border: no command is rejected and
+  // Through the real rule executor on a map with a non-grass (beach) border: no command is rejected and
   // the committed state is rule-clean at every elevation. The failure this catches is an edge wall
   // tripping V-ZONE-01 (zone not buildable) and then floating a higher layer onto the bare cell.
   it('produces rule-valid terrain on a bordered map at every elevation (no zone / floating errors)', () => {
     for (const maxElev of [1, 2, 3]) {
       const state = makeState(40, 40);
-      for (let i = 0; i < 40; i++) { setZone(state, i, 0, CellZone.Beach); setZone(state, i, 39, CellZone.Beach); setZone(state, 0, i, CellZone.Beach); setZone(state, 39, i, CellZone.Beach); }
+      for (let i = 0; i < 40; i++) {
+        setZone(state, i, 0, CellZone.Beach);
+        setZone(state, i, 39, CellZone.Beach);
+        setZone(state, 0, i, CellZone.Beach);
+        setZone(state, 39, i, CellZone.Beach);
+      }
       const bus = new EventBus<EditorEvents>();
       let fails = 0;
       bus.on('validation-failed', () => { fails++; });
-      const exec = new CommandExecutor(state, bus, createDefaultRegistry(), roadLookup(state));
-      const start = exec.getUndoStackSize();
-      const { placed, skipped } = generateMaze(state, 42, maxElev, 1, null, (c) => exec.execute(c));
-      const postViol = exec.commitStroke(start).length;
+      const exec = createExecutor(state, createDefaultRegistry(), bus);
+      const start = exec.beginStroke();
+      const { placed, skipped } = generateMaze({ state, execute: (c) => exec.execute(c) }, { seed: 42, maxElevation: maxElev, corridorWidth: 1, region: null });
+      const postViol = start.commit().length;
       expect(placed, `maxElev ${maxElev} placed`).toBeGreaterThan(0);
       expect(skipped, `maxElev ${maxElev} skipped`).toBe(0);
       expect(fails, `maxElev ${maxElev} rejected commands`).toBe(0);
@@ -255,7 +293,7 @@ describe('Maze generator', () => {
 });
 
 /**
- * THE WAY IS DRAWN OVER THE CORRIDOR, NOT DOWN THE MIDDLE OF IT. The route between the ends is one
+ * The way is drawn over the corridor, not down the middle of it. The route between the ends is one
  * cell wide because a search over cells is; the corridor is as wide as the recipe asked for, and a
  * line drawn down a three-wide corridor reads as a road painted on its floor rather than as the
  * floor. So the generator widens the route over the lattice bands the carve actually filled.
@@ -268,7 +306,9 @@ describe('the way between the ends', () => {
 
   it('is the route itself where a corridor is one cell wide', () => {
     const state = makeState(24, 24);
-    const { walk } = generateMaze(state, 42, 1, 1, gateRegionCells(), simpleExecutor(state), ends);
+    const { walk } = generateMaze(
+      { state, execute: simpleExecutor(state) }, { seed: 42, maxElevation: 1, corridorWidth: 1, region: gateRegionCells(), mazeGates: ends },
+    );
     expect(walk).not.toBeNull();
     for (let i = 1; i < walk!.length; i++) {
       const step = Math.abs(walk![i]!.x - walk![i - 1]!.x) + Math.abs(walk![i]!.y - walk![i - 1]!.y);
@@ -278,7 +318,9 @@ describe('the way between the ends', () => {
 
   it('fills a wider corridor across its whole width, and never a wall', () => {
     const state = makeState(24, 24);
-    const { walk } = generateMaze(state, 42, 1, 3, gateRegionCells(), simpleExecutor(state), ends);
+    const { walk } = generateMaze(
+      { state, execute: simpleExecutor(state) }, { seed: 42, maxElevation: 1, corridorWidth: 3, region: gateRegionCells(), mazeGates: ends },
+    );
     expect(walk).not.toBeNull();
     const shown = new Set(walk!.map(key));
 

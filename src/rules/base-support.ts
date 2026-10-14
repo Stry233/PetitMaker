@@ -2,95 +2,82 @@
  * V-MTN-03: 3x3 Base Support (post-stroke)
  *
  * Every mountain at elevation N >= 4 must have a full 3x3 area of solid support
- * at some LOWER elevation E where E >= N-3 (the thresholds are `BASE_SUPPORT`; the
- * figures here are today's values). A support cell is solid if its mass
- * reaches elevation >= E, OR it is covered by a `terrainBase` object (the central
- * plaza, or any future base-providing building) whose elevation >= E.
+ * at some lower elevation E where E >= N-3 (the thresholds are `BASE_SUPPORT`; the
+ * figures here are today's values). A support cell is solid if its mass reaches
+ * elevation >= E, or a `terrainBase` object standing at elevation >= E covers it.
  *
- * A WATER CELL FILLS ITS CELL TO ITS SURFACE. In a neighbour's 3x3 window, water at
- * elevation N counts as support up to N — the same as the mountain it replaced —
- * because the game forms waterfalls by CONVERTING a mountain block to water among its
- * standing neighbours, and a conversion that lowered the
- * neighbourhood's support would demolish the structure it was carving. Support in the
- * WINDOW is all this grants: nothing may be built ON water (placement rules), and the
- * water's own footing is V-WTR-01's question, not this rule's.
+ * Water at elevation N counts as support up to N in a neighbour's window, as the mountain it
+ * replaced did: the game forms waterfalls by converting a mountain block to water, and a
+ * conversion that lowered the support would demolish the structure it was carving. That is all
+ * it grants: nothing may be built on water, and the water's own footing is V-WTR-01's question.
  *
- * The base must be BELOW the cell — a 3x3 group at the same elevation N cannot
- * serve as its own base. The check scans centered 3x3 at each
- * elevation from N-1 down to max(1, N-3).
+ * The base must be below the cell: the check scans centred 3x3 windows at each elevation from
+ * N-1 down to max(1, N-3).
  *
  * Layers 1-3 are exempt: ground (elevation 0) always provides a valid base.
  */
-import {
-  TerrainType,
-  type GridState,
-  type PostStrokeRule,
-  type ValidationError,
-} from '../core/model/types';
-import { cellOverlapsRect, type Rect } from '../core/model/grid-model';
-import { objectRect } from '../state/object-geometry';
+import { TerrainType, type GridState, type ValidationError } from '../core/model/types';
+import { rectsOverlap, type Rect } from '../core/grid/rect';
+import { objectElevation, objectRect } from '../state/object-geometry';
 import { getCatalogItem } from '../state/catalog';
 import { hasTrait } from '../core/model/traits';
-import { surfaceElevation } from '../core/edge-cut/terrain-silhouette';
-import { BASE_SUPPORT } from '../core/model/game-profile';
+import { surfaceElevation } from '../core/domain/terrain/terrain-surface';
+import { BASE_SUPPORT, GROUND_SUPPORT_LAYER, TERRAIN_GRID } from '../core/game/profile';
+import { terrainCellRect } from '../core/grid/grid-convert';
+import { evidenceOn } from '../core/grid/grids';
+import { definePostRule } from './define';
 
 interface TerrainBase { rect: Rect; elevation: number; }
 
 const HALF_WINDOW = (BASE_SUPPORT.window - 1) / 2;
 
-export const baseSupportRule: PostStrokeRule = {
+export const baseSupportRule = definePostRule({
   id: 'V-MTN-03',
-  agentHint: `POST-CHECK — a mountain cell at elevation >=${BASE_SUPPORT.fromLayer} needs a full ${BASE_SUPPORT.window}x${BASE_SUPPORT.window} base at some elevation >= N-${BASE_SUPPORT.reach} below it. Build pyramids, not 1-wide towers. A water cell counts as support up to its own surface, but nothing can be built ON water.`,
-  phase: 'post-stroke',
 
-  validate(state: GridState, opts?: { firstOnly?: boolean }): ValidationError[] {
+  validate(state, opts, fail) {
     const { width, height } = state.template;
     const errors: ValidationError[] = [];
 
-    // Footprints that act as a structural base (the plaza, etc.), with elevation.
+    // Footprints of `terrainBase` objects, with elevation.
     const bases: TerrainBase[] = [];
     for (const [, obj] of state.objects) {
       const item = getCatalogItem(obj.catalogId);
       if (item && hasTrait(item, 'terrainBase')) {
-        bases.push({ rect: objectRect(obj), elevation: obj.elevation });
+        bases.push({ rect: objectRect(obj), elevation: objectElevation(state, obj) });
       }
     }
 
-    // Solid mass per cell, derived ONCE. Every cell is read by up to nine 3x3 tests (its own and each
-    // neighbour's), and derived per test instead this rule is ~73% of the whole post-stroke sweep —
-    // a sweep that runs once per commit AND once per undo inside the auto-revert loop.
+    // Solid mass per cell, derived once: every cell is read by up to nine 3x3 tests (its own and each
+    // neighbour's), and the sweep runs once per commit and once per undo inside the auto-revert loop.
     const mass = massField(state, width, height);
 
+    const grid = { mass, width, height };
     for (let y = 0; y < height; y++) {
       const row = state.cells[y];
       for (let x = 0; x < width; x++) {
         const t = row?.[x]?.terrain;
         if (!t || t.type !== TerrainType.Mountain) continue;
-        // The STANDABLE surface, not raw elevation: a Γ patch/fillet's real height is its patchBase
+        // The standable surface, not raw elevation: a Γ patch/fillet's real height is its patchBase
         // (a cosmetic fillet at tier N over a base block holds no structural mass at N), so a
         // cosmetic-4 fillet on a base-3 block is structurally a layer-3 mountain — exempt. For a
         // mountain that is exactly what `mass` holds, so it is read rather than derived twice.
         const elev = mass[y * width + x]!;
         if (elev < BASE_SUPPORT.fromLayer) continue;
 
-        if (!has3x3Base(mass, width, height, x, y, elev, bases)) {
-          errors.push({
-            ruleId: 'V-MTN-03',
-            message: 'error.need_base_support',
+        if (!has3x3Base(grid, x, y, elev, bases)) {
+          errors.push(fail('error.need_base_support', evidenceOn(TERRAIN_GRID, [{ x, y }]), {
             messageParams: { window: BASE_SUPPORT.window, reach: BASE_SUPPORT.reach },
-            cells: [{ x, y }],
-            severity: 'error',
-          });
+          }));
           if (opts?.firstOnly) return errors;
         }
       }
     }
     return errors;
   },
-};
+});
 
 /**
- * The layer each cell's SOLID MASS reaches, indexed y*width+x; −1 where a cell holds none.
+ * The layer each cell's solid mass reaches, indexed y*width+x; −1 where a cell holds none.
  *
  * Mountain and water alike reach their standable surface (a Γ patch counts via its patchBase —
  * surfaceElevation, not the cosmetic tier): converting a block to water keeps the window's
@@ -112,20 +99,21 @@ function massField(state: GridState, width: number, height: number): Int8Array {
 }
 
 function has3x3Base(
-  mass: Int8Array, width: number, height: number,
+  grid: { mass: Int8Array; width: number; height: number },
   x: number, y: number, targetElev: number, bases: TerrainBase[],
 ): boolean {
-  // Per-cell support ("cap >= E") is monotone in E, so a valid E in [max(1, N-3), N-1] exists iff
-  // the LOWEST candidate E works — one 3x3 pass at E = max(1, N-3) suffices, because lower layers
-  // are implied by the no-floating rule (and no realSurface allocations in the hot loop).
-  const minBase = Math.max(1, targetElev - BASE_SUPPORT.reach);
+  const { mass, width, height } = grid;
+  // Per-cell support ("cap >= E") is monotone in E, so a valid E in [max(ground, N-reach), N-1]
+  // exists iff the lowest candidate E works: one window pass at that E suffices, because lower
+  // layers are implied by the no-floating rule (and no realSurface allocations in the hot loop).
+  const minBase = Math.max(GROUND_SUPPORT_LAYER, targetElev - BASE_SUPPORT.reach);
   for (let dy = -HALF_WINDOW; dy <= HALF_WINDOW; dy++) {
     for (let dx = -HALF_WINDOW; dx <= HALF_WINDOW; dx++) {
       const nx = x + dx, ny = y + dy;
       // Off the map is not support: the 3x3 must land entirely on the grid.
       if (nx < 0 || ny < 0 || nx >= width || ny >= height) return false;
       if (mass[ny * width + nx]! >= minBase) continue;
-      if (!bases.some(b => b.elevation >= minBase && cellOverlapsRect(b.rect, nx, ny, -0.5))) return false;
+      if (!bases.some(b => b.elevation >= minBase && rectsOverlap(b.rect, terrainCellRect({ x: nx, y: ny })))) return false;
     }
   }
   return true;

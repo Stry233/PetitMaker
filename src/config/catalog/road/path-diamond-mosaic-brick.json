@@ -4,7 +4,7 @@
   "icon": "path-diamond-mosaic-brick",
   "name": {
     "en": "Diamond Mosaic Brick Path",
-    "zh": "菱形马赛克砖路",
+    "zh": "菱形拼花砖路",
     "ja": "ダイヤモザイクレンガの道",
     "ru": "Ромбовидная мозаичная кирпичная дорожка",
     "th": "ทางอิฐโมเสกลายข้าวหลามตัด",
@@ -24,5 +24,17 @@
     {
       "type": "surfaceCoating"
     }
-  ]
+  ],
+  "roadMaterial": {
+    "feather": 0.035,
+    "edge": {
+      "color": "#ffffff",
+      "pattern": {
+        "kind": "image",
+        "image": "path-diamond-mosaic-brick",
+        "repeat": 4
+      }
+    },
+    "layers": []
+  }
 }

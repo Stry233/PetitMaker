@@ -1,6 +1,7 @@
+// @vitest-environment jsdom
 /**
- * The house dropdown, and the one rule that shapes it: THE PANEL NEVER MAKES ROOM FOR A MENU. The
- * closed state is a row; the open state is a card in a BODY-LEVEL layer, so no surface reserves a
+ * The house dropdown, and the one rule that shapes it: the panel never makes room for a menu. The
+ * closed state is a row; the open state is a card in a body-level layer, so no surface reserves a
  * box, tweens a height, or grows a scroller because a list opened over it.
  *
  * The body-level portal is load-bearing rather than tidy: a panel stands inside the frame's `zoom`
@@ -12,7 +13,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { FloatMenu, floatMenuItemStyle, type FloatMenuItem } from '../../../ui/primitives/FloatMenu';
-import { UiPreviewProvider } from '../../../ui/primitives/ui-preview';
+import { UiPreviewProvider } from '../../../ui/design/preview';
 import { ACTIVE } from '../../../ui/design/tokens';
 import { radii, z } from '../../../ui/design/styles';
 
@@ -100,10 +101,10 @@ describe('the open card stands outside the panel', () => {
   });
 
   /**
-   * ALL FOUR CORNERS INSIDE THE BOX THE CARD IS GIVEN.
+   * All four corners inside the box the card is given.
    *
-   * The placement hands the card the ROW's width and the room the window has left. Under
-   * content-box its own padding and border stand OUTSIDE both: 14px wider than the row, so a card
+   * The placement hands the card the row's width and the room the window has left. Under
+   * content-box its own padding and border stand outside both: 14px wider than the row, so a card
    * hanging off a row near the window's right edge stands past the clamp meant to hold it off that
    * edge, and 14px taller than the room, so its foot is cut off by the window. What reads on the
    * glass is a rounded card with two square corners.
@@ -112,7 +113,7 @@ describe('the open card stands outside the panel', () => {
     const view = render(<Menu zoom={1} />);
     const row = screen.getAllByRole('button')[0]!;
     // A row hard against the window's right-hand gutter, which is where an overflow would show. Stubbed
-    // BEFORE the list opens, since the card is placed from the rect read in that layout pass.
+    // Before the list opens, since the card is placed from the rect read in that layout pass.
     const box = { left: 716, top: 100, width: 300, height: 50, bottom: 150, right: 1016 };
     Object.defineProperty(row, 'getBoundingClientRect', {
       configurable: true, value: () => ({ ...box, x: box.left, y: box.top, toJSON: () => ({}) }),
@@ -121,9 +122,9 @@ describe('the open card stands outside the panel', () => {
     const card = screen.getByRole('menu');
     expect(card.style.boxSizing).toBe('border-box');
     expect(card.style.width).toBe('300px');
-    // The card's OUTER right edge lands on the gutter rather than 14px past it.
+    // The card's outer right edge lands on the gutter rather than 14px past it.
     expect(716 + 300).toBe(window.innerWidth - 8);
-    // And the radius is ONE value, so every corner carries it and none is styled square.
+    // And the radius is one value, so every corner carries it and none is styled square.
     expect(card.style.borderRadius).toBe(`${radii.lg}px`);
   });
 
@@ -174,14 +175,15 @@ describe('the two ways out', () => {
     expect(outer).not.toHaveBeenCalled();
   });
 
-  it('closes on a click anywhere outside the card', () => {
+  it('closes on a press anywhere outside the card, and that press reaches nothing beneath it', () => {
     const onClose = vi.fn();
-    render(<Menu open onClose={onClose} />);
-    // The shared ClickCatcher, standing under the layer it guards.
-    const catcher = screen.getByRole('menu').parentElement!.previousElementSibling as HTMLElement;
-    expect(catcher.style.position).toBe('fixed');
-    fireEvent.click(catcher);
+    const beneath = vi.fn();
+    render(<><button type="button" onClick={beneath}>beneath</button><Menu open onClose={onClose} /></>);
+    const outside = screen.getByRole('button', { name: 'beneath' });
+    fireEvent.pointerDown(outside);
+    fireEvent.click(outside);
     expect(onClose).toHaveBeenCalledTimes(1);
+    expect(beneath).not.toHaveBeenCalled();
   });
 
   it('takes the listener away with it, so a closed menu answers nothing', () => {
@@ -194,10 +196,10 @@ describe('the two ways out', () => {
 });
 
 /**
- * THE ONE LIST SHAPE THE ITEM MODEL CANNOT HOLD: a row carrying a second control of its own. A
+ * The one list shape the item model cannot hold: a row carrying a second control of its own. A
  * `menuitem` here is a `<button>`, and a button cannot nest one — so the panel's past-jobs list
  * (whose row opens the ticket while a square beside it rolls the job back) builds its own rows and
- * takes the CARD: same layer, same anchor, same clamp, same two ways out.
+ * takes the card: same layer, same anchor, same clamp, same two ways out.
  */
 describe('a caller that brings its own rows', () => {
   it('renders them in the card as a labelled GROUP, not as a menu of items', () => {
@@ -234,9 +236,9 @@ describe('a caller that brings its own rows', () => {
 });
 
 /**
- * A PICTURED MENU HOLDS STILL. A Help figure's containment (`inert`, `pointer-events: none`) is a
- * property of its real DOM subtree, so the body portal, the ClickCatcher and the window Escape
- * capture would all stand OUTSIDE it, over the live app: an invisible full-viewport click absorber
+ * A pictured menu holds still. A Help figure's containment (`inert`, `pointer-events: none`) is a
+ * property of its real DOM subtree, so the body portal, the outside-press plane and the window Escape
+ * capture would all stand outside it, over the live app: an invisible full-viewport click absorber
  * and an Escape eaten app-wide, forever. Pictured, the open card renders inline under its row and
  * nothing reaches past the figure.
  */
@@ -280,5 +282,37 @@ describe('a pictured menu', () => {
     render(pictured());
     expect(screen.queryByRole('menu')).toBeNull();
     expect(screen.getByRole('button').getAttribute('aria-expanded')).toBe('false');
+  });
+});
+
+describe('a menu hung from an element of the caller', () => {
+  function Anchored({ onPick = () => {}, highlightId }: { onPick?: (id: string) => void; highlightId?: string }) {
+    const ref = { current: null as HTMLInputElement | null };
+    return (
+      <>
+        <input aria-label="Search" ref={(el) => { ref.current = el; }} />
+        <FloatMenu row={null} anchor={ref} keepFocus open aria-label={LABEL} items={ITEMS} highlightId={highlightId}
+          onOpen={() => {}} onClose={() => {}} onPick={onPick} />
+      </>
+    );
+  }
+
+  it('draws no row of its own and leaves focus in the field', () => {
+    render(<Anchored />);
+    const field = screen.getByRole('textbox', { name: 'Search' });
+    field.focus();
+    expect(screen.queryByRole('button', { name: LABEL })).toBeNull();
+    expect(screen.getByRole('menu', { name: LABEL })).toBeTruthy();
+    expect(document.activeElement).toBe(field);
+  });
+
+  it('marks the row the keys stand on and reports a pick', () => {
+    const onPick = vi.fn();
+    render(<Anchored onPick={onPick} highlightId="opus" />);
+    const opus = screen.getByRole('menuitemradio', { name: /Claude Opus/ });
+    const sonnet = screen.getByRole('menuitemradio', { name: /Claude Sonnet/ });
+    expect(opus.style.backgroundColor).not.toBe(sonnet.style.backgroundColor);
+    fireEvent.click(opus);
+    expect(onPick).toHaveBeenCalledWith('opus');
   });
 });

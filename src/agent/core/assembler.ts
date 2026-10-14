@@ -3,15 +3,14 @@ import type {
   Part, ReasoningPart, StopReason, StreamEvent, TextPart, ToolPart, TurnError, TurnQuirk, Usage,
 } from './types';
 
-/** A turn's finished shape: parts as they landed, why the stream stopped, and which tool calls
- *  a caller must not execute (unparseable args, or every call when the whole batch was truncated). */
+/** A turn's finished shape: parts as they landed and why the stream stopped. A call whose part
+ *  keeps its `rawInput` did not parse; `job-reads.ts:deriveBadCallIds` reads which calls must not run. */
 export interface AssembledTurn {
   parts: Part[];
   stop: StopReason;
   usage?: Usage;
   raw?: unknown;
   error?: TurnError;
-  badCalls: string[];
   /** What the adapter had to normalize to deliver these parts, where it normalized anything. */
   quirks?: TurnQuirk[];
 }
@@ -35,7 +34,7 @@ export function createAssembler(): Assembler {
   const parts: Part[] = [];
   const tools = new Map<string, ToolState>();
   // A turn carries at most one running text part and one running reasoning part: a tool call
-  // interposed between two text deltas closes the part (`done: true`) but the NEXT text delta
+  // interposed between two text deltas closes the part (`done: true`) but the next text delta
   // reopens the same object rather than starting a new one, so the two stay one continuous
   // message with tool cards embedded, matching a real reply that talks, calls a tool, and
   // keeps talking.
@@ -46,7 +45,6 @@ export function createAssembler(): Assembler {
   let raw: unknown;
   let error: TurnError | undefined;
   let quirks: TurnQuirk[] | undefined;
-  const badCalls: string[] = [];
 
   function closeIfOpen(index: number | undefined): void {
     if (index === undefined) return;
@@ -105,7 +103,6 @@ export function createAssembler(): Assembler {
         usage = ev.usage;
         raw = ev.raw;
         if (ev.quirks && ev.quirks.length > 0) quirks = ev.quirks;
-        const wholeBatchFailed = ev.stop === 'length';
         for (const call of ev.final ?? []) {
           const args = call.args ?? parseArgs(call.rawArgs);
           const st = tools.get(call.callId);
@@ -123,7 +120,6 @@ export function createAssembler(): Assembler {
             if (args === undefined) appended.rawInput = call.rawArgs;
             parts.push(appended);
           }
-          if (args === undefined || wholeBatchFailed) badCalls.push(call.callId);
         }
         break;
       }
@@ -144,7 +140,7 @@ export function createAssembler(): Assembler {
     closeIfOpen(textIndex);
     closeIfOpen(reasoningIndex);
     return {
-      parts: parts.slice(), stop: stop ?? 'aborted', usage, raw, error, badCalls,
+      parts: parts.slice(), stop: stop ?? 'aborted', usage, raw, error,
       ...(quirks !== undefined ? { quirks } : {}),
     };
   }

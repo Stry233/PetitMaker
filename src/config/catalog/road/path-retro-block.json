@@ -4,7 +4,7 @@
   "icon": "path-retro-block",
   "name": {
     "en": "Retro Block Path",
-    "zh": "复古砌块路",
+    "zh": "复古街区路",
     "ja": "レトロブロックの道",
     "ru": "Ретро-дорожка из блоков",
     "th": "ทางบล็อกย้อนยุค",
@@ -24,5 +24,27 @@
     {
       "type": "surfaceCoating"
     }
-  ]
+  ],
+  "roadMaterial": {
+    "feather": 0.04,
+    "edge": {
+      "color": "#aaa58f",
+      "pattern": "slabs"
+    },
+    "layers": [
+      {
+        "inset": 0.2,
+        "color": "#e5ddc1"
+      },
+      {
+        "inset": 0.27,
+        "color": "#ffffff",
+        "pattern": {
+          "kind": "image",
+          "image": "path-retro-block",
+          "repeat": 2
+        }
+      }
+    ]
+  }
 }

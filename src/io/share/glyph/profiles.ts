@@ -24,10 +24,9 @@ export interface GlyphPlan {
   readonly dataRows: number;
 }
 
-/** The outer code repairs bursts left by the soft convolutional decoder. */
-export function parityPolicyFor(_profile: GlyphProfile): { target: number; minimum: number } {
-  return { target: 0.125, minimum: 0.125 };
-}
+/** The outer code's parity share, the same for every profile: it repairs bursts left by the soft
+ *  convolutional decoder. The decoder replans from the payload length, so this is wire layout. */
+const PARITY_SHARE = 0.125;
 
 function profile(id: number, div: GlyphProfile['div']): GlyphProfile {
   return { id, name: `4-tone/${div}`, bits: 2, colors: 4, div, dataCols: GRID_COLS * div, palette: PRODUCT_FOUR };
@@ -37,7 +36,7 @@ export const GLYPH_PROFILES: readonly GlyphProfile[] = [profile(32, 1), profile(
 
 export function planFor(payloadLen: number, profile: GlyphProfile): GlyphPlan | null {
   if (!Number.isInteger(payloadLen) || payloadLen < 1 || payloadLen > 12_000) return null;
-  const target = parityPolicyFor(profile).target;
+  const target = PARITY_SHARE;
   const blocks = Math.ceil(payloadLen / Math.floor(RS_N * (1 - target)));
   const dataBytes = Math.ceil(payloadLen / blocks);
   const parityBytes = Math.ceil(dataBytes * target / (1 - target));

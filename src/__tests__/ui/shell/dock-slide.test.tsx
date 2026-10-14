@@ -1,17 +1,13 @@
+// @vitest-environment jsdom
 /**
- * THE SLIDE'S FRAMES ARE WRITTEN PAST REACT.
+ * The slide's frames are written past React. The dock's travel is one animated fraction; rendering
+ * it through React re-rendered the tree every frame, so the moving styles are written imperatively
+ * on the motion value's change and React hears only when the fraction crosses an end.
  *
- * The dock's travel is one animated fraction and every distance in the move is a multiple of it —
- * but a fraction that reached its surfaces as a React render made every frame of the slide re-render
- * the whole tree, and the sheet froze and leapt wherever a frame ran over budget while the panel's
- * compositor-carried beats played on beside it. So the moving styles are written imperatively on the
- * motion value's own change, and React is notified only when the fraction crosses an end.
- *
- * What jsdom can pin about that: the fraction moving notifies no React subscriber (and crossing an
- * end does); a render that does happen mid-flight reads the live fraction; and the two tracks the
- * map plane rides — the transform and the clip — carry the SAME travel in the same `inset()` shape
- * at every fraction, because a clip that changed shape form mid-flight is one Chrome would refuse to
- * carry between keyframes.
+ * Pinned: the fraction moving notifies no React subscriber (crossing an end does); a mid-flight
+ * render reads the live fraction; and the map plane's transform and clip carry the same travel in
+ * the same `inset()` shape at every fraction, since Chrome will not interpolate a clip that changes
+ * form between keyframes.
  */
 import { describe, it, expect, beforeAll, beforeEach, afterEach, vi } from 'vitest';
 import { act, cleanup, render, renderHook, screen } from '@testing-library/react';
@@ -148,7 +144,7 @@ describe('the sheet is written on the fraction\'s own change', () => {
       const tf = mapPlane().style.transform;
       const clip = mapPlane().style.clipPath;
       expect(parseFloat(tf.replace('translateX(', ''))).toBeCloseTo(travel, 6);
-      // The clip stays the SAME shape function with the SAME component count at every fraction,
+      // The clip stays the same shape function with the same component count at every fraction,
       // carrying the transform's own travel on both edges.
       const m = clip.match(/^inset\(0(?:px)? ([\d.]+)px 0(?:px)? ([\d.]+)px\)$/);
       expect(m, clip).not.toBeNull();

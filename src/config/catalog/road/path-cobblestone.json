@@ -4,7 +4,7 @@
   "icon": "path-cobblestone",
   "name": {
     "en": "Cobblestone Path",
-    "zh": "鹅卵石路",
+    "zh": "广场石砖路",
     "ja": "石畳の道",
     "ru": "Булыжная дорожка",
     "th": "ทางหินกรวด",
@@ -24,5 +24,17 @@
     {
       "type": "surfaceCoating"
     }
-  ]
+  ],
+  "roadMaterial": {
+    "feather": 0.035,
+    "edge": {
+      "color": "#ffffff",
+      "pattern": {
+        "kind": "image",
+        "image": "path-cobblestone",
+        "repeat": 3
+      }
+    },
+    "layers": []
+  }
 }

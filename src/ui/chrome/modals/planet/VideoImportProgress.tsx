@@ -5,25 +5,27 @@
  * is read it takes the picture's place, its landmark with it. The picture stands on the stage the
  * other planet pictures use.
  */
+import { useObservedSize } from '../../../primitives/use-observed-size';
 import { useEffect, useLayoutEffect, useRef, type CSSProperties } from 'react';
 import { motion, useReducedMotionConfig } from 'framer-motion';
-import { ZONE_COLORS } from '../../../../core/model/constants';
-import { CellZone, type MapTemplate } from '../../../../core/model/types';
+import { type MapTemplate } from '../../../../core/model/types';
 import { useT } from '../../../../i18n/context';
-import { SCAN_STAGES, type ScanProgress, type ScanStage } from '../../../../io/planet-scan/import-video';
-import type { ScanPreview } from '../../../../io/planet-scan/preview';
-import { cssMotion, framerMotion } from '../../../design/motion';
+import {
+  SCAN_STAGES, scanPicturePainter, type ScanPictureLook, type ScanPreview, type ScanPreviewPainter, type ScanProgress, type ScanStage,
+} from '../../../../editor/session/planet-scan';
+import { cssMotion, framerMotion, seconds } from '../../../design/motion';
 import { radii } from '../../../design/styles';
 import { roleFont } from '../../../design/text-weight';
 import { skin } from '../../../design/window-skin';
+import { ON_DARK } from '../../../design/tokens';
 import { CheckIcon } from '../../../primitives/line-glyphs';
-import { paintPlanet } from '../../../primitives/planet-painter';
+import { paintPlanet } from '../../../../view/map2d/capture/planet-painter';
 import { Spinner } from '../../../primitives/Spinner';
 import { stageOutline } from '../export/pan-zoom-stage';
-import { ScanPreviewPainter } from './scan-preview-painter';
+import { SEA } from '../../../design/tokens';
 
-/** Each stage's copy key; every locale defines each (`planet-import-window.test.tsx`). */
-export const STAGE_COPY = {
+/** Each stage's copy key. */
+const STAGE_COPY = {
   reading: 'planet.scan_stage_reading',
   tracking: 'planet.scan_stage_tracking',
   ground: 'planet.scan_stage_ground',
@@ -50,11 +52,17 @@ const pictureStyle: CSSProperties = {
 const fillStyle: CSSProperties = { position: 'absolute', inset: 0, width: '100%', height: '100%', display: 'block' };
 const meterStyle: CSSProperties = { gridColumn: 2, height: METER, borderRadius: radii.pill, background: skin.track, overflow: 'hidden' };
 
+/** The window's colours and timings the picture is drawn in. */
+const scanLook = (): ScanPictureLook => ({
+  inset: skin.inset, line: skin.line, viewInk: ON_DARK,
+  revealMs: seconds('scan.preview.reveal') * 1000, followMs: seconds('scan.preview.follow') * 1000,
+});
+
 /** The ground read so far, drawn by `ScanPreviewPainter`, one frame a display frame while it moves. */
 function ScanPicture({ preview }: { preview: ScanPreview | undefined }) {
   const reduced = useReducedMotionConfig() === true;
-  const painter = useRef<ScanPreviewPainter | null>(null);
-  painter.current ??= new ScanPreviewPainter();
+  const painter = useRef<ScanPreviewPainter<ScanPreview> | null>(null);
+  painter.current ??= scanPicturePainter(scanLook());
   const ref = useRef<HTMLCanvasElement>(null);
   const frame = useRef(0);
   const reducedRef = useRef(reduced);
@@ -81,14 +89,8 @@ function ScanPicture({ preview }: { preview: ScanPreview | undefined }) {
     drawRef.current();
   }, [preview]);
 
-  useLayoutEffect(() => {
-    const canvas = ref.current;
-    drawRef.current();
-    if (!canvas || typeof ResizeObserver === 'undefined') return undefined;
-    const observer = new ResizeObserver(() => drawRef.current());
-    observer.observe(canvas);
-    return () => { observer.disconnect(); if (frame.current) cancelAnimationFrame(frame.current); frame.current = 0; };
-  }, []);
+  useObservedSize(() => ref.current, () => drawRef.current(), []);
+  useEffect(() => () => { if (frame.current) cancelAnimationFrame(frame.current); frame.current = 0; }, []);
 
   return <canvas ref={ref} aria-hidden data-testid="scan-picture" style={fillStyle} />;
 }
@@ -102,7 +104,7 @@ function FinishedPlanet({ template }: { template: MapTemplate }) {
   }, [template]);
   return (
     <motion.div data-testid="scan-finished" initial={reduced ? false : { opacity: 0 }} animate={{ opacity: 1 }} transition={framerMotion('scan.preview.finish', reduced)}
-      style={{ position: 'absolute', inset: 0, background: ZONE_COLORS[CellZone.Void] }}>
+      style={{ position: 'absolute', inset: 0, background: SEA }}>
       <canvas ref={ref} aria-hidden style={fillStyle} />
     </motion.div>
   );

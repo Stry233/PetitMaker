@@ -1,8 +1,3 @@
-/** What one of a shelf row's pixels is worth in the page's, which is what a wheel reports in:
- *  the frame's one live zoom. Re-exported so a row's wheel math and the frame can never divide
- *  by different factors. */
-export { useFrameZoom } from '../use-frame-zoom';
-
 /** Tabs are direct children of a positioned row, so offsets and scrollLeft share local pixels.
  * Only the row moves: scrollIntoView would also scroll enclosing articles and windows. */
 export function reveal(el: HTMLElement | null | undefined): void {

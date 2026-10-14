@@ -1,7 +1,6 @@
-// The localized README images are exports of the same hand-built map and must remain importable.
+// The localized readme images are exports of the same hand-built map and must remain importable.
 // Their fixed counts identify the source map independently of the surrounding composition.
 import { describe, it, expect } from 'vitest';
-// @ts-ignore - node:fs is untyped here (no @types/node)
 import { readFileSync, existsSync } from 'node:fs';
 import { importFromBytes } from '../../../io/share/import';
 import { getCatalogItem } from '../../../state/catalog';
@@ -12,16 +11,17 @@ import { readChunks } from '../../../io/share/raster/png-chunks';
 
 const FILES = ['docs/media/share-map.png', 'docs/media/share-map.zh.png'];
 
-// Both artifacts predate the corrected house footprints; payload integrity still verifies.
+// Both artifacts predate the corrected house footprints and the game's landmark layout; payload
+// integrity still verifies.
 const EXPECTED_WARNINGS: Record<string, string[]> = {
-  'docs/media/share-map.png': ['catalog-drift'],
-  'docs/media/share-map.zh.png': ['catalog-drift'],
+  'docs/media/share-map.png': ['template-drift', 'catalog-drift'],
+  'docs/media/share-map.zh.png': ['template-drift', 'catalog-drift'],
 };
 
 async function decode(file: string): Promise<GridState> {
   const res = await importFromBytes(readFileSync(file));
   if (!res.ok) throw new Error(`${file}: import failed: ${res.error.code} ${res.error.message}`);
-  expect(res.warnings).toEqual(EXPECTED_WARNINGS[file]);
+  expect(res.warnings.map((w) => w.kind)).toEqual(EXPECTED_WARNINGS[file]);
   return res.state;
 }
 
@@ -58,9 +58,13 @@ describe('README share-map artifacts', () => {
         if (c.terrain) terrain++;
         if (c.terrain?.type === TerrainType.Water) water++;
       }
-      expect(objects.length).toBe(3218);
-      expect(water).toBe(4224);
-      expect(terrain).toBe(14074);
+      // The plaza now covers 8 of the 3218 placed objects and some of the terrain; the load takes
+      // them off with the water that terrain held, lays the layer-1 mountain Hexia keeps under the
+      // plaza (this older code never stored it), and takes back the water and the one object that
+      // mountain leaves breaking a rule.
+      expect(objects.length).toBe(3209);
+      expect(water).toBe(4108);
+      expect(terrain).toBe(14359);
       // A hand-built map carries no informational generation recipe.
       expect(state.generation ?? null).toBeNull();
       expect(state.annotations).toBeUndefined();

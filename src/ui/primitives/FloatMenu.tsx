@@ -1,15 +1,16 @@
 import { helpAttributes, inheritedHelpTarget } from './help-target';
-import { Fragment, useId, useRef, type CSSProperties, type ReactNode } from 'react';
+import { Fragment, useEffect, useId, useRef, type CSSProperties, type ReactNode, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
 import { motion } from 'framer-motion';
-import { ClickCatcher } from './ClickCatcher';
-import { useUiPreview } from './ui-preview';
+import { useUiPreview } from '../design/preview';
 import { routeSurfaceKeyDown, SurfaceOwner, useSurfaceScope } from './surface-scope';
 import { useFloatingPosition } from './use-floating-position';
 import { useDenseScript, useDevicePixelRatio } from '../design/scale';
-import { colors, cursors, font, radii, shadows, springs, UNAVAILABLE, z } from '../design/styles';
-import { ACTIVE, INK, INSET, LINE, PANEL_EDGE, PANEL_EDGE_WIDTH, PLATE, PLATE_INK } from '../design/tokens';
+import { cursors, font, radii, shadows, UNAVAILABLE, z } from '../design/styles';
+import { ACTIVE, INK, INSET, LINE, PANEL_EDGE, PANEL_EDGE_WIDTH, PLATE, PLATE_INK, MUTED } from '../design/tokens';
 import { roleFont, weightVars } from '../design/text-weight';
+import { framerMotion } from '../design/motion';
+import { ChevronIcon } from './line-glyphs';
 
 const ANCHOR_GAP = 6;
 const MAX_HEIGHT = 320;
@@ -22,8 +23,10 @@ export interface FloatMenuItem {
   /** The muted note at the row's far end: a speed, a price, a shape. */
   sub?: ReactNode;
   disabled?: boolean;
-  /** Draws a divider ABOVE this row. */
+  /** Draws a divider above this row. */
   separated?: boolean;
+  /** Extra attributes for the row, such as its help target. */
+  attrs?: Record<string, string>;
 }
 
 interface FloatMenuProps {
@@ -32,7 +35,7 @@ interface FloatMenuProps {
   /** The list, where the list really is one choice per row. */
   items?: readonly FloatMenuItem[];
   /**
-   * The card's contents, INSTEAD of `items`, for the one list shape a row of `menuitem` buttons
+   * The card's contents, instead of `items`, for the one list shape a row of `menuitem` buttons
    * cannot hold: a row carrying a second control of its own. A button cannot nest in a button, so a
    * list whose rows have their own action (the panel's past jobs, where the row opens the ticket and
    * a square beside it rolls the job back) builds its own rows and takes the card, the layer, the
@@ -48,22 +51,54 @@ interface FloatMenuProps {
   activeId?: string;
   /** A cap over the list. */
   header?: ReactNode;
-  /** The css `zoom` the CARD should draw at, matching whatever the row stands under. */
+  /** The css `zoom` the card should draw at, matching whatever the row stands under. */
   zoom?: number;
+  /**
+   * An element of the caller's own to hang the card from, in place of the menu's row: a field whose
+   * suggestions the list offers, a control drawn in its window's own style. The card takes its width
+   * unless `width` names one, and a press on it never counts as outside.
+   */
+  anchor?: RefObject<HTMLElement | null>;
+  /** The card's width in css px with `anchor`; the anchor's own width otherwise. */
+  width?: number;
+  /** Leaves focus where it is (a field the reader keeps typing into) instead of taking it into the
+   *  list; the caller moves `highlightId` with the keys. */
+  keepFocus?: boolean;
+  /** The row the caller's keys stand on, drawn as the hovered row. */
+  highlightId?: string;
   'aria-label'?: string;
   'data-testid'?: string;
+  /**
+   * A control of the caller's that opens the menu, in place of the closed row: the card hangs from
+   * it, sized to its widest row and aligned to the control's `align` edge, and its rows are actions
+   * (`menuitem`) rather than one choice among them. `onMap` marks a card standing on the map, which
+   * wears its edge and no shadow.
+   */
+  trigger?: { ref: RefObject<HTMLElement>; align?: 'start' | 'center' | 'end'; gap?: number; minWidth?: number; onMap?: boolean };
 }
 
 export function FloatMenu({
   row, items = [], body, open, onOpen, onClose, onPick, activeId, header, zoom = 1,
-  'aria-label': ariaLabel, 'data-testid': testId,
+  anchor, width, keepFocus = false, highlightId,
+  'aria-label': ariaLabel, 'data-testid': testId, trigger,
 }: FloatMenuProps) {
-  const rowRef = useRef<HTMLButtonElement>(null);
+  const ownRow = useRef<HTMLButtonElement>(null);
+  const rowRef = trigger?.ref ?? anchor ?? ownRow;
+  const across = trigger?.align === 'end' ? 'right' : trigger?.align === 'start' ? 'left' : 'center';
   const pictured = useUiPreview();
   const menuId = useId();
   const weights = weightVars(zoom, useDevicePixelRatio(), useDenseScript());
-  const { ref: cardRef, placement, style } = useFloatingPosition({ open: open && !pictured, anchor: rowRef, zoom, width: 'anchor', maxHeight: MAX_HEIGHT, gap: ANCHOR_GAP });
-  const scope = useSurfaceScope({ open: open && !pictured && !!placement, root: cardRef, trigger: rowRef, onClose, focus: body ? 'contain' : 'menu' });
+  const { ref: cardRef, placement, style } = useFloatingPosition({
+    open: open && !pictured, anchor: rowRef, zoom, maxHeight: MAX_HEIGHT,
+    ...(trigger ? { align: trigger.align ?? 'start', gap: trigger.gap ?? ANCHOR_GAP } : { width: width ?? ('anchor' as const), gap: ANCHOR_GAP }),
+  });
+  // The row the caller's keys reach stays in view in a list longer than the card.
+  useEffect(() => {
+    if (!open || highlightId === undefined) return;
+    const rows = cardRef.current?.querySelectorAll<HTMLElement>('[data-item-id]') ?? [];
+    Array.from(rows).find((row) => row.dataset.itemId === highlightId)?.scrollIntoView?.({ block: 'nearest' });
+  }, [open, highlightId, cardRef]);
+  const scope = useSurfaceScope({ open: open && !pictured && !!placement, root: cardRef, trigger: rowRef, onClose, focus: keepFocus ? 'none' : body ? 'contain' : 'menu', outside: true });
 
   const card = (box: CSSProperties, origin: string) => (
     <motion.div
@@ -76,8 +111,8 @@ export function FloatMenu({
       onKeyDown={pictured ? undefined : routeSurfaceKeyDown}
       initial={{ opacity: 0, scale: 0.94 }}
       animate={{ opacity: 1, scale: 1 }}
-      transition={springs.stiff}
-      style={{ ...cardStyle, ...box, transformOrigin: origin }}
+      transition={framerMotion('surface.arrive')}
+      style={{ ...cardStyle, ...(trigger?.minWidth ? { minWidth: trigger.minWidth } : {}), ...(trigger?.onMap ? { boxShadow: 'none' } : {}), ...box, transformOrigin: origin }}
     >
       {header ? <div style={headStyle}>{header}</div> : null}
       <SurfaceOwner.Provider value={scope}>{body}</SurfaceOwner.Provider>
@@ -86,13 +121,18 @@ export function FloatMenu({
           {item.separated ? <div style={dividerStyle} /> : null}
           <motion.button
             type="button"
-            role="menuitemradio"
-            aria-checked={item.id === activeId}
+            {...item.attrs}
+            data-item-id={item.id}
+            {...(trigger ? { role: 'menuitem' } : { role: 'menuitemradio', 'aria-checked': item.id === activeId })}
             disabled={item.disabled}
             onClick={() => { onPick?.(item.id); onClose(); }}
+            {...(keepFocus ? { onMouseDown: (event: React.MouseEvent) => event.preventDefault() } : {})}
             whileHover={item.disabled ? undefined : { backgroundColor: hoverFill(item.id === activeId) }}
-            transition={springs.stiff}
-            style={floatMenuItemStyle(item.id === activeId, item.disabled)}
+            transition={framerMotion('surface.arrive')}
+            style={{
+              ...floatMenuItemStyle(item.id === activeId, item.disabled),
+              ...(item.id === highlightId && item.id !== activeId ? { backgroundColor: hoverFill(false) } : null)
+            }}
           >
             <span>{item.label}</span>
             {item.sub != null ? <span style={subStyle}>{item.sub}</span> : null}
@@ -104,8 +144,8 @@ export function FloatMenu({
 
   return (
     <>
-      <button
-        ref={rowRef}
+      {trigger || anchor ? null : <button
+        ref={ownRow}
         type="button"
         data-testid={testId}
         aria-haspopup={body ? true : 'menu'}
@@ -118,17 +158,16 @@ export function FloatMenu({
       >
         <span style={rowValue}>{row}</span>
         <Chevron open={open} />
-      </button>
+      </button>}
       {open && pictured ? (
         <div style={{ position: 'relative', marginTop: ANCHOR_GAP }}>
-          {card({ position: 'static', maxHeight: MAX_HEIGHT }, 'top center')}
+          {card({ position: 'static', maxHeight: MAX_HEIGHT }, `top ${across}`)}
         </div>
       ) : null}
       {open && !pictured ? createPortal(
         <>
-          <ClickCatcher onDismiss={onClose} zIndex={z.popover} />
           <div style={{ ...layerStyle, zoom, ...weights }}>
-            {card(style, placement?.above ? 'bottom center' : 'top center')}
+            {card(style, `${placement?.above ? 'bottom' : 'top'} ${across}`)}
           </div>
         </>,
         document.body,
@@ -140,17 +179,14 @@ export function FloatMenu({
 /** The chevron that turns over when the list opens. */
 function Chevron({ open }: { open: boolean }) {
   return (
-    <motion.svg
+    <motion.span
       aria-hidden
-      viewBox="0 0 24 24"
-      width={13}
-      height={13}
       animate={{ rotate: open ? 180 : 0 }}
-      transition={springs.stiff}
-      style={{ color: colors.brownText, flex: '0 0 auto' }}
+      transition={framerMotion('surface.arrive')}
+      style={{ display: 'flex', color: MUTED, flex: '0 0 auto' }}
     >
-      <path d="M 6 9 L 12 15.4 L 18 9" fill="none" stroke="currentColor" strokeWidth={3.6} strokeLinecap="round" strokeLinejoin="round" />
-    </motion.svg>
+      <ChevronIcon size={13} />
+    </motion.span>
   );
 }
 
@@ -158,12 +194,12 @@ export function floatMenuItemStyle(active: boolean, disabled = false): CSSProper
   return {
     display: 'flex',
     alignItems: 'center',
-    gap: 9,
+    gap: 8,
     width: '100%',
     textAlign: 'left',
     border: 'none',
     borderRadius: radii.md,
-    padding: '9px 14px',
+    padding: '8px 14px',
     fontFamily: font.family,
     ...roleFont('menu'),
     // An inactive row matches the card rather than being transparent, so a hover tints from a
@@ -184,7 +220,7 @@ function hoverFill(active: boolean): string {
 const rowStyle: CSSProperties = {
   display: 'flex',
   alignItems: 'center',
-  gap: 9,
+  gap: 8,
   width: '100%',
   textAlign: 'left',
   background: INSET,
@@ -232,7 +268,7 @@ const cardStyle: CSSProperties = {
 const headStyle: CSSProperties = {
   ...roleFont('subhead'),
   fontFamily: font.family,
-  color: colors.brownText,
+  color: MUTED,
   padding: '6px 10px 2px',
   flex: '0 0 auto',
 };
@@ -241,7 +277,7 @@ const subStyle: CSSProperties = {
   marginLeft: 'auto',
   ...roleFont('caption'),
   fontFamily: font.family,
-  color: colors.brownText,
+  color: MUTED,
 };
 
 const dividerStyle: CSSProperties = {

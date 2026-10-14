@@ -3,7 +3,7 @@
 import { describe, it, expect } from 'vitest';
 import { createDefaultRegistry } from '../../rules/index';
 import { CommandType, TerrainType, type GridState, type PlaceObjectCommand } from '../../core/model/types';
-import { makeState, setTerrain } from './_helpers';
+import { makeState, setTerrain } from '../_support/map-state';
 
 describe('V-PLACE-TRAIT heightDrop: a ramp on each edge of a mountain block', () => {
   // Mountain block at elev 1: x=[5,14], y=[5,14]  (10x10 block)
@@ -18,8 +18,7 @@ describe('V-PLACE-TRAIT heightDrop: a ramp on each edge of a mountain block', ()
 
   function placeRamp(x: number, y: number): PlaceObjectCommand {
     return {
-      type: CommandType.PlaceObject, timestamp: 0,
-      object: { id: 'r1', catalogId: 'ramp-park-steps', position: { x, y }, rotation: 0 as const, elevation: 0 },
+      type: CommandType.PlaceObject,       object: { id: 'r1', catalogId: 'ramp-park-steps', position: { x, y }, rotation: 0 as const, elevation: 0 },
     };
   }
 
@@ -28,7 +27,7 @@ describe('V-PLACE-TRAIT heightDrop: a ramp on each edge of a mountain block', ()
     const registry = createDefaultRegistry();
     // Click on mountain at (8, 14) — neighbor (8, 15) is ground
     // rot=0 includes high cell: position stays at highY=14
-    const cmd = placeRamp(8, 14);
+    const cmd = registry.resolve(placeRamp(8, 14), state);
     const errors = registry.validatePreCommand(cmd, state);
     expect(errors).toHaveLength(0);
     expect(cmd.object.rotation).toBe(0);
@@ -39,7 +38,7 @@ describe('V-PLACE-TRAIT heightDrop: a ramp on each edge of a mountain block', ()
     const state = makeRampState();
     const registry = createDefaultRegistry();
     // Click on mountain at (8, 5) — neighbor (8, 4) is ground
-    const cmd = placeRamp(8, 5);
+    const cmd = registry.resolve(placeRamp(8, 5), state);
     const errors = registry.validatePreCommand(cmd, state);
     expect(errors).toHaveLength(0);
     expect(cmd.object.rotation).toBe(180);
@@ -49,7 +48,7 @@ describe('V-PLACE-TRAIT heightDrop: a ramp on each edge of a mountain block', ()
     const state = makeRampState();
     const registry = createDefaultRegistry();
     // Click on mountain at (14, 8) — neighbor (15, 8) is ground
-    const cmd = placeRamp(14, 8);
+    const cmd = registry.resolve(placeRamp(14, 8), state);
     const errors = registry.validatePreCommand(cmd, state);
     expect(errors).toHaveLength(0);
     expect(cmd.object.rotation).toBe(90);
@@ -59,7 +58,7 @@ describe('V-PLACE-TRAIT heightDrop: a ramp on each edge of a mountain block', ()
     const state = makeRampState();
     const registry = createDefaultRegistry();
     // Click on mountain at (5, 8) — neighbor (4, 8) is ground
-    const cmd = placeRamp(5, 8);
+    const cmd = registry.resolve(placeRamp(5, 8), state);
     const errors = registry.validatePreCommand(cmd, state);
     expect(errors).toHaveLength(0);
     expect(cmd.object.rotation).toBe(270);
@@ -70,7 +69,7 @@ describe('V-PLACE-TRAIT heightDrop: a ramp on each edge of a mountain block', ()
     const registry = createDefaultRegistry();
     // rot=0 includes high cell: ramp at (14,14) has high cell at y=14, x=14,15.
     // x=15 is ground — micro-block check reaches x=16 (off mountain) → rejects.
-    const cmd = placeRamp(14, 14);
+    const cmd = registry.resolve(placeRamp(14, 14), state);
     const errors = registry.validatePreCommand(cmd, state);
     expect(errors.length).toBeGreaterThan(0);
   });
@@ -79,13 +78,13 @@ describe('V-PLACE-TRAIT heightDrop: a ramp on each edge of a mountain block', ()
     const state = makeRampState();
     setTerrain(state, 8, 16, TerrainType.Mountain, 1);
     const registry = createDefaultRegistry();
-    const cmd = placeRamp(8, 14);
+    const cmd = registry.resolve(placeRamp(8, 14), state);
     const errors = registry.validatePreCommand(cmd, state);
     expect(errors.length).toBeGreaterThan(0);
   });
 
-  // A mountain intruding on the LOW footprint from the trailing (bottom / down-right) edge is what
-  // a validator sweeping the -HALF_TILE bleed on ONE axis only misses, accepting an illegal ramp.
+  // A mountain intruding on the low footprint from the trailing (bottom / down-right) edge is what
+  // a validator sweeping the terrain-grid bleed on one axis only misses, accepting an illegal ramp.
   // The low run and its trailing bleed must all be clear.
   it('rejects ramp when a mountain intrudes on the trailing/bottom edge of the low run (no leak)', () => {
     const state = makeRampState();         // 10x10 elev-1 block [5,14]; south ramp at (8,14) spans y=14..15
@@ -107,8 +106,7 @@ describe('V-PLACE-TRAIT heightDrop: a ramp between two tiers', () => {
   }
   function legal(state: GridState, x: number, y: number): boolean {
     const cmd: PlaceObjectCommand = {
-      type: CommandType.PlaceObject, timestamp: 0,
-      object: { id: 'r1', catalogId: 'ramp-park-steps', position: { x, y }, rotation: 0 as const, elevation: 0 },
+      type: CommandType.PlaceObject,       object: { id: 'r1', catalogId: 'ramp-park-steps', position: { x, y }, rotation: 0 as const, elevation: 0 },
     };
     return createDefaultRegistry().validatePreCommand(cmd, state).length === 0;
   }

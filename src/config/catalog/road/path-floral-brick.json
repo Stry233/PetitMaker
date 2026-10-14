@@ -4,7 +4,7 @@
   "icon": "path-floral-brick",
   "name": {
     "en": "Floral Brick Path",
-    "zh": "花纹砖路",
+    "zh": "花径砖路",
     "ja": "花柄レンガの道",
     "ru": "Кирпичная дорожка с цветами",
     "th": "ทางอิฐลายดอกไม้",
@@ -24,5 +24,27 @@
     {
       "type": "surfaceCoating"
     }
-  ]
+  ],
+  "roadMaterial": {
+    "feather": 0.045,
+    "edge": {
+      "color": "#ffffff",
+      "pattern": {
+        "kind": "image",
+        "image": "floral-border",
+        "repeat": 2
+      }
+    },
+    "layers": [
+      {
+        "inset": 0.19,
+        "color": "#ffffff",
+        "pattern": {
+          "kind": "image",
+          "image": "path-floral-brick",
+          "repeat": 3
+        }
+      }
+    ]
+  }
 }

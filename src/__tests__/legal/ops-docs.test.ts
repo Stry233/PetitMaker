@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { PREF_STORAGE_KEYS } from '../../core/runtime/prefs';
+import { PREF_STORAGE_KEYS } from '../../platform/storage/prefs';
 import { LEGAL } from '../../legal/config';
 import { docBody } from '../../legal/registry';
 

@@ -7,7 +7,7 @@ import { observeScrollGeometry } from './scroll-geometry';
 type FadeAxis = 'x' | 'y';
 export const SCROLL_FADE = 24;
 
-/** Within this many px of a stop counts as AT the stop, so the fade there clears. Under a CSS
+/** Within this many px of a stop counts as at the stop, so the fade there clears. Under a CSS
  *  `zoom` the browser's real maximum scroll offset can sit a couple of px short of
  *  `scrollWidth - clientWidth`, and a shade that stays lit at the end of a fully-scrolled list
  *  says "there is more" about a list there is no more of. Clearing a hair early is invisible;
@@ -21,7 +21,7 @@ interface EdgeTravel {
 }
 
 /** Fade width per end of `axis`, 0 where the box cannot travel that way. */
-export function measureFade(
+function measureFade(
   el: HTMLElement, axis: FadeAxis,
   fadeAt?: (el: HTMLElement, edge: number, atEnd: boolean) => number,
 ): EdgeTravel {
@@ -39,10 +39,10 @@ export function measureFade(
 /** The mask for whichever ends have travel, or none, in which case the element is not masked. */
 export function fadeMask(axis: FadeAxis, travel: EdgeTravel): string | undefined {
   if (!travel.start && !travel.end) return undefined;
-  const head = travel.start ? `transparent 0, #000 ${travel.start}px` : '#000 0';
+  const head = travel.start ? `transparent 0, black ${travel.start}px` : 'black 0';
   const stops = [
     head,
-    travel.end ? `#000 calc(100% - ${travel.end}px), transparent 100%` : '#000 100%',
+    travel.end ? `black calc(100% - ${travel.end}px), transparent 100%` : 'black 100%',
   ];
   return `linear-gradient(${axis === 'x' ? 'to right' : 'to bottom'}, ${stops.join(', ')})`;
 }
@@ -92,7 +92,7 @@ function useTravel(
   const tick = (now: number) => {
     // Floored at zero: a first callback's frame-start timestamp can precede the mid-frame
     // `performance.now()` the loop was armed with, and a negative dt would step the shown width
-    // AWAY from its target.
+    // Away from its target.
     const dt = Math.max(0, now - lastTime.current);
     lastTime.current = now;
     const factor = 1 - Math.exp(-dt / SETTLE_MS);
@@ -171,7 +171,7 @@ export function useScrollFade(
   return mask ? { maskImage: mask, WebkitMaskImage: mask } : {};
 }
 
-/** Mask style for the one both-axis scroller shape: two gradients INTERSECTED, so each axis keeps
+/** Mask style for the one both-axis scroller shape: two gradients intersected, so each axis keeps
  *  its own travel answer. Where mask-composite is unsupported the layers add up to no fade at all,
  *  which is a plain hard clip. */
 export function useScrollFadeBoth(ref: RefObject<HTMLElement | null>): CSSProperties {

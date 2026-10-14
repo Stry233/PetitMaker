@@ -1,10 +1,12 @@
+// @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { append, createLog, eventsOf, type SessionLog } from '../../../agent/core/log';
 import { deriveView } from '../../../agent/core/project-view';
 import { REASONING_EXCERPT_CHARS, type SessionEvent, type SessionEventInput } from '../../../agent/core/types';
-import { deserializeLog, loadLog, saveLog, serializeLog } from '../../../agent/session/persist';
-import { PREFS } from '../../../core/runtime/prefs';
+import { loadLog, saveLog } from '../../../agent/session/persist';
+import { deserializeLog, serializeLog } from '../../../agent/session/log-codec';
+import { PREFS } from '../../../platform/storage/prefs';
 
 beforeEach(() => localStorage.clear());
 afterEach(() => vi.restoreAllMocks());
@@ -77,9 +79,9 @@ describe('agent session persist', () => {
     expect(appended.seq).toBe(maxSeq + 1);
   });
 
-  /** THE TWO CARRIERS SURVIVE A RELOAD, or the record they feed is a session-only fact: the ask's
+  /** The two carriers survive a reload, or the record they feed is a session-only fact: the ask's
    *  own offer is what tells a tapped pill from a typed sentence, and the map identity is what the
-   *  rollback guard refuses on. Read back through the FOLD, not off the bytes, since the fold is
+   *  rollback guard refuses on. Read back through the fold, not off the bytes, since the fold is
    *  what the panel actually renders. */
   it('carries an ask\'s offer and a record\'s map identity through storage', () => {
     const log = createLog(() => 1);
@@ -119,7 +121,7 @@ describe('agent session persist', () => {
     expect(deserializeLog(null)).toBeNull();
   });
 
-  /** AND HANDS THE BYTES BACK WITH THE VERDICT. They are about to be overwritten by the fresh log
+  /** And hands the bytes back with the verdict. They are about to be overwritten by the fresh log
    *  the store adopts, so a notice offering to export the evidence has to be given it here or have
    *  nothing to write. Nothing else may read them: an unparseable blob is not a log. */
   it('loadLog reports corrupt only when bytes existed and did not deserialize', () => {
@@ -204,7 +206,7 @@ describe('agent session persist', () => {
       { kind: 'reasoning', text: 'r'.repeat(REASONING_EXCERPT_CHARS), done: true, chars: 10000 },
     ]);
 
-    // The in-memory event keeps the whole thought: the digest is a STORAGE form.
+    // The in-memory event keeps the whole thought: the digest is a storage form.
     const live = (ev as Extract<SessionEvent, { kind: 'assistant' }>).parts[0];
     expect(live?.kind === 'reasoning' ? live.text : '').toHaveLength(10000);
 
@@ -251,7 +253,7 @@ describe('agent session persist', () => {
     const stored = JSON.parse(localStorage.getItem(PREFS.agentLogV3.key)!);
     expect(stored.events).toHaveLength(2);
     expect(stored.events[0].kind).toBe('compaction');
-    // The retry pruned a COPY; the caller's log is untouched.
+    // The retry pruned a copy; the caller's log is untouched.
     expect(eventsOf(log)).toHaveLength(4);
   });
 

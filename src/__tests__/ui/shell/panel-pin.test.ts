@@ -1,5 +1,5 @@
 /**
- * THE DOCK'S ARITHMETIC: one fit for the whole interface, the window it stops fitting in, and the
+ * The dock's arithmetic: one fit for the whole interface, the window it stops fitting in, and the
  * room the docked column then has.
  *
  * The dock takes a strip of the viewport for itself and the frame stands in what is left, so the two
@@ -8,17 +8,17 @@
  * decide.
  */
 import { describe, it, expect } from 'vitest';
-import { FIT_FLOOR, FIT_REF, frameFit } from '../../../ui/design/scale';
+import { FIT_FLOOR, FIT_REF, fittedUiScale } from '../../../ui/design/scale';
 import {
-  DOCK_CHROME, DOCK_CHROME_W, DOCK_PARALLAX, DOCK_PARALLAX_SHARE, dockEdge, dockTravelSign,
-  hasPinRoom, PANEL_COLUMN_W, PINNED_COLUMN_W, PINNED_DOCK_REF_W, PINNED_PANEL, pinRoomFloor,
+  DOCK_CHROME, DOCK_CHROME_W, DOCK_PARALLAX, dockEdge, dockTravelSign,
+  hasPinRoom, PANEL_COLUMN_W, PINNED_COLUMN_W, PINNED_DOCK_REF_W, PINNED_PANEL,
 } from '../../../ui/shell/panel-frame';
 import { ZOOM } from '../../../ui/shell/units';
 import { resolveCss } from './_resolve-css';
 
 /** The fit while the dock stands, at a window and a UI zoom. */
 const dockedFit = (vw: number, vh: number, uiZoom = 1) =>
-  frameFit(vw, vh, PINNED_DOCK_REF_W * uiZoom);
+  fittedUiScale(vw, vh, uiZoom, PINNED_DOCK_REF_W) / uiZoom;
 
 /** The dock's own width in css px at that fit: the column drawn at the frame's live zoom. */
 const dockWidth = (vw: number, vh: number, uiZoom = 1) =>
@@ -52,14 +52,17 @@ describe('the dock and the interface beside it are one size', () => {
 
 describe('the window the dock stops fitting in', () => {
   it('is where the interface beside it would have to shrink past the floor', () => {
-    expect(pinRoomFloor()).toBeCloseTo(FIT_FLOOR * (FIT_REF.w + PINNED_DOCK_REF_W), 6);
-    expect(pinRoomFloor()).toBeCloseTo(1080, 1);
-    expect(hasPinRoom(pinRoomFloor())).toBe(true);
-    expect(hasPinRoom(pinRoomFloor() - 1)).toBe(false);
+    const floor = FIT_FLOOR * (FIT_REF.w + PINNED_DOCK_REF_W);
+    expect(floor).toBeCloseTo(1080, 1);
+    expect(hasPinRoom(floor)).toBe(true);
+    expect(hasPinRoom(floor - 1)).toBe(false);
   });
 
   it('moves with the UI zoom, because the dock is drawn at it', () => {
-    expect(pinRoomFloor(1.8)).toBeGreaterThan(pinRoomFloor(1));
+    const floorAt = (uiZoom: number) => FIT_FLOOR * (FIT_REF.w + PINNED_DOCK_REF_W * uiZoom);
+    expect(hasPinRoom(floorAt(1.8), 1.8)).toBe(true);
+    expect(hasPinRoom(floorAt(1.8) - 1, 1.8)).toBe(false);
+    expect(hasPinRoom(floorAt(1.8) - 1, 1)).toBe(true);
     expect(hasPinRoom(1200, 1.8)).toBe(false);
     expect(hasPinRoom(1200, 1)).toBe(true);
   });
@@ -83,7 +86,7 @@ describe('the docked column', () => {
   });
 
   it('stands at the window\'s own side edge and meets the sheet at the other', () => {
-    // It is the GROUND: it never moves, so its near edge is the window's own corner and its far edge
+    // It is the ground: it never moves, so its near edge is the window's own corner and its far edge
     // is exactly where the sheet of interface is inset to — no gap and no overlap.
     expect(PINNED_PANEL.edge).toBe(0);
     expect(PINNED_PANEL.edge + PINNED_COLUMN_W).toBe(PINNED_COLUMN_W);
@@ -103,20 +106,20 @@ describe('the docked column', () => {
   });
 
   /**
-   * THE DRIFT IS A SHARE OF THE SHEET'S OWN TRAVEL, and the share has two bounds it must sit between.
+   * The drift is a share of the sheet's own travel, and the share has two bounds it must sit between.
    *
-   * BELOW, it has to be separable from the slide it runs under: a share of a few hundredths is a dozen
+   * Below, it has to be separable from the slide it runs under: a share of a few hundredths is a dozen
    * px of ground moving under a sheet crossing the dock's whole width, beside an interface rescaling
    * into the room the dock takes, and that reads as nothing at all.
    *
-   * ABOVE, the bound is geometric: the strip the sheet has uncovered is `aside` of the dock's width and
+   * Above, the bound is geometric: the strip the sheet has uncovered is `aside` of the dock's width and
    * the ground trails `1 - aside` of the drift behind, so a drift past the dock's own width would leave
    * the far end of the uncovered strip showing the page.
    */
   it('drifts the ground a share of the sheet\'s travel, and one a viewer can separate', () => {
-    expect(DOCK_PARALLAX).toBeCloseTo(PINNED_COLUMN_W * DOCK_PARALLAX_SHARE, 10);
-    expect(DOCK_PARALLAX_SHARE).toBeGreaterThan(1 / 10);
-    expect(DOCK_PARALLAX_SHARE).toBeLessThan(1);
+    const share = DOCK_PARALLAX / PINNED_COLUMN_W;
+    expect(share).toBeGreaterThan(1 / 10);
+    expect(share).toBeLessThan(1);
     // The ground covers the uncovered strip at every point of the slide, which is that bound made
     // pointwise rather than argued: sampled across the whole travel, on both sides.
     for (let step = 0; step <= 20; step += 1) {

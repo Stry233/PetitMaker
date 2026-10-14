@@ -1,6 +1,6 @@
 /*
- * The round-capped line icons that icon buttons on a plate draw in `currentColor`.
- * One 24-unit box and one stroke, so glyphs from different surfaces read as one set.
+ * The interface's one set of line icons, drawn in `currentColor`: one 24-unit box and one stroke,
+ * so glyphs from different surfaces read as one set. A control needing a mark the set lacks adds it here.
  */
 import type { ReactNode } from 'react';
 
@@ -8,8 +8,9 @@ export const Glyph = ({ children, size = 22 }: { children: ReactNode; size?: num
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{children}</svg>
 );
 
-export const TrashIcon = () => (
-  <Glyph>
+/** A bin: discard the thing, rather than erase a stroke. */
+export const TrashIcon = ({ size }: { size?: number }) => (
+  <Glyph size={size}>
     <path d="M4 7h16" />
     <path d="M9.5 7V4.8c0-.4.4-.8.8-.8h3.4c.4 0 .8.4.8.8V7" />
     <path d="M6 7l1 12.1c.1.5.5.9 1 .9h8c.5 0 .9-.4 1-.9L18 7" />
@@ -38,7 +39,30 @@ export const PlayIcon = ({ size }: { size?: number }) => <Glyph size={size}><pat
 
 export const PlusIcon = () => <Glyph><path d="M12 5v14M5 12h14" /></Glyph>;
 
+/** A cross: close the window. */
+export const CloseIcon = ({ size }: { size?: number }) => <Glyph size={size}><path d="M6 6l12 12M18 6 6 18" /></Glyph>;
+
 export const BackIcon = ({ size }: { size?: number }) => <Glyph size={size}><path d="M14.5 5 7.5 12l7 7" /></Glyph>;
 
 /** A tick: finish and keep what was made. */
 export const CheckIcon = ({ size }: { size?: number }) => <Glyph size={size}><path d="M5 12.5l4.5 4.5L19 7.5" /></Glyph>;
+
+/** Two opposed arrows: switch between related sets. */
+export const SwapIcon = ({ size }: { size?: number }) => <Glyph size={size}><path d="M4 7h16l-4-4M20 17H4l4 4" /></Glyph>;
+
+/** A chevron pointing down: a list that opens below. Turn it with a wrapper to point elsewhere. */
+export const ChevronIcon = ({ size }: { size?: number }) => <Glyph size={size}><path d="M6 9l6 6.4 6-6.4" /></Glyph>;
+
+export const ChevronLeftIcon = ({ size }: { size?: number }) => <Glyph size={size}><path d="M15 5l-7 7 7 7" /></Glyph>;
+
+export const ChevronRightIcon = ({ size }: { size?: number }) => <Glyph size={size}><path d="M9 5l7 7-7 7" /></Glyph>;
+
+/** Four corner brackets framing the map: fit the map to the view. */
+export const FitIcon = ({ size }: { size?: number }) => (
+  <Glyph size={size}>
+    <path d="M4 9V5a1 1 0 0 1 1-1h4" />
+    <path d="M20 9V5a1 1 0 0 0-1-1h-4" />
+    <path d="M4 15v4a1 1 0 0 0 1 1h4" />
+    <path d="M20 15v4a1 1 0 0 1-1 1h-4" />
+  </Glyph>
+);

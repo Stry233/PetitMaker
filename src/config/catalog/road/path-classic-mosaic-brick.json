@@ -4,7 +4,7 @@
   "icon": "path-classic-mosaic-brick",
   "name": {
     "en": "Classic Mosaic Brick Path",
-    "zh": "经典马赛克砖路",
+    "zh": "经典拼花砖路",
     "ja": "クラシックモザイクレンガの道",
     "ru": "Классическая мозаичная кирпичная дорожка",
     "th": "ทางอิฐโมเสกคลาสสิก",
@@ -24,5 +24,17 @@
     {
       "type": "surfaceCoating"
     }
-  ]
+  ],
+  "roadMaterial": {
+    "feather": 0.035,
+    "edge": {
+      "color": "#ffffff",
+      "pattern": {
+        "kind": "image",
+        "image": "path-classic-mosaic-brick",
+        "repeat": 2
+      }
+    },
+    "layers": []
+  }
 }

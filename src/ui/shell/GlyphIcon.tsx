@@ -1,20 +1,11 @@
 /*
- * One of the design source's drawn glyphs, at a chosen APPARENT size.
- *
- * It belongs beside `frame.ts` rather than to either of the two rows that use it: the rail draws
- * its undo, zoom and rotate marks with it and the terrain bar draws its surfaces with it, and the
- * rule it carries — a drawing is scaled and centred by its own INK, never by its box — is the same
- * rule for both.
+ * One of the design's drawn glyphs at a chosen apparent size, scaled and centred by its own ink, never its
+ * box; the rail and the terrain bar share it.
  */
 import type { Glyph } from './frame';
 import { apparentSize, opticalCentre } from './frame';
 
-/**
- * `size` is how big the drawing should read, not how tall its box is: each drawing is scaled by its
- * own measured ink and then shifted so that ink balances on the box's centre. Drawn to their boxes
- * instead, a family of glyphs comes out at sizes a fifth apart and none of them over the middle of
- * its button, because a glyph's box is the artist's canvas and not the picture.
- */
+/** `size` is how big the drawing reads: it is scaled by its measured ink and shifted so the ink balances on centre. */
 export function GlyphIcon({ glyph, size, flip }: { glyph: Glyph; size: number; flip?: boolean }) {
   const k = (size * (glyph.ink.trim ?? 1)) / apparentSize(glyph.ink);
   const centre = opticalCentre(glyph.ink);

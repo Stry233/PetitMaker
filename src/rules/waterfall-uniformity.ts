@@ -3,7 +3,7 @@
  *
  * For each waterfall face, the row directly in front of (downstream from)
  * the waterfall must have uniform elevation across its full width n.
- * n = width of the waterfall structure INCLUDING the capping mountains.
+ * n = width of the waterfall structure including the capping mountains.
  *
  * The adjacent row cells can be mountain or water, but all n cells must be
  * at the exact same elevation. Any height difference is a violation.
@@ -18,22 +18,13 @@
  *   3 3 3   <- waterfall (layer 3)
  *   2 0 2   <- height difference -> Illegal
  */
-import {
-  TerrainType,
-  type GridState,
-  type MacroCoord,
-  type PostStrokeRule,
-  type ValidationError,
-} from '../core/model/types';
+import { TerrainType, type GridState, type MacroCoord, type ValidationError } from '../core/model/types';
 import { getCell } from '../core/model/grid-model';
-import {
-  cellElevation,
-  DIR_OFFSETS,
-  isWaterAtElev,
-  PERP_DIRS,
-  traceToMountain,
-  type Direction,
-} from '../core/model/waterfall-geometry';
+import { cellElevation, isWaterAtElev, traceToMountain } from '../core/domain/terrain/waterfall-geometry';
+import { DIR_OFFSETS, PERP_DIRS, type Direction } from '../core/grid/directions';
+import { TERRAIN_GRID } from '../core/game/profile';
+import { evidenceOn } from '../core/grid/grids';
+import { definePostRule, type Fail } from './define';
 
 /** The waterfall strip through (x, y) along `perpDir`'s axis, in order: the capping mountain at one
  *  end, the water at `elev` between, and the capping mountain at the other end. */
@@ -62,10 +53,11 @@ function checkAdjacentRowUniformity(
   state: GridState,
   strip: readonly MacroCoord[],
   flowDir: Direction,
-  mapWidth: number,
-  mapHeight: number,
-  errors: ValidationError[],
+  map: { width: number; height: number },
+  report: { errors: ValidationError[]; fail: Fail },
 ): void {
+  const { width: mapWidth, height: mapHeight } = map;
+  const { errors, fail } = report;
   const { dx, dy } = DIR_OFFSETS[flowDir];
   const n = strip.length;
 
@@ -87,23 +79,16 @@ function checkAdjacentRowUniformity(
     for (let i = 0; i < n; i++) {
       if (adjacentElevs[i] !== firstElev) {
         const cell = strip[i]!;
-        errors.push({
-          ruleId: 'V-WTR-03',
-          message: 'error.waterfall_adjacent_not_uniform',
-          cells: [{ x: cell.x + dx, y: cell.y + dy }],
-          severity: 'error',
-        });
+        errors.push(fail('error.waterfall_adjacent_not_uniform', evidenceOn(TERRAIN_GRID, [{ x: cell.x + dx, y: cell.y + dy }])));
       }
     }
   }
 }
 
-export const waterfallAdjacentUniformityRule: PostStrokeRule = {
+export const waterfallAdjacentUniformityRule = definePostRule({
   id: 'V-WTR-03',
-  agentHint: 'POST-CHECK — the row directly BELOW the waterfall lip must all be ONE elevation across the full frame width. FIX: keep the falling water at the pool elevation (a high water cell), and build the cells directly below it as a single uniform lower shelf FIRST. Painting low (e.g. elev-0) water against a stepped hillside always fails here — do not repeat it.',
-  phase: 'post-stroke',
 
-  validate(state: GridState, opts?: { firstOnly?: boolean }): ValidationError[] {
+  validate(state, opts, fail) {
     const { width, height } = state.template;
     const errors: ValidationError[] = [];
     const processedFaces = new Set<string>();
@@ -124,8 +109,8 @@ export const waterfallAdjacentUniformityRule: PostStrokeRule = {
           const [perpA, perpB] = PERP_DIRS[flowDir];
           const { dx: pdxA, dy: pdyA } = DIR_OFFSETS[perpA];
           const { dx: pdxB, dy: pdyB } = DIR_OFFSETS[perpB];
-          const cappedA = traceToMountain(state, x, y, elev, pdxA, pdyA);
-          const cappedB = traceToMountain(state, x, y, elev, pdxB, pdyB);
+          const cappedA = traceToMountain(state, x, y, elev, { dx: pdxA, dy: pdyA });
+          const cappedB = traceToMountain(state, x, y, elev, { dx: pdxB, dy: pdyB });
           if (!cappedA || !cappedB) continue;
 
           const strip = fullStrip(state, x, y, elev, perpA);
@@ -133,11 +118,11 @@ export const waterfallAdjacentUniformityRule: PostStrokeRule = {
           if (processedFaces.has(faceKey)) continue;
           processedFaces.add(faceKey);
 
-          checkAdjacentRowUniformity(state, strip, flowDir, width, height, errors);
+          checkAdjacentRowUniformity(state, strip, flowDir, { width, height }, { errors, fail });
           if (opts?.firstOnly && errors.length > 0) return errors;
         }
       }
     }
     return errors;
   },
-};
+});

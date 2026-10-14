@@ -1,7 +1,14 @@
-import { DEPLOY_TARGETS, type DeployTarget } from '../src/legal/deploy-targets.ts';
-import { brandName } from '../src/version.ts';
-import { CREAM } from '../src/core/runtime/brand-palette.ts';
+import { DEPLOY_TARGETS, type DeployTarget } from '../src/platform/build/deploy-targets.ts';
+import { baseBrandName, brandName } from '../src/i18n/brand.ts';
+import { en } from '../src/i18n/locales/en.ts';
+import { zh } from '../src/i18n/locales/zh.ts';
+import { PLATE } from '../src/assets/brand-palette.ts';
 import { escapeHtml } from '../src/legal/markdown-html.ts';
+
+/** A deployment's search description and link-preview text, in its primary language. */
+export function targetDescription(target: DeployTarget): string {
+  return (target.lang === 'zh' ? zh : en)['site.description'].split('{app}').join(baseBrandName(target.lang));
+}
 
 export function alternateLinks(urls: { en: string; zh: string }): string {
   return [
@@ -55,14 +62,14 @@ export function webManifest(target: DeployTarget): string {
   return `${JSON.stringify({
     name: brandName(target.lang),
     short_name: brandName(target.lang),
-    description: target.description,
+    description: targetDescription(target),
     lang: target.htmlLang,
     start_url: './',
     scope: './',
     display: 'standalone',
     orientation: 'landscape',
-    background_color: CREAM,
-    theme_color: CREAM,
+    background_color: PLATE,
+    theme_color: PLATE,
     icons: [
       { src: 'logo-256.png', sizes: '256x256', type: 'image/png' },
       { src: 'apple-touch-icon.png', sizes: '180x180', type: 'image/png' },
@@ -72,19 +79,20 @@ export function webManifest(target: DeployTarget): string {
 
 export function transformHomepage(html: string, target: DeployTarget, basePath: string): string {
   const data = JSON.stringify(websiteData(target)).replace(/</g, '\\u003c');
+  const description = targetDescription(target);
   const tags =
     basePath === '/'
       ? [
           ...target.verificationMetas.map(
             (m) => `<meta name="${escapeHtml(m.name)}" content="${escapeHtml(m.content)}" />`,
           ),
-          `<meta name="description" content="${escapeHtml(target.description)}" />`,
+          `<meta name="description" content="${escapeHtml(description)}" />`,
           `<link rel="canonical" href="${target.canonicalOrigin}/" />`,
           alternateLinks({
             en: `${DEPLOY_TARGETS.global.canonicalOrigin}/`,
             zh: `${DEPLOY_TARGETS.cn.canonicalOrigin}/`,
           }),
-          socialTags(target.title, target.description, `${target.canonicalOrigin}/`, target.lang),
+          socialTags(target.title, description, `${target.canonicalOrigin}/`, target.lang),
           `<script type="application/ld+json">${data}</script>`,
         ]
       : ['<meta name="robots" content="noindex, nofollow" />'];

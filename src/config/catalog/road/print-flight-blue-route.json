@@ -1,0 +1,34 @@
+{
+  "id": "print-flight-blue-route",
+  "category": "road",
+  "icon": "print-flight-blue-route",
+  "name": {
+    "en": "Deep Blue Flight Route Print",
+    "zh": "深蓝航线印花",
+    "ja": "濃青の航路模様",
+    "ru": "Синяя отметка маршрута",
+    "th": "ลายเส้นทางบินสีน้ำเงินเข้ม",
+    "id": "Motif Rute Penerbangan Biru Tua",
+    "fr": "Motif de parcours aérien bleu foncé"
+  },
+  "color": "#548da2",
+  "width": 1,
+  "height": 1,
+  "loadValue": 0,
+  "rotatable": true,
+  "placementMode": "brush",
+  "traits": [
+    {
+      "type": "flat"
+    },
+    {
+      "type": "surfaceCoating",
+      "layer": 1
+    }
+  ],
+  "surfacePrint": {
+    "kind": "image",
+    "image": "print-flight-blue-route",
+    "repeat": 1
+  }
+}

@@ -1,7 +1,7 @@
 /**
- * DOES A MACRO WORK ON A MAP SOMEONE ACTUALLY HAS?
+ * Does a macro work on a map someone actually has?
  *
- * `macro-quality.test.ts` asks whether a macro's RESULT is designed rather than computed, and it
+ * `macro-quality.test.ts` asks whether a macro's result is designed rather than computed, and it
  * asks it of a fixture built for the purpose: a clean cone with a shore all round. That is the
  * right shape for those questions and the wrong one for this: a macro that only works on the
  * fixture is a macro that works nowhere, and nothing here was measuring that.
@@ -12,35 +12,30 @@
  * side of the screen, from a button that does not work.
  */
 import { describe, expect, it } from 'vitest';
-import { CommandExecutor } from '../../../core/commands/command-executor';
-import { EventBus } from '../../../core/commands/event-bus';
-import { makeState } from '../../rules/_helpers';
-import { createDefaultRegistry } from '../../../rules';
-import { roadLookup } from '../../../state/object-index';
-import { clearAllObjects, generateTerrain } from '../../../tools/generation/terrain-generator';
-import {
-  CellZone, CommandType,
-  type Command, type EditorEvents, type GenerateConfig, type MacroCoord,
-} from '../../../core/model/types';
+import { makeState, makeExecutor } from '../../_support/map-state';
+import { clearAllObjects } from '../../../tools/generation';
+import { CommandType, type Command, type MacroCoord } from '../../../core/model/types';
+import { defaultConfig, type GenerateConfig } from '../../../tools/generation/recipe';
+import { CellZone } from '../../../core/game/zones';
 import { applyMacro, MACRO_IDS, type MacroId } from '../../../tools/macros';
 import { generateObjectId } from '../../../core/model/object-id';
-import { surfaceElevation } from '../../../core/edge-cut/terrain-silhouette';
+import { generateWith } from '../../_support/generation';
 
 const SIZE = 96;
 
 function reach(seed: number, maxElevation: number): Record<MacroId, number> {
   const state = makeState(SIZE, SIZE);
-  const exec = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
-  const config: GenerateConfig = { algorithm: 'designed', mode: 'mixed', corridorWidth: 1, maxElevation, seed, region: null };
-  exec.runSilently(() => {
-    generateTerrain(config, state, (c: Command) => exec.execute(c), exec.getRegistry());
-    // TERRAIN ONLY: the planet generator furnishes what it builds, and this fixture is
+  const exec = makeExecutor(state);
+  const config: GenerateConfig = defaultConfig('designed', { maxElevation, seed });
+  exec.transaction({ silent: true }, () => {
+    generateWith(state, exec, config);
+    // Terrain only: the planet generator furnishes what it builds, and this fixture is
     // about relief. What stands on it is the case's own subject, planted or laid below.
-    clearAllObjects(state, (c: Command) => exec.execute(c));
+    clearAllObjects({ state, execute: (c: Command) => exec.execute(c) });
   });
-  exec.commitStroke(exec.getUndoStackSize());
+  exec.beginStroke().commit();
 
-  // A PERSON'S MAP HAS THINGS STANDING ON IT, and for `roads` that is the whole question: it connects
+  // A person's map has things standing on it, and for `roads` that is the whole question: it connects
   // what is there, so on bare terrain its honest answer is that there is nothing to connect. It used
   // to build on bare terrain anyway by spending its scenic-crossing budget — bridges and ramps at
   // fords nobody could reach — so the reach measured litter rather than the verb.
@@ -50,7 +45,7 @@ function reach(seed: number, maxElevation: number): Record<MacroId, number> {
       const cell = state.cells[y]![x]!;
       if (cell.zone !== CellZone.Grass || cell.terrain) continue;
       const obj = { id: generateObjectId(), catalogId: 'building-stall', position: { x, y }, rotation: 0 as const, elevation: 0 };
-      if (exec.execute({ type: CommandType.PlaceObject, timestamp: 1, object: obj }).success) stalls.push({ x, y });
+      if (exec.execute({ type: CommandType.PlaceObject, object: obj }).success) stalls.push({ x, y });
     }
   }
   expect(stalls.length, 'the planet had nowhere to stand a stall').toBeGreaterThan(2);
@@ -64,16 +59,15 @@ function reach(seed: number, maxElevation: number): Record<MacroId, number> {
     for (let x = 6; x < SIZE - 6; x += 5) {
       const cell = state.cells[y]![x]!;
       if (cell.zone !== CellZone.Grass) continue;
-      // A stream needs somewhere to fall FROM, so flat ground is not a fair place to ask it.
-      const raised = surfaceElevation(cell.terrain) >= 1;
       for (const id of MACRO_IDS) {
-        if (id === 'stream' && !raised) continue;
+        // A river is a drag between two points (`landforms.test.ts`), not a press at one.
+        if (id === 'stream') continue;
         tried[id]!++;
-        const before = exec.getUndoStackSize();
+        const before = exec.historyDepth();
         let changes = 0;
         try { changes = applyMacro(kit as never, id, { seed: tried[id]!, at: { x, y } }).changes; } catch { changes = 0; }
         if (changes > 0) built[id]!++;
-        while (exec.getUndoStackSize() > before) exec.undo();
+        while (exec.historyDepth() > before) exec.undo();
       }
     }
   }
@@ -86,13 +80,8 @@ describe('a macro reaches the map a person has', () => {
   /**
    * Every one of them lands almost everywhere it is asked. The floor sits below the observed 82 to
    * 100 per cent range and guards reachability rather than an exact generator rate.
-   *
-   * THE STREAM IS THE ONE WHOSE RATE IS THE GROUND'S, not the macro's. Its honesty rule reverts a course
-   * whole where it cannot walk downhill all the way to open water, because half a stream on a hillside is
-   * worse than none: on organic relief that refuses about half of all aims, while the planet generator's
-   * terraced plates step down to the coast, so from nearly anywhere on them there IS a way down.
    */
-  it.each(['raise', 'stream', 'roads', 'patch-tree', 'patch-flora'] as const)('%s builds nearly everywhere it is aimed', (id) => {
+  it.each(['raise', 'roads', 'patch-tree', 'patch-flora'] as const)('%s builds nearly everywhere it is aimed', (id) => {
     expect(rates[id]).toBeGreaterThan(0.8);
   });
 }, 300_000);

@@ -1,4 +1,4 @@
-// Shared degradation models for the PetitGlyph robustness harness (NOT a test file — no test
+// Shared degradation models for the PetitGlyph robustness harness (not a test file — no test
 // blocks, so vitest won't run it). Each transform takes an RGBA buffer (+ dims) and returns a
 // new RGBA buffer the same size, simulating a realistic capture/repost pipeline.
 
@@ -17,7 +17,12 @@ export function colorShift(rgba: Uint8Array, dr: number, dg: number, db: number)
 
 export function noise(rgba: Uint8Array, amp: number, seed: number): Uint8Array {
   const o = clone(rgba); const r = rng(seed);
-  for (let i = 0; i < o.length; i += 4) { const n = ((r() - 0.5) * 2 * amp) | 0; o[i] = clamp(o[i]! + n); o[i + 1] = clamp(o[i + 1]! + n); o[i + 2] = clamp(o[i + 2]! + n); }
+  for (let i = 0; i < o.length; i += 4) {
+    const n = ((r() - 0.5) * 2 * amp) | 0;
+    o[i] = clamp(o[i]! + n);
+    o[i + 1] = clamp(o[i + 1]! + n);
+    o[i + 2] = clamp(o[i + 2]! + n);
+  }
   return o;
 }
 
@@ -72,7 +77,11 @@ const QBASE = [
   18, 22, 37, 56, 68, 109, 103, 77, 24, 35, 55, 64, 81, 104, 113, 92,
   49, 64, 78, 87, 103, 121, 120, 101, 72, 92, 95, 98, 112, 100, 103, 99,
 ];
-const COS: number[] = (() => { const c = new Array(64); for (let u = 0; u < 8; u++) for (let x = 0; x < 8; x++) c[u * 8 + x] = Math.cos(((2 * x + 1) * u * Math.PI) / 16); return c; })();
+const COS: number[] = (() => {
+  const c = new Array(64);
+  for (let u = 0; u < 8; u++) for (let x = 0; x < 8; x++) c[u * 8 + x] = Math.cos(((2 * x + 1) * u * Math.PI) / 16);
+  return c;
+})();
 const CU = (u: number) => (u === 0 ? Math.SQRT1_2 : 1);
 
 function quantTable(quality: number): number[] {
@@ -81,14 +90,30 @@ function quantTable(quality: number): number[] {
 }
 function dct8x8(block: Float64Array): Float64Array {
   const tmp = new Float64Array(64), out = new Float64Array(64);
-  for (let y = 0; y < 8; y++) for (let u = 0; u < 8; u++) { let s = 0; for (let x = 0; x < 8; x++) s += block[y * 8 + x]! * COS[u * 8 + x]!; tmp[y * 8 + u] = 0.5 * CU(u) * s; }
-  for (let u = 0; u < 8; u++) for (let v = 0; v < 8; v++) { let s = 0; for (let y = 0; y < 8; y++) s += tmp[y * 8 + u]! * COS[v * 8 + y]!; out[v * 8 + u] = 0.5 * CU(v) * s; }
+  for (let y = 0; y < 8; y++) for (let u = 0; u < 8; u++) {
+    let s = 0;
+    for (let x = 0; x < 8; x++) s += block[y * 8 + x]! * COS[u * 8 + x]!;
+    tmp[y * 8 + u] = 0.5 * CU(u) * s;
+  }
+  for (let u = 0; u < 8; u++) for (let v = 0; v < 8; v++) {
+    let s = 0;
+    for (let y = 0; y < 8; y++) s += tmp[y * 8 + u]! * COS[v * 8 + y]!;
+    out[v * 8 + u] = 0.5 * CU(v) * s;
+  }
   return out;
 }
 function idct8x8(coef: Float64Array): Float64Array {
   const tmp = new Float64Array(64), out = new Float64Array(64);
-  for (let v = 0; v < 8; v++) for (let x = 0; x < 8; x++) { let s = 0; for (let u = 0; u < 8; u++) s += CU(u) * coef[v * 8 + u]! * COS[u * 8 + x]!; tmp[v * 8 + x] = 0.5 * s; }
-  for (let x = 0; x < 8; x++) for (let y = 0; y < 8; y++) { let s = 0; for (let v = 0; v < 8; v++) s += CU(v) * tmp[v * 8 + x]! * COS[v * 8 + y]!; out[y * 8 + x] = 0.5 * s; }
+  for (let v = 0; v < 8; v++) for (let x = 0; x < 8; x++) {
+    let s = 0;
+    for (let u = 0; u < 8; u++) s += CU(u) * coef[v * 8 + u]! * COS[u * 8 + x]!;
+    tmp[v * 8 + x] = 0.5 * s;
+  }
+  for (let x = 0; x < 8; x++) for (let y = 0; y < 8; y++) {
+    let s = 0;
+    for (let v = 0; v < 8; v++) s += CU(v) * tmp[v * 8 + x]! * COS[v * 8 + y]!;
+    out[y * 8 + x] = 0.5 * s;
+  }
   return out;
 }
 export function jpegLike(rgba: Uint8Array, w: number, h: number, quality = 75): Uint8Array {
@@ -96,25 +121,21 @@ export function jpegLike(rgba: Uint8Array, w: number, h: number, quality = 75): 
   const out = clone(rgba);
   const block = new Float64Array(64);
   for (let by = 0; by < h; by += 8) for (let bx = 0; bx < w; bx += 8) for (let c = 0; c < 3; c++) {
-    for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) { const sx = Math.min(w - 1, bx + x), sy = Math.min(h - 1, by + y); block[y * 8 + x] = rgba[(sy * w + sx) * 4 + c]! - 128; }
+    for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) {
+      const sx = Math.min(w - 1, bx + x), sy = Math.min(h - 1, by + y);
+      block[y * 8 + x] = rgba[(sy * w + sx) * 4 + c]! - 128;
+    }
     const co = dct8x8(block);
     for (let i = 0; i < 64; i++) co[i] = Math.round(co[i]! / q[i]!) * q[i]!;
     const rec = idct8x8(co);
-    for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) { const sx = bx + x, sy = by + y; if (sx < w && sy < h) out[(sy * w + sx) * 4 + c] = clamp(Math.round(rec[y * 8 + x]! + 128)); }
+    for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) {
+      const sx = bx + x, sy = by + y;
+      if (sx < w && sy < h) out[(sy * w + sx) * 4 + c] = clamp(Math.round(rec[y * 8 + x]! + 128));
+    }
   }
   return out;
 }
 
-export function eraseCells(rgba: Uint8Array, w: number, cols: number, rows: number, m: number, fraction: number, seed: number, bg: readonly number[]): Uint8Array {
-  const o = clone(rgba); const r = rng(seed);
-  for (let cell = 0; cell < cols * rows; cell++) {
-    if (r() < fraction) {
-      const cx = (cell % cols) * m, cy = Math.floor(cell / cols) * m;
-      for (let y = 0; y < m; y++) for (let x = 0; x < m; x++) { const i = ((cy + y) * w + (cx + x)) * 4; o[i] = bg[0]!; o[i + 1] = bg[1]!; o[i + 2] = bg[2]!; o[i + 3] = 255; }
-    }
-  }
-  return o;
-}
 
 /** Chroma 4:2:0 subsampling: convert to YCbCr (BT.601, 128-centered chroma), average Cb/Cr over
  *  each 2×2 block (odd edges clamp to the available pixels), then convert back — keeps per-pixel

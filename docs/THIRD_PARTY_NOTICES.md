@@ -327,5 +327,5 @@ These are copied into the source tree rather than installed, so they are not par
 - Copyright: Copyright (c) 2023 LobeHub
 - Source: [https://github.com/lobehub/lobe-icons](https://github.com/lobehub/lobe-icons)
 - Full text: `licenses/lobe-icons/LICENSE`
-- Used in: Single-colour provider silhouettes inlined as SVG path data in `src/ui/agent/logos.tsx`, shown beside the API-key field so a user can see which platform a key belongs to.
+- Used in: Single-colour provider silhouettes inlined as SVG path data in `src/assets/agent/provider-logos.tsx`, drawn into the README's supported-provider figure (`docs/media/providers.png`) so a reader can see which platforms the assistant connects to.
 - Rights NOT granted: The MIT grant covers the icon collection, NOT the brand marks it depicts. Every provider name and logo is a trademark of its respective owner, reproduced here nominatively for identification only; no affiliation, sponsorship or endorsement is implied. Upstream states the same and advises reviewing each brand's own trademark guidelines before bundling.

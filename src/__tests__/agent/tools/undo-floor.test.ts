@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import type { CommandExecutor } from '../../../core/commands/command-executor';
 import { append, createLog } from '../../../agent/core/log';
-import { jobUndoFloor } from '../../../agent/core/loop';
-import { WIDE_TOOLS } from '../../../agent/exec/executor';
+import { jobUndoFloor } from '../../../agent/core/job-reads';
+import { TOOL_FACTS } from '../../../agent/tools';
 import { executeToolCall, type AgentToolDeps } from '../../../agent/tools';
 
 /** Counts undo/redo calls over a stack of `size` entries, without a map or a rule registry. */
@@ -12,7 +12,7 @@ function fakeExecutor(size: number) {
   let undoCalls = 0;
   let redoCalls = 0;
   const exec = {
-    getUndoStackSize: () => depth,
+    historyDepth: () => depth,
     undo: () => {
       if (depth === 0) return false;
       depth -= 1;
@@ -76,8 +76,8 @@ describe('agent undo floor', () => {
   });
 
   it('gates undo and redo as wide tools', () => {
-    expect(WIDE_TOOLS.has('undo')).toBe(true);
-    expect(WIDE_TOOLS.has('redo')).toBe(true);
+    expect(TOOL_FACTS.access('undo')).toBe('wide');
+    expect(TOOL_FACTS.access('redo')).toBe('wide');
   });
 });
 

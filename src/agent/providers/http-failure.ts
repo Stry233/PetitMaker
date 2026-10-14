@@ -4,13 +4,13 @@
  * the same duck-typed `status`/`headers`/`message` shape, so a mocked/gateway error double works
  * against either without an `instanceof` check on the SDK's own error class.
  */
-import { redactSecrets } from '../security/redact';
+import { redactSecrets } from '../../platform/remote/redact';
 import { classify } from '../core/errors';
 import type { StreamEvent } from '../core/types';
 
 /** Reads a `Retry-After` value off either a real `Headers` object or a plain record (a
  *  mocked/gateway error shape), in seconds -> ms. */
-export function retryAfterMsOf(headers: unknown): number | undefined {
+function retryAfterMsOf(headers: unknown): number | undefined {
   if (headers == null) return undefined;
   const getter = (headers as { get?: (key: string) => string | null }).get;
   const raw = typeof getter === 'function' ? getter.call(headers, 'retry-after') : (headers as Record<string, string>)['retry-after'];
@@ -20,7 +20,12 @@ export function retryAfterMsOf(headers: unknown): number | undefined {
 }
 
 /** `secrets` carries the adapter's live key, removed from the message by value. */
-export function toRawFailure(err: unknown, aborted: boolean, secrets?: readonly string[]): { status?: number; message: string; retryAfterMs?: number; aborted: boolean } {
+export function toRawFailure(err: unknown, aborted: boolean, secrets?: readonly string[]): {
+  status?: number;
+  message: string;
+  retryAfterMs?: number;
+  aborted: boolean;
+} {
   const e = err as { status?: unknown; message?: unknown; headers?: unknown } | null;
   const rawMessage = typeof e?.message === 'string' ? e.message : String(err);
   const status = typeof e?.status === 'number' ? e.status : undefined;

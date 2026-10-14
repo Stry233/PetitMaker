@@ -1,4 +1,4 @@
-import { clamp01 } from '../../../core/model/math';
+import { clamp01 } from '../../../core/base/math';
 
 /**
  * PetitGlyph color tables use four BT.601 luma bands with four chroma offsets per band.
@@ -8,27 +8,8 @@ import { clamp01 } from '../../../core/model/math';
  */
 export type RGB = readonly [number, number, number];
 
-/** The 4 luma band centers, dark to light. */
-export const Y_LEVELS: readonly number[] = [56, 112, 168, 214];
-
-/** The 4 chroma columns as (Cb, Cr) offsets at scale 1, one per chroma variant. */
-export const BASE_CHROMA_OFFSETS: readonly (readonly [number, number])[] = [
-  [-48, 38],
-  [42, 44],
-  [46, -40],
-  [-44, -46],
-];
-
-/** Per-luma-band chroma scale for each baked legacy palette. */
-export const CHROMA_SCALES: Readonly<Record<number, readonly number[]>> = {
-  // Squared nearest-neighbour separations: 1767, 7032, 7032, 1767.
-  1: [0.5, 1, 1, 0.5],
-  // Squared nearest-neighbour separations: 1801, 3438, 3438, 1801.
-  2: [0.51, 0.7, 0.7, 0.509],
-};
-
 /** Fixed version 1 decoder palette. */
-export const PALETTE16_V1: readonly RGB[] = [
+const PALETTE16_V1: readonly RGB[] = [
   // luma 0 (Y=56, chroma ×0.5)
   [83, 51, 13],
   [87, 33, 93],
@@ -52,7 +33,7 @@ export const PALETTE16_V1: readonly RGB[] = [
 ];
 
 /** Fixed version 2 decoder palette. */
-export const PALETTE16_V2: readonly RGB[] = [
+const PALETTE16_V2: readonly RGB[] = [
   // luma 0 (Y=56, chroma ×0.51)
   [83, 51, 13],
   [87, 33, 94],
@@ -82,9 +63,6 @@ export function paletteForVersion(version: number): readonly RGB[] | null {
   return null;
 }
 
-/** Palette used by the retained legacy v2 encoder. */
-export const PALETTE16: readonly RGB[] = PALETTE16_V2;
-
 /** Four sage tones carry information through luminance alone. */
 export const PRODUCT_FOUR: readonly RGB[] = [
   [38, 48, 32], [103, 116, 92], [170, 184, 154], [237, 250, 219],
@@ -111,9 +89,6 @@ export const PRODUCT_HEADER_LEVELS: readonly RGB[] = HEADER_LEVELS.map((level) =
     PRODUCT_INK[channel]! + (PRODUCT_PAPER[channel]! - PRODUCT_INK[channel]!) * t,
   )) as unknown as RGB;
 });
-
-/** Off-white background / quiet-zone fill. */
-export const BG: RGB = [0xf0, 0xf0, 0xeb];
 
 /** BT.601 RGB to zero-centered YCbCr. */
 export function rgbToYcc(r: number, g: number, b: number): [number, number, number] {

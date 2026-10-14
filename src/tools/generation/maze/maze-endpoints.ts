@@ -1,29 +1,20 @@
 /*
- * A way in and a destination, and the walk between them.
+ * A way in and a destination, and the walk between them. A way in is a hole in the maze's outer
+ * wall; a destination is a place inside the maze must lead to (the plaza, or any cell pointed at).
+ * The kind is read from where an end is dropped and never selected: on or outside the border ring it
+ * is a hole, anywhere else it snaps to the nearest walkable cell as a destination. There is no
+ * control for this and there must not be one.
  *
- * TWO KINDS OF END, AND NOBODY PICKS WHICH. A WAY IN is a hole in the maze's outer wall: you pass
- * through it. A DESTINATION is a place inside that the maze must lead to — the plaza, or any cell
- * pointed at. They are not the same thing, and one word for both cannot express the second: aiming at
- * the plaza would move the exit to the map's edge instead.
+ * The generator asks these questions of the lattice it carved and the interface of the map the run
+ * left, both through a `MazeField` (a rectangle and a "can a walker stand here" predicate), so the
+ * answers cannot differ.
  *
- * The kind is READ FROM WHERE AN END IS DROPPED and never selected: on the maze's own border ring
- * (or outside it) it is a hole, anywhere else it snaps to the nearest walkable cell and is a
- * destination. There is no control for this and there must not be one.
- *
- * ONE IMPLEMENTATION, TWO READERS. The generator asks these questions of the lattice it has just
- * carved, and the interface asks them of the map the run left behind, so everything here is written
- * against a `MazeField`: a rectangle plus "can a walker stand here". The caller supplies the
- * predicate — corridors for the generator, standable ground for the map — and the answers cannot
- * differ between the two.
- *
- * THE TERRAIN AROUND A MAZE IS NOT TOUCHED, and a maze whose ends are both outside cannot be walled to
- * fix that: two holes in the boundary of a simply-connected shape are two doors onto the SAME outside, so
- * no wall the generator may build separates them (`__tests__/tools/maze-endpoints.test.ts`). The inward
- * pairing this file defaults to needs nothing: with an end inside, entering is the only way to arrive,
- * and the carve's spanning tree makes that route unique for free.
+ * Two holes in a simply-connected shape open onto the same outside, so no wall separates two outside
+ * ends (`maze-endpoints.test.ts`). With an end inside, the carve's spanning tree makes the route
+ * unique for free.
  */
 import type { MacroCoord } from '../../../core/model/types';
-import { NEIGHBORS4 } from '../../../core/model/grid-model';
+import { NEIGHBORS4 } from '../../../core/grid/directions';
 
 /** What an end turned out to be. */
 type EndKind = 'hole' | 'target';
@@ -42,7 +33,7 @@ export interface MazeField {
 }
 
 /** Inside the maze's rectangle at all. */
-export function inField(field: MazeField, x: number, y: number): boolean {
+function inField(field: MazeField, x: number, y: number): boolean {
   const { origin: o, dims: d } = field;
   return x >= o.x && x < o.x + d.mazeW && y >= o.y && y < o.y + d.mazeH;
 }
@@ -58,8 +49,8 @@ export function onRing(field: MazeField, x: number, y: number): boolean {
 /**
  * The corridor a hole in this ring cell would open onto, or null where the wall behind it is solid.
  *
- * BY THE EDGE THE CELL STANDS ON, never "the first walkable neighbour": once a hole has been cut,
- * the cell beside it on the ring IS walkable, so a naive scan can step sideways along the wall and
+ * By the edge the cell stands on, never "the first walkable neighbour": once a hole has been cut,
+ * the cell beside it on the ring is walkable, so a naive scan can step sideways along the wall and
  * measure a walk from the wrong place. That is worth a cell or two, which is the whole margin
  * between the longest walk and the second longest.
  */
@@ -74,7 +65,7 @@ function insideOf(field: MazeField, gate: MacroCoord): MacroCoord | null {
 }
 
 /** Every ring cell that has a corridor immediately inside it: the places a hole can be cut. */
-export function gateSites(field: MazeField): { gate: MacroCoord; inside: MacroCoord }[] {
+function gateSites(field: MazeField): { gate: MacroCoord; inside: MacroCoord }[] {
   const { origin: o, dims: d } = field;
   const out: { gate: MacroCoord; inside: MacroCoord }[] = [];
   const consider = (gate: MacroCoord): void => {
@@ -96,7 +87,7 @@ export function gateSites(field: MazeField): { gate: MacroCoord; inside: MacroCo
  * Distances in cells from `from` over the field's own walkable cells, `from` counted as 1, as a flat
  * array over the field's rectangle: -1 for a cell no walk reaches.
  *
- * FLAT RATHER THAN A MAP OF STRING KEYS, because the default runs one of these per way IN and a
+ * Flat rather than a map of string keys, because the default runs one of these per way in and a
  * whole-planet maze offers a few hundred of them over ten thousand cells. Keyed by string that is
  * seconds; indexed by row it is milliseconds, and it is what lets the default be the true longest
  * walk rather than a heuristic that lands a cell short.
@@ -127,39 +118,15 @@ function slot(field: MazeField, c: MacroCoord): number {
 }
 
 /**
- * How many cells a walk from one end to the other visits, or null where there is no route.
- *
- * Counted in CELLS, both ends included, so two ends dropped next to each other read 2. That is a
- * legal pair rather than a refused one: a rule nobody was told about is worse than a readout the
- * person can see and act on.
- *
- * A hole is not itself walkable until it is cut, so an end that is one is measured from the corridor
- * it opens onto and counted as the extra cell it is.
- */
-export function walkLength(field: MazeField, a: MazeEnd, b: MazeEnd): number | null {
-  const step = (end: MazeEnd): { at: MacroCoord; extra: number } | null => {
-    if (end.kind === 'target') return { at: end.cell, extra: 0 };
-    const inside = insideOf(field, end.cell);
-    return inside ? { at: inside, extra: 1 } : null;
-  };
-  const from = step(a);
-  const to = step(b);
-  if (!from || !to) return null;
-  const reach = sweep(field, from.at)[slot(field, to.at)]!;
-  return reach < 0 ? null : reach + from.extra + to.extra;
-}
-
-/**
- * The ONE route between two ends, cell by cell, or null where there is none.
+ * The one route between two ends, cell by cell, or null where there is none.
  *
  * A recursive backtracker carves a spanning tree, so between any two corridors there is exactly one
- * path and it does not have to be searched for: sweep from one end and walk DOWN the distance
+ * path and it does not have to be searched for: sweep from one end and walk down the distance
  * field from the other. Every step has exactly one neighbour one closer, which is the tree saying
  * so.
  *
  * A hole is not walkable until it is cut, so an end that is one contributes the corridor it opens
- * onto plus itself — the same accounting `walkLength` does, and the two agree by construction
- * because they read the same sweep.
+ * onto plus itself, so the route's length is the walk's cell count, both ends included.
  */
 export function routeBetween(field: MazeField, a: MazeEnd, b: MazeEnd): MacroCoord[] | null {
   const step = (end: MazeEnd): MacroCoord | null => (
@@ -211,12 +178,12 @@ function nearestWalkable(field: MazeField, to: MacroCoord, within?: (cell: Macro
 }
 
 /**
- * The maze's MAINLAND: the largest connected patch of walkable cells, as a membership test.
+ * The maze's mainland: the largest connected patch of walkable cells, as a membership test.
  *
  * A maze's rectangle is the bounding box of the free grass, and on a real map that box also
  * covers sea, sand and the square — so the walkable cells are not one graph but several, and two
  * ends snapped blindly to their nearest cells could land in pockets no corridor joins. Snapping
- * BOTH ends into the mainland is what makes the walk between them exist by construction: the carve
+ * Both ends into the mainland is what makes the walk between them exist by construction: the carve
  * is a spanning tree, so within one component every pair of cells is joined.
  */
 export function mainland(field: MazeField): (cell: MacroCoord) => boolean {
@@ -249,7 +216,7 @@ export function mainland(field: MazeField): (cell: MacroCoord) => boolean {
 }
 
 /**
- * What a coordinate BECOMES when it is dropped: the kind is the drop's, and the cell is snapped to
+ * What a coordinate becomes when it is dropped: the kind is the drop's, and the cell is snapped to
  * something the kind can actually be.
  *
  * A ring drop snaps to the nearest place a hole can be cut, since not every ring cell has a corridor
@@ -273,18 +240,11 @@ export function resolveEnd(field: MazeField, dropped: MacroCoord, within?: (cell
 }
 
 /**
- * Where the two ends start: in from the edge, out at the destination.
- *
- * THE PLAZA IS THE DEFAULT DESTINATION, and it makes a better maze than edge to edge because the
- * destination means something — you arrive on the shore and find your way to the square. The caller
- * says which walkable cells count as one (for the plaza: a corridor touching its edge, since the
- * square itself is unbuildable and the maze routes around it), and the entrance is then the way in
- * whose walk to it is longest.
- *
- * With no destination it falls back to edge to edge at the LONGEST walk the maze holds. It is the
- * TRUE longest rather than the two-sweep approximation: a sweep from every way in is a few hundred
- * flat-array passes over a maze's own rectangle, which is milliseconds, and the approximation lands a
- * cell short of the best pair on an ordinary map.
+ * Where the two ends start: in from the edge, out at the destination. The plaza is the default
+ * destination; the caller says which walkable cells count as it (for the plaza, a corridor touching
+ * its edge, since the square is unbuildable), and the entrance is the way in with the longest walk to
+ * it. With no destination it falls back to the true longest edge-to-edge walk: a sweep from every
+ * way in costs milliseconds, and the two-sweep approximation lands a cell short.
  */
 export function defaultEnds(field: MazeField, isDestination?: (cell: MacroCoord) => boolean): {
   entrance: MazeEnd | null;
@@ -309,7 +269,7 @@ export function defaultEnds(field: MazeField, isDestination?: (cell: MacroCoord)
   };
 
   if (targets.length > 0) {
-    // The way in is the one whose walk to the NEAREST destination is longest, and the destination is
+    // The way in is the one whose walk to the nearest destination is longest, and the destination is
     // then whichever one that walk ends at: the farthest door onto the closest square.
     let entrance = sites[0]!;
     let bestD = -1;

@@ -7,27 +7,31 @@ import {
   useCallback, useEffect, useRef, useState, useSyncExternalStore,
   type CSSProperties, type RefObject,
 } from 'react';
-import { animate, AnimatePresence, motion, useReducedMotionConfig } from 'framer-motion';
-import { panelView, useAgentSession } from '../../../agent/session/store';
+import { animate, AnimatePresence, useReducedMotionConfig } from 'framer-motion';
+// Eager: the folded character loads with the frame, so it reads the session store directly.
+import { panelView, useAgentSession } from '../../../agent/boot';
 import { useT } from '../../../i18n/context';
 import { useChromeScale } from '../../design/scale';
 import { useDockStage } from '../../shell/use-dock';
-import { cursors, font, z, radii } from '../../design/styles';
+import { font, z, radii } from '../../design/styles';
 import { INK } from '../../design/tokens';
 import { roleFont } from '../../design/text-weight';
-import { heroChipFace, useSecondClock } from '../dock-face';
+import { heroChipFace } from '../derive/clock';
+import { useSecondClock } from '../hooks/use-clock';
 import {
   amplitude, easingCss, framerMotion, landEasingCss, outEasingCss, outSeconds, overshootAt, seconds,
 } from '../../design/motion';
-import { edge, statePaper } from '../tokens';
+import { edge, statePaper } from '../panel-skin';
 import { Character, getCharacterHandle } from './Character';
 import { poseForPhase } from './poses';
-import { useSurfacePose } from './surface-pose';
+import { useCharacterIntent } from './intent';
 import { useCelebrateEdge } from './use-celebrate-edge';
 import {
   carriedAlong, carryStep, deskSeat, parkCharacter, popCharacter, restingSeat, seatBox, setCarry,
   showCharacter, watchDeskSeat,
 } from './seat';
+import { useObservedSize } from '../../primitives/use-observed-size';
+import { ActionButton } from '../../primitives/ActionButton';
 
 /** Zero-size fixed layer; only the character and hero chip opt into pointer events. */
 const LAYER_STYLE: CSSProperties = {
@@ -80,7 +84,7 @@ export function CharacterHost({
   const view = useAgentSession(panelView);
   const celebrate = useCelebrateEdge(view);
   // Celebration overrides surface pose, which overrides the session phase.
-  const surface = useSurfacePose();
+  const surface = useCharacterIntent().pose;
   const pose = celebrate ?? surface ?? poseForPhase(view.phase, { connected });
   const [parked, setParked] = useState<Parked | null>(null);
 
@@ -105,8 +109,7 @@ export function CharacterHost({
     const drawn = getCharacterHandle()?.el?.getBoundingClientRect();
     const height = drawn && drawn.height > 0 ? drawn.height : at?.width;
     if (at && height !== undefined) setParked({ ...at, height });
-    // Dock changes can move a reused seat element without retriggering its ref callback.
-  }, [entranceRef, seated, place]);
+  }, [entranceRef, seated]);
 
   const parkNow = useRef(park);
   parkNow.current = park;
@@ -118,20 +121,18 @@ export function CharacterHost({
     const frame = requestAnimationFrame(() => parkNow.current());
     return () => cancelAnimationFrame(frame);
   }, []);
-  useEffect(() => parkSettled(), [parkSettled, park, chromeScale]);
+  // A dock change can move a reused seat element without calling its ref, so the stage re-parks too.
+  useEffect(() => parkSettled(), [parkSettled, park, chromeScale, place]);
   // CSS zoom changes the containing plane's layout size, while each seat keeps its local size.
-  useEffect(() => {
-    if (typeof ResizeObserver === 'undefined') return;
+  useObservedSize(() => {
     const planes = new Set<HTMLElement>();
     for (const seat of [entranceRef.current, seated]) {
       let plane = seat?.parentElement;
       while (plane && !plane.style.getPropertyValue('--shell-zoom')) plane = plane.parentElement;
       if (plane) planes.add(plane);
     }
-    const observer = new ResizeObserver(() => parkNow.current());
-    for (const plane of planes) observer.observe(plane);
-    return () => observer.disconnect();
-  }, [entranceRef, seated]);
+    return [...planes];
+  }, () => parkNow.current(), [entranceRef, seated], { layout: false, immediate: false });
   // A stable listener also catches height-only resizes that do not change chrome scale.
   useEffect(() => {
     let settle = () => {};
@@ -180,8 +181,7 @@ export function CharacterHost({
       from: 1 - (amplitude('panel.character.pop') ?? 0),
       past: overshootAt('panel.character.pop'),
     });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [place, reduced]);
+  }, [place, reduced, away]);
 
   // Follow the moving sheet and dock parallax by remeasuring its stable seat element each frame.
   useEffect(() => {
@@ -215,9 +215,9 @@ export function CharacterHost({
       />
       <AnimatePresence>
         {chip && parked && (
-          <motion.button
+          <ActionButton
             key="hero-chip"
-            type="button"
+            interaction="pill"
             data-testid="hero-chip"
             onClick={() => onOpen?.()}
             initial={{ opacity: 0, scale: CHIP_FROM }}
@@ -231,7 +231,6 @@ export function CharacterHost({
               transformOrigin: '0 60%',
               // The chip opts into input while the zero-size layer remains pointer-transparent.
               pointerEvents: 'auto',
-              cursor: cursors.clickable,
               whiteSpace: 'nowrap',
               background: statePaper.work,
               color: INK,
@@ -243,8 +242,8 @@ export function CharacterHost({
               fontVariantNumeric: 'tabular-nums',
             }}
           >
-            {`${t(chip.wordKey)} ${chip.clock}`}
-          </motion.button>
+            {t('agent.hero_chip', { phase: t(chip.wordKey), clock: chip.clock })}
+          </ActionButton>
         )}
       </AnimatePresence>
     </div>

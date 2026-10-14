@@ -1,28 +1,29 @@
 /*
  * The menu a right-click on the map opens.
  *
- * The store holds WHICH block was clicked and where; the rows it offers for that block and the card
+ * The store holds which block was clicked and where; the rows it offers for that block and the card
  * they stand on are `objectMenuRows`/`terrainMenuRows` + `ContextMenuFace` below, so the Help
  * Center's figure of this menu is this menu rather than a drawing of it.
  */
-import { helpTargetAttr } from '../modals/help/targets';
+import { helpTargetAttr } from '../../session/help-targets';
 import { Fragment, useEffect, type CSSProperties, type ReactElement } from 'react';
 import { useChromeScale, useTouchPrimary, useWeightVars } from '../../design/scale';
 import { motion, AnimatePresence, useIsPresent } from 'framer-motion';
 import { useEditorStore } from '../../../state/store';
 import { getCatalogItem } from '../../../state/catalog';
 import { getCell } from '../../../core/model/grid-model';
-import { peelTerrain } from '../../../tools/objects';
-import { rotateObjectAction, rotateSessionPlazaAction, deleteSelection } from '../../../kit/group-edit';
-import { turnsInSession } from '../../../kit/operations/planet-session';
+import { deleteObjectConfirmed, peelTerrainAt, rotateObjectTo } from '../../../editor/editing/group-edit';
+import { turnsInSession } from '../../../editor/operations/planet-session';
 import { useT } from '../../../i18n/context';
 import { useFloatingPosition } from '../../primitives/use-floating-position';
 import { useSurfaceScope } from '../../primitives/surface-scope';
-import { colors, radii, font, springs, exitTransition, z } from '../../design/styles';
-import { INSET, LINE, PANEL_EDGE, PLATE, PLATE_INK } from '../../design/tokens';
+import { radii, font, z } from '../../design/styles';
+import { INSET, LINE, PANEL_EDGE, PLATE, PLATE_INK, DANGER_INK } from '../../design/tokens';
 import { floatMenuItemStyle } from '../../primitives/FloatMenu';
 import type { Rotation } from '../../../core/model/types';
 import { ROTATIONS } from '../../../core/model/types';
+import { framerMotion } from '../../design/motion';
+import type { Translate } from '../../../i18n/keys';
 
 // The map's menu wears the floating-menu card: the cream plate with the hairline every panel over
 // the map wears, rows that tint one step down the cream ramp on hover, and the chosen row in the
@@ -53,11 +54,11 @@ const dividerStyle: CSSProperties = {
 const anim = {
   initial: { scale: 0.94, opacity: 0 },
   animate: { scale: 1, opacity: 1 },
-  exit: { scale: 0.94, opacity: 0, transition: exitTransition },
-  transition: springs.stiff,
+  exit: { scale: 0.94, opacity: 0, transition: framerMotion('surface.leave') },
+  transition: framerMotion('surface.arrive'),
 };
 
-type Resolver = (key: string) => string;
+type Resolver = Translate;
 
 /** One row of the menu: the words on it, and how it stands. */
 interface ContextMenuRow {
@@ -69,11 +70,11 @@ interface ContextMenuRow {
   current?: boolean;
   /** Nothing left to act on, so the row takes no press (a cell already down to bare ground). */
   inactive?: boolean;
-  /** Draws a divider ABOVE this row. */
+  /** Draws a divider above this row. */
   separated?: boolean;
 }
 
-/** What the menu offers on an OBJECT: the four facings, where the piece turns at all, then removal. */
+/** What the menu offers on an object: the four facings, where the piece turns at all, then removal. */
 export function objectMenuRows(t: Resolver, rotation: number, rotatable: boolean): ContextMenuRow[] {
   const rows: ContextMenuRow[] = [];
   if (rotatable) {
@@ -85,7 +86,7 @@ export function objectMenuRows(t: Resolver, rotation: number, rotatable: boolean
   return rows;
 }
 
-/** What it offers on a TERRAIN cell: removal alone, which peels one layer. */
+/** What it offers on a terrain cell: removal alone, which peels one layer. */
 export function terrainMenuRows(t: Resolver, isGround: boolean): ContextMenuRow[] {
   return [{ id: 'delete', label: t('context.delete'), danger: true, inactive: isGround }];
 }
@@ -111,10 +112,10 @@ export function ContextMenuFace({ rows, onPick, style, anchor, zoom = 1, onDismi
           <motion.button type="button" role="menuitem" disabled={row.inactive}
             aria-current={row.current || undefined}
             whileHover={row.inactive || row.current ? undefined : { backgroundColor: INSET }}
-            transition={springs.stiff}
+            transition={framerMotion('surface.arrive')}
             style={{
               ...floatMenuItemStyle(!!row.current, row.inactive),
-              ...(row.danger ? { color: colors.dangerText } : {}),
+              ...(row.danger ? { color: DANGER_INK } : {}),
               ...(row.inactive ? { pointerEvents: 'none' } : {}),
             }}
             onClick={() => onPick(row.id)}
@@ -137,6 +138,7 @@ export function ContextMenu() {
   const menu = useEditorStore((s) => s.contextMenu);
   const gridState = useEditorStore((s) => s.gridState);
   const executor = useEditorStore((s) => s.commandExecutor);
+  const inSession = useEditorStore((s) => s.planetSession !== null);
 
   // Any pan/zoom moves the map out from under the menu's fixed screen position;
   // a transient menu dismisses on viewport movement.
@@ -153,7 +155,7 @@ export function ContextMenu() {
   // Build the menu content (or null) so AnimatePresence can play a close-exit.
   let content: ReactElement | null = null;
   if (menu && gridState && executor) {
-    // menu.x/y are VISUAL px (pointer event); the css coords live under the zoom, so divide it out.
+    // menu.x/y are visual px (pointer event); the css coords live under the zoom, so divide it out.
     const anchor = { x: menu.x, y: menu.y };
     if (menu.target.kind === 'terrain') {
       const { x, y } = menu.target;
@@ -161,8 +163,7 @@ export function ContextMenu() {
       const isGround = !cell?.terrain;
       const handleTerrainDelete = () => {
         if (isGround) return;
-        peelTerrain(executor, x, y, cell);
-        useEditorStore.getState().clearSelection();
+        peelTerrainAt(x, y);
         close();
       };
       content = (
@@ -178,32 +179,14 @@ export function ContextMenu() {
       const obj = gridState.objects.get(menu.target.id);
       if (obj) {
         const item = getCatalogItem(obj.catalogId);
-        const sessionPlaza = turnsInSession(obj);
-        const handleRotate = (angle: Rotation) => {
-          if (obj.rotation === angle) { close(); return; }
-          if (sessionPlaza) {
-            const turns = ((((angle - obj.rotation) / 90) % 4) + 4) % 4 as 1 | 2 | 3;
-            if (rotateSessionPlazaAction(useEditorStore.getState().eventBus, turns).success) close();
-            return;
-          }
-          // Validate the rotated footprint BEFORE touching the object. If the new
-          // angle would overlap/leave the map, surface the error and leave the
-          // object unchanged (never remove it on a doomed rotation).
-          const result = rotateObjectAction(executor, gridState, useEditorStore.getState().eventBus, obj, angle, { from: obj.rotation, to: angle });
-          if (result.ok) close();
-        };
-        const handleDelete = () => {
-          // Routed through deleteSelection (with a single member) rather than removeObject
-          // directly, so a locked object reports the SAME refusal a group of only-locked
-          // members gets.
-          deleteSelection(executor, gridState, useEditorStore.getState().eventBus, t, [obj.id]);
-          useEditorStore.getState().clearSelection();
-          close();
-        };
+        const sessionLandmark = turnsInSession(obj, inSession);
+        // A refused angle leaves the menu open on the object as it was.
+        const handleRotate = (angle: Rotation) => { if (rotateObjectTo(obj, angle)) close(); };
+        const handleDelete = () => { deleteObjectConfirmed(t, obj.id); close(); };
         content = (
           <ContextMenuFace
             key="menu"
-            rows={objectMenuRows(t, obj.rotation, sessionPlaza || !!item?.rotatable)}
+            rows={objectMenuRows(t, obj.rotation, sessionLandmark || !!item?.rotatable)}
             onPick={(id) => {
               if (id === 'delete') { handleDelete(); return; }
               handleRotate(Number(id.slice('rotate_'.length)) as Rotation);

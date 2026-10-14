@@ -94,7 +94,7 @@ img {
 }
 
 /* ── Site Log (agent v2) shared keyframes ─────────────────────────────
-   Used by ui/agent/atoms.tsx. The components supply the scale-dependent
+   Used by ui/agent/parts/panel-parts.tsx. The components supply the scale-dependent
    geometry (background image / size / travel distance) via --pw-* custom
    properties, so the keyframes stay scale-agnostic. */
 
@@ -144,24 +144,6 @@ img {
   96%, 100% { opacity: 0; }
 }
 
-/* Blueprint done watermark: the big soft check draws itself once. */
-.pw-drawcheck path {
-  stroke-dasharray: 26;
-  stroke-dashoffset: 26;
-  animation: pw-drawcheck 0.75s cubic-bezier(0.22, 1, 0.36, 1) 0.2s forwards;
-}
-@keyframes pw-drawcheck {
-  to { stroke-dashoffset: 0; }
-}
-
-/* Welcome-card color pools (WelcomeCard ::before equivalent): the soft sun /
-   meadow radials drift ±5% / ±2.5° over 9s, easing back and forth. */
-.pw-blankdrift { animation: pw-blankdrift 9s ease-in-out infinite alternate; }
-@keyframes pw-blankdrift {
-  from { transform: translate(-5%, -4%) rotate(-2.5deg); }
-  to { transform: translate(5%, 5%) rotate(2.5deg); }
-}
-
 /* The custom recipe card's drawn caret (the hidden input's own native caret is invisible along
    with the rest of it): a plain square blink, on/off with no fade, the way a text caret reads. */
 .pw-caret-blink { animation: pw-caret-blink 1s steps(1) infinite; }
@@ -204,17 +186,15 @@ img {
    App), the canvas rAF loops (the `motion-state` singleton), and CSS (here).
    A media query only sees the OS, so on its own it cannot express Settings →
    Motion: neither "Reduced" while the OS says no-preference, nor "Full" while
-   the OS says reduce. `ui/hooks/useMotionEnabled` therefore mirrors the EFFECTIVE
+   the OS says reduce. `ui/session/use-motion-enabled` therefore mirrors the EFFECTIVE
    preference onto <html data-reduced-motion="1|0">, and that attribute is what
    the rules below key off; the media query serves as the pre-hydration default
    and is scoped so an explicit "Full" opts out of it. */
 @media (prefers-reduced-motion: reduce) {
   :root:not([data-reduced-motion='0']) .pw-wavy,
   :root:not([data-reduced-motion='0']) .pw-stripes,
-  :root:not([data-reduced-motion='0']) .pw-blankdrift,
   :root:not([data-reduced-motion='0']) .pw-stripe-drift,
   :root:not([data-reduced-motion='0']) .pw-caret-blink { animation: none; }
-  :root:not([data-reduced-motion='0']) .pw-drawcheck path { animation: none; stroke-dashoffset: 0; }
   /* The three marks stand LIT rather than at the first keyframe's nothing: the plume is what says
      she is asleep, and a still frame of it has to say that too. */
   :root:not([data-reduced-motion='0']) .pw-zzz-mark { animation: none; opacity: 1; }
@@ -223,9 +203,7 @@ img {
 [data-reduced-motion='1'] .pw-wavy,
 [data-reduced-motion='1'] .pw-stripes,
 [data-reduced-motion='1'] .pw-stripe-drift,
-[data-reduced-motion='1'] .pw-blankdrift,
 [data-reduced-motion='1'] .pw-caret-blink { animation: none; }
-[data-reduced-motion='1'] .pw-drawcheck path { animation: none; stroke-dashoffset: 0; }
 [data-reduced-motion='1'] .pw-zzz-mark { animation: none !important; opacity: 1; }
 
 /* Catch-all. Components own a lot of plain CSS transitions inline (hover tints,
@@ -297,15 +275,6 @@ img {
   box-shadow: none;
 }
 
-/* Hit-transparent group wrapper whose DIRECT children stay interactive: lets a
-   whole absolutely-positioned control group fade/slide as one motion element
-   without swallowing clicks meant for its controls. */
-.pw-hitpass {
-  pointer-events: none;
-}
-.pw-hitpass > * {
-  pointer-events: auto;
-}
 /* A TEXT FIELD ALREADY SHOWS WHERE THE KEYBOARD IS: it puts a caret in itself,
    which no ring improves on and which nothing else on a page can be mistaken
    for. `--focus-ring-field` is what a field wears instead; unset, it keeps the
@@ -314,9 +283,3 @@ img {
   outline: var(--focus-width) solid var(--focus-ring-field, var(--focus-ring, #fb923c));
   outline-offset: var(--focus-offset);
 }
-
-/* The layer list hides its scrollbar so the selection pill — intentionally wider than the smoky
-   card, with its rounded ends peeking out of the box — is never clipped by the scrollbar. The
-   partially-visible bottom row cues that the list scrolls (wheel / drag). */
-.layer-rows-scroll { scrollbar-width: none; }
-.layer-rows-scroll::-webkit-scrollbar { width: 0; height: 0; display: none; }

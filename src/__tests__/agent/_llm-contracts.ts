@@ -49,7 +49,7 @@ function isCjk(text: string): boolean {
   return CJK.test(text);
 }
 
-/** How many characters of ROOM a string spends: a CJK glyph is a full em, so it costs about the two
+/** How many characters of room a string spends: a CJK glyph is a full em, so it costs about the two
  *  a Latin character does at the same box. Used only where the box truncates. */
 function roomFor(text: string, latin: number, cjk: number): number {
   return isCjk(text) ? cjk : latin;
@@ -139,7 +139,7 @@ function checkSays(ev: Assistant, out: ContractFinding[]): void {
     if (part.kind !== 'text') continue;
     const text = part.text.trim();
     if (text === '') continue;
-    // THE POINT, not the length: the line is two-line clamped and expands on a tap, so a long say is
+    // The point, not the length: the line is two-line clamped and expands on a tap, so a long say is
     // fine and a say whose first sentence only lands on line three is not.
     const end = firstSentenceEnd(text);
     const point = end === -1 ? text.length : end + 1;

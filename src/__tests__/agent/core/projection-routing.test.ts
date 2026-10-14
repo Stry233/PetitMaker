@@ -1,27 +1,13 @@
 /**
- * EVERY BYTE THE BACKEND LOGS HAS A DECLARED DESTINATION.
+ * Every byte the backend logs has a declared destination. `deriveView`'s `never` default forces a
+ * fold decision per kind; these tables force one per field, per systemNote tag and per
+ * `ToolResultDetail` member. They are typed exhaustively over `agent/core/types.ts`, so a new or
+ * removed kind, field or tag fails `npm run lint`; the runtime half rejects malformed routes.
  *
- * The session log is the state and everything else is a projection of it, so a new event kind — or
- * a new field on an existing one — that nobody routed is a silent hole: the loop records a fact and
- * no surface ever shows it, or a surface is owed a fact the log never carries. `deriveView`'s own
- * `never` default already forces a fold decision per KIND; this table forces a decision per FIELD,
- * per systemNote tag and per `ToolResultDetail` member, and says what that decision IS.
- *
- * HOW IT FORCES. The tables are typed exhaustively over the unions in `agent/core/types.ts`
- * (mapped types over `SessionEvent['kind']` and each kind's own payload keys), so adding a kind, a
- * field or a tag without a row here fails `npm run lint` — and removing one leaves an excess row,
- * which fails the same way. The runtime half walks the tables so a malformed route cannot ride in
- * on a type assertion.
- *
- * THE FOUR DESTINATIONS, and what each claims:
- *
- *   ui:     a panel surface renders it — the route names the component or testid.
+ *   ui:     a panel surface renders it; the route names the component or testid.
  *   model:  `project-messages.ts` (or an adapter) sends it back to the provider.
- *   fold:   `project-view.ts` reads it to drive a projected fact (phase, status, a stamp) without
- *           displaying the field itself.
- *   record: kept in the log deliberately UNDISPLAYED — evidence for the run dump, the raw-log
- *           export, or a named future reader. A `record:` route is a decision, not a leftover: its
- *           string says who the record is for.
+ *   fold:   `project-view.ts` reads it to drive a projected fact without displaying the field.
+ *   record: kept undisplayed on purpose; the string names who the record is for.
  *
  * A field may route several ways; it must route at least one.
  */
@@ -90,6 +76,11 @@ const ROUTING: { [K in Kind]: FieldTable<K> } = {
     answer: ['ui:the verdict chip', 'fold:skipped/words op status, allowAll'],
     words: ['ui:the verdict chip\'s quoted word', 'model:echoed back as "(about your request) …"'],
   },
+  noteRefused: {
+    steerSeq: ['fold:drops the refused note from queue and ticket', 'model:the note is never delivered'],
+    gateId: ['fold:files the typed answer as a skip on its ask and op', 'model:the call reads as skipped, the words are not echoed'],
+    reply: ['ui:JobTicket refusal stamp'],
+  },
   plan: {
     stages: ['ui:PlanRail / PlanGate stage rows'],
     revision: ['ui:the "plan revised" stamp above the rail'],
@@ -150,10 +141,11 @@ const NOTE_TAG_ROUTING: Record<NoteTag, Routes> = {
 
 /** Every `ToolResultDetail` member — the view-only extras a result carries. */
 const DETAIL_ROUTING: { [F in keyof ToolResultDetail]-?: Routes } = {
-  partialRevert: ['ui:the op row and helper rollup distinguish retained edits from a full rollback'],
+  partialRevert: ['ui:the op row and helper rollup distinguish retained edits from a full rollback', 'fold:retainedWrite keeps a partly kept write as landed'],
+  banner: ['fold:the op summary skips the content\'s first line'],
   cells: ['fold:vitals.cells', 'record:the run dump\'s totals; no panel meter today'],
   objects: ['fold:vitals.objects', 'record:the run dump\'s totals; no panel meter today'],
-  reverted: ['ui:the op row\'s revert status and chip', 'fold:vitals.reverts, writeApplied withheld'],
+  reverted: ['ui:the op row\'s revert status and chip', 'fold:vitals.reverts, retainedWrite withholds a full rollback'],
   regionBlocked: ['ui:the op row\'s blocked status and region chip'],
   skill: ['ui:the op row\'s skill chip, the playbook stamp, the dock\'s skill name'],
   damper: ['ui:the job\'s damper stamp'],

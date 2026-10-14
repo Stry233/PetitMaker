@@ -4,7 +4,7 @@
   "icon": "path-simple-brick",
   "name": {
     "en": "Simple Brick Path",
-    "zh": "简约砖路",
+    "zh": "朴素砖路",
     "ja": "シンプルレンガの道",
     "ru": "Простая кирпичная дорожка",
     "th": "ทางอิฐเรียบง่าย",
@@ -24,5 +24,27 @@
     {
       "type": "surfaceCoating"
     }
-  ]
+  ],
+  "roadMaterial": {
+    "feather": 0.035,
+    "edge": {
+      "color": "#d9ae85"
+    },
+    "edgeJoints": {
+      "spacing": 0.5,
+      "width": 0.012,
+      "color": "#967654"
+    },
+    "layers": [
+      {
+        "inset": 0.16,
+        "color": "#ffffff",
+        "pattern": {
+          "kind": "image",
+          "image": "path-simple-brick",
+          "repeat": 3
+        }
+      }
+    ]
+  }
 }

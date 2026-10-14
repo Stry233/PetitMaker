@@ -12,22 +12,24 @@ import { describe, it } from 'vitest';
 import { PERF, perfSuite } from './_harness';
 import { cloneWorld, denseIsland, templateWorld } from './_fixtures';
 import type { World } from './_fixtures';
-import { CommandType, ItemCategory, TerrainType } from '../../core/model/types';
+import { CommandType, TerrainType } from '../../core/model/types';
 import type { Command, MacroCoord, PlacedObject, TerrainCell } from '../../core/model/types';
 import { getCell } from '../../core/model/grid-model';
-import { realSurface, surfaceElevation, solidTopOf } from '../../core/edge-cut/terrain-silhouette';
-import { reconcileCuts } from '../../core/edge-cut/cut-reconcile';
-import { buildRoadRegions, updateRoadRegions } from '../../core/edge-cut/road-region';
-import { roadBodyPoints } from '../../core/edge-cut/road-shape';
-import { cutBackingByCorner } from '../../core/edge-cut/cut-backing';
-import { applyAutoEdgeCut, edgeCutGeneratedTerrain } from '../../tools/edge-cut/auto-edge-cut';
+import { realSurface, surfaceElevation, solidTopOf } from '../../core/domain/terrain/terrain-surface';
+import { reconcileCuts } from '../../core/domain/edge-cut/cut-reconcile';
+import { buildRoadRegions, updateRoadRegions } from '../../view/shared/road/region';
+import { roadBodyPoints } from '../../view/shared/road/shape';
+import { cutBackingByCorner } from '../../view/shared/terrain/cut-backing';
+import { applyAutoEdgeCut, edgeCutGeneratedTerrain } from '../../tools/trim/auto-edge-cut';
 import { roadLookup } from '../../state/object-index';
+import { reconcileArgs } from '../_support/map-state';
 import { getCatalogItem } from '../../state/catalog';
+import { ItemCategory } from '../../config/catalog/categories';
 
 const s = perfSuite('edge-cut');
 
 /** The road tiles standing on a world — the same category filter `object-layer.ts` /
- *  `terrain-geometry.ts` apply before handing a tile list to the road-region builder. */
+ *  `road-mesh.ts` apply before handing a tile list to the road-region builder. */
 function roadObjectsOf(world: World): PlacedObject[] {
   const out: PlacedObject[] = [];
   for (const obj of world.state.objects.values()) {
@@ -55,7 +57,7 @@ function cutIsland(): World {
     }
   }
   edgeCutGeneratedTerrain(
-    { gridState: world.state, executeCommand: (cmd) => world.executor.execute(cmd) },
+    { state: world.state, execute: (cmd) => world.executor.execute(cmd) },
     terrainCells, 'round',
   );
   cutIslandCache = world;
@@ -107,7 +109,7 @@ describe.runIf(PERF)('perf: edge-cut', () => {
     const region: MacroCoord[] = [];
     for (let y = 50; y < 60; y++) for (let x = 20; x < 40; x++) region.push({ x, y });
     await s.bench('kernel/reconcile-cuts', () => {
-      reconcileCuts(region, island.state, { execute: (cmd) => island.executor.execute(cmd), roadAt: roadLookup(island.state) });
+      reconcileCuts(region, ...reconcileArgs(island.executor, island.state));
     }, { meta: { cells: region.length } });
   });
 
@@ -116,16 +118,15 @@ describe.runIf(PERF)('perf: edge-cut', () => {
     for (let y = 20; y < 35; y++) for (let x = 20; x < 35; x++) PLATEAU.push({ x, y });
     let world: World = templateWorld();
     const paintPlateau = (w: World): void => {
-      const start = w.executor.getUndoStackSize();
+      const start = w.executor.beginStroke();
       w.executor.execute({
-        type: CommandType.PaintTerrain, timestamp: Date.now(),
-        cells: PLATEAU, terrainType: TerrainType.Mountain, elevation: 1,
+        type: CommandType.PaintTerrain,         cells: PLATEAU, terrainType: TerrainType.Mountain, elevation: 1,
       } as Command);
-      w.executor.commitStroke(start);
+      start.commit();
     };
     await s.bench('auto-trim/large-stroke', () => {
       applyAutoEdgeCut(
-        { gridState: world.state, roads: roadLookup(world.state), executeCommand: (cmd) => world.executor.execute(cmd) },
+        { state: world.state, roads: roadLookup(world.state), execute: (cmd) => world.executor.execute(cmd) },
         'round', PLATEAU, [],
       );
     }, {
@@ -160,7 +161,7 @@ describe.runIf(PERF)('perf: edge-cut', () => {
     const roadObjs = roadObjectsOf(world);
     const roads = roadLookup(world.state);
     await s.bench('road-shape/per-tile', () => {
-      for (const obj of roadObjs) roadBodyPoints(roads, obj, obj.position.x, obj.position.y, 1, 1, 0);
+      for (const obj of roadObjs) roadBodyPoints(roads, obj, { x: obj.position.x, y: obj.position.y, w: 1, h: 1 }, 0);
     }, { meta: { roadTiles: roadObjs.length } });
   });
 

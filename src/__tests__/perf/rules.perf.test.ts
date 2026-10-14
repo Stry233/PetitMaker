@@ -1,7 +1,7 @@
 /*
  * The two-phase validation system's operation costs.
  *
- * Post-stroke rules validate the WHOLE state after a stroke commits, so
+ * Post-stroke rules validate the whole state after a stroke commits, so
  * they are the expensive half by construction; pre-command rules gate one command at a time, but a
  * generation run or an agent tool call issues thousands of them, and the spatial-index-backed ones
  * (placement traits, overlap, terrain-blocks) are the paths that scale with the map's own object
@@ -15,11 +15,9 @@ import { denseIsland } from './_fixtures';
 import { generateObjectId } from '../../core/model/object-id';
 import { getCell } from '../../core/model/grid-model';
 import { getPlaceableByCategory } from '../../state/catalog';
-import {
-  CommandType, ItemCategory, TerrainType,
-  type MacroCoord, type PaintTerrainCommand, type PlaceObjectCommand,
-} from '../../core/model/types';
+import { CommandType, TerrainType, type MacroCoord, type PaintTerrainCommand, type PlaceObjectCommand } from '../../core/model/types';
 import type { World } from './_fixtures';
+import { ItemCategory } from '../../config/catalog/categories';
 
 const s = perfSuite('rules');
 
@@ -34,8 +32,7 @@ function findLegalPaintCell(world: World): MacroCoord {
   for (let y = 1; y < height - 1; y++) {
     for (let x = 1; x < width - 1; x++) {
       const cmd: PaintTerrainCommand = {
-        type: CommandType.PaintTerrain, timestamp: 0,
-        cells: [{ x, y }], terrainType: TerrainType.None, elevation: 0,
+        type: CommandType.PaintTerrain,         cells: [{ x, y }], terrainType: TerrainType.None, elevation: 0,
       };
       if (executor.validatePre(cmd).length === 0) return { x, y };
     }
@@ -62,8 +59,7 @@ function sampleWaterCells(world: World, limit: number): MacroCoord[] {
 
 function placeCmd(catalogId: string, position: MacroCoord): PlaceObjectCommand {
   return {
-    type: CommandType.PlaceObject, timestamp: 0,
-    object: { id: generateObjectId(), catalogId, position, rotation: 0, elevation: 0 },
+    type: CommandType.PlaceObject,     object: { id: generateObjectId(), catalogId, position, rotation: 0, elevation: 0 },
   };
 }
 
@@ -79,8 +75,7 @@ describe.runIf(PERF)('perf: rules', () => {
     const world = denseIsland();
     const cell = findLegalPaintCell(world);
     const cmd: PaintTerrainCommand = {
-      type: CommandType.PaintTerrain, timestamp: 0,
-      cells: [cell], terrainType: TerrainType.None, elevation: 0,
+      type: CommandType.PaintTerrain,       cells: [cell], terrainType: TerrainType.None, elevation: 0,
     };
     await s.bench('pre-command/paint-probe-500', () => {
       for (let i = 0; i < 500; i++) world.executor.validatePre(cmd);

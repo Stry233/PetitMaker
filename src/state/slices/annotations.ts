@@ -1,13 +1,17 @@
 /** Annotation data and drafts share gesture history, independently of terrain edits. */
+import { laneRecord, laneStep, type HistoryLane } from '../history-lane';
 import type { StateCreator } from 'zustand';
-import {
-  ANNOTATION_COLORS, createAnnotationsState,
-  type AnnotationsState, type AnnotationTool, type AnnotationZoneShape, type MapAnnotation, type TagId, DEFAULT_TAG,
-} from '../../core/model/annotations';
+import { CUSTOM_TAG_MAX, annotationsOf, flipMeasures, generateCustomTagId, isEmptyNote, isMeasureSpan, keepCustomTags, mergeZones, withTag, withoutTagsOn, type AnnotationsState, type CustomTag, type CustomTagId, type MapAnnotation, type NoteTag, type ZoneTextSize } from '../../core/model/annotations';
+import { ANNOTATION_COLORS } from '../../config/annotation-palette';
+import { DEFAULT_TAG } from '../../config/annotation-tags';
+import { type AnnotationTool } from '../editing/vocabulary';
+import type { BuildShape } from '../editing/edit-mode';
 import type { EngineSlice } from './engine';
 import type { MacroCoord } from '../../core/model/types';
 
-const LANE_LIMIT = 60;
+/** The notes' lane as the store holds it: snapshots as JSON text, newest last. */
+const annotationLane = (s: Pick<AnnotationsSlice, 'annotationUndoLane' | 'annotationRedoLane'>): HistoryLane<string> =>
+  ({ undo: s.annotationUndoLane, redo: s.annotationRedoLane });
 
 export interface AnnotationsSlice {
   /** Bumped on every annotation data mutation; the freshness key views subscribe to. */
@@ -15,16 +19,22 @@ export interface AnnotationsSlice {
   annotationTool: AnnotationTool;
   /** Which figure the zone cells lay (the terrain bar's own vocabulary). A property of the zone
    *  tool rather than an arming, so putting the tool down keeps the figure. */
-  annotationZoneShape: AnnotationZoneShape;
+  annotationZoneShape: BuildShape;
   annotationColor: string;
   /** The tag a new zone or chip carries, and the tag a pick applies to the selection. */
-  annotationTag: TagId | null;
-  /** Caption and chip size. */
-  annotationSize: 's' | 'm' | 'l';
+  annotationTag: NoteTag | null;
+  /** Caption and chip size; 'none' draws a zone with no caption and leaves chips at their own. */
+  annotationSize: ZoneTextSize;
   annotationRouteDashed: boolean;
-  /** The selected notes' ids, in the order they were picked — a SET, like the map's own object
+  /** The width a new route takes, on the brush size slider's range; kept apart from the brush's
+   *  size so a wide brush never makes a wide route. */
+  annotationRouteWidth: number;
+  /** Whether a selected or drafted zone shows its width and height. Session state, as the region
+   *  selection's own Dimensions choice is. */
+  annotationDimensions: boolean;
+  /** The selected notes' ids, in the order they were picked — a set, like the map's own object
    *  selection: Ctrl-clicks toggle members, batch verbs (delete, merge) act on the whole. The
-   *  FIRST id is the primary: a merge keeps its identity. */
+   *  First id is the primary: a merge keeps its identity. */
   annotationSelection: string[];
   /** Both views draw the unfinished note; Done moves it into the saved items. */
   annotationDraft: MapAnnotation | null;
@@ -39,13 +49,21 @@ export interface AnnotationsSlice {
   annotationRedoLane: string[];
   setAnnotationTool: (t: AnnotationTool) => void;
   toggleAnnotationTool: (t: Exclude<AnnotationTool, 'none'>) => void;
-  setAnnotationZoneShape: (s: AnnotationZoneShape) => void;
+  setAnnotationZoneShape: (s: BuildShape) => void;
   /** Arm a color; a standing selection takes it too, as one lane entry. */
   setAnnotationColor: (c: string) => void;
   /** Arm a tag; a standing draft or selection takes it too. */
-  setAnnotationTag: (tag: TagId | null) => void;
-  setAnnotationSize: (s: 's' | 'm' | 'l') => void;
+  setAnnotationTag: (tag: NoteTag | null) => void;
+  /** Add `text` to the map's custom tags and arm it, applying it to the draft and selection, as one
+   *  lane entry. The caller passes text the text check approved. Null when the map holds the most
+   *  custom tags it can; a text the map already carries arms that tag. */
+  addCustomTag: (text: string) => CustomTagId | null;
+  /** Remove a custom tag as one lane entry: zones wearing it go untagged and chips wearing it go. */
+  removeCustomTag: (id: CustomTagId) => void;
+  setAnnotationSize: (s: ZoneTextSize) => void;
   setAnnotationRouteDashed: (d: boolean) => void;
+  setAnnotationRouteWidth: (width: number) => void;
+  setAnnotationDimensions: (visible: boolean) => void;
   setAnnotationSelection: (ids: string[]) => void;
   setAnnotationDraft: (a: MapAnnotation | null) => void;
   /** Turn the standing draft into a note, selected. False when nothing commits. */
@@ -57,9 +75,9 @@ export interface AnnotationsSlice {
   applyAnnotationEdit: (fn: (data: AnnotationsState) => void) => void;
   addAnnotation: (a: MapAnnotation) => void;
   removeAnnotation: (id: string) => void;
-  /** Remove several notes as ONE undo-lane entry. */
+  /** Remove several notes as one undo-lane entry. */
   removeAnnotations: (ids: string[]) => void;
-  /** Merge the given zones into the FIRST of them: its tag, number, colour and size absorb the
+  /** Merge the given zones into the first of them: its tag, number, colour and size absorb the
    *  others' cells (deduplicated), and the absorbed zones go — one lane entry. Ids that are not
    *  zones are ignored; under two zones, nothing happens. */
   mergeAnnotationZones: (ids: string[]) => void;
@@ -77,27 +95,29 @@ type Deps = Pick<EngineSlice, 'gridState'>;
 export const createAnnotationsSlice: StateCreator<AnnotationsSlice & Deps, [], [], AnnotationsSlice> = (set, get) => {
   const data = (): AnnotationsState | null => {
     const g = get().gridState;
-    if (!g) return null;
-    return (g.annotations ??= createAnnotationsState());
+    return g ? annotationsOf(g) : null;
   };
   const bump = () => set((s) => ({ annotationsEpoch: s.annotationsEpoch + 1 }));
 
-  /** Step through annotation history: restore the newest snapshot of `from` and push the standing
-   *  notes onto `to`. False when there is nothing to restore. */
-  function travel(from: 'annotationUndoLane' | 'annotationRedoLane', to: 'annotationUndoLane' | 'annotationRedoLane'): boolean {
+  /** Step through annotation history: restore the newest snapshot on that side and move the
+   *  standing notes to the other. False when there is nothing to restore. */
+  function travel(dir: 'undo' | 'redo'): boolean {
     const d = data();
-    const lane = get()[from];
-    if (!d || lane.length === 0) return false;
-    const restored = JSON.parse(lane[lane.length - 1]!) as AnnotationSnapshot;
+    const lane = annotationLane(get());
+    if (!d || lane[dir].length === 0) return false;
+    const step = laneStep(lane, snapshot(d, get().annotationDraft), dir)!;
+    const restored = JSON.parse(step.restored) as AnnotationSnapshot;
     set((s) => ({
-      [from]: s[from].slice(0, -1),
-      [to]: [...s[to], snapshot(d.items, get().annotationDraft)],
+      annotationUndoLane: [...step.lane.undo],
+      annotationRedoLane: [...step.lane.redo],
       annotationSelection: [],
       annotationDraft: restored.draft,
       ...(restored.draft ? { annotationTool: restored.draft.kind === 'zone' && s.annotationTool === 'erase' ? 'erase' as const : restored.draft.kind } : {}),
       annotationHistoryEpoch: s.annotationHistoryEpoch + 1,
     }));
     d.items = restored.items;
+    if (restored.customTags?.length) d.customTags = restored.customTags;
+    else delete d.customTags;
     bump();
     return true;
   }
@@ -110,6 +130,8 @@ export const createAnnotationsSlice: StateCreator<AnnotationsSlice & Deps, [], [
     annotationTag: DEFAULT_TAG,
     annotationSize: 'm',
     annotationRouteDashed: true,
+    annotationRouteWidth: 1,
+    annotationDimensions: true,
     annotationSelection: [],
     annotationDraft: null,
     annotationHistoryEpoch: 0,
@@ -145,14 +167,15 @@ export const createAnnotationsSlice: StateCreator<AnnotationsSlice & Deps, [], [
       action();
     },
     discardAnnotationDraft: () => {
-      const current = JSON.stringify(data()?.items ?? []);
+      const d = data();
+      const current = JSON.stringify(d ? kept(d) : kept({ items: [] }));
       const clean = (lane: string[]) => {
         const result: string[] = [];
         let last = current;
         for (const entry of [...lane].reverse()) {
-          const items = JSON.stringify((JSON.parse(entry) as AnnotationSnapshot).items);
-          if (items !== last) result.unshift(JSON.stringify({ items: JSON.parse(items), draft: null }));
-          last = items;
+          const notes = JSON.stringify(kept(JSON.parse(entry) as AnnotationSnapshot));
+          if (notes !== last) result.unshift(JSON.stringify({ ...JSON.parse(notes), draft: null }));
+          last = notes;
         }
         return result;
       };
@@ -165,43 +188,69 @@ export const createAnnotationsSlice: StateCreator<AnnotationsSlice & Deps, [], [
     },
     toggleAnnotationTool: (t) => get().setAnnotationTool(get().annotationTool === t ? 'none' : t),
     setAnnotationZoneShape: (shape) => set({ annotationZoneShape: shape }),
-    setAnnotationColor: (c) => {
-      set({ annotationColor: c });
-      patchStanding(get, set, (n) => ({ ...n, color: c } as MapAnnotation));
+    setAnnotationColor: (c) => set({ annotationColor: c, ...patchStanding(get(), (n) => ({ ...n, color: c } as MapAnnotation)) }),
+    setAnnotationTag: (tag) => set({ annotationTag: tag, ...patchStanding(get(), tagPatch(tag)) }),
+    addCustomTag: (text) => {
+      const d = data();
+      const trimmed = text.trim();
+      if (!d || !trimmed) return null;
+      const existing = d.customTags?.find((t) => t.text === trimmed);
+      if (existing) { get().setAnnotationTag(existing.id); return existing.id; }
+      if ((d.customTags?.length ?? 0) >= CUSTOM_TAG_MAX) return null;
+      const tag: CustomTag = { id: generateCustomTagId(), text: trimmed };
+      const lane = strokeFields(get(), d);
+      d.customTags = [...(d.customTags ?? []), tag];
+      const s = get();
+      set({ ...lane, annotationTag: tag.id, annotationsEpoch: s.annotationsEpoch + 1, ...patchStanding(s, tagPatch(tag.id), true) });
+      return tag.id;
     },
-    setAnnotationTag: (tag) => {
-      set({ annotationTag: tag });
-      patchStanding(get, set, (n) => (n.kind === 'zone' ? { ...n, tag } : n.kind === 'chip' && tag ? { ...n, tag } : n));
+    removeCustomTag: (id) => {
+      const d = data();
+      if (!d?.customTags?.some((t) => t.id === id)) return;
+      const gone = new Set<string>([id]);
+      const lane = strokeFields(get(), d);
+      const next = keepCustomTags(d, (t) => t.id !== id);
+      if (next.customTags) d.customTags = next.customTags;
+      else delete d.customTags;
+      d.items = next.items;
+      set((s) => {
+        const draft = s.annotationDraft ? withoutTagsOn([s.annotationDraft], gone)[0] ?? null : null;
+        const live = new Set(d.items.map((n) => n.id));
+        return {
+          ...lane,
+          annotationsEpoch: s.annotationsEpoch + 1,
+          annotationDraft: draft,
+          annotationSelection: s.annotationSelection.filter((i) => live.has(i)),
+          ...(s.annotationTag === id ? { annotationTag: s.annotationTool === 'chip' ? DEFAULT_TAG : null } : {}),
+        };
+      });
     },
-    setAnnotationSize: (size) => {
-      set({ annotationSize: size });
-      patchStanding(get, set, (n) => (n.kind === 'zone' || n.kind === 'chip' ? { ...n, size } : n));
-    },
-    setAnnotationRouteDashed: (d) => {
-      set({ annotationRouteDashed: d });
-      patchStanding(get, set, (n) => (n.kind === 'route' ? { ...n, dashed: d } : n));
-    },
+    setAnnotationSize: (size) => set({
+      annotationSize: size,
+      ...patchStanding(get(), (n) => (n.kind === 'zone' || (n.kind === 'chip' && size !== 'none') ? { ...n, size } as MapAnnotation : n)),
+    }),
+    setAnnotationRouteDashed: (d) => set({ annotationRouteDashed: d, ...patchStanding(get(), (n) => (n.kind === 'route' ? { ...n, dashed: d } : n)) }),
+    setAnnotationRouteWidth: (width) => set({ annotationRouteWidth: width, ...patchStanding(get(), (n) => (n.kind === 'route' ? { ...n, width } : n)) }),
+    setAnnotationDimensions: (visible) => set({ annotationDimensions: visible }),
     setAnnotationSelection: (ids) => set({ annotationSelection: ids }),
     setAnnotationDraft: (a) => set({ annotationDraft: a }),
     commitAnnotationDraft: () => {
       const d = get().annotationDraft;
       if (!d) return false;
-      const empty = d.kind === 'zone' ? d.cells.length === 0 : d.kind === 'route' ? d.points.length < 2 : false;
-      if (empty) { get().discardAnnotationDraft(); return false; }
-      get().beginAnnotationStroke();
-      set({ annotationDraft: null });
-      get().applyAnnotationEdit((data) => { data.items.push(d); });
-      set({ annotationSelection: [d.id] });
+      if (isEmptyNote(d)) { get().discardAnnotationDraft(); return false; }
+      const notes = data();
+      const lane = notes && strokeFields(get(), notes);
+      notes?.items.push(d);
+      set((s) => ({
+        ...lane, annotationDraft: null, annotationSelection: [d.id],
+        ...(notes ? { annotationsEpoch: s.annotationsEpoch + 1 } : null),
+      }));
       return true;
     },
 
     beginAnnotationStroke: () => {
       const d = data();
-      if (!d) return;
-      set((s) => ({
-        annotationUndoLane: [...s.annotationUndoLane.slice(-(LANE_LIMIT - 1)), snapshot(d.items, get().annotationDraft)],
-        annotationRedoLane: [],
-      }));
+      if (d) set(strokeFields(get(), d));
     },
     applyAnnotationEdit: (fn) => {
       const d = data();
@@ -225,33 +274,17 @@ export const createAnnotationsSlice: StateCreator<AnnotationsSlice & Deps, [], [
     },
     mergeAnnotationZones: (ids) => {
       const d = data();
-      if (!d) return;
-      const zones = ids
-        .map((id) => d.items.find((n) => n.id === id))
-        .filter((n): n is Extract<MapAnnotation, { kind: 'zone' }> => n?.kind === 'zone');
-      if (zones.length < 2) return;
-      const [head, ...rest] = zones;
-      const restIds = new Set(rest.map((z) => z.id));
+      const merged = d && mergeZones(d.items, ids);
+      if (!merged) return;
       get().beginAnnotationStroke();
-      get().applyAnnotationEdit((data2) => {
-        const seen = new Set(head!.cells.map((c) => `${c.x},${c.y}`));
-        const cells = [...head!.cells];
-        for (const z of rest) for (const c of z.cells) {
-          const k = `${c.x},${c.y}`;
-          if (!seen.has(k)) { seen.add(k); cells.push(c); }
-        }
-        const i = data2.items.findIndex((n) => n.id === head!.id);
-        if (i >= 0) data2.items[i] = { ...head!, cells };
-        data2.items = data2.items.filter((n) => !restIds.has(n.id));
-      });
-      set({ annotationSelection: [head!.id] });
+      get().applyAnnotationEdit((data2) => { data2.items = merged.items; });
+      set({ annotationSelection: [merged.head] });
     },
     setMeasurementPoints: (id, points, beginStroke) => {
       const d = data();
       const note = d?.items.find(n => n.id === id);
       if (!d || d.locked || !d.visible || note?.kind !== 'measure') return false;
-      if (points.some(p => !Number.isInteger(p.x) || !Number.isInteger(p.y))) return false;
-      if (points[0].x !== points[1].x && points[0].y !== points[1].y) return false;
+      if (!isMeasureSpan(points)) return false;
       if (points.every((p, i) => p.x === note.points[i]!.x && p.y === note.points[i]!.y)) return false;
       if (beginStroke) get().beginAnnotationStroke();
       get().applyAnnotationEdit(d => {
@@ -265,9 +298,7 @@ export const createAnnotationsSlice: StateCreator<AnnotationsSlice & Deps, [], [
       const selected = new Set(ids);
       if (!d.items.some(n => n.kind === 'measure' && selected.has(n.id))) return;
       get().beginAnnotationStroke();
-      get().applyAnnotationEdit(d => {
-        d.items = d.items.map(n => n.kind === 'measure' && selected.has(n.id) ? { ...n, flipped: !n.flipped } : n);
-      });
+      get().applyAnnotationEdit(d => { d.items = flipMeasures(d.items, selected); });
     },
     updateAnnotation: (id, patch) => {
       get().beginAnnotationStroke();
@@ -288,31 +319,48 @@ export const createAnnotationsSlice: StateCreator<AnnotationsSlice & Deps, [], [
       d.locked = v;
       bump();
     },
-    undoAnnotation: () => travel('annotationUndoLane', 'annotationRedoLane'),
-    redoAnnotation: () => travel('annotationRedoLane', 'annotationUndoLane'),
+    undoAnnotation: () => travel('undo'),
+    redoAnnotation: () => travel('redo'),
   };
 };
 
-/** Apply an armed option to what is standing: the draft in place, and the selection as one lane
- *  entry. A hidden or locked layer keeps its notes; the arming still changes. */
-function patchStanding(
-  get: () => AnnotationsSlice & Deps,
-  set: (partial: Partial<AnnotationsSlice>) => void,
-  patch: (n: MapAnnotation) => MapAnnotation,
-): void {
-  const s = get();
-  if (!s.gridState) return;
-  const data = s.gridState.annotations ??= createAnnotationsState();
-  if (!data.visible || data.locked) return;
-  const picked = new Set(s.annotationSelection);
-  const draft = s.annotationDraft ? patch(s.annotationDraft) : null;
-  if (JSON.stringify(draft) === JSON.stringify(s.annotationDraft) && !data.items.some((n) => picked.has(n.id) && JSON.stringify(patch(n)) !== JSON.stringify(n))) return;
-  s.beginAnnotationStroke();
-  set({ annotationDraft: draft });
-  s.applyAnnotationEdit((d) => { d.items = d.items.map((n) => (picked.has(n.id) ? patch(n) : n)); });
+/** A tag pick's edit (`withTag`). */
+function tagPatch(tag: NoteTag | null): (n: MapAnnotation) => MapAnnotation {
+  return (n) => withTag(n, tag);
 }
 
-/** The session fields a NEW or LOADED map resets, spread by the engine slice's `initMap`/`loadMap`:
+/** The lane fields that open a stroke: a snapshot of `d` and the draft before its first mutation. */
+function strokeFields(
+  s: Pick<AnnotationsSlice, 'annotationUndoLane' | 'annotationRedoLane' | 'annotationDraft'>,
+  d: AnnotationsState,
+): Pick<AnnotationsSlice, 'annotationUndoLane' | 'annotationRedoLane'> {
+  const lane = laneRecord(annotationLane(s), snapshot(d, s.annotationDraft));
+  return { annotationUndoLane: [...lane.undo], annotationRedoLane: [] };
+}
+
+/** Apply an armed option to what is standing: the draft, and the selection as one lane entry, or
+ *  as part of the entry the caller opened (`opened`). The items change in place; the returned
+ *  fields are the caller's to publish with its own, and null means nothing standing changes. A
+ *  hidden or locked layer keeps its notes; the arming still changes. */
+function patchStanding(
+  s: AnnotationsSlice & Deps,
+  patch: (n: MapAnnotation) => MapAnnotation,
+  opened = false,
+): Partial<AnnotationsSlice> | null {
+  if (!s.gridState) return null;
+  const data = annotationsOf(s.gridState);
+  if (!data.visible || data.locked) return null;
+  const picked = new Set(s.annotationSelection);
+  const draft = s.annotationDraft ? patch(s.annotationDraft) : null;
+  if (JSON.stringify(draft) === JSON.stringify(s.annotationDraft) && !data.items.some(
+    (n) => picked.has(n.id) && JSON.stringify(patch(n)) !== JSON.stringify(n),
+  )) return null;
+  const lane = opened ? null : strokeFields(s, data);
+  data.items = data.items.map((n) => (picked.has(n.id) ? patch(n) : n));
+  return { ...lane, annotationDraft: draft, annotationsEpoch: s.annotationsEpoch + 1 };
+}
+
+/** The session fields a new or loaded map resets, spread by the engine slice's `initMap`/`loadMap`:
  *  a selection, a draft or an undo lane describes the map being left, never the one arriving. */
 export const ANNOTATION_SESSION_RESET = {
   annotationSelection: [] as string[],
@@ -325,9 +373,16 @@ export const ANNOTATION_SESSION_RESET = {
 
 interface AnnotationSnapshot {
   items: MapAnnotation[];
+  /** Absent in an entry with no custom tags. */
+  customTags?: CustomTag[];
   draft: MapAnnotation | null;
 }
 
-function snapshot(items: MapAnnotation[], draft: MapAnnotation | null): string {
-  return JSON.stringify({ items, draft });
+/** What a lane entry restores besides the draft. */
+function kept(d: Pick<AnnotationsState, 'items' | 'customTags'>): Omit<AnnotationSnapshot, 'draft'> {
+  return { items: d.items, ...(d.customTags?.length ? { customTags: d.customTags } : {}) };
+}
+
+function snapshot(d: Pick<AnnotationsState, 'items' | 'customTags'>, draft: MapAnnotation | null): string {
+  return JSON.stringify({ ...kept(d), draft });
 }

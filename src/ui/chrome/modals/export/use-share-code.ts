@@ -1,53 +1,16 @@
-// Preview and export share a debounced glyph asset when its pixel width and payload inputs match.
-import { useEffect, useRef, useState } from 'react';
-import { buildShareCode } from '../../../../io/share/export';
-import { moduleBaseFor } from '../../../../io/share/glyph/geometry';
-import { RESOLUTION_WIDTHS } from '../../../../io/export/compose';
-import { APP_VERSION } from '../../../../version';
-import { CURRENT_VERSION } from '../../../../io/save-format';
-import { stackedCoatingIds } from '../../../../io/json-codec';
+// The share-code band the preview shows, rebuilt after map and size changes settle.
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { moduleBaseFor } from '../../../../io/share/facts';
 import type { GridState } from '../../../../core/model/types';
 import type { MapProvenanceSummary } from '../../../../core/provenance/types';
-import type { ExportOptions } from '../../../../io/export/types';
-import { shownPlanetName, withShownPlanetName } from '../../../../io/planet-library';
-import { useEditorStore } from '../../../../state/store';
+import type { ExportOptions } from '../../../../io/export/facts';
+import { onTextVerdicts, textVerdictsVersion } from '../../../../state/text-verdicts';
 import { usePlanetName } from '../planet/use-planet-library';
+import {
+  renderShareCodeAsset, shareCodeBuildWidth, shareCodeIssueKey, type ShareCodeAsset, type ShareCodeIssue,
+} from '../../../../editor/export/share-code';
 
-interface ShareCodeAsset {
-  canvas: HTMLCanvasElement;
-  /** Width and metadata fingerprint within the current map's cache entry. */
-  builtKey: string;
-  notice: 'export.code_dense' | 'export.notes_omitted' | null;
-}
-
-/** Fingerprint of everything that changes the encoded band for a given map. */
-export function shareCodeKey(bandWidth: number, createdAt: string, planetName: string): string {
-  return `${bandWidth}|${createdAt}|${planetName}`;
-}
-
-/** Render a built ShareCode to a canvas (shared by the preview asset and the export path). */
-export async function renderShareCodeAsset(
-  state: GridState,
-  summary: MapProvenanceSummary | null,
-  meta: { createdAt: string },
-  width: number,
-): Promise<ShareCodeAsset | null> {
-  // The band carries the planet under its shown name: approved, or the default name.
-  const locale = useEditorStore.getState().locale;
-  const planetName = shownPlanetName(state.template, locale);
-  const code = await buildShareCode(withShownPlanetName(state, locale), summary, { appVersion: APP_VERSION, saveVersion: CURRENT_VERSION, createdAt: meta.createdAt }, width);
-  if (!code) return null;
-  const gc = document.createElement('canvas');
-  gc.width = code.width;
-  gc.height = code.height;
-  gc.getContext('2d')!.putImageData(new ImageData(new Uint8ClampedArray(code.rgba), code.width, code.height), 0, 0);
-  return { canvas: gc, builtKey: shareCodeKey(gc.width, meta.createdAt, planetName), notice: code.notesOmitted ? 'export.notes_omitted' : code.shareOriginalRecommended ? 'export.code_dense' : null };
-}
-
-/** Native exports use a High-size preview; the final capture rebuilds at the reserved native width. */
-function shareCodeBuildWidth(resolution: ExportOptions['resolution']): number {
-  return resolution === 'original' ? RESOLUTION_WIDTHS.high : RESOLUTION_WIDTHS[resolution];
-}
+export type { ShareCodeIssue };
 
 /** Coalesce map and size changes before building the glyph. */
 const BUILD_DEBOUNCE_MS = 250;
@@ -61,26 +24,23 @@ interface ShareCodeState {
   issue: ShareCodeIssue | null;
 }
 
-export type ShareCodeIssue = 'export.code_overlap' | 'export.code_failed' | 'export.code_dense' | 'export.notes_omitted';
-
-/** Overlapping coatings are legal placements but cannot share one encoded surface cell. */
-export function shareCodeIssueKey(state: GridState | null | undefined): ShareCodeIssue {
-  return state && stackedCoatingIds(state.objects.values()).size > 0 ? 'export.code_overlap' : 'export.code_failed';
-}
-
 /** Rebuild on map, notes, metadata, or size changes; unavailable glyphs never enter the pending state. */
 export function useShareCode(
   open: boolean,
   state: GridState | null,
-  summary: MapProvenanceSummary | null,
-  importable: boolean,
-  resolution: ExportOptions['resolution'],
-  createdAt: string,
-  /** The title and description ride in the payload, so an edit to them rebuilds the code too. */
-  notesKey = '',
+  request: {
+    summary: MapProvenanceSummary | null;
+    importable: boolean;
+    resolution: ExportOptions['resolution'];
+    createdAt: string;
+    /** The title and description ride in the payload, so an edit to them rebuilds the code too. */
+    notesKey?: string;
+  },
 ): ShareCodeState {
+  const { summary, importable, resolution, createdAt, notesKey = '' } = request;
   const [code, setCode] = useState<ShareCodeState>({ asset: null, pending: false, issue: null });
   const planetName = usePlanetName(state?.template);
+  const tagVerdicts = useSyncExternalStore(onTextVerdicts, textVerdictsVersion);
   // The provenance summary is a fresh object every store read; it only changes while editing,
   // which the modal blocks — read it through a ref so it never re-triggers the effect.
   const summaryRef = useRef(summary);
@@ -109,7 +69,7 @@ export function useShareCode(
         });
     }, BUILD_DEBOUNCE_MS);
     return () => { alive = false; clearTimeout(id); };
-  }, [open, state, importable, resolution, createdAt, notesKey, planetName]);
+  }, [open, state, importable, resolution, createdAt, notesKey, planetName, tagVerdicts]);
 
   return code;
 }

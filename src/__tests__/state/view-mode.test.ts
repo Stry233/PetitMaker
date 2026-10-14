@@ -5,7 +5,7 @@
  */
 import { describe, it, expect, beforeEach } from 'vitest';
 import { useEditorStore } from '../../state/store';
-import { PREFS, readPref } from '../../core/runtime/prefs';
+import { PREFS, readPref } from '../../platform/storage/prefs';
 
 describe('viewMode', () => {
   beforeEach(() => {

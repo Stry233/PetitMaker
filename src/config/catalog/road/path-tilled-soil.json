@@ -4,7 +4,7 @@
   "icon": "path-tilled-soil",
   "name": {
     "en": "Tilled Soil Path",
-    "zh": "翻耕土路",
+    "zh": "耕种土路",
     "ja": "耕した土の道",
     "ru": "Вспаханная грунтовая дорожка",
     "th": "ทางดินไถพรวน",
@@ -23,6 +23,21 @@
     },
     {
       "type": "surfaceCoating"
+    },
+    {
+      "type": "plantable"
     }
-  ]
+  ],
+  "roadMaterial": {
+    "feather": 0.065,
+    "edge": {
+      "color": "#ffffff",
+      "pattern": {
+        "kind": "image",
+        "image": "path-tilled-soil",
+        "repeat": 2
+      }
+    },
+    "layers": []
+  }
 }

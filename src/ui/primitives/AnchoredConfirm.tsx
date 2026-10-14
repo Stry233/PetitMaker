@@ -1,7 +1,7 @@
 import type { RefObject } from 'react';
 import { motion, useIsPresent, useReducedMotionConfig, type MotionProps, type MotionStyle } from 'framer-motion';
-import { amplitude, framerMotion, NO_MOTION } from '../design/motion';
-import { exitTransition, z } from '../design/styles';
+import { amplitude, framerMotion} from '../design/motion';
+import { z } from '../design/styles';
 import { cozyPanel } from '../design/window-skin';
 import { ConfirmationContent, confirmationCardStyle, type ConfirmationContentProps } from './ConfirmationContent';
 import { useFloatingPosition, type FloatingTarget } from './use-floating-position';
@@ -13,14 +13,14 @@ const ANCHOR_GAP = 8;
 
 /**
  * The arrival and departure every card anchored to a control shares: it grows from the control on
- * `anchored.card.arrive` and is put away on `exitTransition`. Pair it with `anchoredOrigin`.
+ * `anchored.card.arrive` and is put away on `surface.leave`. Pair it with `anchoredOrigin`.
  */
 export function anchoredCardMotion(reduced: boolean): Pick<MotionProps, 'initial' | 'animate' | 'exit' | 'transition'> {
   const from = 1 - amplitude('anchored.card.arrive');
   return {
     initial: { scale: from, opacity: 0 },
     animate: { scale: 1, opacity: 1 },
-    exit: { scale: from, opacity: 0, transition: reduced ? NO_MOTION : exitTransition },
+    exit: { scale: from, opacity: 0, transition: framerMotion('surface.leave', reduced) },
     transition: framerMotion('anchored.card.arrive', reduced),
   };
 }
@@ -38,12 +38,15 @@ interface AnchoredConfirmProps extends ConfirmationContentProps {
   /** The control that asked: pressing it again closes the card rather than counting as a press outside. */
   trigger?: RefObject<HTMLElement | null>;
   prefer?: 'above' | 'below';
+  /** Keep the side the card opened on while its content grows (`useFloatingPosition`). */
+  lockSide?: boolean;
   align?: 'start' | 'center' | 'end';
   /** The chrome zoom the card draws at. */
   zoom?: number;
   width?: number;
   helpTarget?: HelpTarget;
   style?: MotionStyle;
+  testId?: string;
 }
 
 /**
@@ -51,14 +54,14 @@ interface AnchoredConfirmProps extends ConfirmationContentProps {
  * `AnimatePresence` so it plays its exit; Escape and a press outside answer Cancel.
  */
 export function AnchoredConfirm({
-  anchor, trigger, prefer, align = 'center', zoom = 1, width = 320, helpTarget, style, ...content
+  anchor, trigger, prefer, lockSide, align = 'center', zoom = 1, width = 320, helpTarget, style, testId, ...content
 }: AnchoredConfirmProps) {
   const present = useIsPresent();
   const reduced = useReducedMotionConfig() === true;
-  const floating = useFloatingPosition({ open: !!anchor && present, anchor: anchor ?? { x: 0, y: 0 }, zoom, align, gap: ANCHOR_GAP, prefer });
+  const floating = useFloatingPosition({ open: !!anchor && present, anchor: anchor ?? { x: 0, y: 0 }, zoom, align, gap: ANCHOR_GAP, prefer, lockSide });
   useSurfaceScope({ open: !!anchor && present && !!floating.placement, root: floating.ref, trigger, onClose: content.onCancel, focus: 'contain', outside: true });
   return (
-    <motion.div ref={floating.ref} role="dialog" aria-label={content.title}
+    <motion.div ref={floating.ref} role="dialog" aria-label={content.title} data-testid={testId}
       {...helpAttributes(helpTarget)}
       {...anchoredCardMotion(reduced)}
       style={{

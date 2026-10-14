@@ -1,9 +1,10 @@
+// @vitest-environment jsdom
 /**
  * A button that presses itself is only acceptable if it can be stopped, and if the press it makes
  * is the press a finger makes. Those two are what these pin, plus the one thing a screen reader
  * needs from it.
  *
- * jsdom lays nothing out, so the RING is not testable here beyond its presence: the outline is
+ * jsdom lays nothing out, so the ring is not testable here beyond its presence: the outline is
  * measured off the rendered element and comes out zero-sized. What is testable is the clock, the
  * three ways of interrupting it, and where the description node lives.
  */
@@ -12,13 +13,14 @@ import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { MotionConfig } from 'framer-motion';
 import { I18nProvider, translate } from '../../../i18n/context';
 import { TimedButton } from '../../../ui/primitives/TimedButton';
-import { colors } from '../../../ui/design/styles';
+import { timedHint } from '../../../i18n/timed-hint';
+import { ACTIVE } from '../../../ui/design/tokens';
 
 /** jsdom re-serializes a hex fill as `rgb(...)`, so the fired fill is compared in that form rather
  *  than spelled out a second time. */
 const FIRED_RGB = (() => {
   const probe = document.createElement('div');
-  probe.style.backgroundColor = colors.tileYellow;
+  probe.style.backgroundColor = ACTIVE;
   return probe.style.backgroundColor;
 })();
 
@@ -36,11 +38,11 @@ const run = (ms: number) => act(() => { vi.advanceTimersByTime(ms); });
 describe('a timed button', () => {
   it('holds automatic and manual activation while disabled', () => {
     const onPress = vi.fn();
-    const view = mount(<TimedButton after={2} disabled onPress={onPress}>Continue</TimedButton>);
+    const view = mount(<TimedButton after={2} hint={timedHint(translate, 2)} disabled onPress={onPress}>Continue</TimedButton>);
     fireEvent.click(screen.getByRole('button'));
     run(3000);
     expect(onPress).not.toHaveBeenCalled();
-    view.rerender(<I18nProvider><TimedButton after={2} onPress={onPress}>Continue</TimedButton></I18nProvider>);
+    view.rerender(<I18nProvider><TimedButton after={2} hint={timedHint(translate, 2)} onPress={onPress}>Continue</TimedButton></I18nProvider>);
     run(1000);
     expect(onPress).not.toHaveBeenCalled();
     run(1200);
@@ -49,7 +51,7 @@ describe('a timed button', () => {
 
   it('presses itself once the time is up, through a real click', () => {
     const onPress = vi.fn();
-    mount(<TimedButton after={2} onPress={onPress}>Dismiss</TimedButton>);
+    mount(<TimedButton after={2} hint={timedHint(translate, 2)} onPress={onPress}>Dismiss</TimedButton>);
     run(1000);
     expect(onPress).not.toHaveBeenCalled();
     run(1200);
@@ -62,11 +64,11 @@ describe('a timed button', () => {
 
   it('says whether the press was its own or a hand\'s', () => {
     // Nothing in a click event carries this, and a host must not guess from its internals: the
-    // arrival notice answers the saved-session offer beside it when a HAND takes its OK, and a
+    // arrival notice answers the saved-session offer beside it when a hand takes its OK, and a
     // countdown running out is nobody answering anything. Callers that mean the same thing by both
     // (the restore card, the dev-build notice) simply ignore the argument.
     const onPress = vi.fn();
-    mount(<TimedButton after={2} onPress={onPress}>Dismiss</TimedButton>);
+    mount(<TimedButton after={2} hint={timedHint(translate, 2)} onPress={onPress}>Dismiss</TimedButton>);
     fireEvent.click(screen.getByRole('button'));
     expect(onPress).toHaveBeenLastCalledWith(false);
     run(2200);
@@ -76,7 +78,7 @@ describe('a timed button', () => {
 
   it('holds the clock while the pointer is on it, and resumes where it left off', () => {
     const onPress = vi.fn();
-    mount(<TimedButton after={2} onPress={onPress}>Dismiss</TimedButton>);
+    mount(<TimedButton after={2} hint={timedHint(translate, 2)} onPress={onPress}>Dismiss</TimedButton>);
     const btn = screen.getByRole('button');
     run(1000);
     fireEvent.pointerEnter(btn);
@@ -92,17 +94,17 @@ describe('a timed button', () => {
 
   it('holds the clock while the host says someone is reading', () => {
     const onPress = vi.fn();
-    const { rerender } = mount(<TimedButton after={2} paused onPress={onPress}>Dismiss</TimedButton>);
+    const { rerender } = mount(<TimedButton after={2} hint={timedHint(translate, 2)} paused onPress={onPress}>Dismiss</TimedButton>);
     run(10_000);
     expect(onPress).not.toHaveBeenCalled();
-    rerender(<I18nProvider><TimedButton after={2} onPress={onPress}>Dismiss</TimedButton></I18nProvider>);
+    rerender(<I18nProvider><TimedButton after={2} hint={timedHint(translate, 2)} onPress={onPress}>Dismiss</TimedButton></I18nProvider>);
     run(2200);
     expect(onPress).toHaveBeenCalledTimes(1);
   });
 
   it('cancels for good the moment the keyboard reaches it', () => {
     const onPress = vi.fn();
-    mount(<TimedButton after={2} onPress={onPress}>Dismiss</TimedButton>);
+    mount(<TimedButton after={2} hint={timedHint(translate, 2)} onPress={onPress}>Dismiss</TimedButton>);
     const btn = screen.getByRole('button');
     fireEvent.focus(btn);
     run(30_000);
@@ -115,10 +117,10 @@ describe('a timed button', () => {
   });
 
   it('says what it will do without saying it as the button\'s name', () => {
-    mount(<TimedButton after={9} onPress={() => {}} aria-label="Dismiss">Dismiss</TimedButton>);
+    mount(<TimedButton after={9} hint={timedHint(translate, 9)} onPress={() => {}} aria-label="Dismiss">Dismiss</TimedButton>);
     const btn = screen.getByRole('button');
     const hint = screen.getByRole('status');
-    // OUTSIDE the button: a node inside one is part of its accessible name, so a description
+    // Outside the button: a node inside one is part of its accessible name, so a description
     // written there would be read as though it were the label.
     expect(btn.contains(hint)).toBe(false);
     expect(btn.getAttribute('aria-describedby')).toBe(hint.id);
@@ -127,7 +129,7 @@ describe('a timed button', () => {
 
   it('does not count at all when no time is given', () => {
     const onPress = vi.fn();
-    mount(<TimedButton after={0} onPress={onPress}>Dismiss</TimedButton>);
+    mount(<TimedButton after={0} hint={timedHint(translate, 0)} onPress={onPress}>Dismiss</TimedButton>);
     run(30_000);
     expect(onPress).not.toHaveBeenCalled();
     expect(screen.queryByRole('status')).toBeNull();
@@ -137,7 +139,7 @@ describe('a timed button', () => {
 
 describe('the position a caller asks for', () => {
   it('defaults to relative, so the ring/stadium svg has a containing block for free', () => {
-    mount(<TimedButton after={2} onPress={() => {}}>go</TimedButton>);
+    mount(<TimedButton after={2} hint={timedHint(translate, 2)} onPress={() => {}}>go</TimedButton>);
     expect(screen.getByRole('button').style.position).toBe('relative');
   });
 
@@ -146,7 +148,7 @@ describe('the position a caller asks for', () => {
     // by left/right rather than a width; `relative` winning here silently collapses it to zero
     // width, since every one of its children is itself absolutely positioned out of flow.
     mount(
-      <TimedButton after={2} onPress={() => {}} style={{ position: 'absolute', left: 0, right: 0 }}>
+      <TimedButton after={2} hint={timedHint(translate, 2)} onPress={() => {}} style={{ position: 'absolute', left: 0, right: 0 }}>
         go
       </TimedButton>,
     );
@@ -166,25 +168,25 @@ describe('a clock the caller owns', () => {
   const ring = () => screen.getByRole('button').querySelector('svg rect') as SVGRectElement;
 
   it('draws the fraction it is handed, spent from whole', () => {
-    mount(<TimedButton after={9} external={{ fraction: 0.4 }} onPress={() => {}}>Retry now</TimedButton>);
+    mount(<TimedButton after={9} hint={timedHint(translate, 9)} external={{ fraction: 0.4 }} onPress={() => {}}>Retry now</TimedButton>);
     expect(ring().getAttribute('stroke-dashoffset')).toBe('0.4');
   });
 
   it('never presses itself: the clock that fires is the caller s', () => {
     const onPress = vi.fn();
-    mount(<TimedButton after={2} external={{ fraction: 0 }} onPress={onPress}>Retry now</TimedButton>);
+    mount(<TimedButton after={2} hint={timedHint(translate, 2)} external={{ fraction: 0 }} onPress={onPress}>Retry now</TimedButton>);
     run(30_000);
     expect(onPress).not.toHaveBeenCalled();
   });
 
   it('does not pause under the pointer, because the pointer does not hold the caller s clock', () => {
     const { rerender } = mount(
-      <TimedButton after={9} external={{ fraction: 0.2 }} onPress={() => {}}>Retry now</TimedButton>,
+      <TimedButton after={9} hint={timedHint(translate, 9)} external={{ fraction: 0.2 }} onPress={() => {}}>Retry now</TimedButton>,
     );
     fireEvent.pointerEnter(screen.getByRole('button'));
     rerender(
       <I18nProvider>
-        <TimedButton after={9} external={{ fraction: 0.7 }} onPress={() => {}}>Retry now</TimedButton>
+        <TimedButton after={9} hint={timedHint(translate, 9)} external={{ fraction: 0.7 }} onPress={() => {}}>Retry now</TimedButton>
       </I18nProvider>,
     );
     expect(ring().getAttribute('stroke-dashoffset')).toBe('0.7');
@@ -192,12 +194,12 @@ describe('a clock the caller owns', () => {
 
   it('does not cancel on focus, and does not tell a reader it stopped', () => {
     const { rerender } = mount(
-      <TimedButton after={9} external={{ fraction: 0.2 }} onPress={() => {}}>Retry now</TimedButton>,
+      <TimedButton after={9} hint={timedHint(translate, 9)} external={{ fraction: 0.2 }} onPress={() => {}}>Retry now</TimedButton>,
     );
     fireEvent.focus(screen.getByRole('button'));
     rerender(
       <I18nProvider>
-        <TimedButton after={9} external={{ fraction: 0.9 }} onPress={() => {}}>Retry now</TimedButton>
+        <TimedButton after={9} hint={timedHint(translate, 9)} external={{ fraction: 0.9 }} onPress={() => {}}>Retry now</TimedButton>
       </I18nProvider>,
     );
     expect(ring().getAttribute('stroke-dashoffset')).toBe('0.9');
@@ -207,7 +209,7 @@ describe('a clock the caller owns', () => {
   });
 
   it('says EMPTY MEANS FIRED with the lit fill, the ring spent to nothing', () => {
-    mount(<TimedButton after={9} external={{ fraction: 1 }} onPress={() => {}}>Retry now</TimedButton>);
+    mount(<TimedButton after={9} hint={timedHint(translate, 9)} external={{ fraction: 1 }} onPress={() => {}}>Retry now</TimedButton>);
     expect(ring().getAttribute('stroke-dashoffset')).toBe('1');
     expect(ring().style.visibility).toBe('hidden');
     expect(screen.getByRole('button').style.backgroundColor).toBe(FIRED_RGB);
@@ -215,12 +217,12 @@ describe('a clock the caller owns', () => {
 
   it('holds a fraction outside 0..1 to the ends of the ring', () => {
     const { rerender } = mount(
-      <TimedButton after={9} external={{ fraction: -3 }} onPress={() => {}}>Retry now</TimedButton>,
+      <TimedButton after={9} hint={timedHint(translate, 9)} external={{ fraction: -3 }} onPress={() => {}}>Retry now</TimedButton>,
     );
     expect(ring().getAttribute('stroke-dashoffset')).toBe('0');
     rerender(
       <I18nProvider>
-        <TimedButton after={9} external={{ fraction: 4 }} onPress={() => {}}>Retry now</TimedButton>
+        <TimedButton after={9} hint={timedHint(translate, 9)} external={{ fraction: 4 }} onPress={() => {}}>Retry now</TimedButton>
       </I18nProvider>,
     );
     expect(ring().getAttribute('stroke-dashoffset')).toBe('1');
@@ -228,7 +230,7 @@ describe('a clock the caller owns', () => {
 
   it('leaves a hand s press meaning what it always did', () => {
     const onPress = vi.fn();
-    mount(<TimedButton after={9} external={{ fraction: 0.5 }} onPress={onPress}>Retry now</TimedButton>);
+    mount(<TimedButton after={9} hint={timedHint(translate, 9)} external={{ fraction: 0.5 }} onPress={onPress}>Retry now</TimedButton>);
     fireEvent.click(screen.getByRole('button'));
     expect(onPress).toHaveBeenLastCalledWith(false);
   });
@@ -247,7 +249,7 @@ describe('the stadium clock', () => {
   it('draws the shelf\'s own mark under the button instead of the outline ring', () => {
     render(
       <I18nProvider>
-        <TimedButton after={5} onPress={() => {}} clock="stadium" data-testid="marked">
+        <TimedButton after={5} hint={timedHint(translate, 5)} onPress={() => {}} clock="stadium" data-testid="marked">
           go
         </TimedButton>
       </I18nProvider>,
@@ -256,8 +258,8 @@ describe('the stadium clock', () => {
     const mark = btn.querySelector('svg line');
     expect(mark, 'the mark is a line, capped round into a stadium').toBeTruthy();
     expect(mark!.getAttribute('stroke-linecap')).toBe('round');
-    // WHOLE, and spent from there: the dash is the whole mark and the offset walks it off the end,
-    // so an offset of 1 leaves nothing drawn. EMPTY MEANS FIRED.
+    // Whole, and spent from there: the dash is the whole mark and the offset walks it off the end,
+    // so an offset of 1 leaves nothing drawn. Empty means fired.
     expect(mark!.getAttribute('stroke-dashoffset')).toBe('0');
     expect(btn.querySelector('svg rect'), 'the ring is not also drawn').toBeNull();
   });
@@ -265,7 +267,7 @@ describe('the stadium clock', () => {
   it('keeps the outline ring as the default drawing', () => {
     render(
       <I18nProvider>
-        <TimedButton after={5} onPress={() => {}} data-testid="ringed">
+        <TimedButton after={5} hint={timedHint(translate, 5)} onPress={() => {}} data-testid="ringed">
           go
         </TimedButton>
       </I18nProvider>,
@@ -277,12 +279,12 @@ describe('the stadium clock', () => {
 });
 
 /**
- * THE LENT FUSE RUNS BETWEEN THE CALLER'S SAMPLES.
+ * The lent fuse runs between the caller's samples.
  *
  * A process clock is sampled at whatever rate its owner repaints — the retry face reads its backoff
  * once a second — so a ring redrawn only on those samples is a staircase, which is the drawing
- * REDUCED motion is supposed to be alone in getting. `spanMs` turns the handed fraction into a rate
- * and a rAF walks the outline on from it. The rendered ATTRIBUTE is the sample; the inline STYLE is
+ * Reduced motion is supposed to be alone in getting. `spanMs` turns the handed fraction into a rate
+ * and a rAF walks the outline on from it. The rendered attribute is the sample; the inline style is
  * the walk, and it wins in the cascade, which is why the two are read separately here.
  */
 describe('the lent fuse glides between the samples it is given', () => {
@@ -300,7 +302,7 @@ describe('the lent fuse glides between the samples it is given', () => {
     return render(
       <MotionConfig reducedMotion={reducedMotion}>
         <I18nProvider>
-          <TimedButton after={9} external={{ fraction, spanMs }} onPress={() => {}}>
+          <TimedButton after={9} hint={timedHint(translate, 9)} external={{ fraction, spanMs }} onPress={() => {}}>
             Retry now
           </TimedButton>
         </I18nProvider>
@@ -313,7 +315,7 @@ describe('the lent fuse glides between the samples it is given', () => {
     mountLent('never', 3 / 9, 9_000);
     expect(drawn()).toBeCloseTo(3 / 9, 3);
 
-    // Half a second later, with NO new sample: the fuse has spent half a second of the nine.
+    // Half a second later, with no new sample: the fuse has spent half a second of the nine.
     run(500);
     const mid = drawn();
     expect(mid, 'the ring moved between samples').toBeGreaterThan(3 / 9);
@@ -336,12 +338,12 @@ describe('the lent fuse glides between the samples it is given', () => {
     const { rerender } = mountLent('never', 0.2, 9_000);
     run(2_000);
     expect(drawn()).toBeGreaterThan(0.2);
-    // The caller's next reading says LESS is spent than the walk had drawn (a longer backoff on the
+    // The caller's next reading says less is spent than the walk had drawn (a longer backoff on the
     // next attempt). The sample is the truth: the walk restarts from it.
     rerender(
       <MotionConfig reducedMotion="never">
         <I18nProvider>
-          <TimedButton after={9} external={{ fraction: 0.05, spanMs: 9_000 }} onPress={() => {}}>
+          <TimedButton after={9} hint={timedHint(translate, 9)} external={{ fraction: 0.05, spanMs: 9_000 }} onPress={() => {}}>
             Retry now
           </TimedButton>
         </I18nProvider>
@@ -362,7 +364,7 @@ describe('the lent fuse glides between the samples it is given', () => {
     render(
       <MotionConfig reducedMotion="never">
         <I18nProvider>
-          <TimedButton after={9} external={{ fraction: 0.4 }} onPress={() => {}}>
+          <TimedButton after={9} hint={timedHint(translate, 9)} external={{ fraction: 0.4 }} onPress={() => {}}>
             Retry now
           </TimedButton>
         </I18nProvider>

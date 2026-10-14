@@ -4,7 +4,7 @@
   "icon": "path-urban-asphalt",
   "name": {
     "en": "Urban Asphalt Path",
-    "zh": "城市沥青路",
+    "zh": "城市柏油路",
     "ja": "都会のアスファルトの道",
     "ru": "Городская асфальтовая дорожка",
     "th": "ทางยางมะตอยในเมือง",
@@ -19,12 +19,37 @@
   "placementMode": "brush",
   "roadMaterial": {
     "feather": 0.06,
-    "edge": { "color": "#a3a39b", "pattern": "slabs" },
+    "edge": {
+      "color": "#9d9f90",
+      "pattern": "slabs"
+    },
     "layers": [
-      { "inset": 0.29, "color": "#515653" },
-      { "inset": 0.35, "color": "#717775", "pattern": "aggregate" },
-      { "inset": 0.51, "color": "#e3e3d7" },
-      { "inset": 0.61, "color": "#717775", "pattern": "aggregate" }
+      {
+        "inset": 0.29,
+        "color": "#515653"
+      },
+      {
+        "inset": 0.35,
+        "color": "#ffffff",
+        "pattern": {
+          "kind": "image",
+          "image": "path-urban-asphalt",
+          "repeat": 2
+        }
+      },
+      {
+        "inset": 0.51,
+        "color": "#e3e3d7"
+      },
+      {
+        "inset": 0.61,
+        "color": "#ffffff",
+        "pattern": {
+          "kind": "image",
+          "image": "path-urban-asphalt",
+          "repeat": 2
+        }
+      }
     ]
   },
   "traits": [

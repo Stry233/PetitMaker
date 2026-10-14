@@ -1,37 +1,35 @@
+// @vitest-environment jsdom
 /**
- * The ring a control wears while the keyboard is on it.
+ * The ring a control wears while the keyboard is on it. An outline follows the element's own
+ * radius, so a control whose shape is art inside a bare button box declares the shape its ring takes;
+ * jsdom lays nothing out, so a missing radius is invisible to every other test.
  *
- * An outline follows the element's own `border-radius`, so a control whose shape is ART inside a
- * bare button box is ringed as that box: a rectangle around a round plate, a rectangle standing
- * outside the yellow plate that already marks the chosen mode. Every focusable control in this frame
- * therefore declares the shape its ring should take, and the two facts below are what keep that
- * true, since jsdom lays nothing out and a missing radius is invisible to every other test here.
+ * The colour arrives as a custom property the shell writes, and every ring declaration keeps a
+ * literal fallback: an unresolved `var()` without one invalidates the declaration and leaves the
+ * browser's black outline.
  *
- * A stylesheet cannot read a token module, so the colour arrives as a custom property the shell
- * writes onto the document. The assertions on the stylesheet are what keep a LITERAL fallback in
- * every ring declaration: an unresolved `var()` with no fallback invalidates the whole declaration,
- * so a document that has not run the shell's effect yet would not lose the colour but the ring —
- * back to the browser's own black outline, which belongs to no interface.
- *
- * THE RING IS TWO TONES BECAUSE ONE CANNOT DO IT. A control in this frame can stand on a cream
- * plate, on the yellow that marks a chosen one, or on bare island, and that last one runs from sand
- * to a layer-8 mountain. The contrast test below is the arithmetic that says so: it fails a ring
- * that is dark enough for the plate and lost on the mountains, which is what the ink was.
+ * The ring is two tones because a control can stand on cream, on the chosen yellow, or on bare
+ * island from sand to a layer-8 mountain; the contrast test fails a single ink.
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { render, screen, cleanup } from '@testing-library/react';
-// @ts-ignore - node:fs is untyped here (no @types/node)
+import { fireEvent, render, screen, cleanup } from '@testing-library/react';
 import { readFileSync } from 'node:fs';
 import { EventBus } from '../../../core/commands/event-bus';
-import { acquireOverlayLock } from '../../../core/runtime/overlay-state';
-import type { EditorEvents } from '../../../core/model/types';
+import { acquireOverlayLock } from '../../../platform/channels/overlay-state';
+import type { EditorEvents } from '../../../state/editing/events';
 import { I18nProvider } from '../../../i18n/context';
 import { useEditorStore } from '../../../state/store';
-import { MenuSheet } from '../../../ui/shell/windows/MenuSheet';
+import { MenuSheet } from '../../../ui/shell/controls/MenuSheet';
 import { Rail } from '../../../ui/shell/Rail';
-import { ELEVATION_COLORS, ZONE_COLORS } from '../../../core/model/constants';
-import { FOCUS_SOURCE_ATTR, trackFocusSource } from '../../../ui/design/focus-source';
-import { ACTIVE, DARK_PLATE, FOCUS_HALO, FOCUS_RING, INK, INSET, PLATE } from '../../../ui/design/tokens';
+import { Shell } from '../../../ui/shell/Shell';
+import { ELEVATION_COLORS, ZONE_COLORS } from '../../../core/model/palette';
+import { useFocusSource } from '../../../ui/design/focus-source';
+import { ACTIVE, DARK_PLATE, FOCUS_HALO, FOCUS_RING, FOCUS_RING_FIELD, INK, INSET, PLATE } from '../../../ui/design/tokens';
+
+/** The attribute `animations.css` selects the ring by, on the document element. */
+const FOCUS_SOURCE_ATTR = 'data-focus-source';
+
+const mountShell = () => render(<I18nProvider><Shell onRestoreSession={() => {}}><div data-testid="map-views" /></Shell></I18nProvider>);
 
 /** The literal the stylesheet falls back to, and the one it must keep carrying. */
 const RING_FALLBACK = '#fb923c';
@@ -51,7 +49,6 @@ function contrast(a: string, b: string): number {
 }
 
 const css = readFileSync('src/ui/design/animations.css', 'utf8');
-const shell = readFileSync('src/ui/shell/Shell.tsx', 'utf8');
 
 beforeEach(() => {
   useEditorStore.setState({
@@ -64,7 +61,7 @@ afterEach(cleanup);
 describe('the focus ring', () => {
   it('is a custom property, and every declaration of it carries the literal fallback', () => {
     // The control's own ring, and the one a text field moves up to its wrapper. The field's reads a
-    // variable of its own FIRST, so that question can be answered separately, and falls through to
+    // variable of its own first, so that question can be answered separately, and falls through to
     // the same two.
     const rings = css.match(/outline: var\(--focus-width\) solid [^;]+;/g) ?? [];
     expect(rings.length).toBeGreaterThanOrEqual(2);
@@ -79,10 +76,12 @@ describe('the focus ring', () => {
   });
 
   it('is this frame\'s own three colours for as long as the shell is mounted', () => {
-    for (const name of ['--focus-ring', '--focus-halo', '--focus-ring-field']) {
-      expect(shell).toContain(`setProperty('${name}'`);
-      expect(shell).toContain(`removeProperty('${name}')`);
-    }
+    const vars = { '--focus-ring': FOCUS_RING, '--focus-halo': FOCUS_HALO, '--focus-ring-field': FOCUS_RING_FIELD };
+    const root = document.documentElement;
+    const shell = mountShell();
+    for (const [name, value] of Object.entries(vars)) expect(root.style.getPropertyValue(name), name).toBe(value);
+    shell.unmount();
+    for (const name of Object.keys(vars)) expect(root.style.getPropertyValue(name), `${name} after unmount`).toBe('');
     // Not the yellow that marks a choice: a control can be focused while it is chosen, and the two
     // have to stay separate facts.
     expect(FOCUS_RING).not.toBe(ACTIVE);
@@ -93,10 +92,10 @@ describe('the focus ring', () => {
   /**
    * What the two tones are each for. 3:1 is the ratio a graphical indicator is read at.
    *
-   * The rust holds everything PALE — every plate, the yellow that marks a chosen control, and the
-   * ground the island is drawn on. The halo holds everything DARK: the dark plate and the top of
+   * The rust holds everything pale — every plate, the yellow that marks a chosen control, and the
+   * ground the island is drawn on. The halo holds everything dark: the dark plate and the top of
    * the mountain ramp. Between them lie the middle greens, where neither clears 3 and no colour
-   * would; there the ring is read against ITSELF, which is the next test.
+   * would; there the ring is read against itself, which is the next test.
    */
   it('is a rust for the pale surfaces and a cream for the dark ones', () => {
     const pale = { plate: PLATE, inset: INSET, chosen: ACTIVE, ...ZONE_COLORS, ground: ELEVATION_COLORS[0]! };
@@ -120,17 +119,11 @@ describe('the focus ring', () => {
 });
 
 /**
- * THE RING IS DRAWN ONLY WHERE THE KEYBOARD PUT THE FOCUS.
- *
- * A browser matches `:focus-visible` on the element that is already focused as soon as any key goes
- * down, and a control in this frame is focused by the click that chose it and then stays focused. So
- * without a guard, pressing Enter or that control's own shortcut draws the rust ring around a control
- * the yellow plate already marks as chosen: two boxes, the outer one earned by a key press that had
- * nothing to do with the control under it. Visible in a real browser at 4x zoom.
- *
- * jsdom neither lays out nor matches `:focus-visible`, so the guard is in two halves and each states
- * what it can prove: the SEQUENCE below is the whole of the module's behaviour, and the stylesheet
- * assertion is what keeps a rule that reads its stamp.
+ * The ring is drawn only where the keyboard put the focus. A browser matches `:focus-visible` on an
+ * already focused element as soon as any key goes down, and a clicked control stays focused, so
+ * Enter or a shortcut would ring a control the yellow plate already marks. jsdom neither lays out
+ * nor matches `:focus-visible`: the sequence below is the module's behaviour, and the stylesheet
+ * assertion keeps a rule that reads its stamp.
  */
 describe('a ring is what the keyboard leaves behind, not what a key press summons', () => {
   const root = document.documentElement;
@@ -138,7 +131,9 @@ describe('a ring is what the keyboard leaves behind, not what a key press summon
   const press = (type: string) => document.body.dispatchEvent(new Event(type, { bubbles: true }));
   const focus = () => press('focusin');
 
-  beforeEach(() => { stop = trackFocusSource(); });
+  /** The tracking as the shell mounts it, for as long as this stays mounted. */
+  function Tracker() { useFocusSource(); return null; }
+  beforeEach(() => { stop = render(<Tracker />).unmount; });
   afterEach(() => { stop(); });
 
   it('stamps what put the focus there, and a later key press does not restamp it', () => {
@@ -268,7 +263,7 @@ describe('a ring is what the keyboard leaves behind, not what a key press summon
     }
   });
 
-  it('has a rule that draws nothing for a pointer- or page-placed focus, and the shell mounts the tracking', () => {
+  it('has a rule that draws nothing for a pointer- or page-placed focus', () => {
     for (const source of ['pointer', 'program']) {
       const rule = css.match(new RegExp(`\\[data-focus-source='${source}'\\][^{]*\\{([^}]*)\\}`));
       expect(rule, `animations.css must suppress the ring for a ${source}-placed focus`).not.toBeNull();
@@ -277,7 +272,17 @@ describe('a ring is what the keyboard leaves behind, not what a key press summon
       expect(rule![1]).toMatch(/outline:\s*none\s*!important;/);
       expect(rule![1]).toMatch(/box-shadow:\s*none;/);
     }
-    expect(shell).toContain('useFocusSource()');
+  });
+});
+
+describe('the shell stamps what placed the focus', () => {
+  it('for as long as it is mounted', () => {
+    const root = document.documentElement;
+    const shell = mountShell();
+    fireEvent.pointerDown(document.body);
+    expect(root.getAttribute(FOCUS_SOURCE_ATTR)).toBe('pointer');
+    shell.unmount();
+    expect(root.hasAttribute(FOCUS_SOURCE_ATTR)).toBe(false);
   });
 });
 
@@ -294,7 +299,7 @@ describe('every control in the frame declares the shape its ring follows', () =>
   });
 
   it('the menu sheet\'s rows', () => {
-    render(<I18nProvider><MenuSheet open onDismiss={() => {}} /></I18nProvider>);
+    render(<I18nProvider><MenuSheet open onDismiss={() => {}} trigger={{ current: document.body.appendChild(document.createElement('button')) }} /></I18nProvider>);
     const rows = screen.getAllByRole('menuitem');
     expect(rows.length).toBeGreaterThan(0);
     for (const row of rows) expect((row as HTMLElement).style.borderRadius).not.toBe('');

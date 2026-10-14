@@ -1,46 +1,40 @@
 /**
- * Stage 1's other half (the orientation step): WHERE each anchor region's buildings stand on its lot,
- * and which way their doors look.
+ * Where each anchor region's buildings stand on its lot, and which way their doors look. A building
+ * faces the way in, the side the road reaches the lot on (`RegionPlan.orientation`, the lot's entry
+ * side from `districts.ts`). `DOOR_ROTATION` turns a facing into the rotation that
+ * `placement/object.ts:buildingGate` reads the door from, and the gate and approach recorded here
+ * come from that function.
  *
- * The orientation rule is the whole of it: a building faces the way in, and the way
- * in is the side the road reaches the lot on (`RegionPlan.orientation`, which `layout.ts` derives
- * as the plaza-ward side). So a placement is a rotation before it is a position — `DOOR_ROTATION`
- * turns a facing into the rotation `placement/object.ts:buildingGate` reads the same door out of,
- * and the gate/approach recorded here come from THAT function rather than from a second reading of
- * the same convention.
+ * Two layouts:
+ *  - the street row, where every building fits along the entry side, door edge flush with it, so
+ *    each door opens onto the frontage pavement;
+ *  - the court, where they do not: rows behind each other, all facing the entry side, each row past
+ *    the first opening onto its own 2-wide lane, carried back to the frontage by a spine. Lanes are
+ *    2 wide because a 1-wide road is no street, and every lane cell keeps two paved
+ *    neighbours.
  *
- * TWO LAYOUTS, because a lot's front is only so long:
- *  - THE STREET ROW, where every building of the region fits along the lot's entry side: each one
- *    stands with its door edge flush against that side, so the cell its door opens onto is the
- *    frontage pavement `roads.ts` laid along the lot (`entryLine`). Nothing else is needed.
- *  - THE COURT, where they do not: the buildings stand in rows one behind the other, all still
- *    facing the entry side, and each row past the first opens onto a 2-wide lane of its own. A
- *    SPINE down one side of the lot carries those lanes back to the frontage, so every door still
- *    faces the way in — the same rule, applied to the street the region carries inside itself.
- *    The lanes are 2 wide because a 1-wide one would be a 1-wide road, which the hard ledger
- *    refuses; at 2 every cell keeps two paved neighbours, so a lane is no dead end either.
- *
- * Pure data out: `pipeline.ts` commits every placement through `tryPlace` and every lane cell as a
- * road coating, so what the rules make of it is decided there, not here. Deterministic per
- * (seed, plan, catalog).
+ * Pure data out: `pipeline.ts` commits placements through `tryPlace` and lane cells as road
+ * coatings. Deterministic per (seed, plan, catalog).
  */
-import type { CatalogItem, MacroCoord, Rect, Rotation } from '../../../../core/model/types';
-import { getRotatedSize } from '../../../../state/object-geometry';
+import type { CatalogItem, MacroCoord, Rotation } from '../../../../core/model/types';
+import { inflateRect, rectsOverlap, type Rect, cellKey } from '../../../../core/grid/rect';
+import { fnv1a32 } from '../../../../core/base/hash';
+import { getRotatedSize } from '../../../../core/grid/footprint';
 import { buildingGate } from '../../../placement/object';
 import { anchorCatalogItems } from './region-list';
-import { DOOR_ROTATION, type DesignPlan, type Direction, type RegionPlan } from '../types';
+import { DOOR_ROTATION, type DesignInput, type DesignPlan, type Direction, type RegionPlan } from '../types';
 
 /** Cells kept between two buildings standing side by side, widest first. A gate strip reaches one
  *  cell past a 1x1 footprint's edges (`buildingGate`), so 2 keeps a neighbour's doorstep out of the
  *  footprint as well as out of the wall; 1 is the squeeze a tight lot is packed at. */
 const GAPS = [2, 1] as const;
-/** The court lane's width: the narrowest road the hard ledger allows. */
+/** The court lane's width: the narrowest road that is a street. */
 const LANE_W = 2;
 
 interface AnchorPlacement {
   regionId: string;
   catalogId: string;
-  /** Macro top-left of the ROTATED footprint, the coordinate a PlaceObject command carries. */
+  /** Macro top-left of the rotated footprint, the coordinate a PlaceObject command carries. */
   position: MacroCoord;
   rotation: Rotation;
   /** Where the door looks: the lot's entry side, which a back row reaches across its own lane. */
@@ -70,11 +64,12 @@ export interface AnchorPlan {
 /**
  * Stage 1's placements: every anchor region's buildings, positioned and oriented on its lot.
  *
- * @param catalog the placeable Buildings and Facilities; defaults to the live catalog's, and is the
- *        set `region-list.ts` distributed among the regions in the first place.
+ * `catalog` is the placeable Buildings and Facilities; it defaults to the live catalog's, and is the
+ * set `region-list.ts` distributed among the regions in the first place.
  */
 export function planAnchors(
-  seed: number, plan: DesignPlan, catalog: readonly CatalogItem[] = anchorCatalogItems(),
+  { seed, plan, catalog = anchorCatalogItems() }:
+    Pick<DesignInput, 'seed'> & { plan: DesignPlan; catalog?: readonly CatalogItem[] },
 ): AnchorPlan {
   const byId = new Map(catalog.map((item) => [item.id, item] as const));
   const out: AnchorPlan = { placements: [], lanes: [], unplaced: [] };
@@ -97,7 +92,7 @@ export function planAnchors(
 // --- the lot's own frame -------------------------------------------------------------------------
 
 /**
- * Lot coordinates measured from the ENTRY side: `u` runs along that side, `v` runs into the lot.
+ * Lot coordinates measured from the entry side: `u` runs along that side, `v` runs into the lot.
  * Everything below plans in (u, v) and converts once, so the four orientations are one layout
  * rather than four.
  */
@@ -233,7 +228,7 @@ function pack(
   const mouth: MacroCoord[] = [];
   const seen = new Set<string>();
   const add = (c: MacroCoord): void => {
-    const key = `${c.x},${c.y}`;
+    const key = cellKey(c.x, c.y);
     if (seen.has(key)) return;
     seen.add(key);
     cells.push(c);
@@ -257,8 +252,7 @@ function loose(region: RegionPlan, frame: Frame, items: readonly CatalogItem[]):
   const taken: Rect[] = [];
   const placements: AnchorPlacement[] = [];
   const unplaced: { regionId: string; catalogId: string }[] = [];
-  const clash = (r: Rect): boolean => taken.some((t) =>
-    r.x < t.x + t.w && t.x < r.x + r.w && r.y < t.y + t.h && t.y < r.y + r.h);
+  const clash = (r: Rect): boolean => taken.some((t) => rectsOverlap(r, t));
 
   for (const item of items) {
     const s = spanOf(item);
@@ -266,7 +260,7 @@ function loose(region: RegionPlan, frame: Frame, items: readonly CatalogItem[]):
     for (let v = 0; v + s.deep <= frame.deep && !placed; v++) {
       for (let u = 0; u + s.across <= frame.along && !placed; u++) {
         const rect = frame.rect(u, v, s.across, s.deep);
-        const pad = { x: rect.x - 1, y: rect.y - 1, w: rect.w + 2, h: rect.h + 2 };
+        const pad = inflateRect(rect, 1);
         if (clash(pad)) continue;
         taken.push(rect);
         placements.push(placementAt(region.id, item, rect, region.orientation));
@@ -294,8 +288,4 @@ function placementAt(
 
 /** A stable integer for a region id under one seed: the court's side choice, not a stream draw, so
  *  it cannot depend on how many regions were laid out before it. */
-function hash(id: string, seed: number): number {
-  let h = (seed ^ 0x9e3779b9) >>> 0;
-  for (let i = 0; i < id.length; i++) h = Math.imul(h ^ id.charCodeAt(i), 0x01000193) >>> 0;
-  return h >>> 0;
-}
+const hash = (id: string, seed: number): number => fnv1a32(id, seed ^ 0x9e3779b9);

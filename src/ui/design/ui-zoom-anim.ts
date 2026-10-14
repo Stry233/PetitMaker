@@ -1,80 +1,84 @@
 /**
- * The ONE application-layer tween for `uiZoom` (the UI-scale
- * multiplier). The store's `uiZoom` field is the persisted TARGET, written
- * exactly once per user action — a slider release, an arrow-key step, Ctrl+/-,
- * the reset chip, or double-click (see `setUiZoom` in `state/store.ts`, the
- * single persistence path). Every consumer that turns `uiZoom` into layout
- * (`scale.tsx:useChromeScale` and `shell/use-frame-zoom.ts:useFrameZoom`) reads
- * the ANIMATED value from here instead of the raw store field, so a slider
- * release, a keyboard step, and Ctrl+/- all ease identically — one mechanism,
- * not several reimplementations.
+ * The application-layer tween for `uiZoom`. The store's `uiZoom` is the persisted target, written once
+ * per user action through `setUiZoom` (`state/store.ts`); every consumer that turns it into layout
+ * (`scale.tsx:useChromeScale`, `shell/use-frame-zoom.ts:useFrameZoom`) reads the animated value from
+ * here, so slider, keyboard and Ctrl+/- ease identically.
  *
- * A single persistent rAF follow loop (exponential smoothing via
- * `renderer/zoom-accum`'s `followStep`, the one curve every zoom path eases
- * on) chases the store's target. It's a module-level singleton (like
- * `motion-state.ts` / `render-scheduler.ts`) so every consumer
- * reads the exact same live value on the exact same frame — no drift between
- * the menu scale and the centre offset derived from it.
- *
- * Reduced motion snaps instantly (no rAF). A retarget mid-flight is
- * interruptible by construction: the loop always chases the CURRENT target
- * from the CURRENT live value — it never restarts from a fixed duration, so
- * rapid retargets (held keys, a fast second drag) never re-enter a front-
- * loaded ease and shake.
+ * One rAF loop follows the target exponentially with the `ui.zoom.follow` time constant, measured in
+ * elapsed time so it moves at one speed at any refresh rate. It always chases the current target from
+ * the current value, so a retarget never restarts a front-loaded ease. Reduced motion snaps. The loop
+ * stays unrounded: rounding the live value each frame would stall it short of the target.
  */
 import { useSyncExternalStore } from 'react';
 import { useEditorStore } from '../../state/store';
-import { useUiPreviewPose } from '../primitives/ui-preview';
-import { isMotionReduced } from '../../core/runtime/motion-state';
-import { followStep } from '../../canvas/map2d/zoom-accum';
-import { createSignal } from '../../core/runtime/signal';
+import { useUiPreviewPose } from './preview';
+import { isMotionReduced } from '../../platform/channels/motion-state';
+import { createSignal } from '../../core/base/signal';
+import { seconds } from './motion';
+
+/** Below this distance from the target the follow lands on it. */
+const SETTLE_EPSILON = 0.005;
+/** The step a first frame (with no previous timestamp) and a long stall are counted as, in ms. */
+const NOMINAL_FRAME_MS = 1000 / 60;
+const MAX_FRAME_MS = 100;
+
+/** The follow's next value after `dtMs`: the time-constant form of an exponential ease. */
+function followToward(cur: number, target: number, dtMs: number): number {
+  const tauMs = seconds('ui.zoom.follow') * 1000;
+  return cur + (target - cur) * (1 - Math.exp(-dtMs / tauMs));
+}
 
 let live = useEditorStore.getState().uiZoom;
 let target = live;
 let raf = 0;
+let lastFrameAt: number | undefined;
 /** True only while the tween is in flight; consumers gate layout animations
  *  and px rounding off during it (both jitter when the scale moves each frame). */
 let animating = false;
 const zoomFrame = createSignal();
 const zoomingChanged = createSignal();
 
-function notify(): void {
-  zoomFrame.emit();
-}
 function setAnimating(v: boolean): void {
   if (v === animating) return;
   animating = v;
   zoomingChanged.emit();
 }
 
-function tick(): void {
-  live = followStep(live, target);
-  if (Math.abs(target - live) < 0.005) {
+function tick(now: number): void {
+  const dt = lastFrameAt === undefined ? NOMINAL_FRAME_MS : Math.min(Math.max(now - lastFrameAt, 0), MAX_FRAME_MS);
+  lastFrameAt = now;
+  live = followToward(live, target, dt);
+  if (Math.abs(target - live) < SETTLE_EPSILON) {
     live = target;
     raf = 0;
+    lastFrameAt = undefined;
     setAnimating(false);
-    notify();
+    zoomFrame.emit();
     return;
   }
-  notify();
+  zoomFrame.emit();
   raf = requestAnimationFrame(tick);
+}
+
+function stop(): void {
+  if (raf !== 0) { cancelAnimationFrame(raf); raf = 0; }
+  lastFrameAt = undefined;
+  setAnimating(false);
 }
 
 function retarget(next: number): void {
   target = next;
   if (isMotionReduced()) {
     live = target;
-    if (raf !== 0) { cancelAnimationFrame(raf); raf = 0; }
-    setAnimating(false);
-    notify();
+    stop();
+    zoomFrame.emit();
     return;
   }
   if (raf === 0) { setAnimating(true); raf = requestAnimationFrame(tick); }
 }
 
-// The store's uiZoom is the only source of a new TARGET, from any caller
-// (slider release, keyboard, reset, Ctrl+/-) — one subscription drives every
-// consumer's animation in lockstep.
+// The store's uiZoom is the only source of a new target, from any caller (slider release, keyboard,
+// reset, Ctrl+/-): one subscription drives every consumer in lockstep.
 useEditorStore.subscribe((state, prev) => {
   if (state.uiZoom !== prev.uiZoom) retarget(state.uiZoom);
 });
@@ -112,8 +116,7 @@ export function useUiZooming(): boolean {
 /** Test-only: hard-reset the singleton to the store's current value with no
  *  in-flight animation (mirrors motion-state's `__resetMotionState`). */
 export function __resetUiZoomAnim(): void {
-  if (raf !== 0) { cancelAnimationFrame(raf); raf = 0; }
-  setAnimating(false);
+  stop();
   live = useEditorStore.getState().uiZoom;
   target = live;
 }

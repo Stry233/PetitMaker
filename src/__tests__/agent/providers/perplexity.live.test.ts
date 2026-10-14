@@ -1,22 +1,14 @@
 // @vitest-environment node
 /**
- * THE PERPLEXITY ROUTER, LIVE — the catalog, one minimal completion, and the unlisted-model
- * refusal, driven through the app's own OpenAI-dialect adapter and its `perplexity` quirks.
- *
- * WHAT IT CONFIRMS that a scripted test cannot: that the base URL, the Bearer header the SDK builds,
- * the `stream_options.include_usage` ask and the `creator/model-name` catalog are what the Router
- * actually answers to, and that a model outside the catalog comes back as a 400 naming itself.
- * `perplexity.test.ts` beside this file asserts the same shapes against payloads copied from the
- * published reference, and runs in CI.
+ * The Perplexity router, live: the catalog, one minimal completion and the unlisted-model refusal,
+ * through the app's OpenAI-dialect adapter and its `perplexity` quirks. It confirms the base URL,
+ * the Bearer header, `stream_options.include_usage` and the `creator/model-name` catalog against
+ * the real router; `perplexity.test.ts` asserts the same shapes against copied payloads in CI.
  *
  *   PERPLEXITY_API_KEY=… npx vitest run src/__tests__/agent/providers/perplexity.live.test.ts
  *
- * Optional: PERPLEXITY_LIVE_MODEL (default: the first slug the catalog lists),
- * PERPLEXITY_LIVE_TIMEOUT_MS (default 120000).
- *
- * IT SKIPS LOUDLY AND COSTS NOTHING IDLE: without the key the suite prints what it would need and
- * skips. The key is read from the environment, presence-checked, and never printed — what the run
- * reports is statuses, counts and shapes.
+ * Optional: PERPLEXITY_LIVE_MODEL (default: the catalog's first slug), PERPLEXITY_LIVE_TIMEOUT_MS
+ * (default 120000). Without the key it prints what it needs and skips; the key is never printed.
  */
 import { describe, expect, it } from 'vitest';
 
@@ -24,12 +16,7 @@ import { baseUrlFor, QUIRKS } from '../../../agent/providers/defaults';
 import { detectProviderFromKey } from '../../../agent/providers/detect';
 import { createOpenAIAdapter } from '../../../agent/providers/openai';
 import type { StreamEvent } from '../../../agent/core/types';
-import type { Adapter, AdapterRequest } from '../../../agent/providers/types';
-
-// The node globals this file needs. No `@types/node` in this browser-SPA project, and the live
-// tests are the only ones that run outside jsdom.
-declare const process: { env: Record<string, string | undefined> };
-declare const console: { log(...args: unknown[]): void };
+import type { Adapter, AdapterRequest } from '../../../agent/core/adapter';
 
 const KEY = process.env.PERPLEXITY_API_KEY;
 const MODEL_OVERRIDE = process.env.PERPLEXITY_LIVE_MODEL;
@@ -49,6 +36,7 @@ const NOT_IN_CATALOG = 'example/does-not-exist';
 
 function liveAdapter(): Adapter {
   return createOpenAIAdapter({
+    providerId: 'perplexity',
     apiKey: KEY!,
     baseUrl: baseUrlFor('perplexity', {}),
     quirks: QUIRKS.perplexity,

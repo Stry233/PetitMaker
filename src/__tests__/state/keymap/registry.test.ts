@@ -1,0 +1,31 @@
+/**
+ * The keymap is data and the command behaviour is code. The pointer machine reads the held-key
+ * combos, so the data has to sit below `view`; only the `run` half needs the layers above it.
+ */
+import { describe, it, expect } from 'vitest';
+import { COMMAND_META, META_BY_ID } from '../../../state/keymap/registry';
+import { effectiveCombo, bindingIndex } from '../../../state/keymap/resolve';
+import { normalizeCombo } from '../../../platform/input/combo';
+
+describe('keymap data', () => {
+  it('indexes every declared command by id', () => {
+    expect(META_BY_ID.size).toBe(COMMAND_META.length);
+    for (const meta of COMMAND_META) expect(META_BY_ID.get(meta.id)).toBe(meta);
+  });
+
+  it('normalizes modifier order and case', () => {
+    expect(normalizeCombo('Shift+G')).toBe('shift+g');
+    expect(normalizeCombo('G+Shift')).toBe('shift+g');
+  });
+
+  it('lets an override replace any command\'s default binding', () => {
+    for (const cmd of COMMAND_META.filter((c) => c.defaultCombo)) {
+      expect(effectiveCombo({ [cmd.id]: 'ctrl+alt+j' }, cmd.id), cmd.id).toBe('ctrl+alt+j');
+    }
+  });
+
+  it('gives every bound command its own combo in the default index', () => {
+    const bound = COMMAND_META.filter((c) => effectiveCombo({}, c.id) !== null);
+    expect(bindingIndex({}).size).toBe(bound.length);
+  });
+});

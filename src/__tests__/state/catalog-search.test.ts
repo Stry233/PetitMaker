@@ -1,12 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import {
-  searchCatalog, registerCatalogItem,
-  getAllItems, getCatalogByCategory,
-} from '../../state/catalog';
-import { ItemCategory, type Locale } from '../../core/model/types';
-import { CATEGORIES } from '../../config/catalog/categories';
+import { __setCatalogItem, getAllItems, getCatalogByCategory } from '../../state/catalog';
+import { searchCatalog } from '../../state/catalog-search';
+import { LOCALES, type Locale } from '../../core/model/locale';
+import { CATEGORIES, ItemCategory } from '../../config/catalog/categories';
 import { categorySearchTerms } from '../../i18n/category-terms';
-import { PLAZA_ID } from '../../core/model/constants';
+import { ANCHOR_LANDMARK } from '../_support/anchor';
 
 const search = (query: string, locale: Locale) => searchCatalog(query, locale, categorySearchTerms(locale));
 
@@ -39,7 +37,7 @@ describe('searchCatalog', () => {
   });
 
   it('is diacritic-insensitive', () => {
-    registerCatalogItem({
+    __setCatalogItem({
       id: 'test-diacritic-item', category: ItemCategory.Flora,
       name: { en: 'Café Flower', fr: 'Fleur de Café' }, icon: 'flower',
       width: 1, height: 1, loadValue: 0, rotatable: false, placementMode: 'point',
@@ -57,7 +55,7 @@ describe('searchCatalog', () => {
   it('picks up items registered after the first search (index invalidation)', () => {
     // Prime the index for this locale before the fixture below is registered.
     searchCatalog('nonexistent-warmup-query', 'en');
-    registerCatalogItem({
+    __setCatalogItem({
       id: 'test-invalidation-item', category: ItemCategory.Flora,
       name: { en: 'Zzyzx Bloom' }, icon: 'flower',
       width: 1, height: 1, loadValue: 0, rotatable: false, placementMode: 'point',
@@ -68,7 +66,7 @@ describe('searchCatalog', () => {
   });
 
   it('matches an authored alias the item\'s own name does not carry', () => {
-    registerCatalogItem({
+    __setCatalogItem({
       id: 'test-alias-item', category: ItemCategory.Flora,
       name: { en: 'Quill Bloom', zh: '羽花' }, icon: 'flower',
       width: 1, height: 1, loadValue: 0, rotatable: false, placementMode: 'point',
@@ -83,12 +81,12 @@ describe('searchCatalog', () => {
   it('ranks an item whose own NAME matches above one that only matches via alias, on an exact tie', () => {
     // Both fields are the exact string "Kappa", so `fuzzyScore` returns the identical raw number
     // for each — the only thing that can separate them is which kind of field produced it.
-    registerCatalogItem({
+    __setCatalogItem({
       id: 'test-rank-by-name', category: ItemCategory.Flora,
       name: { en: 'Kappa' }, icon: 'flower',
       width: 1, height: 1, loadValue: 0, rotatable: false, placementMode: 'point', traits: [],
     });
-    registerCatalogItem({
+    __setCatalogItem({
       id: 'test-rank-by-alias', category: ItemCategory.Flora,
       name: { en: 'Delta' }, icon: 'flower',
       width: 1, height: 1, loadValue: 0, rotatable: false, placementMode: 'point',
@@ -128,13 +126,13 @@ describe('searchCatalog multi-term', () => {
     expect(results.length).toBeGreaterThan(0);
     expect(results.every((i) => i.category === ItemCategory.Tree)).toBe(true);
     const ids = results.map((i) => i.id);
-    expect(ids).toContain('tree-plum'); // colour ALIAS match
-    expect(ids).toContain('tree-apple'); // colour ALIAS match
+    expect(ids).toContain('tree-plum'); // colour alias match
+    expect(ids).toContain('tree-apple'); // colour alias match
   });
 
   it('a colour + category query finds only the matching-category, matching-colour item(s)', () => {
-    // The catalog carries no yellow BUILDING (forcing one would violate the colour pass's own
-    // "only a real colour identity" bar), so this exercises the same AND mechanism on a colour
+    // The catalog carries no yellow building (forcing one would violate the colour pass's own
+    // "only a real colour identity" bar), so this exercises the same and mechanism on a colour
     // the catalog actually has on a building: orange.
     const results = search('orange house', 'en');
     const ids = results.map((i) => i.id);
@@ -154,7 +152,7 @@ describe('searchCatalog multi-term', () => {
 
   it('the CJK unspaced-fallback split never fires when the whole query already matches (a real name)', () => {
     // The cherry-blossom query is itself an alias of tree-peach: the whole 2-char query must match
-    // as ONE unit and never split into one term per character.
+    // as one unit and never split into one term per character.
     const ids = searchCatalog('樱花', 'zh').map((i) => i.id);
     expect(ids).toEqual(['tree-peach']);
   });
@@ -172,7 +170,7 @@ describe('searchCatalog multi-term', () => {
   });
 
   it('the category facet does not widen a SINGLE term: "bridge" alone still means named Bridge, not is-a-Bridge', () => {
-    registerCatalogItem({
+    __setCatalogItem({
       id: 'test-category-only-bridge', category: ItemCategory.Bridge,
       name: { en: 'Overpass' }, icon: 'bridge',
       width: 2, height: 1, loadValue: 0, rotatable: false, placementMode: 'point', traits: [],
@@ -185,7 +183,7 @@ describe('searchCatalog multi-term', () => {
 
 describe('getAllItems', () => {
   it('sees an item registered at runtime', () => {
-    registerCatalogItem({
+    __setCatalogItem({
       id: 'test-getallitems-item', category: ItemCategory.Flora,
       name: { en: 'Runtime Fixture' }, icon: 'flower',
       width: 1, height: 1, loadValue: 0, rotatable: false, placementMode: 'point',
@@ -204,12 +202,12 @@ describe('getAllItems', () => {
   });
 
   it('excludes the off-catalog plaza', () => {
-    expect(getAllItems().some((i) => i.id === PLAZA_ID)).toBe(false);
+    expect(getAllItems().some((i) => i.id === ANCHOR_LANDMARK.id)).toBe(false);
   });
 });
 
 describe('category search terms', () => {
-  const locales: Locale[] = ['en', 'zh', 'ja', 'ru', 'th', 'id', 'fr'];
+  const locales = LOCALES;
 
   it('give every category the words of every locale, the active locale first, then English', () => {
     for (const locale of locales) {

@@ -10,12 +10,8 @@
 import { describe, it, expect } from 'vitest';
 import { objectOnCoatingRule } from '../../rules/object-on-coating';
 import { bumpObjectsVersion } from '../../core/model/grid-model';
-import { CommandExecutor } from '../../core/commands/command-executor';
-import { EventBus } from '../../core/commands/event-bus';
-import { createDefaultRegistry } from '../../rules/index';
-import type { EditorEvents, GridState, PlacedObject } from '../../core/model/types';
-import { makeState, placeCmd } from './_helpers';
-import { roadLookup } from '../../state/object-index';
+import type { GridState, PlacedObject } from '../../core/model/types';
+import { makeState, placeCmd, makeExecutor } from '../_support/map-state';
 
 function withObjects(...objs: PlacedObject[]): GridState {
   const state = makeState(20, 20);
@@ -60,7 +56,7 @@ describe('V-PLACE-COATED: nothing stands on a road', () => {
   });
 
   it('exempts a crossing, whose deck is paved across on purpose', () => {
-    // The generator routes the street bank-to-bank OVER a bridge; a road on those cells is the
+    // The generator routes the street bank-to-bank over a bridge; a road on those cells is the
     // intended arrangement, so flagging it would revert every generation that builds one.
     const state = withObjects(at('r', 'path-overgrown-dirt', 5, 5), at('b', 'bridge-plank', 5, 5));
     expect(objectOnCoatingRule.validate(state)).toEqual([]);
@@ -88,14 +84,15 @@ describe('V-PLACE-COATED: nothing stands on a road', () => {
     // V-PLACE-OVERLAP exempts the road — so this is the only thing standing between a forgotten
     // strip and an illegal map.
     const state = makeState(20, 20);
-    const executor = new CommandExecutor(state, new EventBus<EditorEvents>(), createDefaultRegistry(), roadLookup(state));
+    const executor = makeExecutor(state);
+    const placing = executor.beginStroke();
     expect(executor.execute(placeCmd(at('r', 'path-overgrown-dirt', 4, 4))).success).toBe(true);
-    executor.commitStroke(executor.getUndoStackSize() - 1);
+    placing.commit();
 
-    const strokeStart = executor.getUndoStackSize();
+    const strokeStart = executor.beginStroke();
     // Accepted on its own: the overlap rule lets an object sit over a coating on purpose.
     expect(executor.execute(placeCmd(at('t', 'tree-apple', 4, 4))).success).toBe(true);
-    const violations = executor.commitStroke(strokeStart);
+    const violations = strokeStart.commit();
 
     expect(violations.map((v) => v.ruleId)).toContain('V-PLACE-COATED');
     expect(state.objects.has('t')).toBe(false); // reverted

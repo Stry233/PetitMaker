@@ -5,22 +5,23 @@
  */
 import { describe, expect, it } from 'vitest';
 
-import { CommandExecutor } from '../../core/commands/command-executor';
 import { EventBus } from '../../core/commands/event-bus';
-import { TerrainType, type EditorEvents } from '../../core/model/types';
+import { TerrainType } from '../../core/model/types';
+import { type EditorEvents } from '../../state/editing/events';
 import { createDefaultRegistry } from '../../rules';
-import { roadLookup } from '../../state/object-index';
-import { createScriptedAdapter, type ScriptedTurn } from '../../agent/eval/scripted-adapter';
+import { createScriptedAdapter, type ScriptedTurn } from '../_support/agent/scripted-adapter';
 import { append, createLog, eventsOf } from '../../agent/core/log';
 import { runJob, type LoopDeps } from '../../agent/core/loop';
 import { deriveView } from '../../agent/core/project-view';
-import { createExecutor, wireSchemas } from '../../agent/exec/executor';
-import { buildSystemPrompt } from '../../agent/system-prompt';
+import { createExecutor } from '../../agent/exec/executor';
+import { wireSchemas } from '../../agent/tools';
+import { buildSystemPrompt } from '../../agent/prompts';
 import type { AgentToolDeps } from '../../agent/tools';
-import { makeState } from '../rules/_helpers';
+import { makeState } from '../_support/map-state';
 import { checkContracts, reportContracts, CONTRACTS } from './_llm-contracts';
+import { createExecutor as createCommandExecutor } from '../../state/executor';
 
-/** The order the job is given. Small on purpose: what is under test is the SHAPE of what comes back,
+/** The order the job is given. Small on purpose: what is under test is the shape of what comes back,
  *  and a large build only buys more of the same strings. */
 export const ORDER =
   'Terrace the little rise at the north end of the plaza and put a lookout on top of it.';
@@ -29,7 +30,7 @@ export const ORDER =
 function liveMap() {
   const state = makeState(24, 24);
   const bus = new EventBus<EditorEvents>();
-  const executor = new CommandExecutor(state, bus, createDefaultRegistry(), roadLookup(state));
+  const executor = createCommandExecutor(state, createDefaultRegistry(), bus);
   const deps: AgentToolDeps = {
     getState: () => state,
     getExecutor: () => executor,
@@ -54,7 +55,7 @@ function toolTurn(
 }
 
 /**
- * THE ACTOR'S SCRIPT, written as a model that has read its own instructions would answer.
+ * The actor's script, written as a model that has read its own instructions would answer.
  *
  * Six turns: read the ground, file a plan, raise the terrace, measure, place the lookout, and close
  * with a summary plus the one obvious reply. Every string is at the length its contract states — the
@@ -110,7 +111,6 @@ function deps(over: Partial<LoopDeps> & { adapter: LoopDeps['adapter']; executor
     tools: wireSchemas(),
     oversight: 'yolo',
     sameModel: true,
-    budgetTokens: 120_000,
     signal: new AbortController().signal,
     undoStackSize: () => 0,
     ...over,
@@ -131,7 +131,7 @@ describe('one small job, driven by a model-shaped actor through the real loop', 
 
     expect(outcome).toBe('done');
 
-    // THE WORK REACHED THE MAP, through the real rules: without this the contract check would be
+    // The work reached the map, through the real rules: without this the contract check would be
     // reading a log of refusals and passing.
     expect(map.state.cells[5]![10]!.terrain).toMatchObject({ type: TerrainType.Mountain, elevation: 2 });
     const view = deriveView(log);
@@ -144,7 +144,7 @@ describe('one small job, driven by a model-shaped actor through the real loop', 
   });
 
   /**
-   * AND THE CHECKER HAS TEETH. A test that only ever sees compliant output cannot tell a working
+   * And the checker has teeth. A test that only ever sees compliant output cannot tell a working
    * assertion from an empty one, so the same job is run again with the model writing each string the
    * way the contracts say it must not: a says line whose point arrives on line three, a stage label
    * too long for its row, a suggestion past the composer's clip, and a summary of six sentences.
@@ -212,7 +212,7 @@ describe('one small job, driven by a model-shaped actor through the real loop', 
     const suggestion = findings.find((f) => f.contract === '5 suggest_reply');
     expect(suggestion, reportContracts(findings)).toBeUndefined();
 
-    // One character over the CJK budget IS a finding, where the same count in Latin is not.
+    // One character over the CJK budget is a finding, where the same count in Latin is not.
     const long = createLog();
     append(long, { kind: 'order', text: '再来一次', mapContext: '24x24' });
     append(long, {

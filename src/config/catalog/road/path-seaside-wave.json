@@ -4,7 +4,7 @@
   "icon": "path-seaside-wave",
   "name": {
     "en": "Seaside Wave Path",
-    "zh": "海浪路",
+    "zh": "度假海浪路",
     "ja": "海辺の波の道",
     "ru": "Дорожка «морская волна»",
     "th": "ทางลายคลื่นทะเล",
@@ -24,5 +24,17 @@
     {
       "type": "surfaceCoating"
     }
-  ]
+  ],
+  "roadMaterial": {
+    "feather": 0.035,
+    "edge": {
+      "color": "#ffffff",
+      "pattern": {
+        "kind": "image",
+        "image": "path-seaside-wave",
+        "repeat": 3
+      }
+    },
+    "layers": []
+  }
 }

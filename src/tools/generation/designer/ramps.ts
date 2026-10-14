@@ -1,5 +1,14 @@
-import { ItemCategory } from '../../../core/model/types';
-import { getPlaceableByCategory } from '../../../state/catalog';
+import type { CatalogItem } from '../../../core/model/types';
+import { rampDropLayers } from '../../../core/model/traits';
+import { crossingPool } from '../../placement/crossings';
 
-/** Terrace planning reserves enough run for every offered ramp style. */
-export const MAX_RAMP_RUN = Math.max(0, ...getPlaceableByCategory(ItemCategory.Ramp).map((item) => item.height));
+/** The ramp styles a street flight may use. A flight stands one ramp on each tier step, so only
+ *  one-layer climbs qualify. */
+export function rampStyles(): CatalogItem[] {
+  return crossingPool('ramp').filter((item) => rampDropLayers(item) === 1);
+}
+
+/** The longest run of any offered ramp style: terrace planning reserves this much per tier. */
+export function maxRampRun(): number {
+  return Math.max(0, ...rampStyles().map((item) => item.height));
+}

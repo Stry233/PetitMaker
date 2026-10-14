@@ -5,21 +5,20 @@
  * The example loads when the guide mounts, plays muted and loops; under reduced motion it rests on
  * its poster with a play button and plays only when asked.
  */
+import { ActionButton } from '../../../primitives/ActionButton';
 import { useRef, useState, type CSSProperties, type DragEvent } from 'react';
-import { AnimatePresence, motion, useReducedMotionConfig } from 'framer-motion';
+import { AnimatePresence, useReducedMotionConfig } from 'framer-motion';
 import { useT } from '../../../../i18n/context';
-import type { ImportFailure } from '../../../../io/planet-scan/import-video';
-import exampleMp4 from '../../../../assets/planet-scan/example.mp4';
-import exampleWebm from '../../../../assets/planet-scan/example.webm';
-import examplePoster from '../../../../assets/planet-scan/example-poster.jpg';
-import { colors, interactionProfiles, radii } from '../../../design/styles';
+import type { ImportFailure } from '../../../../pipelines/planet-scan';
+import { radii } from '../../../design/styles';
+import { ERROR, FRAME_INK } from '../../../design/tokens';
 import { roleFont } from '../../../design/text-weight';
 import { skin } from '../../../design/window-skin';
 import { Disclosure } from '../../../primitives/Disclosure';
 import { PlayIcon } from '../../../primitives/line-glyphs';
 import { ImportDropZone } from '../import/ImportDropZone';
-import { acceptsVideo, VIDEO_ACCEPT } from '../../../../io/import-kind';
-import { SCAN_EXAMPLE_SIZE } from './scan-example';
+import { acceptsVideo, VIDEO_ACCEPT } from '../../../../io/import/facts';
+import { SCAN_EXAMPLE, SCAN_EXAMPLE_SIZE } from './scan-example';
 
 /** The protocol, in order. */
 const STEPS = [
@@ -45,11 +44,11 @@ export const FAILURE_COPY = {
 
 
 const listStyle: CSSProperties = {
-  ...roleFont('body'), color: skin.plateInk, margin: 0, paddingInlineStart: 22, display: 'flex', flexDirection: 'column', gap: 10, lineHeight: 1.45,
+  ...roleFont('body'), color: skin.plateInk, margin: 0, paddingInlineStart: 20, display: 'flex', flexDirection: 'column', gap: 10, lineHeight: 1.45,
 };
 const frameStyle: CSSProperties = {
   position: 'relative', width: '100%', aspectRatio: `${SCAN_EXAMPLE_SIZE.width} / ${SCAN_EXAMPLE_SIZE.height}`, borderRadius: radii.md, overflow: 'hidden',
-  background: colors.frameDark, border: `1.5px solid ${skin.line}`, boxSizing: 'border-box',
+  background: FRAME_INK, border: `1.5px solid ${skin.line}`, boxSizing: 'border-box',
 };
 const mediaStyle: CSSProperties = { position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', display: 'block' };
 const playStyle: CSSProperties = {
@@ -57,7 +56,7 @@ const playStyle: CSSProperties = {
   background: skin.active, color: skin.ink, display: 'grid', placeItems: 'center', padding: 0, WebkitTapHighlightColor: 'transparent',
 };
 const failureStyle: CSSProperties = {
-  ...roleFont('label'), color: colors.statusError, background: skin.inset, borderRadius: radii.md, padding: '10px 14px', lineHeight: 1.45,
+  ...roleFont('label'), color: ERROR, background: skin.inset, borderRadius: radii.md, padding: '10px 14px', lineHeight: 1.45,
 };
 
 function ExampleVideo() {
@@ -72,16 +71,16 @@ function ExampleVideo() {
   };
   return (
     <div style={frameStyle} data-testid="scan-example">
-      <video ref={ref} style={mediaStyle} muted loop playsInline autoPlay={!reduced} preload={reduced ? 'none' : 'auto'} poster={examplePoster}
+      <video ref={ref} style={mediaStyle} muted loop playsInline autoPlay={!reduced} preload={reduced ? 'none' : 'auto'} poster={SCAN_EXAMPLE.poster}
         aria-label={t('planet.scan_example')} data-testid="scan-example-video">
-        <source src={exampleWebm} type="video/webm" />
-        <source src={exampleMp4} type="video/mp4" />
+        <source src={SCAN_EXAMPLE.webm} type="video/webm" />
+        <source src={SCAN_EXAMPLE.mp4} type="video/mp4" />
       </video>
       {!playing && (
-        <motion.button type="button" {...interactionProfiles.tile} data-testid="scan-example-play" aria-label={t('planet.scan_play')} title={t('planet.scan_play')}
+        <ActionButton interaction="tile" data-testid="scan-example-play" aria-label={t('planet.scan_play')} title={t('planet.scan_play')}
           style={playStyle} onClick={play}>
           <PlayIcon size={26} />
-        </motion.button>
+        </ActionButton>
       )}
     </div>
   );

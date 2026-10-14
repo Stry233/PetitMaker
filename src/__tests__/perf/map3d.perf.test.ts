@@ -2,7 +2,7 @@
  * The 3D view's geometry-builder costs.
  *
  * Covers the paths a first 3D-view open and a live edit actually pay for: the full terrain build
- * (scene.ts meshes chunk by chunk, never the whole map in one call, so the bench loops chunks the
+ * (map-renderer.ts meshes chunk by chunk, never the whole map in one call, so the bench loops chunks the
  * same way), a single dense chunk's remesh (the cells-changed path), the road trim decal over
  * every road tile, the object-instance resolver over every placed object, every catalog item's
  * bespoke ModelSpec build, and the chunk-dirty bookkeeping for a multi-cell edit burst. See
@@ -11,15 +11,16 @@
 import { describe, it } from 'vitest';
 import { PERF, perfSuite } from './_harness';
 import { denseIsland } from './_fixtures';
-import { buildChunkTerrain, buildRoadTrimMeshes } from '../../canvas/map3d/build/terrain-geometry';
-import { buildObjectInstances } from '../../canvas/map3d/build/object-meshes';
-import { buildModel } from '../../canvas/map3d/models/build-model';
-import { getSpec, modeledIds } from '../../canvas/map3d/models/registry';
-import { dirtyChunksFor } from '../../canvas/map3d/build/chunk-dirty';
+import { buildChunkTerrain } from '../../view/map3d/geometry/terrain-geometry';
+import { buildRoadTrimMeshes } from '../../view/map3d/geometry/road-mesh';
+import { buildObjectInstances } from '../../view/map3d/geometry/object-meshes';
+import { buildModel } from '../../view/map3d/models/build-model';
+import { getSpec, modeledIds } from '../../view/map3d/models/registry';
+import { dirtyChunksFor } from '../../view/map3d/geometry/chunk-dirty';
 import { getCatalogItem } from '../../state/catalog';
-import { ItemCategory } from '../../core/model/types';
+import { ItemCategory } from '../../config/catalog/categories';
 import type { MacroCoord } from '../../core/model/types';
-import { CHUNK_SIZE } from '../../core/model/game-profile';
+import { CHUNK_SIZE } from '../../core/game/profile';
 
 const s = perfSuite('map3d');
 

@@ -10,7 +10,8 @@ import {
 import { rsDecode } from './rs';
 import { deinterleave, deinterleaveErasures } from './interleave';
 import { bytesToSymbols, symbolsToBytes, symbolErasuresToByteErasures } from './bitpack';
-import { crc32 } from '../crypto/crc32';
+import { crc32 } from '../../../core/base/crc32';
+import { median } from '../../../core/base/math';
 import { whiten } from './encode';
 import { convolutionDecode, codedBits } from './convolution';
 import { BlockRecovery, type RecoveryBudget } from './recovery';
@@ -27,22 +28,13 @@ function luminance(color: RGB): number {
 
 const HEADER_LUMAS = HEADER_LEVELS.map((color) => luminance(color));
 
-function median(values: number[]): number {
-  if (values.length === 0) return 0;
-  const sorted = values.slice().sort((a, b) => a - b);
-  return sorted[(sorted.length - 1) >> 1]!;
-}
+/** An RGBA pixel buffer and its size. */
+interface Raster { rgba: Uint8Array; width: number; height: number }
 
 /** Median RGB over the inner half of a pixel rectangle. */
-function sampleRect(
-  rgba: Uint8Array,
-  width: number,
-  height: number,
-  x0: number,
-  y0: number,
-  w: number,
-  h: number,
-): RGB | null {
+function sampleRect(img: Raster, box: { x0: number; y0: number; w: number; h: number }): RGB | null {
+  const { rgba, width, height } = img;
+  const { x0, y0, w, h } = box;
   const xa = Math.ceil(x0 + w * 0.25);
   const xb = Math.floor(x0 + w * 0.75);
   const ya = Math.ceil(y0 + h * 0.25);
@@ -61,11 +53,12 @@ function sampleRect(
     for (let x = xa; x <= xb; x++) push(x, y);
   }
   if (red.length === 0) push(Math.round(x0 + w / 2), Math.round(y0 + h / 2));
-  return red.length > 0 ? [median(red), median(green), median(blue)] : null;
+  return red.length > 0 ? [median(red, 'lower'), median(green, 'lower'), median(blue, 'lower')] : null;
 }
 
 /** Finder separation distinguishes the share band from dark shapes elsewhere in the image. */
-function findFinders(rgba: Uint8Array, width: number, height: number): Geometry[] {
+function findFinders(img: Raster): Geometry[] {
+  const { rgba, width, height } = img;
   const dark = (pixel: number) => rgba[pixel * 4]! + rgba[pixel * 4 + 1]! + rgba[pixel * 4 + 2]! < 100;
   const seen = new Uint8Array(width * height);
   const components: Component[] = [];
@@ -168,10 +161,11 @@ function findFinders(rgba: Uint8Array, width: number, height: number): Geometry[
 }
 
 /** Finder darkness supplies fractional edge coverage after antialiased resizing. */
-function refineGeometry(rgba: Uint8Array, width: number, height: number, geometry: Geometry): Geometry {
+function refineGeometry(img: Raster, geometry: Geometry): Geometry {
+  const { rgba, width, height } = img;
   const { ox, oy, module } = geometry;
-  const ink = sampleRect(rgba, width, height, ox, oy, FINDER * module, FINDER * module);
-  const paper = sampleRect(rgba, width, height, ox + 80 * module, oy + module, module, module);
+  const ink = sampleRect(img, { x0: ox, y0: oy, w: FINDER * module, h: FINDER * module });
+  const paper = sampleRect(img, { x0: ox + 80 * module, y0: oy + module, w: module, h: module });
   if (!ink || !paper) return geometry;
   const white = luminance(paper);
   const contrast = white - luminance(ink);
@@ -229,9 +223,7 @@ function parseHeader(bytes: Uint8Array): Header | null {
 }
 
 function decodeLegacy(
-  rgba: Uint8Array,
-  width: number,
-  height: number,
+  img: Raster,
   geometry: Geometry,
   header: LegacyHeader,
   centroids: readonly RGB[],
@@ -249,7 +241,7 @@ function decodeLegacy(
   for (let k = 0; k < symbolCount; k++) {
     const col = k % tier.dataCols;
     const row = Math.floor(k / tier.dataCols);
-    const sample = sampleRect(rgba, width, height, ox + col * size, dataY + row * size, size, size);
+    const sample = sampleRect(img, { x0: ox + col * size, y0: dataY + row * size, w: size, h: size });
     if (!sample) return null;
     const hit = classify(sample, palette);
     symbols[k] = hit.idx;
@@ -273,19 +265,16 @@ function decodeLegacy(
 }
 
 function decodeCurrent(
-  rgba: Uint8Array, width: number, height: number, geometry: Geometry,
-  header: CurrentHeader, centroids: readonly RGB[], recovery: BlockRecovery,
+  img: Raster, geometry: Geometry, header: CurrentHeader, centroids: readonly RGB[], recovery: BlockRecovery,
 ): Uint8Array | null {
-  return recoverCurrent(rgba, width, height, { geometry, header, centroids, recovery }, 0, 0, 1, 0, 1, { attempts: 1000 });
+  const still = { dx: 0, dy: 0, gain: 1, sharpen: 0, radius: 1 };
+  return recoverCurrent(img, { geometry, header, centroids, recovery }, still, { attempts: 1000 });
 }
 
-function decodeAt(
-  rgba: Uint8Array, width: number, height: number, geometry: Geometry,
-  current: CurrentCandidate[],
-): Uint8Array | null {
+function decodeAt(img: Raster, geometry: Geometry, current: CurrentCandidate[]): Uint8Array | null {
   const { ox, oy, module } = geometry;
-  const ink = sampleRect(rgba, width, height, ox, oy, FINDER * module, FINDER * module);
-  const paper = sampleRect(rgba, width, height, ox + 80 * module, oy + module, module, module);
+  const ink = sampleRect(img, { x0: ox, y0: oy, w: FINDER * module, h: FINDER * module });
+  const paper = sampleRect(img, { x0: ox + 80 * module, y0: oy + module, w: module, h: module });
   if (!ink || !paper) return null;
   const inkY = luminance(ink);
   const paperY = luminance(paper);
@@ -295,7 +284,7 @@ function decodeAt(
   const headerErasures: number[] = [];
   for (let k = 0; k < HEADER_MODULES; k++) {
     const { col, row } = headerModuleAt(k);
-    const sample = sampleRect(rgba, width, height, ox + col * module, oy + row * module, module, module);
+    const sample = sampleRect(img, { x0: ox + col * module, y0: oy + row * module, w: module, h: module });
     if (!sample) return null;
     const value = luminance(sample);
     let best = 0;
@@ -326,29 +315,27 @@ function decodeAt(
   const centroids: RGB[] = [];
   for (let i = 0; i < header.palette.length; i++) {
     const { col, row } = calibrationRect(i);
-    const sample = sampleRect(
-      rgba, width, height,
-      ox + col * module, oy + row * module,
-      CALIB_CELLS * module, CALIB_CELLS * module,
-    );
+    const sample = sampleRect(img, { x0: ox + col * module, y0: oy + row * module, w: CALIB_CELLS * module, h: CALIB_CELLS * module });
     if (!sample) return null;
     centroids.push(sample);
   }
 
-  if (header.kind === 'legacy') return decodeLegacy(rgba, width, height, geometry, header, centroids);
+  if (header.kind === 'legacy') return decodeLegacy(img, geometry, header, centroids);
   const matching = current.find((candidate) => candidate.header.crc === header.crc
     && candidate.header.payloadLen === header.payloadLen
     && candidate.header.plan.profile.id === header.plan.profile.id);
   const recovery = matching?.recovery ?? new BlockRecovery(header.plan, header.payloadLen, header.crc);
   current.push({ geometry, header, centroids, recovery });
-  return decodeCurrent(rgba, width, height, geometry, header, centroids, recovery);
+  return decodeCurrent(img, geometry, header, centroids, recovery);
 }
 
 function recoverCurrent(
-  rgba: Uint8Array, width: number, height: number, candidate: CurrentCandidate,
-  dx: number, dy: number, gain: number, sharpen: number, radius: number, budget: RecoveryBudget,
+  img: Raster, candidate: CurrentCandidate,
+  tune: { dx: number; dy: number; gain: number; sharpen: number; radius: number }, budget: RecoveryBudget,
   spanAdjustment = 0,
 ): Uint8Array | null {
+  const { rgba, width, height } = img;
+  const { dx, dy, gain, sharpen, radius } = tune;
   const { geometry, header: { plan }, centroids, recovery } = candidate;
   const { profile } = plan;
   const size = geometry.module / profile.div;
@@ -400,23 +387,24 @@ function recoverCurrent(
 export function decodeGlyph(rgba: Uint8Array, width: number, height: number): Uint8Array | null {
   if (!Number.isSafeInteger(width) || !Number.isSafeInteger(height) || width <= 0 || height <= 0
     || width * height * 4 !== rgba.length) return null;
+  const img: Raster = { rgba, width, height };
   let candidates: Geometry[];
   try {
-    candidates = findFinders(rgba, width, height);
+    candidates = findFinders(img);
   } catch {
     return null;
   }
   const current: CurrentCandidate[] = [];
   for (const geometry of candidates) {
     try {
-      const payload = decodeAt(rgba, width, height, geometry, current);
+      const payload = decodeAt(img, geometry, current);
       if (payload) return payload;
     } catch {
       // A malformed candidate does not prevent testing the remaining finder pairs.
     }
   }
   for (const candidate of current.slice()) {
-    const geometry = refineGeometry(rgba, width, height, candidate.geometry);
+    const geometry = refineGeometry(img, candidate.geometry);
     const centroids = candidate.centroids.map((_, i): RGB => {
       const rect = calibrationRect(i);
       const x = Math.floor(geometry.ox + (rect.col + CALIB_CELLS / 2) * geometry.module);
@@ -433,7 +421,7 @@ export function decodeGlyph(rgba: Uint8Array, width: number, height: number): Ui
   for (const [gain, sharpen, radius, span] of [[1, 0, 1, 0], [0.85, 0, 1, 0], [1, 0.25, 1, 0], [1, 0.5, 1, 0],
     [1, 0, 1, 1], [1, 0, 1, -1]] as const) {
     for (const [dx, dy] of offsets) for (const candidate of current) {
-      const payload = recoverCurrent(rgba, width, height, candidate, dx, dy, gain, sharpen, radius, budget, span);
+      const payload = recoverCurrent(img, candidate, { dx: dx, dy: dy, gain: gain, sharpen: sharpen, radius: radius }, budget, span);
       if (payload) return payload;
       if (budget.attempts <= 0) return null;
     }

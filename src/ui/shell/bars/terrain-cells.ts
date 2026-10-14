@@ -1,12 +1,11 @@
 /*
- * Shared tool-row data for mountain, water, and road modes. Rects use the shell design coordinate
- * space. Composite glyphs retain their source layers, while line and curve handles are drawn because
- * their source ellipses have no visible paint. Measured ink bounds keep dissimilar glyphs optically
- * balanced through `apparentSize` and `opticalCentre`.
+ * The tool-row data for the mountain, water and road surfaces, in the shell's design coordinates.
+ * Composite glyphs keep their source layers; line and curve handles are drawn, their source ellipses
+ * being unpainted. Measured ink keeps unlike glyphs balanced (`apparentSize`, `opticalCentre`).
  */
-import type { BuildMode, BuildShape, BuildTool } from '../../../core/model/edit-mode';
+import type { BuildMode, BuildShape, BuildTool, ContentType } from '../../../state/editing/edit-mode';
 import type { Glyph, GlyphInk } from '../frame';
-import { ACTIVE, INK, PLATE } from '../../design/tokens';
+import { INK, MASK_CUT, MASK_KEEP } from '../../design/tokens';
 import { SCALE } from '../units';
 
 import badgePlate from '../../../assets/shell/shelf-mountain/tools/roundrect-3.svg';
@@ -28,14 +27,13 @@ import lineBar from '../../../assets/shell/shelf-mountain/tools/line/roundrect-2
 import curveArc from '../../../assets/shell/shelf-mountain/tools/curve/rect.svg';
 import rectShape from '../../../assets/shell/shelf-mountain/tools/rect-tool/roundrect-2.svg';
 import circleShape from '../../../assets/shell/shelf-mountain/tools/circle-tool/ellipse.svg';
-import { BRUSH_SIZE } from '../../../core/model/edit-mode';
+import { BRUSH_SIZE, isContentMode } from '../../../state/editing/edit-mode';
+import type { I18nKey } from '../../../i18n/keys';
 
-/** Build modes that share the terrain tool row. */
-export type TerrainSurface = Exclude<BuildMode, null | 'object' | 'generate' | 'annotate'>;
-
-/** The mode's terrain surface, or null for the modes whose bars are their own shape. */
-export function terrainSurface(mode: BuildMode): TerrainSurface | null {
-  return mode === 'mountain' || mode === 'water' || mode === 'road' ? mode : null;
+/** The mode's terrain surface, which shares the terrain tool row, or null for the modes whose bars
+ *  are their own shape. */
+export function terrainSurface(mode: BuildMode): ContentType | null {
+  return isContentMode(mode) ? mode : null;
 }
 
 /** Open endpoint-ring dimensions in design pixels. */
@@ -65,12 +63,12 @@ const cutAtHandles = (
 ) => `data:image/svg+xml,${encodeURIComponent(
   `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">`
   + `<mask id="c" maskUnits="userSpaceOnUse" x="0" y="0" width="${w}" height="${h}">`
-  + `<rect width="${w}" height="${h}" fill="#fff"/>`
-  + at.map(([x, y]) => `<circle cx="${x}" cy="${y}" r="${HANDLE.outer / 2 - HANDLE.ring}" fill="#000"/>`).join('')
+  + `<rect width="${w}" height="${h}" fill="${MASK_KEEP}"/>`
+  + at.map(([x, y]) => `<circle cx="${x}" cy="${y}" r="${HANDLE.outer / 2 - HANDLE.ring}" fill="${MASK_CUT}"/>`).join('')
   + `</mask><image href="${src}" width="${w}" height="${h}" mask="url(#c)"/></svg>`,
 )}`;
 
-/** Each stroke's handle centres in ITS OWN art frame: the canvas rects below, less the art's own.
+/** Each stroke's handle centres in its own art frame: the canvas rects below, less the art's own.
  *  Derived rather than measured, so moving a handle moves the hole that receives it. */
 const handleIn = (
   artX: number, artY: number, rects: readonly HandleRect[],
@@ -80,9 +78,7 @@ const handleIn = (
 /** A handle's rect on the design canvas, and where its circle sits inside the 26 px box. */
 type HandleRect = readonly [number, number, readonly [number, number]];
 
-/** The two strokes' handles, each on its own stroke's end centre: the bar's two cap centres, and the
- *  midpoints of the arc's two end faces. One declaration per cell, read by both the ring and the
- *  hole it stands in. */
+/** The two strokes' handles on their own ends' centres, read by both the ring and the hole it stands in. */
 const LINE_HANDLES: readonly [HandleRect, HandleRect] = [
   [771.8, 1786.6, HANDLE_CENTRE.lower],
   [817.1, 1763.5, HANDLE_CENTRE.upper],
@@ -104,23 +100,16 @@ export interface ArtPart {
 export interface ToolCell {
   id: string;
   /** Accessible name, and the name shown under the cell while it is the active one. */
-  labelKey: string;
-  /** The keyboard command that does the same thing. Its LIVE binding is the cell's badge, so a
+  labelKey: I18nKey;
+  /** The keyboard command that does the same thing. Its live binding is the cell's badge, so a
    *  rebind shows on the bar without the bar knowing what the keys are. */
   commandId: string;
-  /** What a click lays. `setEditMode` takes these two and resolves the tool; the shape cells all
-   *  resolve to the same tool, which multiplexes the figure internally. */
-  edit: { tool: BuildTool; shape?: BuildShape };
-  glyph: Record<TerrainSurface, Glyph>;
+  /** The toolbar tool and figure this cell stands for: what the row shows active when it is posed. */
+  shows: { tool: BuildTool; shape?: BuildShape };
+  glyph: Record<ContentType, Glyph>;
 }
 
-/**
- * A drawing at the design's own absolute rects, turned into a glyph the bar can size and centre.
- *
- * The parts move into the drawing's OWN frame — its top-left corner, not the cell's — so the bar
- * never has to know where on the 3754 x 1918 canvas the artist put it. `ink` is measured in that
- * same frame, which is what makes the two comparable.
- */
+/** A drawing at the design's absolute rects as a glyph in its own frame, where its ink is measured too. */
 function toGlyph(ink: GlyphInk, parts: readonly ArtPart[]): Glyph {
   const x0 = Math.min(...parts.map((p) => p.x));
   const y0 = Math.min(...parts.map((p) => p.y));
@@ -133,24 +122,15 @@ function toGlyph(ink: GlyphInk, parts: readonly ArtPart[]): Glyph {
 }
 
 /** A glyph the three surfaces share. */
-function shared(glyph: Glyph): Record<TerrainSurface, Glyph> {
+function shared(glyph: Glyph): Record<ContentType, Glyph> {
   return { mountain: glyph, water: glyph, road: glyph };
 }
 
-/** The nominal cell box. The row is a fixed pitch of these; an ACTIVE cell draws a bigger plate
+/** The nominal cell box. The row is a fixed pitch of these; an `ACTIVE` cell draws a bigger plate
  *  around the same box rather than taking more room, so selecting one never moves the others. */
-export const CELL = { y: 1729, w: 166, h: 115 } as const;
-
-/**
- * How big every glyph in the row READS, in design px.
- *
- * Near the size the design's own eleven drawings average, so the row keeps the weight the document
- * gives it and only the SPREAD goes: the mountain mass reads at 91 where the trim scissors read at
- * 51, and a row whose members differ that far draws the same tool at plainly different sizes on Mountains
- * and Roads. It stays at 62 rather than tracking that average, which drawing
- * the line and curve handles lifted to 67: following it would grow the nine cells nobody asked about.
- */
-export const GLYPH = 62;
+const CELL = { y: 1729, w: 166, h: 115 } as const;
+/** The cell as it lands on screen, in css px. */
+export const CELL_BOX = { w: CELL.w * SCALE, h: CELL.h * SCALE } as const;
 
 /** How far the active cell's plate grows past the nominal box, per the design's own two plates. */
 export const ACTIVE_PLATE = { dx: 12, dy: 8, w: 190, h: 132 } as const;
@@ -167,59 +147,18 @@ export const PLATE_PAD = {
 } as const;
 
 /**
- * The plate's own right edge, as a css `right` against the cell box, in css px.
- *
- * A grown pill ENDS at the control it holds, so its right edge is the cell box's; every other plate
- * is centred on that box and so hangs `PLATE_PAD.x` past it.
- *
- * IT IS A FUNCTION BECAUSE THE BADGE READS IT TOO. A shortcut badge sits on this corner, so the one
- * thing it must never do is name its own number: pinned at a constant the badge stays put while
- * the pill opens around it. Given the edge, css follows any width for
- * free, since the cell box grows with the control inside it.
+ * The plate's right edge against the cell box, in css px: a grown pill ends at its control, others hang
+ * `PLATE_PAD.x` past; the shortcut badge reads it, so it follows any width.
  */
 export function plateRight(active: boolean, grown: boolean): number {
   return active && !grown ? -PLATE_PAD.x : 0;
 }
 
 /**
- * The plate, in every state a cell wears it: how far it reaches past the cell box on each side, and
- * what it is filled with.
- *
- * ONE DESCRIPTION, FIVE NUMBERS, so the shapes are the same object and a press animates between
- * them. The plate is the cell box at rest, the design's bigger pill when the cell is chosen, and a
- * pill grown rightward around a control when the chosen cell carries one. Separate renderings of
- * those states could only ever swap; one shape animates.
- */
-export function plateShape(active: boolean, grown: boolean): Record<string, number | string> {
-  const x = active ? PLATE_PAD.x : 0;
-  const y = active ? PLATE_PAD.y : 0;
-  return {
-    left: -x, top: -y, bottom: -y, right: plateRight(active, grown),
-    backgroundColor: active ? ACTIVE : PLATE,
-  };
-}
-
-/**
- * The shortcut badge, on the cell's top-right corner: the drawing's own box, and how far it stands
- * above the cell's top edge.
- *
- * `w` is a MINIMUM. The design drew a single letter; a rebound command can carry "Ctrl+B", and a
- * badge is as wide as the keys it names, like every other label in this frame.
- *
- * The badge is anchored by its RIGHT edge to the PLATE's (`plateRight`), so it follows a pill of any
- * width and a wider combo grows into the plate rather than off it. There is no inset: measured in
- * the browser, a badge whose right edge lands on the plate's own leaves its bottom-right corner 4 px
- * past the cap arc, which is the overlap that reads as attached. The two nearby numbers are both
- * wrong. The design's is 19 design px PAST the cell's right edge, and a cell
- * plate is a stadium: by the badge's row the surface has curved away, so the badge floats clear of
- * the shape it belongs to. Pulling it back to where the arc reaches the badge's bottom edge — the
- * furthest right it can stand and still only TOUCH the plate — stops it short of the corner instead.
+ * The shortcut badge on the cell's top-right corner: `w` is a minimum (a badge is as wide as its keys),
+ * and its right edge on the plate's leaves it touching the cap arc.
  */
 export const BADGE = { rise: CELL.y - 1711, w: 44, h: 44 } as const;
-
-/** The active cell's name, under it and on the map: where the design puts its top, which is just
- *  clear of the grown plate's own bottom edge. */
-export const CAPTION = { y: 1858 } as const;
 
 /** The brush-size slider. `first`/`last` are the tick centres the knob's centre travels between;
  *  the range is `BRUSH_SIZE` (the drawing's three dots are tick marks, not the number of steps). */
@@ -236,15 +175,8 @@ export const BRUSH = {
 } as const;
 
 /**
- * The road-surface swatches, in design px, from the drawing the design source puts above the Roads
- * tool row (the road-surface strip in the Roads bottom bar, four tiles at a 172 pitch starting at the row's own left edge).
- *
- * DRAWN, not the extracted art. Each tile is an outer rounded square with a smaller one inset, and
- * the inner one is the SURFACE's own colour, which is a catalog fact — the document drew all four
- * the same brown, because on that canvas they were a placeholder. So the bar draws both squares and
- * fills the inner from the live catalog, which is also what lets a fifth surface arrive with no art
- * and no edit here. `radius` is the drawing's own corner, and the inner square takes the same
- * PROPORTION of its smaller side rather than the same number of pixels.
+ * The road-surface swatches in design px, drawn rather than placed: the inner square takes the surface's
+ * catalog colour, so a new surface needs no art.
  */
 export const ROAD_STYLE = { size: 151, pitch: 172, inset: 10, radius: 22 } as const;
 
@@ -255,7 +187,7 @@ export const PLATE_ART = { badge: badgePlate };
 export const TOOL_CELLS: readonly ToolCell[] = [
   {
     id: 'draw', labelKey: 'design.free_brush', commandId: 'tool.brush',
-    edit: { tool: 'brush' },
+    shows: { tool: 'brush' },
     glyph: {
       mountain: toGlyph(
         { x: 2, y: 5, w: 103, h: 75, gx: 59.31, gy: 52.79, area: 4216.4 },
@@ -277,8 +209,8 @@ export const TOOL_CELLS: readonly ToolCell[] = [
     },
   },
   {
-    id: 'erase', labelKey: 'design.eraser', commandId: 'tool.eraser',
-    edit: { tool: 'erase' },
+    id: 'erase', labelKey: 'design.eraser', commandId: 'tool.erase',
+    shows: { tool: 'erase' },
     glyph: {
       mountain: toGlyph(
         { x: 2, y: 7.88, w: 103, h: 72.13, gx: 58.38, gy: 54.27, area: 4062.4 },
@@ -300,8 +232,8 @@ export const TOOL_CELLS: readonly ToolCell[] = [
     },
   },
   {
-    id: 'trim', labelKey: 'design.edge_cut', commandId: 'tool.edgecut',
-    edit: { tool: 'trim' },
+    id: 'trim', labelKey: 'design.edge_cut', commandId: 'tool.trim',
+    shows: { tool: 'trim' },
     glyph: shared(toGlyph(
       { x: 2, y: 2, w: 54, h: 53, gx: 30.02, gy: 28.97, area: 1222.8 },
       [{ src: trimShape, x: 569, y: 1756, w: 57, h: 59 }],
@@ -309,7 +241,7 @@ export const TOOL_CELLS: readonly ToolCell[] = [
   },
   {
     id: 'line', labelKey: 'design.line_brush', commandId: 'tool.line',
-    edit: { tool: 'shape', shape: 'line' },
+    shows: { tool: 'shape', shape: 'line' },
     glyph: shared(toGlyph(
       { x: 2.88, y: 3, w: 65.5, h: 43.13, gx: 36, gy: 24.25, area: 794.5 },
       [
@@ -321,7 +253,7 @@ export const TOOL_CELLS: readonly ToolCell[] = [
   },
   {
     id: 'curve', labelKey: 'design.curve_brush', commandId: 'tool.curve',
-    edit: { tool: 'shape', shape: 'curve' },
+    shows: { tool: 'shape', shape: 'curve' },
     glyph: shared(toGlyph(
       { x: 2.88, y: 2, w: 80.38, h: 42.75, gx: 43.13, gy: 24.13, area: 1202.2 },
       [
@@ -333,7 +265,7 @@ export const TOOL_CELLS: readonly ToolCell[] = [
   },
   {
     id: 'rect', labelKey: 'design.rect_brush', commandId: 'tool.rect',
-    edit: { tool: 'shape', shape: 'rect' },
+    shows: { tool: 'shape', shape: 'rect' },
     glyph: shared(toGlyph(
       { x: 2, y: 2, w: 61, h: 61, gx: 32.5, gy: 32.5, area: 1806.4 },
       [{ src: rectShape, x: 1143, y: 1755, w: 64, h: 64 }],
@@ -341,7 +273,7 @@ export const TOOL_CELLS: readonly ToolCell[] = [
   },
   {
     id: 'circle', labelKey: 'design.circle_brush', commandId: 'tool.circle',
-    edit: { tool: 'shape', shape: 'circle' },
+    shows: { tool: 'shape', shape: 'circle' },
     glyph: shared(toGlyph(
       { x: 2, y: 2, w: 67, h: 67, gx: 35.05, gy: 35.05, area: 1861.5 },
       [{ src: circleShape, x: 1323, y: 1750, w: 70, h: 70 }],

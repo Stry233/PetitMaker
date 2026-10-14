@@ -1,33 +1,23 @@
 /*
- * The third section of the save-and-share window: the materials, for someone
- * rebuilding this map by hand in the game.
- *
- * It renders `state/build-checklist.ts` and derives nothing of its own, so what a reader counts
- * here is what the object index and the map stats hold. Item names come from each catalog item's
- * own `name` map, which is why adding an item to the catalog adds it to this list with no key.
- *
- * SUPPLY SHELVES: each category is a FULL-WIDTH card, so its height is its own content and never
- * coupled to a neighbour's — a two-column masonry layout ties two cards' heights together the
- * moment they differ, which is what a shorter Facility card sitting beside a long Flora one would
- * do. Item rows flow in a CSS grid inside the card instead, so a long list wraps into columns
- * rather than growing the card ever taller. No collapse: every item stays visible, since a reader
- * rebuilding by hand cannot act on "+N more kinds".
+ * The save-and-share window's build checklist: `state/build-checklist.ts` rendered as one full-width
+ * card per category (item rows wrap into columns inside it), every item visible, names from each
+ * catalog item's own `name` map.
  */
-import { useEffect, useReducer, useRef, useState } from 'react';
+import { Pill } from '../../../primitives/Pill';
 import type { CSSProperties } from 'react';
-import { AnimatePresence, motion } from 'framer-motion';
 import { iconUrl } from '../../../../assets/icon-urls';
-import { localizedName, useT } from '../../../../i18n/context';
+import { localizedName, useLocale, useT } from '../../../../i18n/context';
 import {
   buildChecklist, buildChecklistText, CATEGORY_LABEL,
   type BuildChecklist as BuildChecklistData, type ChecklistGroup, type ChecklistItem, type ChecklistLayer,
 } from '../../../../state/build-checklist';
-import { subscribeMapStats } from '../../../../state/map-stats';
 import type { GridState } from '../../../../core/model/types';
 import { useEditorStore } from '../../../../state/store';
-import { btnReset, buttonMotion, exitTransition, radii, shadows, springs } from '../../../design/styles';
+import { radii} from '../../../design/styles';
 import { skin, windowChip } from '../../../design/window-skin';
 import { roleFont, roleWeight } from '../../../design/text-weight';
+import { useMapRevision } from '../../../session/use-map-revision';
+import { CopiedBubble, useCopyFeedback } from '../../../primitives/CopiedBubble';
 
 const sectionTitle: CSSProperties = { ...roleFont('head'), color: skin.ink };
 const noteText: CSSProperties = { ...roleFont('caption'), color: skin.plateInk, opacity: 0.8, lineHeight: 1.45 };
@@ -47,7 +37,7 @@ const cardHeaderLabel: CSSProperties = {
 };
 const cardHeaderChip: CSSProperties = {
   ...roleFont('small'), color: skin.onDark, background: skin.ink, borderRadius: radii.pill,
-  padding: '2px 9px', fontVariantNumeric: 'tabular-nums', flex: 'none',
+  padding: '2px 8px', fontVariantNumeric: 'tabular-nums', flex: 'none',
 };
 
 /** Auto-fill columns ~220px wide: two at the window's ~560px content width, one on a narrower
@@ -69,7 +59,7 @@ const itemCount: CSSProperties = { ...roleFont('chip'), color: skin.ink, fontVar
 const chipsRow: CSSProperties = { display: 'flex', flexWrap: 'wrap', gap: 8 };
 /** A layer chip steps back up to `skin.plate`, the cream one level lighter than the card's own
  *  `skin.inset` — the alternation `window-skin.ts` describes, so a chip reads as its own token
- *  sitting IN the crate rather than another row of it. */
+ *  sitting in the crate rather than another row of it. */
 const layerChip: CSSProperties = { ...windowChip('inset'), display: 'flex', alignItems: 'baseline', gap: 6 };
 // The figure outranks the layer name it sits beside inside the chip. `subhead` is the 13px Heavy
 // answer, borrowed for its weight alone, so the count adapts with the rest of the window.
@@ -103,7 +93,7 @@ export function ChecklistItemRow({ icon, color, name, countText, testId }: {
 }
 
 function ItemRow({ item, countText }: { item: ChecklistItem; countText: string }) {
-  const locale = useEditorStore((s) => s.locale);
+  const locale = useLocale();
   return (
     <ChecklistItemRow
       icon={item.icon} color={item.color} name={localizedName(item.name, locale)}
@@ -112,21 +102,26 @@ function ItemRow({ item, countText }: { item: ChecklistItem; countText: string }
   );
 }
 
-function CategoryCard({ group }: { group: ChecklistGroup }) {
-  const t = useT();
+function CountedCard({ id, label, items, total }: { id: string; label: string; items: ChecklistItem[]; total: number }) {
   return (
-    <div style={card} data-testid={`checklist-card-${group.category}`}>
+    <div style={card} data-testid={`checklist-card-${id}`}>
       <div style={cardHeaderRow}>
-        <span style={cardHeaderLabel}>{t(CATEGORY_LABEL[group.category] ?? group.category)}</span>
-        <span style={cardHeaderChip}>{group.total}</span>
+        <span style={cardHeaderLabel}>{label}</span>
+        <span style={cardHeaderChip}>{total}</span>
       </div>
       <div style={itemsGrid}>
-        {group.items.map((item) => (
+        {items.map((item) => (
           <ItemRow key={item.catalogId} item={item} countText={`x${item.count}`} />
         ))}
       </div>
     </div>
   );
+}
+
+function CategoryCard({ group }: { group: ChecklistGroup }) {
+  const t = useT();
+  const label = CATEGORY_LABEL[group.category] ? t(CATEGORY_LABEL[group.category]!) : group.category;
+  return <CountedCard id={group.category} label={label} items={group.items} total={group.total} />;
 }
 
 function RoadsCard({ roads, roadTotal }: { roads: ChecklistItem[]; roadTotal: number }) {
@@ -135,11 +130,11 @@ function RoadsCard({ roads, roadTotal }: { roads: ChecklistItem[]; roadTotal: nu
     <div style={card} data-testid="checklist-card-roads">
       <div style={cardHeaderRow}>
         <span style={cardHeaderLabel}>{t('checklist.sec_roads')}</span>
-        <span style={cardHeaderChip}>{t('checklist.cells', { n: roadTotal })}</span>
+        <span style={cardHeaderChip}>{t('units.cells', { n: roadTotal })}</span>
       </div>
       <div style={itemsGrid}>
         {roads.map((item) => (
-          <ItemRow key={item.catalogId} item={item} countText={t('checklist.cells', { n: item.count })} />
+          <ItemRow key={item.catalogId} item={item} countText={t('units.cells', { n: item.count })} />
         ))}
       </div>
     </div>
@@ -161,7 +156,7 @@ function TerrainCard({ layers }: { layers: ChecklistLayer[] }) {
           return (
             <span key={layer.layer} style={layerChip}>
               <span>{label}</span>
-              {layer.blocks > 0 && <span style={layerChipCount}>{t('checklist.cells', { n: layer.blocks })}</span>}
+              {layer.blocks > 0 && <span style={layerChipCount}>{t('units.cells', { n: layer.blocks })}</span>}
               {layer.water > 0 && <span style={layerChipCount}>{t('checklist.water_part', { n: layer.water })}</span>}
             </span>
           );
@@ -172,80 +167,19 @@ function TerrainCard({ layers }: { layers: ChecklistLayer[] }) {
 }
 
 // Lifted above its siblings: a positioned element paints over later non-positioned content
-// regardless of DOM order, so without the raise the bubble paints UNDER the next shelf's count chip.
+// regardless of DOM order, so without the raise the bubble paints under the next shelf's count chip.
 const copyButtonWrap: CSSProperties = { position: 'relative', display: 'inline-block', flex: 'none', zIndex: 1 };
-const copyButton: CSSProperties = {
-  ...btnReset,
-  display: 'inline-flex', alignItems: 'center', gap: 6,
-  background: skin.inset, color: skin.ink, ...roleFont('chip'), borderRadius: radii.pill,
-  padding: '7px 14px',
-};
-/** The "Copied" confirmation, styled exactly like About's own build-info bubble (same plate + ink
- *  + hairline + float shadow) — mirrored locally rather than shared, since About's version lives
- *  beside a plain text row and this one beside a filled pill, and the position flips (this bubble
- *  drops BELOW the button, About's rises above its row). */
-const copiedBubble: CSSProperties = {
-  position: 'absolute', left: '50%', top: '100%', marginTop: 8,
-  background: skin.plate, color: skin.ink, border: `1px solid ${skin.line}`, borderRadius: radii.md,
-  padding: '5px 11px', ...roleFont('caption'), whiteSpace: 'nowrap', boxShadow: shadows.float,
-  pointerEvents: 'none',
-};
-const copiedBubbleTail: CSSProperties = {
-  position: 'absolute', left: '50%', top: -5, marginLeft: -5, width: 10, height: 10,
-  background: skin.plate, border: `1px solid ${skin.line}`, borderBottom: 'none', borderRight: 'none',
-  transform: 'rotate(45deg)',
-};
-
+const copyButton: CSSProperties = { color: skin.ink };
 function CopyChecklistButton({ list }: { list: BuildChecklistData }) {
   const t = useT();
-  const locale = useEditorStore((s) => s.locale);
-  const [copied, setCopied] = useState(false);
-  // Same "restart the window on a fast re-click" discipline as About's copy-build-info timer.
-  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(() => () => {
-    if (timeoutRef.current) clearTimeout(timeoutRef.current);
-  }, []);
-
-  const copy = async () => {
-    try {
-      await navigator.clipboard.writeText(buildChecklistText(list, locale, t));
-    } catch {
-      // Clipboard API unavailable/denied (e.g. insecure context) — silent no-op.
-      return;
-    }
-    setCopied(true);
-    if (timeoutRef.current) clearTimeout(timeoutRef.current);
-    timeoutRef.current = setTimeout(() => setCopied(false), 1200);
-  };
+  const locale = useLocale();
+  const { copied, copy: copyText } = useCopyFeedback();
+  const copy = () => copyText(buildChecklistText(list, locale, t));
 
   return (
     <div style={copyButtonWrap}>
-      <motion.button
-        type="button"
-        {...buttonMotion}
-        style={copyButton}
-        onClick={copy}
-        data-testid="checklist-copy-button"
-      >
-        {t('checklist.copy')}
-      </motion.button>
-      <AnimatePresence>
-        {copied && (
-          <motion.div
-            key="checklist-copied-bubble"
-            role="status"
-            aria-live="polite"
-            style={copiedBubble}
-            initial={{ opacity: 0, y: -6, scale: 0.9, x: '-50%' }}
-            animate={{ opacity: 1, y: 0, scale: 1, x: '-50%' }}
-            exit={{ opacity: 0, y: -6, scale: 0.9, x: '-50%', transition: exitTransition }}
-            transition={springs.stiff}
-          >
-            {t('about.copied')}
-            <span style={copiedBubbleTail} aria-hidden />
-          </motion.div>
-        )}
-      </AnimatePresence>
+      <Pill style={copyButton} onClick={copy} data-testid="checklist-copy-button">{t('checklist.copy')}</Pill>
+      <CopiedBubble show={copied !== null} side="below">{t('about.copied')}</CopiedBubble>
     </div>
   );
 }
@@ -253,18 +187,10 @@ function CopyChecklistButton({ list }: { list: BuildChecklistData }) {
 export function BuildChecklist({ subject }: { subject?: GridState } = {}) {
   const t = useT();
   const liveState = useEditorStore((s) => s.gridState);
-  const eventBus = useEditorStore((s) => s.eventBus);
-  // A `subject` is a still: a caller (the Help Center's figure) hands a map that nothing edits,
-  // so the live tick has nothing to say about it. The LIVE list re-reads on the map-changed tick.
-  // The grid mutates in place, so no store publication follows an edit: the map-changed tick is
-  // what tells this list to read again. It is the shared rAF-coalesced one, which keeps a generate
-  // (thousands of objects) to a single recount per frame. Both derivations underneath are memoized
-  // per GridState, so a recount that follows nothing is a cache read.
-  const [, recount] = useReducer((n: number) => n + 1, 0);
-  useEffect(
-    () => (subject ? undefined : subscribeMapStats(eventBus, () => useEditorStore.getState().gridState, recount)),
-    [eventBus, subject],
-  );
+  // A `subject` is a still a Help figure hands over, which nothing edits. The live grid mutates in
+  // place, so the frame-timed map revision is what tells the list to read again: a generate
+  // (thousands of objects) recounts once per frame, and both derivations are memoized per GridState.
+  useMapRevision(!subject, 'frame');
   const gridState = subject ?? liveState;
   const list = gridState ? buildChecklist(gridState) : null;
 
@@ -279,6 +205,10 @@ export function BuildChecklist({ subject }: { subject?: GridState } = {}) {
       <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
         <CopyChecklistButton list={list} />
       </div>
+
+      {list.landmarks.length > 0 && (
+        <CountedCard id="landmarks" label={t('checklist.sec_landmarks')} items={list.landmarks} total={list.landmarkTotal} />
+      )}
 
       {nothing && <div style={{ ...noteText, opacity: 1 }}>{t('checklist.empty')}</div>}
 

@@ -1,0 +1,34 @@
+{
+  "id": "print-flight-aqua-goal",
+  "category": "road",
+  "icon": "print-flight-aqua-goal",
+  "name": {
+    "en": "Light Blue Goal Print",
+    "zh": "浅蓝终点格印花",
+    "ja": "水色のゴール模様",
+    "ru": "Голубая отметка финиша",
+    "th": "ลายจุดหมายสีฟ้า",
+    "id": "Motif Tujuan Biru Muda",
+    "fr": "Motif d’arrivée bleu clair"
+  },
+  "color": "#8bc6c5",
+  "width": 1,
+  "height": 1,
+  "loadValue": 0,
+  "rotatable": true,
+  "placementMode": "brush",
+  "traits": [
+    {
+      "type": "flat"
+    },
+    {
+      "type": "surfaceCoating",
+      "layer": 1
+    }
+  ],
+  "surfacePrint": {
+    "kind": "image",
+    "image": "print-flight-aqua-goal",
+    "repeat": 1
+  }
+}

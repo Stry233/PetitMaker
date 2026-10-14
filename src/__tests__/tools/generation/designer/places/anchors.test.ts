@@ -1,15 +1,20 @@
-// Stage 1's placements: WHERE each anchor region's buildings stand and which way their doors look.
-// The claims here are about the PLAN — the committed map is `pipeline.test.ts`'s subject — so they
+// Stage 1's placements: Where each anchor region's buildings stand and which way their doors look.
+// The claims here are about the plan — the committed map is `pipeline.test.ts`'s subject — so they
 // are the ones a commit cannot repair: every anchor gets a spot, no two footprints share a cell, a
 // footprint stays inside its lot, and every door either faces the lot's entry side or the court lane
 // that leads back to it.
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
+
+// Synchronous design-plan batches over both templates; about fifteen seconds on an idle machine.
+vi.setConfig({ testTimeout: 60_000 });
 import { MAP_TEMPLATES } from '../../../../../config/maps';
-import type { MapTemplate, Rect, Rotation } from '../../../../../core/model/types';
+import type { MapTemplate, Rotation } from '../../../../../core/model/types';
+import type { Rect } from '../../../../../core/grid/rect';
 import { getCatalogItem } from '../../../../../state/catalog';
-import { getRotatedSize } from '../../../../../state/object-geometry';
+import { getRotatedSize } from '../../../../../core/grid/footprint';
 import { planAnchors, type AnchorPlan } from '../../../../../tools/generation/designer/places/anchors';
 import { planDesignFor } from '../_design-plan';
+import { memo } from '../_designed-map';
 import { anchorCatalogItems } from '../../../../../tools/generation/designer/places/region-list';
 import { DOOR_ROTATION, type DesignPlan } from '../../../../../tools/generation/designer/types';
 
@@ -18,12 +23,14 @@ const TAFA = MAP_TEMPLATES['tafa']!;
 const SEEDS = Array.from({ length: 10 }, (_, i) => 1 + i * 7919);
 const DEFAULT_RICHNESS = 0.5;
 
-function planned(seed: number, template: MapTemplate, richness = DEFAULT_RICHNESS): {
+/** The design and its anchor plan, planned once per (seed, template, richness) for this file. Read-only. */
+const plannedOnce = memo((seed: number, template: MapTemplate, richness: number): {
   design: DesignPlan; anchors: AnchorPlan;
-} {
+} => {
   const design = planDesignFor(seed, template, richness);
-  return { design, anchors: planAnchors(seed, design) };
-}
+  return { design, anchors: planAnchors({ seed, plan: design }) };
+});
+const planned = (seed: number, template: MapTemplate, richness = DEFAULT_RICHNESS) => plannedOnce(seed, template, richness);
 
 /** A placement's footprint, as the rules will read it (rotated). */
 function footprint(catalogId: string, position: { x: number; y: number }, rotation: Rotation): Rect {
@@ -137,10 +144,10 @@ describe('the geometry a commit depends on', () => {
 
 describe('determinism', () => {
   it('answers the same plan for the same inputs, and a different one for a different seed', () => {
-    const a = planAnchors(31337, planDesignFor(31337, HEXIA, 0.7));
-    const b = planAnchors(31337, planDesignFor(31337, HEXIA, 0.7));
+    const a = planAnchors({ seed: 31337, plan: planDesignFor(31337, HEXIA, 0.7) });
+    const b = planAnchors({ seed: 31337, plan: planDesignFor(31337, HEXIA, 0.7) });
     expect(b).toEqual(a);
-    const c = planAnchors(31338, planDesignFor(31338, HEXIA, 0.7));
+    const c = planAnchors({ seed: 31338, plan: planDesignFor(31338, HEXIA, 0.7) });
     expect(JSON.stringify(c)).not.toBe(JSON.stringify(a));
   });
 });

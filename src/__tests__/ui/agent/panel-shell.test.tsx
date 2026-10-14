@@ -1,41 +1,33 @@
+// @vitest-environment jsdom
 /**
- * The assembly.
- *
- * What is under test here is COMPOSITION, not any component's own drawing (each of those has its
- * own suite): which zones stand, what goes in the job zone for a given phase, which verb a control
- * calls, and the one structural invariant the layout rests on — FOUR top-level groups, whatever the
- * panel is doing.
- *
- * Wrapper and localStorage stub match `desk-header.test.tsx`: `I18nProvider` under
- * `MotionConfig reducedMotion="always"`, so the character and the tape mount without jsdom's
- * missing Web Animations API.
+ * PanelShell's composition: which zones stand, what fills the job zone per phase, which verb each
+ * control calls, and the four top-level groups the layout rests on. Rendered under reduced motion
+ * so the character and the tape mount without the Web Animations API.
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { useState } from 'react';
-import { render, fireEvent, act } from '@testing-library/react';
+import { render, fireEvent, act, waitFor } from '@testing-library/react';
 import { MotionConfig } from 'framer-motion';
 import { I18nProvider } from '../../../i18n/context';
 import { useEditorStore } from '../../../state/store';
-import { translations } from '../../../i18n/translations';
-import { PanelShell } from '../../../ui/agent/PanelShell';
-import { PANEL_MIN_HEIGHT, PANEL_PAD, PANEL_WIDTH } from '../../../ui/agent/tokens';
-import { PIN_KNOB, PIN_KNOB_OUT } from '../../../ui/agent/atoms';
-import {
-  JOB_ZONE_FLOOR, knobCarry, PANEL_RADIUS, PINNED_HEIGHT, plateVariants,
-} from '../../../ui/agent/PanelShell';
-import { DOCK_HEIGHT } from '../../../ui/agent/DeskHeader';
-import { DREAMS } from '../../../ui/agent/DreamOffice';
+import { translations } from '../../_support/locale-tables';
+import { PanelShell, JOB_ZONE_FLOOR, knobCarry, PANEL_RADIUS, PINNED_HEIGHT, plateVariants } from '../../../ui/agent/PanelShell';
+import { PANEL_MIN_HEIGHT, PANEL_PAD, PANEL_WIDTH } from '../../../ui/agent/panel-skin';
+import { PIN_KNOB, PIN_KNOB_OUT } from '../../../ui/agent/parts/IconButton';
+import { STATUS_CARD_HEIGHT } from '../../../ui/agent/desk/StatusCard';
+import { DREAMS } from '../../../ui/agent/desk/DreamOffice';
 import { DOCK_CHROME_FILE_H, DOCK_CHROME_W } from '../../../ui/shell/panel-frame';
 import { easingCss, seconds } from '../../../ui/design/motion';
-import { useAgentPanelSettings } from '../../../ui/agent/settings';
+import { useAgentConnection } from '../../../agent/connection/store';
 import { PROVIDER_IDS, type ProviderId } from '../../../agent/providers/defaults';
 import { POSES } from '../../../ui/agent/character/poses';
-import { Character, getCharacterHandle } from '../../../ui/agent/character/Character';
-import type { JobView, PanelView, SessionPhase } from '../../../agent/core/project-view';
-import type { Locale } from '../../../core/model/types';
+import { Character } from '../../../ui/agent/character/Character';
+import { onCharacterCue } from '../../../ui/agent/character/intent';
+import type { JobView, SessionPhase } from '../../../agent/core/project-view';
+import type { Locale } from '../../../core/model/locale';
+import { makeJob, makeView, panelProps, renderWithI18n } from '../../_support/agent-panel';
 
 const backing = new Map<string, string>();
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 (globalThis as any).localStorage = {
   getItem: (k: string) => backing.get(k) ?? null,
   setItem: (k: string, v: string) => void backing.set(k, String(v)),
@@ -43,47 +35,15 @@ const backing = new Map<string, string>();
   clear: () => backing.clear(),
 };
 
-function Wrapper({ children }: { children: React.ReactNode }) {
-  return (
-    <MotionConfig reducedMotion="always">
-      <I18nProvider>{children}</I18nProvider>
-    </MotionConfig>
-  );
-}
-
-function renderWithI18n(node: React.ReactElement) {
-  return render(node, { wrapper: Wrapper });
-}
-
 beforeEach(() => {
   backing.clear();
   useEditorStore.setState({ locale: 'en' });
-  useAgentPanelSettings.setState({
+  useAgentConnection.setState({
     provider: 'claude',
     model: Object.fromEntries(PROVIDER_IDS.map((id) => [id, ''])) as Record<ProviderId, string>,
     oversight: 'checkpoint', customBaseUrl: '', keyed: [], hydrated: true,
   });
 });
-
-function makeView(over: Partial<PanelView> = {}): PanelView {
-  return {
-    phase: 'idle',
-    jobs: [],
-    queuedSteers: [],
-    vitals: { cells: 0, objects: 0, reverts: 0, jobs: 0 },
-    suggestion: null,
-    lastEventAt: 0,
-    ...over,
-  };
-}
-
-function makeJob(over: Partial<JobView> = {}): JobView {
-  return {
-    orderSeq: 1, orderText: 'build a village', orderAt: 0,
-    asks: [], ops: [], steerNotes: [], checkpoints: [], stamps: [], celebrate: false, skills: [],
-    ...over,
-  };
-}
 
 const VERBS = {
   onSend: () => {},
@@ -92,7 +52,7 @@ const VERBS = {
   onGateAnswer: () => {},
 };
 
-/** The panel's LAID-OUT children. The icon sprite is mounted here too and is not a zone: it is a
+/** The panel's laid-out children. The icon sprite is mounted here too and is not a zone: it is a
  *  `display: none` sheet of symbol definitions, drawing nothing and taking no space, so the
  *  four-groups rule counts what stands. */
 function zones(panel: HTMLElement): Element[] {
@@ -107,16 +67,17 @@ describe('PanelShell: the four zones', () => {
     ];
     for (const phase of phases) {
       const { getByTestId, unmount } = renderWithI18n(
-        <PanelShell
-          view={makeView({
+        <PanelShell {...panelProps({
+          view: makeView({
             phase,
             current: phase === 'idle' || phase === 'aborted' || phase === 'incident' ? undefined : makeJob(),
             ...(phase === 'gated' ? { gate: { gateId: 'g1', scope: 'tool' as const, summary: 'paint a hill' } } : {}),
             ...(phase === 'retrying' ? { retry: { attempt: 2, cls: 'rate-limit' as const, delayMs: 9000, since: 0 } } : {}),
-          })}
-          connected
-          now={0}
-          {...VERBS}
+          }),
+          connected: true,
+          now: 0,
+          ...VERBS,
+        })}
         />,
       );
       const panel = getByTestId('panel-shell');
@@ -125,12 +86,12 @@ describe('PanelShell: the four zones', () => {
     }
   });
 
-  /** A SCREEN OWNS THE BOTTOM ZONE AS WELL AS THE RECORD. The composer is the zone the setup family
+  /** A screen owns the bottom zone as well as the record. The composer is the zone the setup family
    *  does not have, and what stands in its place is the screen's own action row, pinned to the foot
    *  of the zone the screen fills. */
   it('stands three while the keyless rest owns the zone, its own verb at the foot', () => {
     const { getByTestId } = renderWithI18n(
-      <PanelShell view={makeView()} connected={false} now={0} {...VERBS} />,
+      <PanelShell {...panelProps({ view: makeView(), connected: false, now: 0, ...VERBS })} />,
     );
     expect(zones(getByTestId('panel-shell')).length).toBe(3);
     expect(getByTestId('panel-job-zone').contains(getByTestId('dream-office'))).toBe(true);
@@ -139,26 +100,27 @@ describe('PanelShell: the four zones', () => {
   });
 
   it('keeps the steer zone standing whether or not a note is queued', () => {
-    const empty = renderWithI18n(<PanelShell view={makeView()} connected now={0} {...VERBS} />);
+    const empty = renderWithI18n(<PanelShell {...panelProps({ view: makeView(), connected: true, now: 0, ...VERBS })} />);
     expect(empty.getByTestId('panel-steer-zone')).toBeTruthy();
     expect(empty.queryByTestId('panel-steer-chip')).toBeNull();
     empty.unmount();
 
     const queued = renderWithI18n(
-      <PanelShell
-        view={makeView({ phase: 'thinking', current: makeJob(), queuedSteers: [{ seq: 4, text: 'use stone' }] })}
-        connected
-        now={0}
-        {...VERBS}
+      <PanelShell {...panelProps({
+        view: makeView({ phase: 'thinking', current: makeJob(), queuedSteers: [{ seq: 4, text: 'use stone' }] }),
+        connected: true,
+        now: 0,
+        ...VERBS,
+      })}
       />,
     );
     expect(queued.getByTestId('panel-steer-chip').textContent).toContain('use stone');
     expect(queued.getByTestId('panel-steer-chip').textContent)
-      .toContain(translations.en['agent3.steer_at_next_step']);
+      .toContain(translations.en['agent.steer_at_next_step']);
   });
 
   /**
-   * THE HELPER LANE'S LIVE LINE REACHES THE GLASS, which is the half neither of its two suites saw.
+   * The helper lane's live line reaches the glass, which is the half neither of its two suites saw.
    *
    * `store.childLive` is folded into a `LaneView` by the column (pinned there) and `Lane` draws one
    * (pinned in its own file), and between those two the panel has to actually pass it down through
@@ -167,8 +129,8 @@ describe('PanelShell: the four zones', () => {
    */
   it('carries a live helper lane through to the visible panel', () => {
     const { getByTestId } = renderWithI18n(
-      <PanelShell
-        view={makeView({
+      <PanelShell {...panelProps({
+        view: makeView({
           phase: 'executing',
           current: makeJob({
             ops: [{
@@ -176,11 +138,12 @@ describe('PanelShell: the four zones', () => {
               isRead: false,
             }],
           }),
-        })}
-        connected
-        now={0}
-        {...VERBS}
-        lane={{ task: 'planting the grove', ops: 4, opName: 'plant_forest' }}
+        }),
+        connected: true,
+        now: 0,
+        ...VERBS,
+        lane: { task: 'planting the grove', ops: 4, opName: 'plant_forest' },
+      })}
       />,
     );
     expect(getByTestId('lane-name').textContent).toContain('planting the grove');
@@ -192,30 +155,30 @@ describe('PanelShell: what the job zone shows', () => {
   /** The disconnected rest precedes credential entry, which opens only after Connect is pressed. */
   it('shows the keyless rest, and stands its Connect where the composer would be', () => {
     const { getByTestId, queryByTestId } = renderWithI18n(
-      <PanelShell view={makeView()} connected={false} now={0} {...VERBS} />,
+      <PanelShell {...panelProps({ view: makeView(), connected: false, now: 0, ...VERBS })} />,
     );
     expect(getByTestId('dream-office')).toBeTruthy();
     expect(queryByTestId('setup-screen'), 'the form is not put up unasked').toBeNull();
     expect(queryByTestId('job-ticket')).toBeNull();
-    // NO MESSAGE BOX AT ALL. A field with nowhere to send is an invitation the screen above it
+    // No message box at all. A field with nowhere to send is an invitation the screen above it
     // contradicts, so the screen's own verb is the bottom of the panel.
     expect(queryByTestId('composer')).toBeNull();
     expect(getByTestId('dream-connect')).toBeTruthy();
   });
 
   /**
-   * THE SCREEN'S ONE VERB IS NOT SOMETHING THE DREAM MAY PUSH OFF THE FOLD.
+   * The screen's one verb is not something the dream may push off the fold.
    *
    * `dream-connect` is the only route from the keyless rest into the setup form (the board's rows are
    * inert pictures), and an office that simply grew as a column would put it below the fold: at
    * 1280x800 the record zone is 186 frame px and the office wants 385 in en, 443 in fr, 462 in ru,
    * so `elementFromPoint` at the verb's centre answers the canvas. jsdom lays nothing out, so
-   * what is asserted here is the STRUCTURE that makes the fold impossible: the dream is inside its
+   * what is asserted here is the structure that makes the fold impossible: the dream is inside its
    * own scroller and the verb is outside it, at the office's foot.
    */
   it('keeps Connect out of the scrolling part of the keyless rest', () => {
     const { getByTestId } = renderWithI18n(
-      <PanelShell view={makeView()} connected={false} now={0} {...VERBS} />,
+      <PanelShell {...panelProps({ view: makeView(), connected: false, now: 0, ...VERBS })} />,
     );
     const office = getByTestId('dream-office');
     const scroll = getByTestId('dream-scroll');
@@ -234,16 +197,14 @@ describe('PanelShell: what the job zone shows', () => {
     const { getByTestId, unmount } = renderWithI18n(
       <>
         <Character pose="sleeping" size={64} />
-        <PanelShell view={makeView()} connected={false} now={0} {...VERBS} />
+        <PanelShell {...panelProps({ view: makeView(), connected: false, now: 0, ...VERBS })} />
       </>,
     );
-    const hero = getCharacterHandle();
-    expect(hero).not.toBeNull();
-    const wake = vi.spyOn(hero!, 'wake');
-    const acknowledge = vi.spyOn(hero!, 'acknowledge');
+    const cues: string[] = [];
+    const off = onCharacterCue((cue) => cues.push(cue.kind));
     fireEvent.click(getByTestId('dream-connect'));
-    expect(wake).toHaveBeenCalledTimes(1);
-    expect(acknowledge).toHaveBeenCalledTimes(1);
+    off();
+    expect(cues).toEqual(['acknowledge', 'wake']);
     expect(getByTestId('setup-screen')).toBeTruthy();
     unmount();
   });
@@ -251,13 +212,13 @@ describe('PanelShell: what the job zone shows', () => {
   it('walks into setup on Connect, and back out to the rest when the form leaves', () => {
     const onCollapse = vi.fn();
     const { getByTestId, queryByTestId } = renderWithI18n(
-      <PanelShell view={makeView()} connected={false} now={0} {...VERBS} onCollapse={onCollapse} />,
+      <PanelShell {...panelProps({ view: makeView(), connected: false, now: 0, ...VERBS, onCollapse })} />,
     );
     fireEvent.click(getByTestId('dream-connect'));
     expect(getByTestId('setup-screen')).toBeTruthy();
     expect(queryByTestId('dream-office')).toBeNull();
 
-    // BACK GOES BACK, AND NO FURTHER: the rest this form was walked into from is what returns, and
+    // Back goes back, and no further: the rest this form was walked into from is what returns, and
     // the panel keeps standing — putting it away is the character's own press, not a step's verb.
     fireEvent.click(getByTestId('setup-leave'));
     expect(getByTestId('dream-office')).toBeTruthy();
@@ -265,9 +226,9 @@ describe('PanelShell: what the job zone shows', () => {
   });
 
   /**
-   * SETUP LEAVES ON ITS OWN WORD.
+   * Setup leaves on its own word.
    *
-   * `connected` turns true at the FIRST of the setup screen's three steps (a key is filed the moment
+   * `connected` turns true at the first of the setup screen's three steps (a key is filed the moment
    * the provider is known), so a zone keyed on `connected` alone swaps the screen out mid-flow: the
    * draft goes with it, the model step is unreachable, and the panel says "Ready for orders" with no
    * model chosen. The screen stands until `onDone`, and a key going away puts it back.
@@ -275,26 +236,26 @@ describe('PanelShell: what the job zone shows', () => {
   it('keeps the setup screen standing after the key is filed, until it says it is done', () => {
     const view = makeView();
     const { getByTestId, queryByTestId, rerender } = renderWithI18n(
-      <PanelShell view={view} connected={false} now={0} {...VERBS} />,
+      <PanelShell {...panelProps({ view, connected: false, now: 0, ...VERBS })} />,
     );
     fireEvent.click(getByTestId('dream-connect'));
     expect(getByTestId('setup-screen')).toBeTruthy();
     expect(queryByTestId('history-strip')).toBeNull();
 
-    // The key lands: the screen must NOT be replaced by the record.
-    // RTL re-applies the wrapper on rerender, so the element passed here is the BARE one: a
+    // The key lands: the screen must not be replaced by the record.
+    // RTL re-applies the wrapper on rerender, so the element passed here is the bare one: a
     // differently-nested tree would remount `PanelShell` and reset the very state under test.
-    rerender(<PanelShell view={view} connected now={0} {...VERBS} />);
+    rerender(<PanelShell {...panelProps({ view, connected: true, now: 0, ...VERBS })} />);
     expect(getByTestId('setup-screen'), 'the key is filed, setup is not finished').toBeTruthy();
-    // The DESK reads keyless too: the gear's own surface is what the zone is showing, so the card
+    // The desk reads keyless too: the gear's own surface is what the zone is showing, so the card
     // stands gearless rather than offering a door to the screen already open.
     expect(queryByTestId('dock-gear')).toBeNull();
     // The screen's own Done is the only way out, and `SetupScreen`'s suite holds that it is only
-    // offered once a key, a provider AND a model are settled.
+    // offered once a key, a provider and a model are settled.
   });
 
   /**
-   * A REFUSAL IS A KEY ARRIVING AND GOING AWAY AGAIN, and the form has to survive it.
+   * A refusal is a key arriving and going away again, and the form has to survive it.
    *
    * The screen files the key the moment the provider is known, the provider then refuses it and the
    * screen drops it — so `connected` goes true and false in one gesture. Read as "no key means the
@@ -305,66 +266,67 @@ describe('PanelShell: what the job zone shows', () => {
   it('keeps the form standing when the key it just filed is refused', () => {
     const view = makeView();
     const { getByTestId, queryByTestId, rerender } = renderWithI18n(
-      <PanelShell view={view} connected={false} now={0} {...VERBS} />,
+      <PanelShell {...panelProps({ view, connected: false, now: 0, ...VERBS })} />,
     );
     fireEvent.click(getByTestId('dream-connect'));
-    rerender(<PanelShell view={view} connected now={0} {...VERBS} />);
-    rerender(<PanelShell view={view} connected={false} now={0} {...VERBS} />);
+    rerender(<PanelShell {...panelProps({ view, connected: true, now: 0, ...VERBS })} />);
+    rerender(<PanelShell {...panelProps({ view, connected: false, now: 0, ...VERBS })} />);
     expect(getByTestId('setup-screen'), 'the refusal has a face and this is where it stands').toBeTruthy();
     expect(queryByTestId('dream-office')).toBeNull();
   });
 
   /**
-   * THE CARD ABOVE THE SETUP SCREEN SAYS WHICH STEP IT IS ON. The panel carries the screen's own
+   * The card above the setup screen says which step it is on. The panel carries the screen's own
    * report the one hop to the desk; without it the dock said "Not connected" over a key that was
    * being read, and stood on the calm idle paper while the field was in danger.
    */
-  it('carries the setup screen\'s step up to the dock', () => {
+  it('carries the setup screen\'s step up to the status card', () => {
     const { getByTestId } = renderWithI18n(
-      <PanelShell view={makeView()} connected={false} now={0} {...VERBS} />,
+      <PanelShell {...panelProps({ view: makeView(), connected: false, now: 0, ...VERBS })} />,
     );
-    // The keyless REST says it is not connected; the FORM is what says she is awake and asking.
-    expect(getByTestId('dock-sentence').textContent).toBe(translations.en['agent3.dock_disconnected']);
+    // The keyless rest says it is not connected; the form is what says she is awake and asking.
+    expect(getByTestId('dock-sentence').textContent).toBe(translations.en['agent.dock_disconnected']);
     fireEvent.click(getByTestId('dream-connect'));
-    expect(getByTestId('dock-sentence').textContent).toBe(translations.en['agent3.dock_setup_awake']);
+    expect(getByTestId('dock-sentence').textContent).toBe(translations.en['agent.dock_setup_awake']);
 
     fireEvent.change(getByTestId('setup-key-input'), { target: { value: 'sk-ant-api03-abcdefghijkl' } });
-    expect(getByTestId('dock-sentence').textContent).toBe(translations.en['agent3.dock_setup_reading']);
+    expect(getByTestId('dock-sentence').textContent).toBe(translations.en['agent.dock_setup_reading']);
     expect(getByTestId('dock-glyph').getAttribute('data-icon')).toBe('pw-key');
     expect(getByTestId('dock').getAttribute('data-paper')).toBe('work');
 
-    // The field emptied is the mouth again, which is a STEP of the flow like the rest of them: the
+    // The field emptied is the mouth again, which is a step of the flow like the rest of them: the
     // screen is standing and asking, so the card is awake and asking with it.
     fireEvent.change(getByTestId('setup-key-input'), { target: { value: '' } });
-    expect(getByTestId('dock-sentence').textContent).toBe(translations.en['agent3.dock_setup_awake']);
+    expect(getByTestId('dock-sentence').textContent).toBe(translations.en['agent.dock_setup_awake']);
   });
 
   /** Clearing the active key returns the panel to its disconnected rest. */
   it('puts the keyless rest back the moment the key goes away', () => {
     const view = makeView();
     const { getByTestId, queryByTestId, rerender } = renderWithI18n(
-      <PanelShell view={view} connected now={0} {...VERBS} />,
+      <PanelShell {...panelProps({ view, connected: true, now: 0, ...VERBS })} />,
     );
     expect(queryByTestId('dream-office')).toBeNull();
-    rerender(<PanelShell view={view} connected={false} now={0} {...VERBS} />);
+    rerender(<PanelShell {...panelProps({ view, connected: false, now: 0, ...VERBS })} />);
     expect(getByTestId('dream-office')).toBeTruthy();
     expect(queryByTestId('setup-screen')).toBeNull();
   });
 
   /**
-   * "Enter a key" over a keyless panel is answered HERE, by the field the setup screen is already
-   * showing. The caller's verb for that act DROPS the refused key, and on a panel that holds none
+   * "Enter a key" over a keyless panel is answered here, by the field the setup screen is already
+   * showing. The caller's verb for that act drops the refused key, and on a panel that holds none
    * there is nothing to drop: without this the press did nothing at all.
    */
   it('answers the keyless key act with the setup field rather than passing it on', () => {
     const acts: string[] = [];
     const { getByTestId } = renderWithI18n(
-      <PanelShell
-        view={makeView({ phase: 'incident', jobs: [makeJob({ outcome: 'incident', errorCls: 'quota' })] })}
-        connected={false}
-        now={0}
-        {...VERBS}
-        onDockAct={(a) => acts.push(a)}
+      <PanelShell {...panelProps({
+        view: makeView({ phase: 'incident', jobs: [makeJob({ outcome: 'incident', errorCls: 'quota' })] }),
+        connected: false,
+        now: 0,
+        ...VERBS,
+        onRepair: (a) => acts.push(a),
+      })}
       />,
     );
     fireEvent.click(getByTestId('dock-act'));
@@ -373,7 +335,7 @@ describe('PanelShell: what the job zone shows', () => {
   });
 
   /**
-   * ONE PRESS, ONE FIELD, over a panel that DOES hold a key. That act has two halves and only the
+   * One press, one field, over a panel that does hold a key. That act has two halves and only the
    * first is the caller's: dropping the key is what mounts the screen the second half aims at, so the
    * field is not in the tree on the commit the press lands in, so focus aimed there in that commit
    * lands on `BODY` and the field waits for a second press.
@@ -382,12 +344,13 @@ describe('PanelShell: what the job zone shows', () => {
     function DropsOnAct() {
       const [connected, setConnected] = useState(true);
       return (
-        <PanelShell
-          view={makeView({ phase: 'incident', jobs: [makeJob({ outcome: 'incident', errorCls: 'auth' })] })}
-          connected={connected}
-          now={0}
-          {...VERBS}
-          onDockAct={(a) => { if (a === 'fix-key') setConnected(false); }}
+        <PanelShell {...panelProps({
+          view: makeView({ phase: 'incident', jobs: [makeJob({ outcome: 'incident', errorCls: 'auth' })] }),
+          connected,
+          now: 0,
+          ...VERBS,
+          onRepair: (a) => { if (a === 'fix-key') setConnected(false); },
+        })}
         />
       );
     }
@@ -400,28 +363,35 @@ describe('PanelShell: what the job zone shows', () => {
 
   /** The gear's door: chrome over the session, so the record goes and the desk keeps its own face. */
   it('puts the manage card in the zone while the gear is lit, and takes it away on Done', () => {
-    // FILED, so the record is a past-jobs row rather than a card standing in the zone: what is
+    // A complete connection, so Done has nothing owed and opens the session again.
+    useAgentConnection.getState().connectKey('claude', 'sk-ant-api03-abcdefghijkl');
+    useAgentConnection.getState().setModel('claude-opus-4-1');
+    // Filed, so the record is a past-jobs row rather than a card standing in the zone: what is
     // under test here is the strip giving the zone up, not which card was in it.
     const view = makeView({ jobs: [makeJob({ outcome: 'done' })] });
     const filed = new Set([1]);
-    const { getByTestId, queryByTestId, rerender } = renderWithI18n(
-      <PanelShell view={view} connected now={0} filed={filed} {...VERBS} />,
+    const { getByTestId, queryByTestId } = renderWithI18n(
+      <PanelShell {...panelProps({ view, connected: true, now: 0, filed, ...VERBS })} />,
     );
     expect(queryByTestId('manage-screen')).toBeNull();
     expect(getByTestId('history-strip')).toBeTruthy();
 
-    rerender(<PanelShell view={view} connected managing now={0} filed={filed} {...VERBS} />);
+    fireEvent.click(getByTestId('dock-gear'));
     expect(getByTestId('manage-screen')).toBeTruthy();
     expect(queryByTestId('history-strip'), 'the record gives the zone up').toBeNull();
-    // The gear reads as lit, and the dock says what the open card is about.
-    expect(getByTestId('dock-sentence').textContent).toBe(translations.en['agent3.dock_connection']);
+    // The dock says what the open card is about.
+    expect(getByTestId('dock-sentence').textContent).toBe(translations.en['agent.dock_connection']);
+
+    fireEvent.click(getByTestId('manage-done'));
+    expect(queryByTestId('manage-screen')).toBeNull();
+    expect(getByTestId('history-strip')).toBeTruthy();
   });
 
   /**
-   * THE COMPOSER NEVER INVITES AN ORDER FROM A FACE THAT CANNOT TAKE ONE.
+   * The composer never invites an order from a face that cannot take one.
    *
    * The manage card belongs to the not-ready family. "Chrome over a live session" is true of the
-   * WIRING and beside the point on
+   * Wiring and beside the point on
    * the glass — the zone is filled with the connection being edited, the provider and the model can
    * both be mid-change under the pointer, so a field below would be inviting work the whole time. An
    * invitation the surface above it is contradicting is worse than no invitation. It says which of
@@ -429,26 +399,29 @@ describe('PanelShell: what the job zone shows', () => {
    * would be a plain falsehood) and it hands the field back on Done.
    */
   it('draws no composer behind the manage card, and hands the field back on Done', () => {
+    // A complete connection, so Done has nothing owed and opens the session again.
+    useAgentConnection.getState().connectKey('claude', 'sk-ant-api03-abcdefghijkl');
+    useAgentConnection.getState().setModel('claude-opus-4-1');
     const view = makeView({ jobs: [makeJob({ outcome: 'done' })] });
     const filed = new Set([1]);
-    const { getByTestId, queryByTestId, rerender } = renderWithI18n(
-      <PanelShell view={view} connected managing now={0} filed={filed} {...VERBS} />,
+    const { getByTestId, queryByTestId } = renderWithI18n(
+      <PanelShell {...panelProps({ view, connected: true, initialZone: { kind: 'manage' }, now: 0, filed, ...VERBS })} />,
     );
     expect(queryByTestId('composer')).toBeNull();
     // The card's own Done is the panel's bottom control while it stands.
     expect(getByTestId('manage-done')).toBeTruthy();
 
-    rerender(<PanelShell view={view} connected now={0} filed={filed} {...VERBS} />);
+    fireEvent.click(getByTestId('manage-done'));
     const input = getByTestId('composer-input') as HTMLInputElement;
     expect(input.disabled).toBe(false);
-    expect(input.placeholder).toBe(translations.en['agent3.composer_order']);
+    expect(input.placeholder).toBe(translations.en['agent.composer_order']);
   });
 
-  /** THE WHOLE SETUP FAMILY, ONE RULE: every step of the connection screen is a step with its own
+  /** The whole setup family, one rule: every step of the connection screen is a step with its own
    *  verb, and none of them is an order. */
   it('draws no composer on the connection screen either', () => {
     const { getByTestId, queryByTestId } = renderWithI18n(
-      <PanelShell view={makeView()} connected={false} now={0} onCollapse={() => {}} {...VERBS} />,
+      <PanelShell {...panelProps({ view: makeView(), connected: false, now: 0, onCollapse: () => {}, ...VERBS })} />,
     );
     fireEvent.click(getByTestId('dream-connect'));
     expect(getByTestId('setup-screen')).toBeTruthy();
@@ -459,7 +432,7 @@ describe('PanelShell: what the job zone shows', () => {
   });
 
   /**
-   * "CLEAR JOBS (N)" COUNTS WHAT THE PRESS WOULD CLEAR. Clearing a record is a MARK rather than a
+   * "CLEAR JOBS (N)" counts what the press would clear. Clearing a record is a mark rather than a
    * removal (`store.clearRecord`), and this component already filters those out of the list — so
    * counting `view.jobs` left the card reading "Clear jobs (3)" over an emptied history, with the
    * `disabled` guard never firing and the press answering with silence.
@@ -474,42 +447,44 @@ describe('PanelShell: what the job zone shows', () => {
     });
     const filed = new Set([1, 2, 3]);
     const { getByTestId, rerender } = renderWithI18n(
-      <PanelShell view={view} connected managing now={0} filed={filed} {...VERBS} onClearJobs={() => {}} />,
+      <PanelShell {...panelProps({ view, connected: true, initialZone: { kind: 'manage' }, now: 0, filed, ...VERBS, onClearJobs: () => {} })} />,
     );
     expect(getByTestId('manage-clear-jobs').textContent)
-      .toBe(translations.en['agent3.setup_manage_clear_jobs']!.replace('{n}', '3'));
+      .toBe(translations.en['agent.setup_manage_clear_jobs']!.replace('{n}', '3'));
 
     rerender(
-      <PanelShell
-        view={view} connected managing now={0} filed={filed} cleared={new Set([1, 2])}
-        {...VERBS} onClearJobs={() => {}}
+      <PanelShell {...panelProps({
+        view, connected: true, initialZone: { kind: 'manage' }, now: 0, filed, cleared: new Set([1, 2]),
+        ...VERBS, onClearJobs: () => {},
+      })}
       />,
     );
     expect(getByTestId('manage-clear-jobs').textContent)
-      .toBe(translations.en['agent3.setup_manage_clear_jobs']!.replace('{n}', '1'));
+      .toBe(translations.en['agent.setup_manage_clear_jobs']!.replace('{n}', '1'));
 
     rerender(
-      <PanelShell
-        view={view} connected managing now={0} filed={filed} cleared={new Set([1, 2, 3])}
-        {...VERBS} onClearJobs={() => {}}
+      <PanelShell {...panelProps({
+        view, connected: true, initialZone: { kind: 'manage' }, now: 0, filed, cleared: new Set([1, 2, 3]),
+        ...VERBS, onClearJobs: () => {},
+      })}
       />,
     );
     expect((getByTestId('manage-clear-jobs') as HTMLButtonElement).disabled).toBe(true);
   });
 
   /**
-   * THE DOCK AND THE ZONE SAY ONE THING. A filed record is a past-jobs row, and the card that said
+   * The dock and the zone say one thing. A filed record is a past-jobs row, and the card that said
    * "All done." over it is the same piece of news put away — so the desk reads its own rest. Pinned
-   * HERE rather than on the dock alone: the fact is the panel's to work out, and a wiring that
+   * Here rather than on the dock alone: the fact is the panel's to work out, and a wiring that
    * compares a value that is `undefined` against `null` has the dock go on reporting a receipt
    * nobody can see while the dock's own unit tests pass.
    */
-  it('rests the dock once the settled record is filed, and keeps a capped one\'s reading', () => {
+  it('rests the status card once the settled record is filed, and keeps a capped one\'s reading', () => {
     const done = makeView({ jobs: [makeJob({ outcome: 'done', kind: 'build' })] });
     const filedDone = renderWithI18n(
-      <PanelShell view={done} connected now={0} filed={new Set([1])} mapName="Hexia" {...VERBS} />,
+      <PanelShell {...panelProps({ view: done, connected: true, now: 0, filed: new Set([1]), mapName: "Hexia", ...VERBS })} />,
     );
-    expect(filedDone.getByTestId('dock-sentence').textContent).toBe(translations.en['agent3.dock_idle']);
+    expect(filedDone.getByTestId('dock-sentence').textContent).toBe(translations.en['agent.dock_idle']);
     filedDone.unmount();
 
     const capped = makeView({
@@ -519,19 +494,20 @@ describe('PanelShell: what the job zone shows', () => {
       })],
     });
     const filedCapped = renderWithI18n(
-      <PanelShell view={capped} connected now={0} filed={new Set([1])} {...VERBS} />,
+      <PanelShell {...panelProps({ view: capped, connected: true, now: 0, filed: new Set([1]), ...VERBS })} />,
     );
     expect(filedCapped.getByTestId('dock-sentence').textContent)
-      .toBe(translations.en['agent3.dock_capped']);
+      .toBe(translations.en['agent.dock_capped']);
   });
 
   it('shows the running job as a live ticket, and no setup', () => {
     const { getByTestId, queryByTestId } = renderWithI18n(
-      <PanelShell
-        view={makeView({ phase: 'executing', current: makeJob({ orderText: 'pave the square' }) })}
-        connected
-        now={0}
-        {...VERBS}
+      <PanelShell {...panelProps({
+        view: makeView({ phase: 'executing', current: makeJob({ orderText: 'pave the square' }) }),
+        connected: true,
+        now: 0,
+        ...VERBS,
+      })}
       />,
     );
     expect(queryByTestId('setup-screen')).toBeNull();
@@ -539,21 +515,22 @@ describe('PanelShell: what the job zone shows', () => {
     expect(getByTestId('tape-bar')).toBeTruthy();
   });
 
-  // The ask is a RECORD on the job and `view.gate` is the half of it that can still be answered:
+  // The ask is a record on the job and `view.gate` is the half of it that can still be answered:
   // the projection writes both, and the card is drawn from the record so it survives the answer.
   it('shows the open gate, and answers it by gateId', () => {
     const answers: [string, string][] = [];
     const { getAllByTestId } = renderWithI18n(
-      <PanelShell
-        view={makeView({
+      <PanelShell {...panelProps({
+        view: makeView({
           phase: 'gated',
           current: makeJob({ asks: [{ gateId: 'g7', scope: 'tool', summary: 'paint a hill' }] }),
           gate: { gateId: 'g7', scope: 'tool', summary: 'paint a hill' },
-        })}
-        connected
-        now={0}
-        {...VERBS}
-        onGateAnswer={(id, a) => answers.push([id, a])}
+        }),
+        connected: true,
+        now: 0,
+        ...VERBS,
+        onGateAnswer: (id, a) => answers.push([id, a]),
+      })}
       />,
     );
     fireEvent.click(getAllByTestId('gate-approve')[0]!);
@@ -562,54 +539,57 @@ describe('PanelShell: what the job zone shows', () => {
 
   it("captions an incident from the settled job's own class, not from the outcome alone", () => {
     const { getByText } = renderWithI18n(
-      <PanelShell
-        view={makeView({
+      <PanelShell {...panelProps({
+        view: makeView({
           phase: 'incident',
           jobs: [makeJob({ outcome: 'incident', errorCls: 'auth' })],
-        })}
-        connected
-        now={0}
-        {...VERBS}
+        }),
+        connected: true,
+        now: 0,
+        ...VERBS,
+      })}
       />,
     );
-    expect(getByText(translations.en['agent3.banner_auth']!)).toBeTruthy();
+    expect(getByText(translations.en['agent.banner_auth']!)).toBeTruthy();
   });
 
   it('falls back to the generic notice for an incident that named no class', () => {
     const { getByText } = renderWithI18n(
-      <PanelShell
-        view={makeView({ phase: 'incident', jobs: [makeJob({ outcome: 'incident' })] })}
-        connected
-        now={0}
-        {...VERBS}
+      <PanelShell {...panelProps({
+        view: makeView({ phase: 'incident', jobs: [makeJob({ outcome: 'incident' })] }),
+        connected: true,
+        now: 0,
+        ...VERBS,
+      })}
       />,
     );
-    expect(getByText(translations.en['agent3.banner_incident']!)).toBeTruthy();
+    expect(getByText(translations.en['agent.banner_incident']!)).toBeTruthy();
   });
 
-  /** A dismissal is answered HERE (the notice demotes rather than leaving) and still reported: the
+  /** A dismissal is answered here (the notice demotes rather than leaving) and still reported: the
    *  caller may want to know, and one of them does. */
   it('takes a dismissal itself and still reports it', () => {
     const acted: string[] = [];
     const { getAllByTestId, getByTestId } = renderWithI18n(
-      <PanelShell
-        view={makeView({ phase: 'incident', jobs: [makeJob({ outcome: 'incident', errorCls: 'unknown' })] })}
-        connected
-        now={0}
-        {...VERBS}
-        onBannerAction={(a) => acted.push(a)}
+      <PanelShell {...panelProps({
+        view: makeView({ phase: 'incident', jobs: [makeJob({ outcome: 'incident', errorCls: 'unknown' })] }),
+        connected: true,
+        now: 0,
+        ...VERBS,
+        onRepair: (a) => acted.push(a),
+      })}
       />,
     );
     const dismiss = getAllByTestId('banner-action').find((el) => el.getAttribute('data-action') === 'dismiss')!;
     fireEvent.click(dismiss);
     expect(acted).toEqual(['dismiss']);
-    // QUIETER, NOT GONE: the fault is still true, and a notice that vanished under the pointer that
+    // Quieter, not gone: the fault is still true, and a notice that vanished under the pointer that
     // dismissed it would shorten the record by its own height (`trouble.test.tsx` holds the dress).
     expect(getByTestId('banner').getAttribute('data-standing')).toBe('true');
   });
 
   /**
-   * THE STORAGE NOTICE IS A PRODUCED CLASS, which is the whole point of these three.
+   * The storage notice is a produced class, which is the whole point of these three.
    *
    * The store knows when a save was pruned, lost or read back corrupt
    * (`session/store.ts:storageNotice`, and its own tests drive all three through a real quota
@@ -619,12 +599,12 @@ describe('PanelShell: what the job zone shows', () => {
   it('banners each of the three storage readings, and tells them apart', () => {
     const said: string[] = [];
     for (const [notice, key] of [
-      ['pruned', 'agent3.banner_storage_pruned'],
-      ['lost', 'agent3.banner_storage_full'],
-      ['corrupt', 'agent3.banner_storage_corrupt'],
+      ['pruned', 'agent.banner_storage_pruned'],
+      ['lost', 'agent.banner_storage_full'],
+      ['corrupt', 'agent.banner_storage_corrupt'],
     ] as const) {
       const { getByTestId, unmount } = renderWithI18n(
-        <PanelShell view={makeView()} connected now={0} {...VERBS} storageNotice={notice} />,
+        <PanelShell {...panelProps({ view: makeView(), connected: true, now: 0, ...VERBS, storageNotice: notice })} />,
       );
       said.push(getByTestId('banner').textContent ?? '');
       expect(said[said.length - 1], notice).toContain(translations.en[key]!);
@@ -634,8 +614,8 @@ describe('PanelShell: what the job zone shows', () => {
   });
 
   /**
-   * THE HOUSE RULE BINDS BOTH: a `lost`/`pruned` dismissal demotes exactly
-   * like the incident banner's does, so it answers LOCALLY and never reaches the caller — the store
+   * The house rule binds both: a `lost`/`pruned` dismissal demotes exactly
+   * like the incident banner's does, so it answers locally and never reaches the caller — the store
    * only clears the fact itself, on the next clean save. `corrupt`'s Discard is the one exception,
    * because it genuinely drops the set-aside bytes (the label says so), so it still hands the press
    * to the caller.
@@ -643,13 +623,14 @@ describe('PanelShell: what the job zone shows', () => {
   it('hands the corrupt notice\'s discard back to the caller, and demotes lost/pruned locally instead', () => {
     let dismissed = 0;
     const lost = renderWithI18n(
-      <PanelShell
-        view={makeView()}
-        connected
-        now={0}
-        {...VERBS}
-        storageNotice="lost"
-        onDismissStorage={() => { dismissed += 1; }}
+      <PanelShell {...panelProps({
+        view: makeView(),
+        connected: true,
+        now: 0,
+        ...VERBS,
+        storageNotice: "lost",
+        onDismissStorage: () => { dismissed += 1; },
+      })}
       />,
     );
     fireEvent.click(lost.getAllByTestId('banner-action').find((el) => el.getAttribute('data-action') === 'dismiss')!);
@@ -658,10 +639,11 @@ describe('PanelShell: what the job zone shows', () => {
     lost.unmount();
 
     const corrupt = renderWithI18n(
-      <PanelShell
-        view={makeView()} connected now={0} {...VERBS}
-        storageNotice="corrupt"
-        onDismissStorage={() => { dismissed += 1; }}
+      <PanelShell {...panelProps({
+        view: makeView(), connected: true, now: 0, ...VERBS,
+        storageNotice: "corrupt",
+        onDismissStorage: () => { dismissed += 1; },
+      })}
       />,
     );
     fireEvent.click(corrupt.getAllByTestId('banner-action').find((el) => el.getAttribute('data-action') === 'dismiss')!);
@@ -670,20 +652,20 @@ describe('PanelShell: what the job zone shows', () => {
 
   it('stands no storage banner where the session reports no trouble', () => {
     const { queryByTestId } = renderWithI18n(
-      <PanelShell view={makeView()} connected now={0} {...VERBS} storageNotice={null} />,
+      <PanelShell {...panelProps({ view: makeView(), connected: true, now: 0, ...VERBS, storageNotice: null })} />,
     );
     expect(queryByTestId('banner')).toBeNull();
   });
 
-  /** A dismissal answers ONE incident, not a class of them for the panel's life: the next failure of
-   *  the same kind comes back LOUD rather than arriving already demoted. */
+  /** A dismissal answers one incident, not a class of them for the panel's life: the next failure of
+   *  the same kind comes back loud rather than arriving already demoted. */
   it('shows the next incident of a class already dismissed', () => {
     const first = makeView({
       phase: 'incident',
       jobs: [makeJob({ orderSeq: 1, outcome: 'incident', errorCls: 'unknown' })],
     });
     const { getAllByTestId, getByTestId, rerender } = renderWithI18n(
-      <PanelShell view={first} connected now={0} {...VERBS} />,
+      <PanelShell {...panelProps({ view: first, connected: true, now: 0, ...VERBS })} />,
     );
     fireEvent.click(getAllByTestId('banner-action').find((el) => el.getAttribute('data-action') === 'dismiss')!);
     expect(getByTestId('banner').getAttribute('data-standing')).toBe('true');
@@ -695,24 +677,25 @@ describe('PanelShell: what the job zone shows', () => {
         makeJob({ orderSeq: 2, outcome: 'incident', errorCls: 'unknown' }),
       ],
     });
-    rerender(<PanelShell view={second} connected now={0} {...VERBS} />);
+    rerender(<PanelShell {...panelProps({ view: second, connected: true, now: 0, ...VERBS })} />);
     expect(getByTestId('banner').getAttribute('data-standing')).toBeNull();
   });
 
   it('shows the settled jobs as the history strip, and nothing when there are none', () => {
-    const none = renderWithI18n(<PanelShell view={makeView()} connected now={0} {...VERBS} />);
+    const none = renderWithI18n(<PanelShell {...panelProps({ view: makeView(), connected: true, now: 0, ...VERBS })} />);
     expect(none.queryByTestId('history-toggle')).toBeNull();
     none.unmount();
 
     const some = renderWithI18n(
-      <PanelShell
-        view={makeView({ jobs: [makeJob({ outcome: 'done' }), makeJob({ orderSeq: 2, outcome: 'done' })] })}
-        connected
-        now={0}
-        // Both filed: the strip lists the jobs that are PAST, and the newest record stands as a card
+      <PanelShell {...panelProps({
+        view: makeView({ jobs: [makeJob({ outcome: 'done' }), makeJob({ orderSeq: 2, outcome: 'done' })] }),
+        connected: true,
+        now: 0,
+        // Both filed: the strip lists the jobs that are past, and the newest record stands as a card
         // in the zone until it is put away.
-        filed={new Set([1, 2])}
-        {...VERBS}
+        filed: new Set([1, 2]),
+        ...VERBS,
+      })}
       />,
     );
     expect(some.getByTestId('history-toggle').textContent).toContain('2');
@@ -721,14 +704,14 @@ describe('PanelShell: what the job zone shows', () => {
   it('invites the answer in the composer while a settled question stands', () => {
     const asked = makeView({ jobs: [makeJob({ outcome: 'done', question: true })] });
     const { getByTestId, rerender } = renderWithI18n(
-      <PanelShell view={asked} connected now={0} {...VERBS} />,
+      <PanelShell {...panelProps({ view: asked, connected: true, now: 0, ...VERBS })} />,
     );
     const field = () => getByTestId('composer').querySelector('textarea') as HTMLTextAreaElement;
-    expect(field().placeholder).toBe(translations.en['agent3.composer_answer_short']);
+    expect(field().placeholder).toBe(translations.en['agent.composer_answer_short']);
 
     // A record that asked nothing is back to the ordinary invitation.
-    rerender(<PanelShell view={makeView({ jobs: [makeJob({ outcome: 'done' })] })} connected now={0} {...VERBS} />);
-    expect(field().placeholder).toBe(translations.en['agent3.composer_order']);
+    rerender(<PanelShell {...panelProps({ view: makeView({ jobs: [makeJob({ outcome: 'done' })] }), connected: true, now: 0, ...VERBS })} />);
+    expect(field().placeholder).toBe(translations.en['agent.composer_order']);
   });
 });
 
@@ -740,19 +723,20 @@ describe("PanelShell: the rolled-back reading is the shell's own", () => {
 
   function rolledLabels(undoDepth?: number) {
     const view = renderWithI18n(
-      <PanelShell
-        view={makeView({ jobs })}
-        connected
-        now={0}
-        // Both records filed, so both are ROWS: this is the strip's reading, not the card's.
-        filed={new Set([1, 2])}
-        {...(undoDepth !== undefined ? { undoDepth } : {})}
-        {...VERBS}
+      <PanelShell {...panelProps({
+        view: makeView({ jobs }),
+        connected: true,
+        now: 0,
+        // Both records filed, so both are rows: this is the strip's reading, not the card's.
+        filed: new Set([1, 2]),
+        ...(undoDepth !== undefined ? { undoDepth } : {}),
+        ...VERBS,
+      })}
       />,
     );
     fireEvent.click(view.getByTestId('history-toggle'));
     const rows = view.getAllByTestId('history-item');
-    const flags = rows.map((r) => r.textContent?.includes(translations.en['agent3.history_rolled_back']!) ?? false);
+    const flags = rows.map((r) => r.textContent?.includes(translations.en['agent.history_rolled_back']!) ?? false);
     view.unmount();
     return flags;
   }
@@ -773,7 +757,7 @@ describe("PanelShell: the rolled-back reading is the shell's own", () => {
 });
 
 /**
- * THE TERMINAL CARD IS KEYED BY ITS OWN RECORD (`key={settled.job.orderSeq}` on each of the three
+ * The terminal card is keyed by its own record (`key={settled.job.orderSeq}` on each of the three
  * shapes in `PanelShell`). Without it React reuses the same component instance across two different
  * settled jobs and a local confirm (the receipt's rewind-all, the stop card's, the answer paper's)
  * travels with it: a rewind confirm opened on job 1 would still be standing, unanswered, over job 2
@@ -782,30 +766,31 @@ describe("PanelShell: the rolled-back reading is the shell's own", () => {
  * green, so this is the one test that would catch their removal.
  */
 describe('PanelShell: the terminal card is keyed by its own record', () => {
-  it('does not leave a standing rewind-all confirm over the next settled job', () => {
+  it('does not leave a standing rewind-all confirm over the next settled job', async () => {
     const job1 = makeJob({ orderSeq: 1, outcome: 'done', checkpoints: [{ undoIndex: 0, label: 'job' }] });
     const job2 = makeJob({ orderSeq: 2, outcome: 'done', checkpoints: [{ undoIndex: 0, label: 'job' }] });
     const { getByTestId, rerender } = renderWithI18n(
-      <PanelShell view={makeView({ jobs: [job1] })} connected now={0} {...VERBS} onRewind={() => {}} onRewindAll={() => {}} />,
+      <PanelShell {...panelProps({ view: makeView({ jobs: [job1] }), connected: true, now: 0, ...VERBS, onRewind: () => {}, onRewindAll: () => {} })} />,
     );
     fireEvent.click(getByTestId('flip-button'));
     fireEvent.click(getByTestId('ticket-rewind-all'));
-    const armed = () => [...document.querySelectorAll('[data-confirm-armed]')];
+    const armed = () => [...document.querySelectorAll('[data-testid="ticket-rewind-all-ask"]')];
     expect(armed()).toHaveLength(1);
 
     // Job 1 files itself away and job 2 takes its place as the standing record.
     rerender(
-      <PanelShell
-        view={makeView({ jobs: [job1, job2] })}
-        connected
-        now={0}
-        filed={new Set([1])}
-        {...VERBS}
-        onRewind={() => {}}
-        onRewindAll={() => {}}
+      <PanelShell {...panelProps({
+        view: makeView({ jobs: [job1, job2] }),
+        connected: true,
+        now: 0,
+        filed: new Set([1]),
+        ...VERBS,
+        onRewind: () => {},
+        onRewindAll: () => {},
+      })}
       />,
     );
-    expect(armed()).toHaveLength(0);
+    await waitFor(() => expect(armed()).toHaveLength(0));
   });
 });
 
@@ -817,19 +802,19 @@ describe('PanelShell: leaving a question', () => {
     const job = makeJob({ kind, outcome: 'done', question: true, summary: 'Where should it go?' });
     const view = makeView({ jobs: [job] });
     const props = { view, connected: true, now: 0, ...VERBS, onSend, onStop, onFileAway };
-    const ui = renderWithI18n(<PanelShell {...props} />);
+    const ui = renderWithI18n(<PanelShell {...panelProps(props)} />);
     expect(ui.queryByTestId('question-cancel-task')).toBeNull();
-    const fileAway = ui.getByRole('button', { name: translations.en['agent3.action_file_away'] });
+    const fileAway = ui.getByRole('button', { name: translations.en['agent.action_file_away'] });
     expect(fileAway.closest('[data-testid="answer-paper"], [data-testid="flip-face-front"]')).not.toBeNull();
     fireEvent.click(fileAway);
     expect(onFileAway).toHaveBeenCalledWith(job.orderSeq);
     expect(onSend).not.toHaveBeenCalled();
     expect(onStop).not.toHaveBeenCalled();
-    ui.rerender(<PanelShell {...props} filed={new Set([job.orderSeq])} />);
-    expect(ui.queryByRole('button', { name: translations.en['agent3.action_file_away'] })).toBeNull();
+    ui.rerender(<PanelShell {...panelProps({ ...props, filed: new Set([job.orderSeq]) })} />);
+    expect(ui.queryByRole('button', { name: translations.en['agent.action_file_away'] })).toBeNull();
     expect(ui.queryByTestId('question-cancel-task')).toBeNull();
-    expect(ui.getByTestId('dock-sentence').textContent).toBe(translations.en['agent3.dock_idle']);
-    expect((ui.getByTestId('composer-input') as HTMLTextAreaElement).placeholder).toBe(translations.en['agent3.composer_order']);
+    expect(ui.getByTestId('dock-sentence').textContent).toBe(translations.en['agent.dock_idle']);
+    expect((ui.getByTestId('composer-input') as HTMLTextAreaElement).placeholder).toBe(translations.en['agent.composer_order']);
   });
 
   it('offers cancellation beside a live question and uses the shared stop confirmation', () => {
@@ -837,7 +822,7 @@ describe('PanelShell: leaving a question', () => {
     const onGateAnswer = vi.fn();
     const ask = { gateId: 'ask-1', scope: 'tool' as const, summary: 'Where should it go?' };
     const view = makeView({ phase: 'gated', current: makeJob({ asks: [ask] }), gate: ask });
-    const ui = renderWithI18n(<PanelShell view={view} connected now={0} {...VERBS} onStop={onStop} onGateAnswer={onGateAnswer} />);
+    const ui = renderWithI18n(<PanelShell {...panelProps({ view, connected: true, now: 0, ...VERBS, onStop, onGateAnswer })} />);
     fireEvent.click(ui.getByRole('button', { name: 'Cancel task' }));
     expect(onStop).not.toHaveBeenCalled();
     fireEvent.click(ui.getByTestId('dock-confirm-cancel'));
@@ -853,7 +838,7 @@ describe('PanelShell: the verbs', () => {
   it('routes the composer by phase and sends through the runner verb', () => {
     const sent: string[] = [];
     const { getByTestId } = renderWithI18n(
-      <PanelShell view={makeView()} connected now={0} {...VERBS} onSend={(text) => sent.push(text)} />,
+      <PanelShell {...panelProps({ view: makeView(), connected: true, now: 0, ...VERBS, onSend: (text) => sent.push(text) })} />,
     );
     const input = getByTestId('composer').querySelector('textarea') as HTMLTextAreaElement;
     fireEvent.change(input, { target: { value: 'build a village' } });
@@ -861,34 +846,36 @@ describe('PanelShell: the verbs', () => {
     expect(sent).toEqual(['build a village']);
   });
 
-  /** The dock's seat is ONE control per family (`DeskHeader`'s seat table), so a running job hands
+  /** The dock's seat is one control per family (`DeskHeader`'s seat table), so a running job hands
    *  down pause and a gate hands down stop — and the stop asks on the card before it acts. */
-  it('hands the dock its seat verbs', () => {
+  it('hands the status card its seat verbs', () => {
     const calls: string[] = [];
     const running = renderWithI18n(
-      <PanelShell
-        view={makeView({ phase: 'executing', current: makeJob() })}
-        connected
-        now={0}
-        {...VERBS}
-        onPause={() => calls.push('pause')}
-        onStop={() => calls.push('stop')}
+      <PanelShell {...panelProps({
+        view: makeView({ phase: 'executing', current: makeJob() }),
+        connected: true,
+        now: 0,
+        ...VERBS,
+        onPause: () => calls.push('pause'),
+        onStop: () => calls.push('stop'),
+      })}
       />,
     );
     fireEvent.click(running.getByTestId('dock-seat'));
     running.unmount();
 
     const asking = renderWithI18n(
-      <PanelShell
-        view={makeView({
+      <PanelShell {...panelProps({
+        view: makeView({
           phase: 'gated', current: makeJob(),
           gate: { gateId: 'g1', scope: 'tool', summary: '86 cells' },
-        })}
-        connected
-        now={0}
-        {...VERBS}
-        onPause={() => calls.push('pause')}
-        onStop={() => calls.push('stop')}
+        }),
+        connected: true,
+        now: 0,
+        ...VERBS,
+        onPause: () => calls.push('pause'),
+        onStop: () => calls.push('stop'),
+      })}
       />,
     );
     fireEvent.click(asking.getByTestId('dock-seat'));
@@ -897,40 +884,59 @@ describe('PanelShell: the verbs', () => {
   });
 
   /**
-   * ONE VERB, ONE SAFETY. A stop ends the run and its record then offers to take the edits back, so
+   * One verb, one safety. A stop ends the run and its record then offers to take the edits back, so
    * the take-back law binds the press wherever it stands — and the square in the composer stopped
    * outright while the dock's stop asked first, the quieter of the two on the control nearest the
    * hand. Both raise the same question now, in the same seat, with the same two answers.
    */
-  it('asks on the card before the composer\'s square stops anything, and cancels back to the standing face', () => {
+  it('asks from the composer\'s square before it stops anything, leaving the desk card as it was', async () => {
     const calls: string[] = [];
     const view = makeView({ phase: 'executing', current: makeJob() });
     const { getByTestId, queryByTestId } = renderWithI18n(
-      <PanelShell view={view} connected now={0} {...VERBS} onStop={() => calls.push('stop')} />,
+      <PanelShell {...panelProps({ view, connected: true, now: 0, ...VERBS, onStop: () => calls.push('stop') })} />,
     );
 
     fireEvent.click(getByTestId('composer-stop'));
     expect(calls, 'nothing is stopped by the press that asks').toEqual([]);
-    expect(getByTestId('dock-sentence').textContent).toBe(translations.en['agent3.dock_stop_question']);
+    expect(getByTestId('dock-confirm-stop')).toBeTruthy();
+    expect(getByTestId('dock-sentence').textContent, 'the card is not the question').toBe(translations.en['agent.dock_executing']);
 
     fireEvent.click(getByTestId('dock-confirm-cancel'));
     expect(calls).toEqual([]);
-    expect(queryByTestId('dock-confirm-stop')).toBeNull();
+    await waitFor(() => expect(queryByTestId('dock-confirm-stop')).toBeNull());
 
     fireEvent.click(getByTestId('composer-stop'));
     fireEvent.click(getByTestId('dock-confirm-stop'));
     expect(calls).toEqual(['stop']);
   });
 
+  it('unrolls the same question from the desk seat, and lets it lapse with the job it asked about', async () => {
+    const calls: string[] = [];
+    const running = makeView({ phase: 'gated', current: makeJob() });
+    const { getByTestId, queryByTestId, rerender } = renderWithI18n(
+      <PanelShell {...panelProps({ view: running, connected: true, now: 0, ...VERBS, onStop: () => calls.push('stop') })} />,
+    );
+    fireEvent.click(getByTestId('dock-seat'));
+    expect(getByTestId('dock-confirm-stop')).toBeTruthy();
+    expect(getByTestId('dock-seat').getAttribute('data-act'), 'the seat itself is unchanged').toBe('stop');
+
+    rerender(<PanelShell {...panelProps({ view: makeView({ phase: 'idle', jobs: [makeJob({ outcome: 'done' })] }), connected: true, now: 0, ...VERBS, onStop: () => calls.push('stop') })} />);
+    await waitFor(() => expect(queryByTestId('dock-confirm-stop')).toBeNull());
+    const later = makeView({ phase: 'gated', current: makeJob({ orderSeq: 2 }) });
+    rerender(<PanelShell {...panelProps({ view: later, connected: true, now: 0, ...VERBS, onStop: () => calls.push('stop') })} />);
+    expect(queryByTestId('dock-confirm-stop'), 'a later job never inherits the question').toBeNull();
+    expect(calls).toEqual([]);
+  });
+
   it('offers a take-back only where the caller can honour one', () => {
     const view = makeView({ phase: 'thinking', current: makeJob(), queuedSteers: [{ seq: 4, text: 'use stone' }] });
-    const without = renderWithI18n(<PanelShell view={view} connected now={0} {...VERBS} />);
+    const without = renderWithI18n(<PanelShell {...panelProps({ view, connected: true, now: 0, ...VERBS })} />);
     expect(without.queryByTestId('panel-steer-recall')).toBeNull();
     without.unmount();
 
     const recalled: number[] = [];
     const withIt = renderWithI18n(
-      <PanelShell view={view} connected now={0} {...VERBS} onRecallSteer={(s) => recalled.push(s)} />,
+      <PanelShell {...panelProps({ view, connected: true, now: 0, ...VERBS, onRecallSteer: (s) => recalled.push(s) })} />,
     );
     fireEvent.click(withIt.getByTestId('panel-steer-recall'));
     expect(recalled).toEqual([4]);
@@ -938,19 +944,19 @@ describe('PanelShell: the verbs', () => {
 
   it('feeds the composer suggestion from the projection, not from a store field', () => {
     const { getByTestId } = renderWithI18n(
-      <PanelShell view={makeView({ suggestion: 'Yes, add the bridge' })} connected now={0} {...VERBS} />,
+      <PanelShell {...panelProps({ view: makeView({ suggestion: 'Yes, add the bridge' }), connected: true, now: 0, ...VERBS })} />,
     );
     expect(getByTestId('composer-ghost').textContent).toBe('Yes, add the bridge');
   });
 
-  /* THE GHOST IS A PROJECTION, so a refusal has nowhere to be recorded but here — and the panel
+  /* The ghost is a projection, so a refusal has nowhere to be recorded but here — and the panel
    * already owns exactly this kind of dismissal for the banner beside it. Unanswered, Escape did
-   * nothing and the next EMPTY Enter sent the very prediction that had just been refused. */
+   * nothing and the next empty Enter sent the very prediction that had just been refused. */
   it('drops the suggestion ghost on Escape, and then sends nothing on an empty Enter', () => {
     const sent: string[] = [];
     const view = makeView({ suggestion: 'Add a bridge over the river' });
     const { getByTestId, queryByTestId } = renderWithI18n(
-      <PanelShell view={view} connected now={0} {...VERBS} onSend={(text) => sent.push(text)} />,
+      <PanelShell {...panelProps({ view, connected: true, now: 0, ...VERBS, onSend: (text) => sent.push(text) })} />,
     );
     const input = getByTestId('composer-input');
     expect(queryByTestId('composer-ghost')).not.toBeNull();
@@ -962,54 +968,39 @@ describe('PanelShell: the verbs', () => {
     expect(sent).toEqual([]);
   });
 
-  it('tells a caller that wants to know, without needing one to do the dropping', () => {
-    const dropped: number[] = [];
-    const { getByTestId } = renderWithI18n(
-      <PanelShell
-        view={makeView({ suggestion: 'Yes, add the bridge' })}
-        connected
-        now={0}
-        {...VERBS}
-        onDropSuggestion={() => dropped.push(1)}
-      />,
-    );
-    fireEvent.keyDown(getByTestId('composer-input'), { key: 'Escape' });
-    expect(dropped).toEqual([1]);
-  });
-
-  /** A fresh order nulls the projection, so a LATER suggestion is a live one again. */
+  /** A fresh order nulls the projection, so a later suggestion is a live one again. */
   it('leaves the next suggestion standing', () => {
     const { getByTestId, queryByTestId, rerender } = renderWithI18n(
-      <PanelShell view={makeView({ suggestion: 'first' })} connected now={0} {...VERBS} />,
+      <PanelShell {...panelProps({ view: makeView({ suggestion: 'first' }), connected: true, now: 0, ...VERBS })} />,
     );
     fireEvent.keyDown(getByTestId('composer-input'), { key: 'Escape' });
     expect(queryByTestId('composer-ghost')).toBeNull();
 
-    rerender(<PanelShell view={makeView({ suggestion: 'second' })} connected now={0} {...VERBS} />);
+    rerender(<PanelShell {...panelProps({ view: makeView({ suggestion: 'second' }), connected: true, now: 0, ...VERBS })} />);
     expect(getByTestId('composer-ghost').textContent).toBe('second');
   });
 
   it('offers identical reply text again for a later order without replacing a typed draft', () => {
     const view = (seq: number) => makeView({ jobs: [makeJob({ orderSeq: seq, outcome: 'done', question: true })], suggestion: 'Yes, add flowers' });
-    const ui = renderWithI18n(<PanelShell view={view(1)} connected now={0} {...VERBS} />);
+    const ui = renderWithI18n(<PanelShell {...panelProps({ view: view(1), connected: true, now: 0, ...VERBS })} />);
     fireEvent.keyDown(ui.getByTestId('composer-input'), { key: 'Escape' });
     expect(ui.queryByTestId('composer-ghost')).toBeNull();
-    ui.rerender(<PanelShell view={view(20)} connected now={0} {...VERBS} />);
+    ui.rerender(<PanelShell {...panelProps({ view: view(20), connected: true, now: 0, ...VERBS })} />);
     expect(ui.getByTestId('composer-ghost').textContent).toBe('Yes, add flowers');
     fireEvent.change(ui.getByTestId('composer-input'), { target: { value: 'Use blue flowers' } });
-    ui.rerender(<PanelShell view={view(30)} connected now={0} {...VERBS} />);
+    ui.rerender(<PanelShell {...panelProps({ view: view(30), connected: true, now: 0, ...VERBS })} />);
     expect((ui.getByTestId('composer-input') as HTMLTextAreaElement).value).toBe('Use blue flowers');
     expect(ui.queryByTestId('composer-ghost')).toBeNull();
   });
 });
 
 /**
- * THE DOCK'S NUMBERS ARE DERIVED FROM A RENDER INPUT, so with nothing re-rendering the panel they
+ * The dock's numbers are derived from a render input, so with nothing re-rendering the panel they
  * froze at whatever second the job (or the backoff) began and the wait read as a hang. The panel runs
  * its own ~1Hz clock while (and only while) a face is counting: a running job's elapsed reading and a
  * retry's countdown both move, and a hold or a receipt reads a stamp instead and needs no tick.
  */
-describe('PanelShell: the dock clock', () => {
+describe('PanelShell: the status-card clock', () => {
   const retrying = (since: number) => makeView({
     phase: 'retrying',
     current: makeJob(),
@@ -1021,7 +1012,7 @@ describe('PanelShell: the dock clock', () => {
     vi.setSystemTime(0);
     try {
       const { getByTestId } = renderWithI18n(
-        <PanelShell view={retrying(0)} connected {...VERBS} />,
+        <PanelShell {...panelProps({ view: retrying(0), connected: true, ...VERBS })} />,
       );
       expect(getByTestId('retry-seconds').textContent).toBe('9');
 
@@ -1035,7 +1026,7 @@ describe('PanelShell: the dock clock', () => {
   it('runs no clock at all when nothing is being waited out', () => {
     vi.useFakeTimers();
     try {
-      const idle = renderWithI18n(<PanelShell view={makeView()} connected {...VERBS} />);
+      const idle = renderWithI18n(<PanelShell {...panelProps({ view: makeView(), connected: true, ...VERBS })} />);
       expect(vi.getTimerCount()).toBe(0);
       idle.unmount();
     } finally {
@@ -1047,14 +1038,14 @@ describe('PanelShell: the dock clock', () => {
     vi.useFakeTimers();
     vi.setSystemTime(0);
     try {
-      const { rerender } = renderWithI18n(<PanelShell view={retrying(0)} connected {...VERBS} />);
+      const { rerender } = renderWithI18n(<PanelShell {...panelProps({ view: retrying(0), connected: true, ...VERBS })} />);
       expect(vi.getTimerCount()).toBeGreaterThan(0);
 
       // The wait is over but the job is not: the dock's elapsed reading is still moving.
-      rerender(<PanelShell view={makeView({ phase: 'executing', current: makeJob() })} connected {...VERBS} />);
+      rerender(<PanelShell {...panelProps({ view: makeView({ phase: 'executing', current: makeJob() }), connected: true, ...VERBS })} />);
       expect(vi.getTimerCount()).toBeGreaterThan(0);
 
-      rerender(<PanelShell view={makeView()} connected {...VERBS} />);
+      rerender(<PanelShell {...panelProps({ view: makeView(), connected: true, ...VERBS })} />);
       expect(vi.getTimerCount()).toBe(0);
     } finally {
       vi.useRealTimers();
@@ -1065,7 +1056,7 @@ describe('PanelShell: the dock clock', () => {
     vi.useFakeTimers();
     try {
       const { getByTestId } = renderWithI18n(
-        <PanelShell view={retrying(0)} connected now={4_000} {...VERBS} />,
+        <PanelShell {...panelProps({ view: retrying(0), connected: true, now: 4_000, ...VERBS })} />,
       );
       expect(getByTestId('retry-seconds').textContent).toBe('5');
       expect(vi.getTimerCount()).toBe(0);
@@ -1076,8 +1067,8 @@ describe('PanelShell: the dock clock', () => {
 });
 
 describe('PanelShell: the celebrate edge', () => {
-  /** WHETHER A SETTLEMENT IS WORTH A DANCE IS THE PROJECTION'S ANSWER (`JobView.celebrate`: done, at
-   *  least one write LANDED, not ended on a question), and the hook reads it rather than deriving
+  /** Whether a settlement is worth a dance is the projection's answer (`JobView.celebrate`: done, at
+   *  least one write landed, not ended on a question), and the hook reads it rather than deriving
    *  one from the outcome — so these fixtures carry the flag the fold would have set. The answer
    *  family's own four negatives are held in `answer-paper.test.tsx`. */
   const settled = (seq: number, outcome: JobView['outcome'], celebrate = outcome === 'done') =>
@@ -1087,18 +1078,18 @@ describe('PanelShell: the celebrate edge', () => {
     vi.useFakeTimers();
     try {
       const { getByTestId, rerender } = renderWithI18n(
-        <PanelShell view={makeView({ phase: 'executing', current: makeJob() })} connected now={0} {...VERBS} />,
+        <PanelShell {...panelProps({ view: makeView({ phase: 'executing', current: makeJob() }), connected: true, now: 0, ...VERBS })} />,
       );
       const pose = () => getByTestId('desk-header-char-slot').firstElementChild?.getAttribute('data-pose');
       expect(pose()).not.toBe('celebrating');
 
-      rerender(<PanelShell view={settled(1, 'done')} connected now={0} {...VERBS} />);
+      rerender(<PanelShell {...panelProps({ view: settled(1, 'done'), connected: true, now: 0, ...VERBS })} />);
       expect(pose()).toBe('celebrating');
 
-      // A re-render of the SAME settled job is not a second finish.
+      // A re-render of the same settled job is not a second finish.
       act(() => { vi.advanceTimersByTime(POSES.celebrating.settleAt ?? 0); });
       expect(pose()).not.toBe('celebrating');
-      rerender(<PanelShell view={settled(1, 'done')} connected now={0} {...VERBS} />);
+      rerender(<PanelShell {...panelProps({ view: settled(1, 'done'), connected: true, now: 0, ...VERBS })} />);
       expect(pose()).not.toBe('celebrating');
     } finally {
       vi.useRealTimers();
@@ -1106,7 +1097,7 @@ describe('PanelShell: the celebrate edge', () => {
   });
 
   /**
-   * THE DANCE HAS TWO ENDINGS, and the second one is the one a cleanup can swallow: kill the clock
+   * The dance has two endings, and the second one is the one a cleanup can swallow: kill the clock
    * there and the newly settled job takes the non-firing branch, lowering nothing, so the character
    * goes on celebrating over its own failure banner until something else finishes well.
    */
@@ -1114,26 +1105,27 @@ describe('PanelShell: the celebrate edge', () => {
     vi.useFakeTimers();
     try {
       const { getByTestId, rerender } = renderWithI18n(
-        <PanelShell view={makeView({ phase: 'executing', current: makeJob() })} connected now={0} {...VERBS} />,
+        <PanelShell {...panelProps({ view: makeView({ phase: 'executing', current: makeJob() }), connected: true, now: 0, ...VERBS })} />,
       );
       const pose = () => getByTestId('desk-header-char-slot').firstElementChild?.getAttribute('data-pose');
 
-      rerender(<PanelShell view={settled(1, 'done')} connected now={0} {...VERBS} />);
+      rerender(<PanelShell {...panelProps({ view: settled(1, 'done'), connected: true, now: 0, ...VERBS })} />);
       expect(pose()).toBe('celebrating');
 
       act(() => { vi.advanceTimersByTime(200); });
       rerender(
-        <PanelShell
-          view={makeView({
+        <PanelShell {...panelProps({
+          view: makeView({
             phase: 'incident',
             jobs: [
               makeJob({ orderSeq: 1, outcome: 'done', kind: 'build', celebrate: true }),
               makeJob({ orderSeq: 2, outcome: 'incident', errorCls: 'network' }),
             ],
-          })}
-          connected
-          now={0}
-          {...VERBS}
+          }),
+          connected: true,
+          now: 0,
+          ...VERBS,
+        })}
         />,
       );
       expect(pose()).not.toBe('celebrating');
@@ -1148,7 +1140,7 @@ describe('PanelShell: the celebrate edge', () => {
 
   it('never celebrates on arrival at a session that was already finished', () => {
     const { getByTestId } = renderWithI18n(
-      <PanelShell view={settled(7, 'done')} connected now={0} {...VERBS} />,
+      <PanelShell {...panelProps({ view: settled(7, 'done'), connected: true, now: 0, ...VERBS })} />,
     );
     expect(getByTestId('desk-header-char-slot').firstElementChild?.getAttribute('data-pose'))
       .not.toBe('celebrating');
@@ -1157,9 +1149,9 @@ describe('PanelShell: the celebrate edge', () => {
   it('does not celebrate a job that was stopped, capped or broken', () => {
     for (const outcome of ['aborted', 'capped', 'incident'] as const) {
       const { getByTestId, rerender, unmount } = renderWithI18n(
-        <PanelShell view={makeView({ phase: 'executing', current: makeJob() })} connected now={0} {...VERBS} />,
+        <PanelShell {...panelProps({ view: makeView({ phase: 'executing', current: makeJob() }), connected: true, now: 0, ...VERBS })} />,
       );
-      rerender(<PanelShell view={settled(1, outcome)} connected now={0} {...VERBS} />);
+      rerender(<PanelShell {...panelProps({ view: settled(1, outcome), connected: true, now: 0, ...VERBS })} />);
       expect(
         getByTestId('desk-header-char-slot').firstElementChild?.getAttribute('data-pose'),
         outcome,
@@ -1170,16 +1162,16 @@ describe('PanelShell: the celebrate edge', () => {
 });
 
 /**
- * THE FRAME'S ROOM WINS OVER THE PANEL'S WANTED HEIGHT.
+ * The frame's room wins over the panel's wanted height.
  *
  * A `min-height` written beside a `max-height` does not yield to it: CSS resolves the conflict in
- * the MIN's favour, so the panel stood at its authored 430 in a window that had 367 (the frame's own
+ * the min's favour, so the panel stood at its authored 430 in a window that had 367 (the frame's own
  * reference window, 1280x800) and at 430 in a Generate-mode window that had 159, standing over the
  * shelf's candidate cards. `min()` is what makes a wanted height a want.
  */
 describe('PanelShell: how tall it stands', () => {
   it('takes its authored height when the caller names no cap', () => {
-    const { getByTestId } = renderWithI18n(<PanelShell view={makeView()} connected now={0} {...VERBS} />);
+    const { getByTestId } = renderWithI18n(<PanelShell {...panelProps({ view: makeView(), connected: true, now: 0, ...VERBS })} />);
     const style = getByTestId('panel-shell').style;
     expect(style.minHeight).toBe(`${PANEL_MIN_HEIGHT}px`);
     expect(style.maxHeight).toBe('');
@@ -1188,11 +1180,11 @@ describe('PanelShell: how tall it stands', () => {
   it('yields the wanted height to the cap, rather than overflowing it', () => {
     const cap = 'calc(100vh - 480px)';
     const { getByTestId } = renderWithI18n(
-      <PanelShell view={makeView()} connected now={0} maxHeight={cap} {...VERBS} />,
+      <PanelShell {...panelProps({ view: makeView(), connected: true, now: 0, maxHeight: cap, ...VERBS })} />,
     );
     const style = getByTestId('panel-shell').style;
     expect(style.maxHeight).toBe(cap);
-    // The floor is the SMALLER of the two, so a short window caps the panel instead of being
+    // The floor is the smaller of the two, so a short window caps the panel instead of being
     // overrun by it.
     expect(style.minHeight.replace(/\s+/g, '')).toBe(`min(${PANEL_MIN_HEIGHT}px,${cap})`.replace(/\s+/g, ''));
   });
@@ -1201,7 +1193,7 @@ describe('PanelShell: how tall it stands', () => {
   it('hugs a connection screen instead of standing at the want', () => {
     const cap = 'calc(100vh - 480px)';
     const rest = renderWithI18n(
-      <PanelShell view={makeView()} connected={false} now={0} maxHeight={cap} {...VERBS} />,
+      <PanelShell {...panelProps({ view: makeView(), connected: false, now: 0, maxHeight: cap, ...VERBS })} />,
     );
     expect(rest.getByTestId('dream-office')).toBeTruthy();
     expect(rest.getByTestId('panel-shell').style.minHeight).toBe('0');
@@ -1214,7 +1206,7 @@ describe('PanelShell: how tall it stands', () => {
 
     // And a desk with the record under it still wants its column.
     const record = renderWithI18n(
-      <PanelShell view={makeView()} connected now={0} maxHeight={cap} {...VERBS} />,
+      <PanelShell {...panelProps({ view: makeView(), connected: true, now: 0, maxHeight: cap, ...VERBS })} />,
     );
     expect(record.getByTestId('panel-shell').style.minHeight.replace(/\s+/g, ''))
       .toBe(`min(${PANEL_MIN_HEIGHT}px,${cap})`.replace(/\s+/g, ''));
@@ -1222,22 +1214,23 @@ describe('PanelShell: how tall it stands', () => {
 });
 
 /**
- * THE PANEL TAKES A MAX HEIGHT AND ONLY THE MIDDLE SCROLLS.
+ * The panel takes a max height and only the middle scrolls.
  *
- * A pinned desk on top, a pinned composer at the bottom, ONE scrolling job zone between them: the
+ * A pinned desk on top, a pinned composer at the bottom, one scrolling job zone between them: the
  * two controls a user needs are the two that never move, and the record is what gives way. jsdom
- * lays nothing out, so what is asserted is the DECLARATIONS the layout rests on — a desk or composer
+ * lays nothing out, so what is asserted is the declarations the layout rests on — a desk or composer
  * that could shrink, or a second scroller, is the defect this stands against.
  */
 describe('PanelShell: the three zones', () => {
   function zoneStyles(connected = true) {
     const view = renderWithI18n(
-      <PanelShell
-        view={makeView({ phase: 'executing', current: makeJob() })}
-        connected={connected}
-        now={0}
-        maxHeight="calc(100vh - 480px)"
-        {...VERBS}
+      <PanelShell {...panelProps({
+        view: makeView({ phase: 'executing', current: makeJob() }),
+        connected,
+        now: 0,
+        maxHeight: "calc(100vh - 480px)",
+        ...VERBS,
+      })}
       />,
     );
     const panel = view.getByTestId('panel-shell');
@@ -1250,8 +1243,8 @@ describe('PanelShell: the three zones', () => {
 
     for (const el of laidOut) {
       const isZone = el.dataset.testid === 'panel-job-frame';
-      // THE STEER STACK IS THE ONE ZONE THAT MAY GIVE WAY BESIDE THE RECORD, and it is not a second
-      // scroller: the CHIPS box inside it scrolls, so a squeeze takes chip rows and never the count
+      // The steer stack is the one zone that may give way beside the record, and it is not a second
+      // scroller: the chips box inside it scrolls, so a squeeze takes chip rows and never the count
       // line under them (`SteerQueue`'s own suite holds that half). The desk and the composer are
       // still pinned outright, which is the rule this stands on.
       const mayShrink = el.dataset.testid === 'panel-steer-zone';
@@ -1269,7 +1262,7 @@ describe('PanelShell: the three zones', () => {
     view.unmount();
   });
 
-  /** A KEY THAT WENT AWAY UNDER A RUNNING JOB IS NOT A SCREEN: the zone keeps the record, so all
+  /** A key that went away under a running job is not a screen: the zone keeps the record, so all
    *  four zones stand and the composer is blocked in place with the repair on it. The setup family
    *  (the keyless rest, the connection screen, the manage card) is what draws no composer at all. */
   it('keeps all four zones where the record still stands, key or no key', () => {
@@ -1290,24 +1283,25 @@ describe('PanelShell: the three zones', () => {
   });
 
   /**
-   * THE FLOOR YIELDS TO THE CAP, and the order of those two words is the whole of it: a floor that
-   * wins pushes the COMPOSER out of the panel. Measured in the real frame at 1280x800
-   * (the frame stands under a 1.25 zoom, so the room is the viewport DIVIDED by it): Object mode's
+   * The floor yields to the cap, and the order of those two words is the whole of it: a floor that
+   * wins pushes the composer out of the panel. Measured in the real frame at 1280x800
+   * (the frame stands under a 1.25 zoom, so the room is the viewport divided by it): Object mode's
    * room is 233px against a pinned 180 (desk 74 + composer 48 + three 10px gaps + 28 of padding), so
    * a flat 72 asked for 252 and the last 19px of the composer were clipped away; Generate mode's is
-   * 159, where the composer landed entirely outside the panel and a press on it answered CANVAS.
+   * 159, where the composer landed entirely outside the panel and a press on it answered canvas.
    *
    * So the floor is what is left after the pinned zones, capped at 72: it is the record's floor where
    * there is room for one, and nothing where there is not. The desk and the composer are sacred.
    */
   it('floors the record only as far as the cap allows', () => {
     const capped = renderWithI18n(
-      <PanelShell
-        view={makeView({ phase: 'executing', current: makeJob() })}
-        connected
-        now={0}
-        maxHeight="calc(100vh - 480px)"
-        {...VERBS}
+      <PanelShell {...panelProps({
+        view: makeView({ phase: 'executing', current: makeJob() }),
+        connected: true,
+        now: 0,
+        maxHeight: "calc(100vh - 480px)",
+        ...VERBS,
+      })}
       />,
     );
     const floor = capped.getByTestId('panel-job-frame').style.minHeight.replace(/\s+/g, '');
@@ -1316,29 +1310,30 @@ describe('PanelShell: the three zones', () => {
 
     // With no cap named the caller is not standing the panel in a room, so the floor is the floor.
     const free = renderWithI18n(
-      <PanelShell view={makeView({ phase: 'executing', current: makeJob() })} connected now={0} {...VERBS} />,
+      <PanelShell {...panelProps({ view: makeView({ phase: 'executing', current: makeJob() }), connected: true, now: 0, ...VERBS })} />,
     );
     expect(free.getByTestId('panel-job-frame').style.minHeight).toBe(`${JOB_ZONE_FLOOR}px`);
     free.unmount();
   });
 
-  /** THE PROPERTY THE FLOOR MUST NOT BREAK: where the frame leaves less room than the zones want,
-   *  the record gives way to NOTHING and the two standing controls keep their place. The waiver
+  /** The property the floor must not break: where the frame leaves less room than the zones want,
+   *  the record gives way to nothing and the two standing controls keep their place. The waiver
    *  below is the other way to reach zero.
    *
-   *  jsdom resolves no `min()`/`max()`, so what is asserted here is the EXPRESSION that yields zero;
+   *  jsdom resolves no `min()`/`max()`, so what is asserted here is the expression that yields zero;
    *  that it really resolves to `0px` in a 159px room is measured in a browser (Generate mode at
    *  1280x800). */
   it('lets the record be squeezed to nothing', () => {
     // A room smaller than the pinned zones: `max(0px, …)` is what keeps the floor from going
     // negative, and the arithmetic inside it is what makes it zero here.
     const { getByTestId } = renderWithI18n(
-      <PanelShell
-        view={makeView({ phase: 'executing', current: makeJob() })}
-        connected
-        now={0}
-        maxHeight="100px"
-        {...VERBS}
+      <PanelShell {...panelProps({
+        view: makeView({ phase: 'executing', current: makeJob() }),
+        connected: true,
+        now: 0,
+        maxHeight: "100px",
+        ...VERBS,
+      })}
       />,
     );
     const floor = getByTestId('panel-job-frame').style.minHeight.replace(/\s+/g, '');
@@ -1350,12 +1345,13 @@ describe('PanelShell: the three zones', () => {
   it('waives the floor for a lone closed history row', () => {
     const done = makeJob({ outcome: 'done', kind: 'build' });
     const rest = renderWithI18n(
-      <PanelShell
-        view={makeView({ jobs: [done] })}
-        connected
-        now={0}
-        filed={new Set([done.orderSeq])}
-        {...VERBS}
+      <PanelShell {...panelProps({
+        view: makeView({ jobs: [done] }),
+        connected: true,
+        now: 0,
+        filed: new Set([done.orderSeq]),
+        ...VERBS,
+      })}
       />,
     );
     expect(rest.getByTestId('panel-job-frame').style.minHeight).toBe('0');
@@ -1363,13 +1359,13 @@ describe('PanelShell: the three zones', () => {
 
     // A record still standing as a card is not that shape, and keeps its floor.
     const carded = renderWithI18n(
-      <PanelShell view={makeView({ jobs: [done] })} connected now={0} {...VERBS} />,
+      <PanelShell {...panelProps({ view: makeView({ jobs: [done] }), connected: true, now: 0, ...VERBS })} />,
     );
     expect(carded.getByTestId('panel-job-frame').style.minHeight).toBe(`${JOB_ZONE_FLOOR}px`);
     carded.unmount();
 
     // An empty desk keeps it: the zone is where the next thing lands.
-    const empty = renderWithI18n(<PanelShell view={makeView()} connected now={0} {...VERBS} />);
+    const empty = renderWithI18n(<PanelShell {...panelProps({ view: makeView(), connected: true, now: 0, ...VERBS })} />);
     expect(empty.getByTestId('panel-job-frame').style.minHeight).toBe(`${JOB_ZONE_FLOOR}px`);
     empty.unmount();
   });
@@ -1400,7 +1396,7 @@ describe('PanelShell: the record follows the work', () => {
   it('scrolls the job zone when the projection changes', () => {
     const { view, zone, box } = standAtFoot(200);
     box.scrollHeight = 600;
-    view.rerender(<PanelShell view={makeView({ phase: 'idle', jobs: [makeJob({ outcome: 'done' })] })} connected now={0} {...VERBS} />);
+    view.rerender(<PanelShell {...panelProps({ view: makeView({ phase: 'idle', jobs: [makeJob({ outcome: 'done' })] }), connected: true, now: 0, ...VERBS })} />);
     expect(zone.scrollTop).toBe(400);
     view.unmount();
   });
@@ -1410,14 +1406,14 @@ describe('PanelShell: the record follows the work', () => {
   it('leaves the setup screen where it opens', () => {
     const watch = watchScroll();
     try {
-      renderWithI18n(<PanelShell view={makeView()} connected={false} now={0} {...VERBS} />);
+      renderWithI18n(<PanelShell {...panelProps({ view: makeView(), connected: false, now: 0, ...VERBS })} />);
       expect(watch.writes).toEqual([]);
     } finally { watch.restore(); }
   });
 
   function standAtFoot(scrollTop: number) {
     const view = renderWithI18n(
-      <PanelShell view={makeView({ phase: 'executing', current: makeJob() })} connected now={0} {...VERBS} />,
+      <PanelShell {...panelProps({ view: makeView({ phase: 'executing', current: makeJob() }), connected: true, now: 0, ...VERBS })} />,
     );
     const zone = view.getByTestId('panel-job-zone');
     const box = { scrollHeight: 400, clientHeight: 200 };
@@ -1443,7 +1439,7 @@ describe('PanelShell: the record follows the work', () => {
     fireEvent.scroll(zone);
     expect(zone.scrollTop).toBe(140);
     box.clientHeight = 180;
-    view.rerender(<PanelShell view={makeView({ phase: 'executing', current: makeJob() })} connected now={0} {...VERBS} />);
+    view.rerender(<PanelShell {...panelProps({ view: makeView({ phase: 'executing', current: makeJob() }), connected: true, now: 0, ...VERBS })} />);
     expect(zone.scrollTop).toBe(220);
     view.unmount();
   });
@@ -1472,14 +1468,14 @@ describe('PanelShell: the record follows the work', () => {
 
 describe('PanelShell: the character slots', () => {
   it('draws its own character until an entrance plate is given', () => {
-    const { getByTestId } = renderWithI18n(<PanelShell view={makeView()} connected now={0} {...VERBS} />);
+    const { getByTestId } = renderWithI18n(<PanelShell {...panelProps({ view: makeView(), connected: true, now: 0, ...VERBS })} />);
     expect(getByTestId('desk-header-char-slot').children.length).toBeGreaterThan(0);
   });
 
-  /** The FLIP leap measures both slots in viewport coordinates and positions the character `fixed`;
+  /** The flip leap measures both slots in viewport coordinates and positions the character `fixed`;
    *  a transform anywhere above either endpoint would become its containing block. */
   it('puts no transform or filter on any ancestor of the desk slot', () => {
-    const { getByTestId } = renderWithI18n(<PanelShell view={makeView()} connected now={0} {...VERBS} />);
+    const { getByTestId } = renderWithI18n(<PanelShell {...panelProps({ view: makeView(), connected: true, now: 0, ...VERBS })} />);
     let el: HTMLElement | null = getByTestId('desk-header-char-slot');
     while (el && el !== document.body) {
       expect(el.style.transform, el.getAttribute('data-testid') ?? el.tagName).toBe('');
@@ -1490,24 +1486,24 @@ describe('PanelShell: the character slots', () => {
 });
 
 /**
- * THE FREE PANEL'S DOCK CONTROL IS A DISC FLOATING ON ITS TOP-RIGHT CORNER, and three facts place it.
+ * The free panel's dock control is a disc floating on its top-right corner, and three facts place it.
  *
- * It stands OUTSIDE the plate in the tree, because the plate clips (its own overflow, and the clip the
+ * It stands outside the plate in the tree, because the plate clips (its own overflow, and the clip the
  * entrance wipe rides), so a child hanging past the edge would be cut off and half of it unpressable.
- * It is CENTRED ON THE RIGHT EDGE, so the half of it that lies on the paper reaches exactly the plate's
+ * It is centred on the right edge, so the half of it that lies on the paper reaches exactly the plate's
  * own padding — the gutter every one of the plate's children begins after — and cannot touch the
- * character's seat or the dock card whatever either holds. And its TOP is the plate's own top edge,
+ * character's seat or the dock card whatever either holds. And its top is the plate's own top edge,
  * which is the line the selected block's caption stands above.
  */
 describe('PanelShell: the dock knob', () => {
   const knob = () => renderWithI18n(
-    <PanelShell view={makeView()} connected now={0} {...VERBS} onTogglePin={() => {}} />,
+    <PanelShell {...panelProps({ view: makeView(), connected: true, now: 0, ...VERBS, onTogglePin: () => {} })} />,
   );
 
   it('floats on the plate\'s top-right corner, centred on the edge', () => {
     const { getByTestId } = knob();
     const cluster = getByTestId('desk-pin');
-    // Placed against the HOLDER, hanging out by half of itself: that is what "centred on the edge" is.
+    // Placed against the holder, hanging out by half of itself: that is what "centred on the edge" is.
     expect(parseFloat(cluster.style.right)).toBe(-PIN_KNOB_OUT);
     expect(PIN_KNOB_OUT).toBe(PIN_KNOB.size / 2);
     // The half on the paper is the plate's own padding and no more.
@@ -1534,7 +1530,7 @@ describe('PanelShell: the dock knob', () => {
     expect(plate.style.overflow).toBe('hidden');
   });
 
-  /** THE KNOB IS PART OF THE PANEL, so it goes where the panel goes: the HOLDER carries the fade and the
+  /** The knob is part of the panel, so it goes where the panel goes: the holder carries the fade and the
    *  open gesture's travel, or the knob would be left standing on the map after the panel had gone. */
   it('shares the holder the gesture is carried on', () => {
     const { getByTestId } = knob();
@@ -1546,14 +1542,15 @@ describe('PanelShell: the dock knob', () => {
 
   it('gives way to a stacked pair of buttons once the panel is docked', () => {
     const { getByTestId, queryByTestId } = renderWithI18n(
-      <PanelShell
-        view={makeView()}
-        connected
-        now={0}
-        {...VERBS}
-        pinned
-        onTogglePin={() => {}}
-        onSwitchSide={() => {}}
+      <PanelShell {...panelProps({
+        view: makeView(),
+        connected: true,
+        now: 0,
+        ...VERBS,
+        pinned: true,
+        onTogglePin: () => {},
+        onSwitchSide: () => {},
+      })}
       />,
     );
     const cluster = getByTestId('desk-pin');
@@ -1563,42 +1560,44 @@ describe('PanelShell: the dock knob', () => {
   });
 
   /**
-   * DOCKED, THE PAIR IS CENTRED ON THE DOCK BAND rather than hung from the plate's corner: the card
-   * beside them starts at the plate's padding and is `DOCK_HEIGHT` tall, so the file's own midline is
+   * Docked, the pair is centred on the status-card band rather than hung from the plate's corner: the card
+   * beside them starts at the plate's padding and is `STATUS_CARD_HEIGHT` tall, so the file's own midline is
    * that band's midline and the two controls read as part of the row they stand in.
    */
-  it('centres the docked pair on the dock band it stands beside', () => {
+  it('centres the docked pair on the status-card band it stands beside', () => {
     const { getByTestId } = renderWithI18n(
-      <PanelShell
-        view={makeView()}
-        connected
-        now={0}
-        {...VERBS}
-        pinned
-        onTogglePin={() => {}}
-        onSwitchSide={() => {}}
+      <PanelShell {...panelProps({
+        view: makeView(),
+        connected: true,
+        now: 0,
+        ...VERBS,
+        pinned: true,
+        onTogglePin: () => {},
+        onSwitchSide: () => {},
+      })}
       />,
     );
     const top = parseFloat(getByTestId('desk-pin').style.top);
-    expect(top + DOCK_CHROME_FILE_H / 2).toBe(PANEL_PAD + DOCK_HEIGHT / 2);
+    expect(top + DOCK_CHROME_FILE_H / 2).toBe(PANEL_PAD + STATUS_CARD_HEIGHT / 2);
   });
 
   /**
-   * THE DOCKED PAIR STANDS AT THE RIGHT IN BOTH DOCK MODES: same spot whether the panel hugs the
-   * left or the right window edge — no mirroring, no inner-seam variant.
+   * The docked pair stands at the right in both dock modes: same spot whether the panel hugs the
+   * left or the right window edge, with no mirroring and no inner-seam variant.
    */
-  it('stands the docked pair at the right edge whichever side the dock is at', () => {
+  it('stands the docked pair at the right edge whichever side the panel is docked to', () => {
     for (const side of ['left', 'right'] as const) {
       const { getByTestId, unmount } = renderWithI18n(
-        <PanelShell
-          view={makeView()}
-          connected
-          now={0}
-          {...VERBS}
-          pinned
-          dockSide={side}
-          onTogglePin={() => {}}
-          onSwitchSide={() => {}}
+        <PanelShell {...panelProps({
+          view: makeView(),
+          connected: true,
+          now: 0,
+          ...VERBS,
+          pinned: true,
+          dockSide: side,
+          onTogglePin: () => {},
+          onSwitchSide: () => {},
+        })}
         />,
       );
       const cluster = getByTestId('desk-pin');
@@ -1609,35 +1608,36 @@ describe('PanelShell: the dock knob', () => {
   });
 
   /**
-   * THE GUTTER IS THE BUTTONS' SEAT ONLY WHERE THE BUTTONS ARE: the desk band keeps clear of the
+   * The gutter is the buttons' seat only where the buttons are: the desk band keeps clear of the
    * file of two, and everything below the dock band takes the docked column's whole width.
    */
   it('reserves the buttons\' seat in the desk band alone, and only while docked', () => {
     const docked = renderWithI18n(
-      <PanelShell
-        view={makeView()}
-        connected
-        now={0}
-        {...VERBS}
-        pinned
-        onTogglePin={() => {}}
-        onSwitchSide={() => {}}
+      <PanelShell {...panelProps({
+        view: makeView(),
+        connected: true,
+        now: 0,
+        ...VERBS,
+        pinned: true,
+        onTogglePin: () => {},
+        onSwitchSide: () => {},
+      })}
       />,
     );
     expect(docked.getByTestId('desk-band').style.paddingRight).toBe(`${DOCK_CHROME_W}px`);
     docked.unmount();
     const free = renderWithI18n(
-      <PanelShell view={makeView()} connected now={0} {...VERBS} onTogglePin={() => {}} />,
+      <PanelShell {...panelProps({ view: makeView(), connected: true, now: 0, ...VERBS, onTogglePin: () => {} })} />,
     );
     expect(parseFloat(free.getByTestId('desk-band').style.paddingRight)).toBe(0);
   });
 });
 
 /**
- * THE KNOB RIDES THE WIPE: the floating dock button is part of the panel. The plate's
- * entrance and exit clip its PAINT to a rect growing out of its top-left corner, and the knob stands
+ * The knob rides the wipe: the floating dock button is part of the panel. The plate's
+ * entrance and exit clip its paint to a rect growing out of its top-left corner, and the knob stands
  * outside that clip — left unmoved, the disc hung whole over the map while the sheet it hangs on
- * shrank into the far corner. So its carry is ARITHMETIC over the same animated clip value the plate
+ * shrank into the far corner. So its carry is arithmetic over the same animated clip value the plate
  * paints with: one driver, never a second clock, the same contract the character's `placeCarried`
  * keeps for her seat.
  */
@@ -1675,13 +1675,13 @@ describe('PanelShell: the knob rides the wipe', () => {
     expect(knobCarry('none')).toEqual({ x: 0, y: 0, scale: 1 });
   });
 
-  /** ONE DRIVER: the free knob's rendered transform is the plate's own clip read as a carry, on the
+  /** One driver: the free knob's rendered transform is the plate's own clip read as a carry, on the
    *  entrance's first frame — not a second animation approximating the same journey. */
   it('carries the free knob on the plate\'s own clip', () => {
     const { getByTestId } = render(
       <MotionConfig reducedMotion="never">
         <I18nProvider>
-          <PanelShell view={makeView()} connected now={0} {...VERBS} hosted onTogglePin={() => {}} />
+          <PanelShell {...panelProps({ view: makeView(), connected: true, now: 0, ...VERBS, hosted: true, onTogglePin: () => {} })} />
         </I18nProvider>
       </MotionConfig>,
     );
@@ -1695,19 +1695,19 @@ describe('PanelShell: the knob rides the wipe', () => {
 
   it('leaves the standing knob unmoved, reduced motion and docked alike', () => {
     const free = renderWithI18n(
-      <PanelShell view={makeView()} connected now={0} {...VERBS} onTogglePin={() => {}} />,
+      <PanelShell {...panelProps({ view: makeView(), connected: true, now: 0, ...VERBS, onTogglePin: () => {} })} />,
     );
     expect(['', 'none']).toContain(free.getByTestId('desk-pin').style.transform);
     free.unmount();
     const docked = renderWithI18n(
-      <PanelShell view={makeView()} connected now={0} {...VERBS} pinned onTogglePin={() => {}} />,
+      <PanelShell {...panelProps({ view: makeView(), connected: true, now: 0, ...VERBS, pinned: true, onTogglePin: () => {} })} />,
     );
     expect(['', 'none']).toContain(docked.getByTestId('desk-pin').style.transform);
   });
 });
 
 /**
- * THE COVERED BEAT LANDS WITH THE COMMIT. Framer applies even an instant transition on its own next
+ * The covered beat lands with the commit. Framer applies even an instant transition on its own next
  * frame, while the swap from docked to free geometry is React's own — so for exactly that frame the
  * free plate stood whole and opaque wearing the ground's values, painted over the sheet that is
  * covering the window (measured on the too-narrow auto-undock). `visibility` is inline and discrete,
@@ -1715,13 +1715,14 @@ describe('PanelShell: the knob rides the wipe', () => {
  */
 describe('PanelShell: the covered beat', () => {
   const shell = (away?: 'leaving' | 'folded') => (
-    <PanelShell
-      view={makeView()}
-      connected
-      now={0}
-      {...VERBS}
-      {...(away ? { away } : {})}
-      onTogglePin={() => {}}
+    <PanelShell {...panelProps({
+      view: makeView(),
+      connected: true,
+      now: 0,
+      ...VERBS,
+      ...(away ? { away } : {}),
+      onTogglePin: () => {},
+    })}
     />
   );
 
@@ -1742,20 +1743,21 @@ describe('PanelShell: the covered beat', () => {
 });
 
 /**
- * DOCKED, THE ZONE'S HEIGHT IS THE WINDOW'S, so a screen that rations itself for the floating
+ * Docked, the zone's height is the window's, so a screen that rations itself for the floating
  * plate's room has hundreds of px standing empty under it. The keyless rest shows the whole dream
  * pool, and the idle rest seats its sketch card at the zone's foot, nearest the composer.
  */
 describe('PanelShell: the docked zone uses its room', () => {
   it('stands the whole dream pool on the keyless rest while docked', () => {
     const { getAllByTestId } = renderWithI18n(
-      <PanelShell
-        view={makeView()}
-        connected={false}
-        now={0}
-        {...VERBS}
-        pinned
-        onTogglePin={() => {}}
+      <PanelShell {...panelProps({
+        view: makeView(),
+        connected: false,
+        now: 0,
+        ...VERBS,
+        pinned: true,
+        onTogglePin: () => {},
+      })}
       />,
     );
     expect(getAllByTestId('dream-row')).toHaveLength(DREAMS.length);
@@ -1764,20 +1766,21 @@ describe('PanelShell: the docked zone uses its room', () => {
   it('seats the idle sketch card at the zone\'s foot while docked, and in the flow while free', () => {
     const card = <div data-testid="sketch-card-stub" />;
     const docked = renderWithI18n(
-      <PanelShell
-        view={makeView()}
-        connected
-        now={0}
-        {...VERBS}
-        sketchbook={card}
-        pinned
-        onTogglePin={() => {}}
+      <PanelShell {...panelProps({
+        view: makeView(),
+        connected: true,
+        now: 0,
+        ...VERBS,
+        sketchbook: card,
+        pinned: true,
+        onTogglePin: () => {},
+      })}
       />,
     );
     expect(docked.getByTestId('sketch-seat').style.marginTop).toBe('auto');
     docked.unmount();
     const free = renderWithI18n(
-      <PanelShell view={makeView()} connected now={0} {...VERBS} sketchbook={card} />,
+      <PanelShell {...panelProps({ view: makeView(), connected: true, now: 0, ...VERBS, sketchbook: card })} />,
     );
     expect(parseFloat(free.getByTestId('sketch-seat').style.marginTop)).toBe(0);
   });
@@ -1785,8 +1788,8 @@ describe('PanelShell: the docked zone uses its room', () => {
 
 describe('panel copy, in every locale', () => {
   const KEYS = [
-    'agent3.steer_at_next_step', 'agent3.steer_take_back', 'agent3.dock_disconnected',
-    'agent3.dock_setup_awake', 'agent3.dock_setup_show_key', 'agent3.banner_rate_limit',
+    'agent.steer_at_next_step', 'agent.steer_take_back', 'agent.dock_disconnected',
+    'agent.dock_setup_awake', 'agent.dock_setup_show_key', 'agent.banner_rate_limit',
   ];
   const locales = Object.keys(translations) as Locale[];
 
@@ -1804,32 +1807,32 @@ describe('panel copy, in every locale', () => {
    * panel is ready for orders. */
   it('says not connected at the keyless rest, and awake once the form is asking', () => {
     const { getByTestId } = renderWithI18n(
-      <PanelShell view={makeView()} connected={false} now={0} {...VERBS} />,
+      <PanelShell {...panelProps({ view: makeView(), connected: false, now: 0, ...VERBS })} />,
     );
-    expect(getByTestId('dock-sentence').textContent).toBe(translations.en['agent3.dock_disconnected']);
+    expect(getByTestId('dock-sentence').textContent).toBe(translations.en['agent.dock_disconnected']);
     fireEvent.click(getByTestId('dream-connect'));
-    expect(getByTestId('dock-sentence').textContent).toBe(translations.en['agent3.dock_setup_awake']);
+    expect(getByTestId('dock-sentence').textContent).toBe(translations.en['agent.dock_setup_awake']);
   });
 });
 
 /**
- * THE PANEL BOX TWEENS TO ITS NEW CONTENT HEIGHT (`panel.height`), and the way it does so is the
+ * The panel box tweens to its new content height (`panel.height`), and the way it does so is the
  * point: a Web Animations keyframe pair on the real `height` property, never a framer `layout`
- * animation — that one animates a size change with a TRANSFORM, and a transform on the panel becomes
+ * animation — that one animates a size change with a transform, and a transform on the panel becomes
  * the containing block for the `fixed` character standing in its desk, so her leap would land
  * somewhere else entirely.
  *
- * jsdom has no Web Animations API, so `animate` is stubbed and what is asserted is the CALL: the two
+ * jsdom has no Web Animations API, so `animate` is stubbed and what is asserted is the call: the two
  * heights, the declared length, the declared curve.
  */
 describe('PanelShell: the height tween', () => {
   interface Call { frames: Record<string, unknown>[]; options: { duration?: number; easing?: string } }
 
   /**
-   * The panel's OWN height, and a way to move it between commits.
+   * The panel's own height, and a way to move it between commits.
    *
    * `offsetHeight` rather than a rect, which is the trap this measurement carries: the panel stands
-   * inside the frame's css `zoom`, where `getBoundingClientRect` answers in SCREEN px (550 for a
+   * inside the frame's css `zoom`, where `getBoundingClientRect` answers in screen px (550 for a
    * 440px panel at zoom 1.25) while the `height` being animated is in the element's own px. jsdom
    * reports 0 for both, so the stub is what stands in for layout — but it moves only when the test
    * moves it, so the two readings the tween compares are a real before and after.
@@ -1839,7 +1842,6 @@ describe('PanelShell: the height tween', () => {
     const realAnimate = (HTMLElement.prototype as unknown as { animate?: unknown }).animate;
     const own = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetHeight');
     let height = initial;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (HTMLElement.prototype as any).animate = function animate(frames: Record<string, unknown>[], options: { duration?: number; easing?: string }) {
       // Framer drives the panel's own entrance through this same API; only the height pair is ours.
       if (Array.isArray(frames) && frames.some((f) => f && 'height' in f)) calls.push({ frames, options });
@@ -1853,7 +1855,6 @@ describe('PanelShell: the height tween', () => {
       calls,
       grow: (to: number) => { height = to; },
       restore: () => {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (HTMLElement.prototype as any).animate = realAnimate;
         if (own) Object.defineProperty(HTMLElement.prototype, 'offsetHeight', own);
         else delete (HTMLElement.prototype as unknown as Record<string, unknown>).offsetHeight;
@@ -1874,22 +1875,22 @@ describe('PanelShell: the height tween', () => {
   });
 
   /**
-   * IT COMPARES ACROSS COMMITS, and that is the whole of it: two readings taken in the same layout
-   * effect, AFTER the DOM already holds the new content, are equal by construction and the tween
+   * It compares across commits, and that is the whole of it: two readings taken in the same layout
+   * effect, after the DOM already holds the new content, are equal by construction and the tween
    * never runs in the real app (four real shape changes, including 367 to 159 own px on a mode
-   * switch, produce zero animations). The height the last commit left PAINTED is carried in a ref.
+   * switch, produce zero animations). The height the last commit left painted is carried in a ref.
    */
   it('animates the real height property, from the height it had to the one it wants', () => {
     const stub = withStubs(300);
     try {
       const { rerender } = render(
-        <PanelShell view={makeView()} connected now={0} {...VERBS} />,
+        <PanelShell {...panelProps({ view: makeView(), connected: true, now: 0, ...VERBS })} />,
         { wrapper: Moving },
       );
       expect(stub.calls, 'the first measurement never animates').toEqual([]);
 
       stub.grow(460);
-      rerender(<PanelShell view={gated} connected now={0} {...VERBS} />);
+      rerender(<PanelShell {...panelProps({ view: gated, connected: true, now: 0, ...VERBS })} />);
 
       expect(stub.calls).toHaveLength(1);
       const call = stub.calls[0]!;
@@ -1909,28 +1910,28 @@ describe('PanelShell: the height tween', () => {
     const stub = withStubs(300);
     try {
       const { rerender } = render(
-        <PanelShell view={makeView()} connected now={0} {...VERBS} />,
+        <PanelShell {...panelProps({ view: makeView(), connected: true, now: 0, ...VERBS })} />,
         { wrapper: Moving },
       );
-      rerender(<PanelShell view={gated} connected now={0} {...VERBS} />);
+      rerender(<PanelShell {...panelProps({ view: gated, connected: true, now: 0, ...VERBS })} />);
       expect(stub.calls).toEqual([]);
     } finally {
       stub.restore();
     }
   });
 
-  /** THE CAP IS PART OF THE SHAPE. The largest height change the app makes is a MODE SWITCH, which
+  /** The cap is part of the shape. The largest height change the app makes is a mode switch, which
    *  moves the room the frame has for the panel and nothing inside it (measured: 367 to 159 own px).
    *  A shape key that did not carry the cap could not see it. */
   it('sees a change of cap, with the record standing still', () => {
     const stub = withStubs(367);
     try {
       const { rerender } = render(
-        <PanelShell view={makeView()} connected now={0} maxHeight="calc(100vh - 300px)" {...VERBS} />,
+        <PanelShell {...panelProps({ view: makeView(), connected: true, now: 0, maxHeight: "calc(100vh - 300px)", ...VERBS })} />,
         { wrapper: Moving },
       );
       stub.grow(159);
-      rerender(<PanelShell view={makeView()} connected now={0} maxHeight="calc(100vh - 500px)" {...VERBS} />);
+      rerender(<PanelShell {...panelProps({ view: makeView(), connected: true, now: 0, maxHeight: "calc(100vh - 500px)", ...VERBS })} />);
       expect(stub.calls.map((c) => c.frames.map((f) => f.height))).toEqual([['367px', '159px']]);
       expect(stub.calls[0]!.frames.map((f) => f.maxHeight)).toEqual(['367px', '159px']);
     } finally {
@@ -1939,9 +1940,9 @@ describe('PanelShell: the height tween', () => {
   });
 
   /**
-   * A CHANGE OF ROOM RE-BASELINES RATHER THAN TWEENS. The cap is a css expression against the window,
+   * A change of room re-baselines rather than tweens. The cap is a css expression against the window,
    * so a resize repaints the panel at a new height with no React commit behind it and nothing here to
-   * hear — the remembered height went stale by the resize's own delta, and the NEXT shape change then
+   * hear — the remembered height went stale by the resize's own delta, and the next shape change then
    * animated from it: measured in the live app, a 63px jump on a mode change whose real height delta
    * was zero, and a 12px one after a 1280x800 -> 1100x700 resize.
    */
@@ -1950,7 +1951,7 @@ describe('PanelShell: the height tween', () => {
     const wasHeight = window.innerHeight;
     try {
       const { rerender } = render(
-        <PanelShell view={makeView()} connected now={0} {...VERBS} />,
+        <PanelShell {...panelProps({ view: makeView(), connected: true, now: 0, ...VERBS })} />,
         { wrapper: Moving },
       );
       // The window grows and the cap with it: the panel is painted taller, unasked.
@@ -1962,12 +1963,12 @@ describe('PanelShell: the height tween', () => {
       expect(stub.calls, 'a resize is the box tracking the window, not a shape change').toEqual([]);
 
       // A shape change that moves the box not at all must now move nothing.
-      rerender(<PanelShell view={gated} connected now={0} {...VERBS} />);
+      rerender(<PanelShell {...panelProps({ view: gated, connected: true, now: 0, ...VERBS })} />);
       expect(stub.calls, 'the remembered height is the one on screen').toEqual([]);
 
       // And a real one starts from where the panel actually is.
       stub.grow(245);
-      rerender(<PanelShell view={makeView()} connected now={0} {...VERBS} />);
+      rerender(<PanelShell {...panelProps({ view: makeView(), connected: true, now: 0, ...VERBS })} />);
       expect(stub.calls.map((c) => c.frames.map((f) => f.height))).toEqual([['430px', '245px']]);
     } finally {
       Object.defineProperty(window, 'innerHeight', { configurable: true, value: wasHeight });
@@ -1975,14 +1976,14 @@ describe('PanelShell: the height tween', () => {
     }
   });
 
-  /** A resize IS the carrier here (the panel now holds a different amount of standing content), and a
+  /** A resize is the carrier here (the panel now holds a different amount of standing content), and a
    *  jump cut says it just as well — so reduced motion cuts straight to the new height. */
   it('runs nothing under reduced motion', () => {
     const stub = withStubs(300);
     try {
-      const { rerender } = renderWithI18n(<PanelShell view={makeView()} connected now={0} {...VERBS} />);
+      const { rerender } = renderWithI18n(<PanelShell {...panelProps({ view: makeView(), connected: true, now: 0, ...VERBS })} />);
       stub.grow(460);
-      rerender(<PanelShell view={gated} connected now={0} {...VERBS} />);
+      rerender(<PanelShell {...panelProps({ view: gated, connected: true, now: 0, ...VERBS })} />);
       expect(stub.calls).toEqual([]);
     } finally {
       stub.restore();
@@ -2018,7 +2019,7 @@ describe('PanelShell: the phase-derived ticket facts', () => {
   it('freezes the tape\'s fill exactly on the phases where nothing is moving', () => {
     for (const phase of ALL_PHASES) {
       const { getByTestId, unmount } = renderWithI18n(
-        <PanelShell view={makeView({ phase, current: makeJob() })} connected now={0} {...VERBS} />,
+        <PanelShell {...panelProps({ view: makeView({ phase, current: makeJob() }), connected: true, now: 0, ...VERBS })} />,
       );
       const fill = getByTestId('tape-bar').querySelector('span') as HTMLElement;
       expect(fill.style.opacity, `phase ${phase}`).toBe(HELD_PHASES.has(phase) ? '0.45' : '');
@@ -2029,7 +2030,7 @@ describe('PanelShell: the phase-derived ticket facts', () => {
   it('carries the pausemark and the hold\'s two verbs on exactly one phase', () => {
     for (const phase of ALL_PHASES) {
       const { queryByTestId, unmount } = renderWithI18n(
-        <PanelShell view={makeView({ phase, current: makeJob() })} connected now={0} {...VERBS} />,
+        <PanelShell {...panelProps({ view: makeView({ phase, current: makeJob() }), connected: true, now: 0, ...VERBS })} />,
       );
       const onHold = ON_HOLD_PHASES.has(phase);
       expect(!!queryByTestId('pausemark'), `pausemark @ ${phase}`).toBe(onHold);
@@ -2040,18 +2041,20 @@ describe('PanelShell: the phase-derived ticket facts', () => {
 
   it('carries the caret only while the says line is still arriving', () => {
     const arriving = renderWithI18n(
-      <PanelShell
-        view={makeView({ phase: 'streaming', current: makeJob({ says: 'raising the wall', saysStreaming: true }) })}
-        connected now={0} {...VERBS}
+      <PanelShell {...panelProps({
+        view: makeView({ phase: 'streaming', current: makeJob({ says: 'raising the wall', saysStreaming: true }) }),
+        connected: true, now: 0, ...VERBS,
+      })}
       />,
     );
     expect(arriving.getByTestId('says-caret')).toBeTruthy();
     arriving.unmount();
 
     const landed = renderWithI18n(
-      <PanelShell
-        view={makeView({ phase: 'streaming', current: makeJob({ says: 'raising the wall' }) })}
-        connected now={0} {...VERBS}
+      <PanelShell {...panelProps({
+        view: makeView({ phase: 'streaming', current: makeJob({ says: 'raising the wall' }) }),
+        connected: true, now: 0, ...VERBS,
+      })}
       />,
     );
     expect(landed.queryByTestId('says-caret')).toBeNull();
@@ -2059,7 +2062,7 @@ describe('PanelShell: the phase-derived ticket facts', () => {
 
   it('shows the progress bar without a spare loading row before words arrive', () => {
     const thinking = renderWithI18n(
-      <PanelShell view={makeView({ phase: 'thinking', current: makeJob() })} connected now={0} {...VERBS} />,
+      <PanelShell {...panelProps({ view: makeView({ phase: 'thinking', current: makeJob() }), connected: true, now: 0, ...VERBS })} />,
     );
     expect(thinking.getByTestId('tape-bar')).toBeTruthy();
     expect(thinking.queryByTestId('says-dots')).toBeNull();
@@ -2068,7 +2071,7 @@ describe('PanelShell: the phase-derived ticket facts', () => {
 
     // Off `thinking` with nothing said yet, the says line has nothing to show at all.
     const executing = renderWithI18n(
-      <PanelShell view={makeView({ phase: 'executing', current: makeJob() })} connected now={0} {...VERBS} />,
+      <PanelShell {...panelProps({ view: makeView({ phase: 'executing', current: makeJob() }), connected: true, now: 0, ...VERBS })} />,
     );
     expect(executing.queryByTestId('says')).toBeNull();
   });
@@ -2077,9 +2080,9 @@ describe('PanelShell: the phase-derived ticket facts', () => {
 describe('the caveat under the composer', () => {
   it('stands while the assistant waits for an order and leaves with the composer', () => {
     const props = { view: makeView(), connected: true, now: 0, ...VERBS };
-    const ui = renderWithI18n(<PanelShell {...props} />);
-    expect(ui.getByTestId('agent-caveat').textContent).toBe(translations.en['agent3.caveat']);
-    ui.rerender(<PanelShell {...props} connected={false} />);
+    const ui = renderWithI18n(<PanelShell {...panelProps(props)} />);
+    expect(ui.getByTestId('agent-caveat').textContent).toBe(translations.en['agent.caveat']);
+    ui.rerender(<PanelShell {...panelProps({ ...props, connected: false })} />);
     expect(ui.queryByTestId('composer')).toBeNull();
     expect(ui.queryByTestId('agent-caveat')).toBeNull();
   });

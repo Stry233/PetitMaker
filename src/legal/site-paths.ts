@@ -1,4 +1,4 @@
-import { DEPLOY_TARGETS, targetOfOrigin } from './deploy-targets';
+import { DEPLOY_TARGETS, targetOfOrigin } from '../platform/build/deploy-targets';
 
 /** Static documents share these slugs with the edge router. */
 export const DOC_SLUGS = {
@@ -13,7 +13,13 @@ export const DOC_SLUGS = {
   changelog: 'changelog',
 } as const;
 
-export const INDEXABLE_SLUGS: readonly string[] = ['about', 'contact', 'changelog'];
+/** A static document, by the key its slug is filed under. */
+export type DocId = keyof typeof DOC_SLUGS;
+
+/** Every document in footer, page and sitemap order. */
+export const DOC_IDS = Object.keys(DOC_SLUGS) as DocId[];
+
+const INDEXABLE_SLUGS: readonly string[] = ['about', 'contact', 'changelog'];
 const EN_ONLY: readonly string[] = [DOC_SLUGS.license, DOC_SLUGS['third-party']];
 
 /** A document's path on the deployment serving `origin`, slashed where that deployment slashes. */

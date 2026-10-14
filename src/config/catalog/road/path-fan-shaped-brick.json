@@ -4,7 +4,7 @@
   "icon": "path-fan-shaped-brick",
   "name": {
     "en": "Fan-Shaped Brick Path",
-    "zh": "扇形砖路",
+    "zh": "扇形拼砖路",
     "ja": "扇形レンガの道",
     "ru": "Веерная кирпичная дорожка",
     "th": "ทางอิฐลายพัด",
@@ -26,62 +26,13 @@
     }
   ],
   "roadMaterial": {
-    "feather": 0.06,
+    "feather": 0.035,
     "edge": {
       "color": "#ffffff",
       "pattern": {
-        "kind": "fans",
-        "repeat": 2.5,
-        "mortar": "#c9a269",
-        "joint": 0.0035,
-        "rowSpacing": 0.5,
-        "stagger": 0.5,
-        "rings": [
-          {
-            "radius": 0.16,
-            "segments": 4,
-            "colors": [
-              "#c2a388",
-              "#cbb382"
-            ]
-          },
-          {
-            "radius": 0.3,
-            "segments": 7,
-            "colors": [
-              "#d3b471",
-              "#d6b977",
-              "#d6b180"
-            ]
-          },
-          {
-            "radius": 0.44,
-            "segments": 10,
-            "colors": [
-              "#ddbb72",
-              "#d8b879",
-              "#caae7f"
-            ]
-          },
-          {
-            "radius": 0.57,
-            "segments": 13,
-            "colors": [
-              "#dfbd71",
-              "#d6b170",
-              "#cfaa74"
-            ]
-          },
-          {
-            "radius": 0.70710678,
-            "segments": 16,
-            "colors": [
-              "#be824e",
-              "#ca9055",
-              "#c78a51"
-            ]
-          }
-        ]
+        "kind": "image",
+        "image": "path-fan-shaped-brick",
+        "repeat": 2.5
       }
     },
     "layers": []

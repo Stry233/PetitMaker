@@ -1,17 +1,28 @@
 import type { GateAnswer, GateOption } from './types';
 import { append, eventsOf, subscribe, type SessionLog } from './log';
-import { abortError } from './errors';
+import { abortError } from '../../platform/async/abort';
 
-export type Oversight = 'strict' | 'checkpoint' | 'yolo';
+/** Supervision levels, strictest first. */
+export const OVERSIGHTS = ['strict', 'checkpoint', 'yolo'] as const;
+export type Oversight = typeof OVERSIGHTS[number];
+
+export function isOversight(value: unknown): value is Oversight {
+  return (OVERSIGHTS as readonly unknown[]).includes(value);
+}
 
 /** Applies the selected supervision level to a prospective tool call. A wide tool is gated on
  *  every call under checkpoint oversight; an approved plan gates the plan alone. */
 export function shouldGate(input: {
-  tool: string; isWrite: boolean; isWide: boolean; oversight: Oversight; allowAll: boolean;
+  isWrite: boolean; isWide: boolean; oversight: Oversight; allowAll: boolean;
 }): boolean {
   if (input.allowAll || !input.isWrite || input.oversight === 'yolo') return false;
   if (input.oversight === 'strict') return true;
   return input.isWide;
+}
+
+/** Whether a filed plan waits for approval: every oversight but `yolo`, unless the session allowed all. */
+export function shouldGatePlan(input: { oversight: Oversight; allowAll: boolean }): boolean {
+  return !input.allowAll && input.oversight !== 'yolo';
 }
 
 /** Appends a question with a log-sequence-derived ID and returns that ID. */

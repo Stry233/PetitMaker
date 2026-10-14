@@ -1,48 +1,42 @@
 /**
- * The runner: live app state assembled into `LoopDeps` per job, and the ONE place `send`/`stop`/
- * `pause`/`resume` reach the log. `makeToolDeps()` is called fresh at every job start and never
- * cached across jobs, so a `GridState` captured at mount time never reaches a later job.
+ * The runner: live app state assembled into `LoopDeps` per job, and the one place `send`, `stop`,
+ * `pause` and `resume` reach the log. `makeToolDeps()` is called fresh at every job start, so a
+ * `GridState` captured at mount time never reaches a later job.
  *
- * ONE JOB AT A TIME, JOIN NOT ERROR: `composerRoute` already turns a `send` mid-job into a steer
- * once the phase reflects it (an `order`/`resumed` append flips the phase before the caller could
- * possibly re-enter), but the phase read and the append are two separate steps, so this file keeps
- * its own `inflight` promise as a second, unconditional guard — a `send`/`resume` that would
- * otherwise start a second `runJob` over the same leftover calls queues a steer instead. `active()`
- * reads that promise, not a boolean, so it can never desync from whether a job is really running.
+ * One job runs at a time. `composerRoute` turns a mid-job `send` into a steer once the phase shows
+ * the job, and the `inflight` promise guards the gap between reading the phase and appending: a
+ * `send` or `resume` that would start a second `runJob` queues a steer instead. `active()` reads
+ * that promise, so it always matches whether a job is running.
  */
 import type { RuleDispatcher } from '../../core/model/rule-dispatcher';
-import { append } from '../core/log';
-import { classify } from '../core/errors';
+import { append, type SessionLog } from '../core/log';
+import type { Adapter } from '../core/adapter';
 import { pendingGate, type Oversight } from '../core/gates';
-import { DEFAULT_CONTEXT_TOKENS, isJobActive, runJob, type LoopDeps } from '../core/loop';
+import { runJob, type LoopDeps } from '../core/loop';
+import { isJobActive } from '../core/job-reads';
 import { rawIsAllFrom } from '../core/project-messages';
-import { deriveView } from '../core/project-view';
+import { derivePhase, deriveView } from '../core/project-view';
 import { createSkippableSleeper } from '../core/skippable-sleep';
 import { requestReplySuggestion } from '../core/reply-suggestion';
 import type { JobOutcome } from '../core/types';
 import { queueSteer } from '../core/steering';
-import { baseUrlFor, QUIRKS, type ProviderId } from '../providers/defaults';
-import { createAnthropicAdapter } from '../providers/anthropic';
-import { createOpenAIAdapter } from '../providers/openai';
+import { buildAdapter } from '../providers/connect';
+import type { ProviderId, ProviderRegion } from '../providers/defaults';
 import { modelCapabilities } from '../providers/model-catalog';
-import { thinkingChoices, thinkingChoiceKey } from '../providers/reasoning';
-import type { Adapter } from '../providers/types';
-import { redactSecrets } from '../security/redact';
+import { lightestEffort, thinkingChoices, thinkingChoiceKey } from '../providers/reasoning';
+import { redactSecrets } from '../../platform/remote/redact';
 import { composerRoute, submitComposer } from '../session/composer-routing';
-import { useAgentSession } from '../session/store';
-import { buildSystemPrompt } from '../system-prompt';
-import { buildMapContext, type AgentToolDeps } from '../tools';
-import { regionBounds } from '../../state/region-bounds';
-import { createExecutor, wireSchemas, type DelegateOpts } from './executor';
-import { reviewText, ReviewWorkerLease } from '../../io/moderation/text/reviewer';
-import { translateFor } from '../../i18n/context';
-import { translations } from '../../i18n/translations';
+import { buildSystemPrompt } from '../prompts';
+import { buildMapContext, wireSchemas, type AgentToolDeps } from '../tools';
+import { regionBounds } from '../../core/grid/rect';
+import { createExecutor, type DelegateOpts } from './executor';
+import { screenText } from './screen';
+import type { SessionPort } from './session-port';
 
 export interface RunnerConfig {
   providerId: ProviderId; apiKey: string; model: string; customBaseUrl?: string;
-  /** Which host a region-split platform's key was issued against (Moonshot/Qwen/Zhipu); 0 = global
-   *  (the default), 1 = the CN host. Ignored by every other provider. */
-  region?: 0 | 1;
+  /** Ignored by every provider that is not region-split. */
+  region?: ProviderRegion;
   oversight: Oversight;
   effort?: string;
   /** The editor's display language, as the system prompt's `{uiLanguage}` fallback: the language to
@@ -52,84 +46,50 @@ export interface RunnerConfig {
   uiLocale?: string;
   makeToolDeps: () => AgentToolDeps;
   registry: RuleDispatcher;
-  /** Test-only escape hatch: skips real adapter construction (and its SDK) entirely. */
-  adapterForTest?: Adapter;
+  /** The session the runner reads its log from and publishes live parts to. */
+  session: SessionPort;
 }
 
 /**
- * A CONNECTION THAT CANNOT BE BUILT, as an adapter that says so once.
- *
- * `createOpenAIAdapter` refuses outright for a provider whose host is the user's own with no address
- * filed, and that refusal must not throw into whichever surface pressed send: the order is already
- * on the log, so the job would stand with no end and no word. Delivered as the turn's one error
- * event instead, the loop settles it exactly as it settles a refusal from a real endpoint, and the
- * panel's `config` face carries the repair (the endpoint field).
- */
-function refusingAdapter(message: string): Adapter {
-  const error = classify({ message });
-  return {
-    // eslint-disable-next-line require-yield
-    async *stream() { yield { t: 'error' as const, error }; },
-    listModels() { return Promise.reject(new Error(message)); },
-  };
-}
-
-/** The connection half of `RunnerConfig`: all an adapter is built from. */
-export type AdapterConfig = Pick<RunnerConfig, 'providerId' | 'apiKey' | 'customBaseUrl' | 'region' | 'adapterForTest'>;
-
-/** Exported for the one-shot capability checks (the panel's vision probe): a probe must reach the
- *  endpoint exactly as a job would, or its verdict is about a different connection. */
-export function buildAdapter(cfg: AdapterConfig): Adapter {
-  if (cfg.adapterForTest) return cfg.adapterForTest;
-  if (cfg.providerId === 'claude') return createAnthropicAdapter({ apiKey: cfg.apiKey });
-  try {
-    return createOpenAIAdapter({
-      apiKey: cfg.apiKey, providerId: cfg.providerId,
-      baseUrl: baseUrlFor(cfg.providerId, { customBaseUrl: cfg.customBaseUrl, region: cfg.region }),
-      quirks: QUIRKS[cfg.providerId],
-    });
-  } catch (err) {
-    return refusingAdapter(redactSecrets(err instanceof Error ? err.message : String(err)));
-  }
-}
-
-/**
- * THE CONNECTION A RUNNING JOB IS BOUND TO, as the launch froze it.
- *
- * A JOB IS ONE CONTRACT. `launch()` builds the adapter and copies the model out of the config, so
- * every turn of a job reaches the same host with the same model however the settings move under it —
- * a mid-thought swap would change the author mid-sentence, and on the Anthropic dialect it would
- * feed one model's signed thinking blocks to another. This is that frozen answer, published so a
- * settings surface can say which of its rows the job in flight is actually using.
+ * The connection a running job is bound to, as its launch froze it. Every turn of a job reaches the
+ * same host and model whatever the settings do meanwhile, since the Anthropic dialect must not feed
+ * one model's signed thinking to another. Settings read this to mark the row the job is using.
  */
 export interface LiveConnection {
   providerId: ProviderId;
   model: string;
   customBaseUrl?: string;
-  region?: 0 | 1;
+  region?: ProviderRegion;
 }
 
-/** One worker lease per module: orders arrive seconds apart, and an idle lease releases the worker on its own. */
-const screeningLease = new ReviewWorkerLease();
-
-/** Whether the export text check refuses an order; an unavailable check does not block because the model carries the policy. */
-async function orderRefused(text: string): Promise<boolean> {
-  // Bounded so a slow first worker load never holds an order longer than a model turn would.
-  const bound = new AbortController();
-  const timer = setTimeout(() => bound.abort(), 8_000);
-  try {
-    const verdict = await reviewText([{ field: 'description', text }], bound.signal, () => {}, screeningLease);
-    return !verdict.allowed;
-  } catch {
-    return false;
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
-function refusalText(uiLocale: string | undefined): string {
-  const locale = uiLocale !== undefined && uiLocale in translations ? uiLocale as keyof typeof translations : 'en';
-  return translateFor(locale, 'agent.refusal.content');
+/**
+ * When the latest job ended on a question with no suggestion of its own, asks the model for a reply
+ * the user may send, and files it while that job is still the latest settled one on the session's
+ * log. Returns the request's cancel.
+ */
+function suggestReply(
+  session: SessionPort,
+  log: SessionLog,
+  adapter: Adapter,
+  connection: Parameters<typeof requestReplySuggestion>[1],
+): () => void {
+  const view = deriveView(log);
+  const job = view.jobs[view.jobs.length - 1];
+  const current = () => {
+    if (!job || session.log() !== log || session.isFiled(job.orderSeq) || isJobActive(log)) return false;
+    const jobs = deriveView(log).jobs;
+    return jobs[jobs.length - 1]?.orderSeq === job.orderSeq;
+  };
+  if (!job?.question || !job.summary || view.suggestion || !current()) return () => {};
+  const controller = new AbortController();
+  const unwatch = session.watch(() => { if (!current()) controller.abort(); });
+  void requestReplySuggestion(adapter, connection, { request: job.orderText, question: job.summary }, controller.signal)
+    .then((result) => {
+      if (result && !controller.signal.aborted && current()) {
+        append(log, { kind: 'replySuggested', orderSeq: job.orderSeq, ...result });
+      }
+    }).finally(unwatch);
+  return () => { controller.abort(); unwatch(); };
 }
 
 export function createRunner(cfg: RunnerConfig): {
@@ -154,26 +114,26 @@ export function createRunner(cfg: RunnerConfig): {
   // Set beside `inflight` and cleared with it, so the two can never disagree about whether there is
   // a job whose connection this describes.
   let launched: LiveConnection | undefined;
-  // One sleeper per runner (not per job): a retryNow() call is a user gesture with no view of job
-  // boundaries, and the sleeper only ever resolves a sleep genuinely pending when skip() runs, so
-  // sharing it across a runner's whole life is exactly as safe as building a fresh one per launch.
+  // One sleeper per runner: a retryNow() press has no view of job boundaries, and skip() resolves
+  // only a sleep pending at that moment.
   const sleeper = createSkippableSleeper();
   let cancelReply = () => {};
+  const { session } = cfg;
 
   function launch(toolDeps: AgentToolDeps): void {
     cancelReply();
-    const { log } = useAgentSession.getState();
+    const log = session.log();
     const controller = new AbortController();
     abortController = controller;
     // A job owns the log it launched with. Replacing that log aborts the job before it can edit the
     // map behind a fresh session; completion stays on the old log and new-log steers wait there.
-    const unwatchLog = useAgentSession.subscribe((state) => {
-      if (state.log !== log) controller.abort();
+    const unwatchLog = session.watch(() => {
+      if (session.log() !== log) controller.abort();
     });
     const adapter = buildAdapter(cfg);
     const capabilities = modelCapabilities(cfg.providerId, cfg.model, cfg.customBaseUrl);
     const thinking = thinkingChoices(capabilities, cfg.providerId).find((choice) => thinkingChoiceKey(choice) === cfg.effort);
-    const replyEffort = ['none', 'minimal', 'low'].find(effort => capabilities?.efforts?.includes(effort));
+    const replyEffort = lightestEffort(capabilities);
     const replyConnection = { model: cfg.model, capabilities, thinking: replyEffort ? { effort: replyEffort } : undefined };
     launched = {
       providerId: cfg.providerId,
@@ -191,8 +151,7 @@ export function createRunner(cfg: RunnerConfig): {
       signal: controller.signal,
       log,
       onChildProgress: (p) => {
-        const session = useAgentSession.getState();
-        if (session.log === log) session.setChildLive(p);
+        if (session.log() === log) session.setChildLive(p);
       },
     };
     const executor = createExecutor(toolDeps, { delegate: delegateOpts });
@@ -203,54 +162,28 @@ export function createRunner(cfg: RunnerConfig): {
       system,
       tools: wireSchemas(),
       executor,
-      // OVERSIGHT IS A LIVE READING, not a launch-time copy. `resolveGate` asks `deps.oversight` at
-      // every tool call and the manage card is reachable mid-run, so the tier a call is judged
-      // against is the one standing when that call arrives: a tightening reaches the next write and
-      // a loosening stops asking. `panel-runner.ts` mutates this config in place, which is what
-      // makes reading through it the live answer.
+      // Read at every tool call: `runner-host.ts` mutates this config in place, so a changed
+      // oversight tier applies to the next write of the running job.
       get oversight() { return cfg.oversight; },
-      // ONE RUNNER OUTLIVES THE ARMED MODEL: `ui/agent/panel-runner.ts` mutates this config in
-      // place (a rebuilt runner is an in-flight job nobody can stop), so job A can run Claude
-      // model A and job B model B over the SAME log — and A's raw thinking blocks, signatures
-      // and all, are still sitting in it. So the answer is read from the log per launch rather
-      // than assumed for the runner's life.
+      // One runner serves successive models over the same log, so raw replay is decided per launch.
       sameModel: rawIsAllFrom(log, cfg.model),
-      budgetTokens: DEFAULT_CONTEXT_TOKENS,
+      contextWindow: capabilities?.context,
       signal: controller.signal,
-      undoStackSize: () => toolDeps.getExecutor().getUndoStackSize(),
-      // The order text meets the export content check before any provider does.
-      screen: (orderText) => orderRefused(orderText).then((refused) => (refused ? refusalText(cfg.uiLocale) : null)),
+      undoStackSize: () => toolDeps.getExecutor().historyDepth(),
+      // The user's words meet the export content check before any provider does.
+      screen: (text) => screenText(text, cfg.uiLocale),
       sleep: sleeper.sleep,
-      // The turn as it arrives. Everything the panel shows WHILE a turn is in flight comes through
+      // The turn as it arrives. Everything the panel shows while a turn is in flight comes through
       // here: the loop appends nothing until the turn closes, so without this the phase never
       // leaves `thinking`, the assistant's sentence appears only once it is finished, and a tool
       // call shows no row until its result lands. The loop nulls it at every exit of its own.
       onLive: (parts) => {
-        const session = useAgentSession.getState();
-        if (session.log === log) session.setLive(parts);
+        if (session.log() === log) session.setLive(parts);
       },
     };
     inflight = runJob(log, loopDeps)
       .then((outcome) => {
-        const view = deriveView(log);
-        const job = view.jobs[view.jobs.length - 1];
-        const current = () => {
-          const session = useAgentSession.getState();
-          if (!job || session.log !== log || session.filed.has(job.orderSeq) || isJobActive(log)) return false;
-          const jobs = deriveView(log).jobs;
-          return jobs[jobs.length - 1]?.orderSeq === job.orderSeq;
-        };
-        if (outcome === 'done' && job?.question && job.summary && !view.suggestion && current()) {
-          const replyController = new AbortController();
-          const unwatch = useAgentSession.subscribe(() => { if (!current()) replyController.abort(); });
-          cancelReply = () => { replyController.abort(); unwatch(); };
-          void requestReplySuggestion(adapter, replyConnection, { request: job.orderText, question: job.summary }, replyController.signal)
-            .then((result) => {
-              if (result && !replyController.signal.aborted && current()) {
-                append(log, { kind: 'replySuggested', orderSeq: job.orderSeq, ...result });
-              }
-            }).finally(unwatch);
-        }
+        if (outcome === 'done') cancelReply = suggestReply(session, log, adapter, replyConnection);
         return outcome;
       })
       .catch((err): JobOutcome => {
@@ -267,45 +200,32 @@ export function createRunner(cfg: RunnerConfig): {
         // The loop clears the live parts on every path it takes itself; this covers the one it
         // does not, the stray throw caught above, which would otherwise leave a half-streamed turn
         // standing in the panel for the rest of the session.
-        const session = useAgentSession.getState();
-        if (session.log === log) { session.setLive(null); session.setChildLive(null); }
+        if (session.log() === log) { session.setLive(null); session.setChildLive(null); }
       });
   }
 
   /**
-   * Settles a job THIS RUNNER DOES NOT HOLD as the run the user stopped.
-   *
-   * Two shapes reach it and both are the same fact — there is no loop, so nothing will ever end this
-   * job by itself. One is a job the loop parked (`paused`); the other is an order the log carries with
-   * no end at all, which is what a reload mid-run or a session adopted from storage leaves behind.
-   * Every surface draws the second as running, so its stop must settle it here.
-   *
-   * `stop()`, `setAside()` and a key going away are the same act arriving from three places, so they
-   * settle it the one way.
+   * Settles a job no loop is running as aborted: a parked job, or an order with no end that a reload
+   * or a restored session left behind. `stop()`, `setAside()` and a removed key all end here.
    */
   function settleUnheld(): void {
-    const { log } = useAgentSession.getState();
+    const log = session.log();
     if (!isJobActive(log)) return;
     append(log, {
       kind: 'jobEnd', outcome: 'aborted',
-      undoIndex: cfg.makeToolDeps().getExecutor().getUndoStackSize(),
+      undoIndex: cfg.makeToolDeps().getExecutor().historyDepth(),
     });
   }
 
   /**
-   * HOLDS a job this runner does not hold, which is the honest answer to a pause pressed over one.
-   *
-   * The live path REQUESTS a pause and the loop grants it at its next boundary; with no loop there is
-   * no next boundary, so the request would stand for the rest of the session under a dock reading
-   * "Pausing". The hold is written directly instead — and it is a hold rather than an end, because a
-   * parked job is resumable and `resumeLeftoverCalls` is what picks its unfinished calls back up.
+   * Pauses a job no loop is running by writing the hold directly, since no loop boundary will grant a
+   * request. The job stays resumable through `resumeLeftoverCalls`.
    */
   function parkUnheld(): void {
-    const { log } = useAgentSession.getState();
+    const log = session.log();
     if (!isJobActive(log)) return;
-    const phase = deriveView(log).phase;
-    // A GATE IS NOT A HOLD TO TAKE. Its own card is the way out of it, and a `paused` written under
-    // one would withhold that card and leave the answer with nowhere to land.
+    const phase = derivePhase(log);
+    // A pause under an open gate would withhold the gate card the answer needs.
     if (phase === 'paused' || phase === 'gated') return;
     append(log, { kind: 'paused' });
   }
@@ -314,8 +234,8 @@ export function createRunner(cfg: RunnerConfig): {
     send(text: string): void {
       const trimmed = text.trim();
       if (trimmed === '') return;
-      const { log } = useAgentSession.getState();
-      const phase = deriveView(log).phase;
+      const log = session.log();
+      const phase = derivePhase(log);
       const route = composerRoute(phase);
 
       if (inflight && (route === 'order' || route === 'resume-note')) {
@@ -327,9 +247,7 @@ export function createRunner(cfg: RunnerConfig): {
         const toolDeps = cfg.makeToolDeps();
         const mapContext = buildMapContext(toolDeps.getState(), toolDeps.getRegion(), toolDeps);
         const region = regionBounds(toolDeps.getRegion());
-        // WHICH MAP THIS ORDER IS FILED AGAINST, stamped here for the same reason the region is:
-        // this is the moment the fact is true, and the record must not track the store's later
-        // state. The panel's rollback guard reads it back off the record.
+        // The map the order is filed against, stamped at submission for the panel's rollback guard.
         const mapId = toolDeps.getState().template.id;
         const result = submitComposer(log, phase, trimmed, {
           mapContext, ...(region ? { region } : {}), ...(mapId ? { mapId } : {}),
@@ -343,29 +261,23 @@ export function createRunner(cfg: RunnerConfig): {
     },
     stop(): void {
       cancelReply();
-      // A JOB WITH NO LOOP HAS NOTHING TO ABORT, and an abort that reaches nothing leaves it
-      // standing. A key revoked during a hold arrives here that way (`settings.ts:forgetKey` calls
-      // this so the record survives the disconnection), so the job is settled directly.
+      // A job no loop is running is settled directly, including one held when its key is removed.
       if (!inflight) { settleUnheld(); return; }
       abortController?.abort();
     },
     pause(): void {
-      // NO LOOP MEANS NO BOUNDARY TO WAIT FOR, so the hold is taken here rather than asked for.
+      // With no loop, the hold is written here rather than requested.
       if (!inflight) { parkUnheld(); return; }
-      const { log } = useAgentSession.getState();
-      // AND NEVER OVER A STANDING GATE. Every surface withholds Pause while one is open, but
-      // `askGate` appends from a promise continuation rather than a React event handler, so the
-      // subscription schedules instead of committing: for one frame the DOM still shows a Pause over
-      // a log that is already gated, and a press already travelling lands here. The phase would go
-      // `pausing`, the projection would withhold the gate, and `awaitGate` would be left parked with
-      // no question on screen. The invariant belongs at the APPEND site, where a frame cannot beat it.
+      const log = session.log();
+      // Never over an open gate: a gate appended from a promise can precede the frame that hides
+      // Pause, and a pause under it would leave `awaitGate` waiting with no question on screen.
       if (pendingGate(log)) return;
       if (isJobActive(log)) append(log, { kind: 'pauseRequested' });
     },
     resume(): void {
       if (inflight) return;
-      const { log } = useAgentSession.getState();
-      if (deriveView(log).phase !== 'paused') return;
+      const log = session.log();
+      if (derivePhase(log) !== 'paused') return;
       append(log, { kind: 'resumed' });
       launch(cfg.makeToolDeps());
     },
