@@ -505,7 +505,7 @@
   "z-ai/glm-5.1":{"name":"GLM-5.1","tools":true,"input":["text"],"output":["text"],"reasoning":true,"context":204800,"maxOutput":131072},
   "z-ai/glm-5.2":{"name":"GLM-5.2","tools":true,"input":["text"],"output":["text"],"reasoning":true,"efforts":["high","xhigh"],"context":1048576,"maxOutput":943718},
   "z-ai/glm-5.3":{"name":"GLM-5.3","tools":true,"input":["text"],"output":["text"],"reasoning":true,"efforts":["low","high","max"],"context":1048576,"maxOutput":943718},
-  "z-ai/glm-5.3-flash":{"name":"GLM-5.3-Flash","tools":true,"input":["text","image","video"],"output":["text"],"reasoning":true,"efforts":["low","high","max"],"context":1048576,"maxOutput":943717},
+  "z-ai/glm-5.3-flash":{"name":"GLM-5.3-Flash","tools":true,"input":["text","image","video"],"output":["text"],"reasoning":true,"efforts":["low","high","max"],"context":1048576,"maxOutput":943718},
   "z-ai/glm-5.3-flashx":{"name":"GLM 5.3 FlashX","tools":true,"input":["text","image","video"],"output":["text"],"reasoning":true,"efforts":["low","high","max"],"context":1048576,"maxOutput":131072},
   "z-ai/glm-5.3-prime":{"name":"GLM 5.3 Prime","tools":true,"input":["text"],"output":["text"],"reasoning":true,"efforts":["low","high","max"],"context":1000000,"maxOutput":131072},
   "z-ai/glm-5v-turbo":{"name":"GLM-5V-Turbo","tools":true,"input":["image","text","video"],"output":["text"],"reasoning":true,"context":202752,"maxOutput":131072},

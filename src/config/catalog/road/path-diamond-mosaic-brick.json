@@ -32,7 +32,7 @@
       "pattern": {
         "kind": "image",
         "image": "path-diamond-mosaic-brick",
-        "repeat": 4
+        "repeat": 5
       }
     },
     "layers": []

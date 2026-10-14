@@ -4,6 +4,12 @@ All notable changes to PetitMaker are documented here.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.1789] - 2026-10-14
+
+### Fixed
+
+- Fixed the Diamond Mosaic Brick Path surface showing stray text and visible seams where its pattern repeats.
+
 ## [1.6.1784] - 2026-10-13
 
 ### Added
