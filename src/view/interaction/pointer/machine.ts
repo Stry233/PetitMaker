@@ -411,6 +411,10 @@ export function installPointerMachine(container: HTMLDivElement): () => void {
   // A nav drag still armed when focus leaves never got its release.
   const onWindowBlur = () => gestures.windowBlurred();
 
+  // A tool fed by a re-sample writes the store (a notes drag sets its draft or moves its note on
+  // every move), which is itself a re-sample trigger; without the latch the two feed each other
+  // until the stack overflows, and the overflow cuts the store's later listeners off that write.
+  let resampling = false;
   /**
    * Re-feeds the last known screen position to the tools and hover when something other than a
    * pointer event changed what it means: the camera moving under a still cursor, or the armed
@@ -421,15 +425,20 @@ export function installPointerMachine(container: HTMLDivElement): () => void {
    * under one of those flags, so a re-sample never feeds the 'viewport-changed' it answers.
    */
   function resamplePointer(): void {
-    if (!pointer.known) return;
+    if (!pointer.known || resampling) return;
     if (gestures.isNavigating() || press.leftPanning || press.panKeyPanning || drag.dragging || band.armed || region.painting || touch.navigating) return;
-    if (region.hover(pointer.x, pointer.y, true)) return;
-    tools()?.handlePointerMove(pointer.x, pointer.y);
-    // Brushes/eraser/placer already got their re-sample above; the hover box and cursor hints are
-    // the "no stroke active" half of the same fact, gated (inside the hover probe) on the hovered
-    // cell actually changing, same as a real drag.
-    if (!press.toolDown) {
-      hover.update({ clientX: pointer.x, clientY: pointer.y, pointerType: 'mouse', target: container });
+    resampling = true;
+    try {
+      if (region.hover(pointer.x, pointer.y, true)) return;
+      tools()?.handlePointerMove(pointer.x, pointer.y);
+      // Brushes/eraser/placer already got their re-sample above; the hover box and cursor hints are
+      // the "no stroke active" half of the same fact, gated (inside the hover probe) on the hovered
+      // cell actually changing, same as a real drag.
+      if (!press.toolDown) {
+        hover.update({ clientX: pointer.x, clientY: pointer.y, pointerType: 'mouse', target: container });
+      }
+    } finally {
+      resampling = false;
     }
   }
   // The viewport is a tool input here, not only a render trigger: the world under an unmoved

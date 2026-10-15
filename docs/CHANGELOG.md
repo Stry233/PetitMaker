@@ -4,6 +4,13 @@ All notable changes to PetitMaker are documented here.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.1797] - 2026-10-14
+
+### Fixed
+
+- Fixed drawing and moving in Annotations not showing while you dragged. Brush, Erase and Route strokes, and a moved tag chip or annotation, appeared only after another click. They now follow the pointer as you drag.
+- Fixed the Welcome back countdown restoring your last session over a map you had just imported by dropping a file onto the page.
+
 ## [1.6.1789] - 2026-10-14
 
 ### Fixed

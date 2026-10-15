@@ -1,4 +1,4 @@
-{"takenAt":"2026-10-14","providers":{
+{"takenAt":"2026-10-15","providers":{
  "claude":{
   "claude-fable-5":{"name":"Claude Fable 5","tools":true,"input":["text","image","pdf"],"output":["text"],"reasoning":true,"efforts":["low","medium","high","xhigh","max"],"context":1000000,"maxOutput":128000},
   "claude-fable-5-1":{"name":"Claude Fable 5.1","tools":true,"input":["text","image","pdf"],"output":["text"],"reasoning":true,"efforts":["low","medium","high","xhigh","max"],"context":1000000,"maxOutput":128000},
@@ -273,7 +273,7 @@
   "minimax/minimax-m2":{"name":"MiniMax-M2","tools":true,"input":["text"],"output":["text"],"reasoning":true,"context":204800,"maxOutput":131072},
   "minimax/minimax-m2-her":{"name":"MiniMax-M2 Her","tools":false,"input":["text"],"output":["text"],"reasoning":false,"context":65536,"maxOutput":2048},
   "minimax/minimax-m2.1":{"name":"MiniMax-M2.1","tools":true,"input":["text"],"output":["text"],"reasoning":true,"context":204800,"maxOutput":131072},
-  "minimax/minimax-m2.5":{"name":"MiniMax-M2.5","tools":true,"input":["text"],"output":["text"],"reasoning":true,"context":204800,"maxOutput":128000},
+  "minimax/minimax-m2.5":{"name":"MiniMax-M2.5","tools":true,"input":["text"],"output":["text"],"reasoning":true,"context":204800,"maxOutput":32768},
   "minimax/minimax-m2.7":{"name":"MiniMax-M2.7","tools":true,"input":["text"],"output":["text"],"reasoning":true,"context":204800,"maxOutput":131072},
   "minimax/minimax-m3":{"name":"MiniMax-M3","tools":true,"input":["text","image","video"],"output":["text"],"reasoning":true,"context":1048576,"maxOutput":512000},
   "mistralai/codestral-2508":{"name":"Codestral 25.08","tools":true,"input":["text","pdf"],"output":["text"],"reasoning":false,"context":256000,"maxOutput":204800},
@@ -432,7 +432,7 @@
   "qwen/qwen3.5-plus-02-15":{"name":"Qwen3.5 Plus 2026-02-15","tools":true,"input":["text","image","video"],"output":["text"],"reasoning":true,"context":1000000,"maxOutput":65536},
   "qwen/qwen3.5-plus-20260420":{"name":"Qwen3.5 Plus 2026-04-20","tools":true,"input":["text","image","video"],"output":["text"],"reasoning":true,"context":1000000,"maxOutput":65536},
   "qwen/qwen3.6-27b":{"name":"Qwen3.6 27B","tools":true,"input":["text","image","video"],"output":["text"],"reasoning":true,"context":262144,"maxOutput":81920},
-  "qwen/qwen3.6-35b-a3b":{"name":"Qwen3.6 35B-A3B","tools":true,"input":["text","image","video"],"output":["text"],"reasoning":true,"context":262144,"maxOutput":65536},
+  "qwen/qwen3.6-35b-a3b":{"name":"Qwen3.6 35B-A3B","tools":true,"input":["text","image","video"],"output":["text"],"reasoning":true,"context":262144,"maxOutput":235929},
   "qwen/qwen3.6-flash":{"name":"Qwen3.6 Flash","tools":true,"input":["text","image","video"],"output":["text"],"reasoning":true,"context":1000000,"maxOutput":65536},
   "qwen/qwen3.6-plus":{"name":"Qwen3.6 Plus","tools":true,"input":["text","image","video"],"output":["text"],"reasoning":true,"context":1000000,"maxOutput":65536},
   "qwen/qwen3.7-flash":{"name":"Qwen3.7 Flash","tools":true,"input":["text","image","video"],"output":["text"],"reasoning":true,"budget":{"min":1024},"context":1000000,"maxOutput":65536},
@@ -500,9 +500,9 @@
   "z-ai/glm-4.6v":{"name":"GLM-4.6V","tools":true,"input":["text","image","video"],"output":["text"],"reasoning":true,"context":131072,"maxOutput":32768},
   "z-ai/glm-4.7":{"name":"GLM-4.7","tools":true,"input":["text"],"output":["text"],"reasoning":true,"context":204800,"maxOutput":131072},
   "z-ai/glm-4.7-flash":{"name":"GLM-4.7-Flash","tools":true,"input":["text"],"output":["text"],"reasoning":true,"context":200000,"maxOutput":117964},
-  "z-ai/glm-5":{"name":"GLM-5","tools":true,"input":["text"],"output":["text"],"reasoning":true,"context":204800,"maxOutput":128000},
+  "z-ai/glm-5":{"name":"GLM-5","tools":true,"input":["text"],"output":["text"],"reasoning":true,"context":204800,"maxOutput":131072},
   "z-ai/glm-5-turbo":{"name":"GLM-5-Turbo","tools":true,"input":["text"],"output":["text"],"reasoning":true,"context":202752,"maxOutput":131072},
-  "z-ai/glm-5.1":{"name":"GLM-5.1","tools":true,"input":["text"],"output":["text"],"reasoning":true,"context":204800,"maxOutput":131072},
+  "z-ai/glm-5.1":{"name":"GLM-5.1","tools":true,"input":["text"],"output":["text"],"reasoning":true,"context":204800,"maxOutput":128000},
   "z-ai/glm-5.2":{"name":"GLM-5.2","tools":true,"input":["text"],"output":["text"],"reasoning":true,"efforts":["high","xhigh"],"context":1048576,"maxOutput":943718},
   "z-ai/glm-5.3":{"name":"GLM-5.3","tools":true,"input":["text"],"output":["text"],"reasoning":true,"efforts":["low","high","max"],"context":1048576,"maxOutput":943718},
   "z-ai/glm-5.3-flash":{"name":"GLM-5.3-Flash","tools":true,"input":["text","image","video"],"output":["text"],"reasoning":true,"efforts":["low","high","max"],"context":1048576,"maxOutput":943718},

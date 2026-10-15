@@ -7,6 +7,7 @@
 import { useCallback, useRef, useState } from 'react';
 import type { HandedImport } from '../../../../state/slices/shell';
 import { commitImport, routeImport, type ImportRouting, type PendingMap } from '../../../../editor/session/import-flow';
+import { declineRestoreOffer } from '../../../session/restore-offer';
 
 export type { ImportRouting, PendingMap };
 
@@ -54,6 +55,9 @@ export function useImportFlow({ routing, onVideo, onRefused, onCommitted }: Impo
 
   const take = useCallback(async (file: File | Blob, name = file instanceof File ? file.name : '') => {
     if (!idle()) return;
+    // Handing a file over is choosing to work on something else: the saved session's countdown
+    // would otherwise land over the import.
+    declineRestoreOffer();
     const { routing: route, onVideo: video, onRefused: refused } = options.current;
     set({ busy: true });
     try {
