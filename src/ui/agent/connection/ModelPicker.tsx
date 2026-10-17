@@ -1,9 +1,8 @@
 import { useRef, useState, type KeyboardEvent } from 'react';
 import { useT } from '../../../i18n/context';
 import { FIELD_INPUT_CLASS, FIELD_WRAP_CLASS } from '../../design/focus-source';
-import { ACTIVE, INSET } from '../../design/tokens';
 import { ActionButton } from '../../primitives/ActionButton';
-import { FLOAT_MENU_CONTENT_RADIUS, FloatMenu, floatMenuItemStyle, type FloatMenuItem } from '../../primitives/FloatMenu';
+import { FLOAT_MENU_CONTENT_RADIUS, FloatMenu, floatMenuHoverFill, floatMenuItemFill, floatMenuItemStyle, type FloatMenuItem } from '../../primitives/FloatMenu';
 import { ScrollArea } from '../../primitives/ScrollArea';
 import { Spinner } from '../../primitives/Spinner';
 import { CONTROL_CLEARANCE } from '../../primitives/use-scroll-row';
@@ -91,7 +90,8 @@ export function ModelPicker({ model, items, allowManual, listing, loader = true,
                 role="menuitemradio"
                 aria-checked={item.id === model}
                 interaction="row"
-                hoverFill={item.id === model ? ACTIVE : INSET}
+                fill={floatMenuItemFill(item.id === model)}
+                hoverFill={floatMenuHoverFill(item.id === model)}
                 onClick={() => pick(item.id)}
                 style={{ ...floatMenuItemStyle(item.id === model), flexShrink: 0, overflowWrap: 'anywhere' }}
               >

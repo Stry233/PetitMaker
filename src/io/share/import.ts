@@ -3,7 +3,7 @@ import { captureImageAttribution } from '../save/image-attribution';
 import { clampNotes } from '../../core/model/notes';
 import type { GridState } from '../../core/model/types';
 import { parseSave } from '../save/parse';
-import type { LandmarkClearance } from '../../tools/generation/transfer';
+import type { LandmarkClearance } from '../../state/landmark-clearance';
 import { loadParsedSave } from '../import/open-save';
 import { upgradeLandmarks } from '../../core/model/planet';
 import { resolveTemplate } from '../../config/maps/resolve';

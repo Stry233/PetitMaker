@@ -40,6 +40,23 @@ describe('AnnotationLayer3D', () => {
     a.dispose();
   });
 
+  it('drapes a half-grid zone half a cell over from its whole-cell twin, wash and outline both', () => {
+    const extent = (cells: AnnotationsState['items'][number]): THREE.Box3 => {
+      const a = new AnnotationLayer3D();
+      a.update(makeState(12, 12), { items: [cells], visible: true, locked: false }, OPTS);
+      const box = new THREE.Box3().setFromObject(a.group);
+      a.dispose();
+      return box;
+    };
+    const base = { kind: 'zone', id: 'z', color: '#FF8A7A', tag: null, num: 0, size: 'none' } as const;
+    const whole = extent({ ...base, cells: [{ x: 2, y: 2 }, { x: 3, y: 2 }] });
+    const half = extent({ ...base, grid: 'half', cells: [{ x: 5, y: 4 }, { x: 6, y: 4 }, { x: 7, y: 4 }, { x: 8, y: 4 }, { x: 5, y: 5 }, { x: 6, y: 5 }, { x: 7, y: 5 }, { x: 8, y: 5 }] });
+    expect(half.min.x - whole.min.x).toBeCloseTo(0.5, 4);
+    expect(half.max.x - whole.max.x).toBeCloseTo(0.5, 4);
+    expect(half.min.z - whole.min.z).toBeCloseTo(0, 4);
+    expect(half.max.z - whole.max.z).toBeCloseTo(0, 4);
+  });
+
   it('the eye hides the group whole', () => {
     const a = new AnnotationLayer3D();
     a.update(makeState(12, 12), { ...data(), visible: false }, OPTS);

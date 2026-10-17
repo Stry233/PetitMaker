@@ -28,7 +28,6 @@ export function reportImport(outcome: FileImportOutcome): void {
           if (w.kind === 'dropped-section') showToast(translate('import.warn_section', { section: w.section }), 'info');
         }
         showToast(translate('import.success'), 'info');
-        if (outcome.warnings.some((w) => w.kind === 'landmark-cleared')) showToast(translate('import.warn_landmark'), 'info');
         if (outcome.warnings.some((w) => w.kind === 'modified-after-export')) showToast(translate('import.warn_modified'), 'error');
       } else {
         // Raster order: success first, then its own drift warnings.
@@ -36,7 +35,6 @@ export function reportImport(outcome: FileImportOutcome): void {
         for (const w of outcome.warnings) {
           if (w.kind === 'template-drift') showToast(translate('import.warn_template'), 'info');
           else if (w.kind === 'catalog-drift') showToast(translate('import.warn_catalog'), 'info');
-          else if (w.kind === 'landmark-cleared') showToast(translate('import.warn_landmark'), 'info');
         }
       }
       break;

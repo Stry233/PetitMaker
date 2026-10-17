@@ -21,7 +21,7 @@ import { useT } from '../../../../i18n/context';
 import { SegmentedControl } from '../../../primitives/SegmentedControl';
 import { PLATE_INK } from '../../../design/tokens';
 import { roleFont } from '../../../design/text-weight';
-import { ruleToast } from '../../../../i18n/rule-copy';
+import { ruleToast } from '../../../../i18n/terms/rule-copy';
 
 const noop = () => {};
 

@@ -4,6 +4,7 @@
  */
 import { GRIDS, TERRAIN_GRID } from '../../../core/game/profile';
 import type { GridId } from '../../../core/grid/grids';
+import { gridSize } from '../../../core/grid/grid-convert';
 
 /** World px per cell. */
 export const TILE_SIZE = 64;
@@ -22,6 +23,11 @@ export const PAN_KEEP_PX = 160;
 export function gridOffsetPx(grid: GridId): { x: number; y: number } {
   const o = GRIDS[grid].offset;
   return { x: o.x * TILE_SIZE, y: o.y * TILE_SIZE };
+}
+
+/** The side of one of `grid`'s cells in 2D world px. */
+export function gridCellPx(grid: GridId): number {
+  return gridSize(grid) * TILE_SIZE;
 }
 
 /** `TERRAIN_GRID_OFFSET` in 2D world px. */

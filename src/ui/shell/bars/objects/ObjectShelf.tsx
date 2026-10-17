@@ -299,6 +299,7 @@ function ObjectShelfBody({ only, pick, posedQuery, source }: ObjectShelfProps) {
                   toggleArmedItem(item.id);
                 }}
                 onReach={setReached}
+                carries={!pick}
               />
             ))}
           </motion.div>

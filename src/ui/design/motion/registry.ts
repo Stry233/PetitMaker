@@ -28,6 +28,9 @@ const CHARACTER_POP_S = 0.3;
 /** Shared panel-height and setup-step transition time, in seconds. */
 const PANEL_HEIGHT_S = 0.24;
 
+/** The plain in-place crossfade a control's drawing or wording changes on. */
+const CONTROL_FADE = { tier: 'inform', curve: 'ease', duration: 0.18 } as const;
+
 interface Base {
   curve: CurveId;
   /** Tween duration or full loop cycle, in seconds; springs carry their own timing. */
@@ -41,6 +44,9 @@ interface Base {
   amplitudeUnit?: 'px' | 'scale' | 'opacity';
   /** Delay between successive members of a group, in seconds. */
   stagger?: number;
+  /** How long a transient state stands from the moment it is shown before it is withdrawn, in
+   *  seconds. A pause, not travel, so reduced motion keeps it. */
+  hold?: number;
   /** Fraction of duration used for a flip's departure; undefined uses the full duration. */
   outShare?: number;
   /** Optional departure curve when it differs from the landing curve. */
@@ -82,8 +88,12 @@ export const MOTIONS = {
   'modal.dim': { tier: 'inform', curve: 'ease', duration: 0.3, says: 'the window is at work and the page waits' },
   'map.view.crossfade': { tier: 'inform', curve: 'ease', duration: 0.35, says: 'the map view changed underneath you' },
   'character.blink.lid': { tier: 'ambient', curve: 'easeOut', duration: 0.07, amplitude: 1, amplitudeUnit: 'scale' },
+  'settings.grid.shift': { tier: 'inform', curve: 'easeOut', duration: 0.22, says: 'the grid lines moved onto the cells the chosen grid marks' },
+  /** A Settings tile's caption crossfades from the setting's name into the value a press gave it,
+   *  its width gliding on the same fade, and back to the name once `hold` has passed. */
+  'settings.label.morph': { ...CONTROL_FADE, hold: 1.4, says: 'the setting now holds the value the tile names' },
   'control.paint': { tier: 'inform', curve: 'ease', duration: 0.15, says: 'the control state changed' },
-  'control.fade': { tier: 'inform', curve: 'ease', duration: 0.18, says: 'the control state changed' },
+  'control.fade': { ...CONTROL_FADE, says: 'the control state changed' },
   'control.drop': { tier: 'inform', curve: 'ease', duration: 0.12, says: 'the drop target is active' },
   'control.detail': { tier: 'inform', curve: 'easeOut', duration: 0.15, says: 'the selected detail is visible' },
   'control.tint': { tier: 'inform', curve: 'easeOut', duration: 0.18, says: 'the key state changed' },
@@ -283,6 +293,11 @@ export const MOTIONS = {
   'item.armed': {
     tier: 'inform', curve: 'punchy', duration: 0.18,
     says: 'this is the piece the map will place',
+  },
+  /** An item card rising off the shelf while it is carried to the map, and settling back when it ends. */
+  'item.carry.lift': {
+    tier: 'inform', curve: 'stiff', amplitude: 0.1, amplitudeUnit: 'scale', settleScale: true,
+    says: 'this piece is in your hand, and letting go over the map places it',
   },
   /** A candidate photograph settles over its loading state when asynchronous capture completes. */
   'candidate.shot.arrive': {

@@ -7,7 +7,7 @@
  * and its documentation the same fact.
  */
 import { SUPPORTS_EXTERNAL_LINKS } from '../../platform/build/edition';
-import { providerName } from '../../i18n/providers';
+import { providerName } from '../../i18n/terms/providers';
 import { Fragment, memo, useEffect, useId, useRef, type CSSProperties, type ReactNode } from 'react';
 import { useEditorStore } from '../../state/store';
 import { startTour } from '../chrome/tour/use-tour';
@@ -177,6 +177,24 @@ function SectionView({ section }: { section: HelpSection }) {
             </div>
           );
         })}
+      </section>
+    );
+  }
+  if (section.kind === 'list') {
+    const List = section.ordered ? 'ol' : 'ul';
+    return (
+      <section>
+        {heading}
+        {section.bodyKeys?.map((key) => (
+          <p key={key} style={{ ...roleFont('reading'), color: PLATE_INK, lineHeight: 1.75, marginTop: 6 }}>{emphasize(t(key, facts))}</p>
+        ))}
+        <List style={{ margin: 0, marginTop: 6, paddingLeft: 24, ...roleFont('reading'), color: PLATE_INK, lineHeight: 1.7 }}>
+          {section.items.map((item) => (
+            <li key={item.key} {...(item.anchor ? { id: `help-${item.anchor}` } : {})} style={{ marginTop: 6, scrollMarginTop: 16 }}>
+              {emphasize(t(item.key, facts))}
+            </li>
+          ))}
+        </List>
       </section>
     );
   }

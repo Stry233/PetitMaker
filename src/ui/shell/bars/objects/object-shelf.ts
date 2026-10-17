@@ -11,7 +11,7 @@ import { landmarkSpec } from '../../../../core/game/profile';
 import { EDGE, EDGE_RIGHT, PLATE_BAND, RAIL, SHELF_SCALE, SHELF_TABS, standsInNameRow } from '../../units';
 import { DARK_GROOVE, SHELF_THUMB } from '../../../design/tokens';
 import { CATEGORY_BY_ID, placedCategories, ItemCategory } from '../../../../config/catalog/categories';
-import { categorySearchTerms } from '../../../../i18n/category-terms';
+import { categorySearchTerms } from '../../../../i18n/terms/category-terms';
 import type { I18nKey } from '../../../../i18n/keys';
 
 /** A category tab: the drawn order, with the short name a tab has room for. `menu.place_*` is the

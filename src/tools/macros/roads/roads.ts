@@ -17,10 +17,10 @@ import { TerrainType, type GridState, type MacroCoord, type PlacedObject } from 
 import { type AutoEdgeCut } from '../../../state/editing/vocabulary';
 import { getCatalogItem, getPlaceableWhere } from '../../../state/catalog';
 import { getObjectIndex, objectAt } from '../../../state/object-index';
-import { objectRect } from '../../../state/object-geometry';
+import { hasGate, objectRect } from '../../../state/object-geometry';
 import { analyzeTerrain, type PlacementAnalysis } from '../../placement/analysis';
 import { connectRoadNetwork, type Node } from './network';
-import { buildingGate, hasGate, makeCtx, type PlaceCtx } from '../../placement/object';
+import { buildingGate, makeCtx, type PlaceCtx } from '../../placement/object';
 import { readRoadStyle } from './road-style';
 import { scanPortals } from './portals';
 import type { MacroContext } from '../context';

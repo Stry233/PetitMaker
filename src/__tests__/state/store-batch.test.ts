@@ -3,7 +3,7 @@ import { batchStore, useEditorStore } from '../../state/store';
 
 const store = () => useEditorStore.getState();
 
-beforeEach(() => useEditorStore.setState({ showGrid: false, tourRunning: false }));
+beforeEach(() => useEditorStore.setState({ gridMode: 'off', tourRunning: false }));
 
 /** Counts store updates published while `body` runs. */
 function updatesDuring(body: () => void): number {
@@ -20,20 +20,20 @@ function updatesDuring(body: () => void): number {
 describe('batchStore', () => {
   it('publishes every write of its body as one update that readers inside the body already see', () => {
     const updates = updatesDuring(() => batchStore(() => {
-      store().setShowGrid(true);
-      expect(store().showGrid).toBe(true);
+      store().setGridMode('auto');
+      expect(store().gridMode).toBe('auto');
       batchStore(() => store().setTourRunning(true));
     }));
     expect(updates).toBe(1);
-    expect(store()).toMatchObject({ showGrid: true, tourRunning: true });
+    expect(store()).toMatchObject({ gridMode: 'auto', tourRunning: true });
   });
 
   it('publishes nothing when its body throws', () => {
     const updates = updatesDuring(() => {
-      expect(() => batchStore(() => { store().setShowGrid(true); throw new Error('stop'); })).toThrow('stop');
+      expect(() => batchStore(() => { store().setGridMode('auto'); throw new Error('stop'); })).toThrow('stop');
     });
     expect(updates).toBe(0);
-    expect(store().showGrid).toBe(false);
+    expect(store().gridMode).toBe('off');
   });
 
   it('publishes nothing when its body writes nothing', () => {

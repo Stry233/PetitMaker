@@ -2,7 +2,9 @@
 import { paintTerrainCommand } from '../../core/model/command-build';
 import { TerrainType, type Command } from '../../core/model/types';
 import { cellSet } from '../../core/grid/grids';
-import { TERRAIN_GRID } from '../../core/game/profile';
+import { DOOR, TERRAIN_GRID } from '../../core/game/profile';
+import { footprintTerrain } from '../../core/grid/footprint';
+import { doorGroundRect, hasGate } from '../../state/object-geometry';
 import { getCatalogItem, getOfferedItem, itemRole } from '../../state/catalog';
 import { clipBuildable, clipOccupied } from './cells';
 import { argError } from './feedback';
@@ -47,15 +49,20 @@ export const drawFigureTool = defineTool({
 
     if (ringId && !getOfferedItem(ringId)) return argError(`unknown ringId "${ringId}", use a tree or flora id from the CATALOG section.`);
     // islandFor: keep a dry islet at the figure's heart, sized for the item plus the flat trait's
-    // margin, and stand the item on it in the same stroke (the house-in-a-pond set piece).
+    // margin and its doorstep, and stand the item on it in the same stroke (the house-in-a-pond set piece).
     const islandItem = islandFor ? getCatalogItem(islandFor) : undefined;
     if (islandFor && !islandItem) return argError(`unknown islandFor "${islandFor}", use a building id from the CATALOG section.`);
     let waterCells = cells;
     let islandPlace: { x: number; y: number } | null = null;
     if (islandItem) {
-      const iw = islandItem.width + 2, ih = islandItem.height + 2;
+      // A door faces +y at rotation 0 and keeps water `DOOR.riseDepth` away, so the islet runs on
+      // past the door over the terrain cells its doorstep reaches.
+      const doorRows = hasGate(islandItem)
+        ? footprintTerrain(doorGroundRect({ x: 0, y: 0, w: islandItem.width, h: islandItem.height }, 0, DOOR.riseDepth)).h - 1
+        : 0;
+      const iw = islandItem.width + 2, ih = islandItem.height + 2 + doorRows;
       if (size < Math.max(iw, ih) + 8) {
-        return argError(`a ${islandItem.width}x${islandItem.height} islet home needs the figure at least ${Math.max(iw, ih) + 8} across (islet + margin + a real water ring); raise size.`);
+        return argError(`a ${islandItem.width}x${islandItem.height} islet home needs the figure at least ${Math.max(iw, ih) + 8} across (islet + doorstep + margin + a real water ring); raise size.`);
       }
       let mx = 0, my = 0;
       for (const c of cells) { mx += c.x; my += c.y; }

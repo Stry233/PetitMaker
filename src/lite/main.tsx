@@ -6,7 +6,7 @@ import LiteApp from '../ui/lite/LiteApp';
 import { mountApp } from '../ui/app/boot';
 import { useEditorStore } from '../state/store';
 import { publishCursorPreference } from '../ui/design/cursors/cursor-vars';
-import { brandName } from '../i18n/brand';
+import { brandName } from '../i18n/terms/brand';
 
 installLiteLandscape();
 publishCursorPreference();

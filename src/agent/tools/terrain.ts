@@ -26,7 +26,7 @@ export const paintTerrainTool = defineTool({
   input: obj({
     ...cellsOrRect,
     terrain: req(oneOf([...PAINT_TERRAINS])),
-    elevation: req(int({ min: 0, max: ELEVATION_MAX })),
+    elevation: req(int({ min: 0, max: ELEVATION_MAX, description: 'The final elevation; the game numbers this layer elevation + 1.' })),
     smooth: smoothEdges('Auto-trim the painted edges (rounded chamfer / 45-degree bevel) — use for natural-looking cliffs and banks.'),
   }),
   access: 'write',

@@ -1,8 +1,8 @@
 import { Suspense, lazy } from 'react';
 import { announceArrival } from '../../session/arrival-bus';
 import { useEditorStore } from '../../../state/store';
-import { ChunkBoundary } from '../../primitives/ChunkBoundary';
-import { ChunkNotice } from '../../chrome/guards/ChunkNotice';
+import { RenderBoundary } from '../../primitives/RenderBoundary';
+import { ChunkNotice } from '../../chrome/guards/FailureNotice';
 import { WhatsNewModal } from '../../chrome/modals/whats-new/WhatsNewModal';
 import { ImportModal } from '../../chrome/modals/import/ImportModal';
 import { DropImportOverlay } from '../../chrome/modals/import/DropImportOverlay';
@@ -25,10 +25,10 @@ export function Windows() {
     <DropImportOverlay />
     <WhatsNewModal />
     <ShareWindow />
-    {stylize && <ChunkBoundary resetKey={stylize} fallback={<ChunkNotice />}>
+    {stylize && <RenderBoundary resetKey={stylize} fallback={<ChunkNotice />}>
       <Suspense fallback={null}>
         <StylizeWindow />
       </Suspense>
-    </ChunkBoundary>}
+    </RenderBoundary>}
   </>;
 }

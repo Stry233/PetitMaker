@@ -4,7 +4,7 @@
  * figure is the app's cumulative count, an empty floor keeps its row, the eye and lock write
  * straight to the store, and a paint refused by a locked layer names the layer.
  *
- * The size ladder: the arrows walk between the three sizes and stop at both ends, the same nine
+ * The size ladder: the arrows walk between the three sizes and stop at both ends, the same ten
  * floors are listed in each (so a floor travels rather than being redrawn), and a press on the count
  * lands on the size this window can hold.
  */
@@ -17,8 +17,10 @@ import { type EditorEvents } from '../../../../state/editing/events';
 import { CellZone } from '../../../../core/game/zones';
 import { I18nProvider } from '../../../../i18n/context';
 import { useEditorStore } from '../../../../state/store';
+import { isAnnotating } from '../../../../state/editing/edit-mode';
+import { showNotesForEditing } from '../../../../editor/editing/annotation-edit';
 import { planRail, railStack, RAIL_TOP, stepLayerMode } from '../../../../ui/shell/frame';
-import { plateDepth, plateMinDepth } from '../../../../ui/shell/controls/layer-plate';
+import { colsOf, plateDepth, plateMinDepth } from '../../../../ui/shell/controls/layer-plate';
 import { Rail } from '../../../../ui/shell/Rail';
 import { ACTIVE, INK, MAP_EDGE_ALPHA } from '../../../../ui/design/tokens';
 import { EDGE_RIGHT, RAIL, ZOOM } from '../../../../ui/shell/units';
@@ -211,7 +213,7 @@ describe('the layer panel', () => {
     expect((screen.getByTestId('shell-layer-smaller') as HTMLButtonElement).disabled).toBe(false);
 
     press('bigger');
-    expect(columnsShown(), 'and the arrow into the map steps up to the square').toBe(3);
+    expect(columnsShown(), 'and the arrow into the map steps up to the square').toBe(colsOf('grid'));
     expect((screen.getByTestId('shell-layer-bigger') as HTMLButtonElement).disabled, 'nothing bigger')
       .toBe(true);
 
@@ -254,14 +256,14 @@ describe('the layer panel', () => {
       // And the square is one press away from there, at every one of them: it is a size, not a
       // capability the window grants.
       press('bigger');
-      expect(columnsShown(), `${h}px`).toBe(3);
+      expect(columnsShown(), `${h}px`).toBe(colsOf('grid'));
       cleanup();
     }
   });
 
   /**
-   * A tile's layout follows its size. The file's nine floors stack, so its tile puts name, count and
-   * toggles on one line to save depth; the square is three floors deep and short of width, so it
+   * A tile's layout follows its size. The file's floors stack, so its tile puts name, count and
+   * toggles on one line to save depth; the square is a few floors deep and short of width, so it
    * keeps the three-line tile. The bar has its own line at both sizes, since a quantity squeezed into
    * the words' leftover room is too short to compare with the floor above.
    */
@@ -269,7 +271,7 @@ describe('the layer panel', () => {
     mount();
     openPanel();
     const line = () => screen.getByTestId('shell-layer-line-2');
-    expect(line().textContent, 'the file names the floor on its one line').toContain('Layer 2');
+    expect(line().textContent, 'the file names the floor on its one line').toContain('Layer 3');
     for (const id of ['shell-layer-count-2', 'shell-layer-eye-2', 'shell-layer-lock-2']) {
       expect(line().contains(screen.getByTestId(id)), `the file's line carries ${id}`).toBe(true);
     }
@@ -279,7 +281,7 @@ describe('the layer panel', () => {
     expect(line().parentElement!.childElementCount, 'so the file\'s tile is two rows').toBe(2);
 
     press('bigger');
-    expect(line().textContent, 'the square names the floor on a line of its own').toContain('Layer 2');
+    expect(line().textContent, 'the square names the floor on a line of its own').toContain('Layer 3');
     for (const id of ['shell-layer-count-2', 'shell-layer-eye-2', 'shell-layer-lock-2']) {
       expect(line().contains(screen.getByTestId(id)), `the square keeps ${id} off it`).toBe(false);
     }
@@ -295,7 +297,7 @@ describe('the layer panel', () => {
   /**
    * The file is short and it scrolls, and that is its ordinary state.
    *
-   * It draws five of the nine floors. Showing all of them made the lower rung of the ladder the
+   * It draws five of the floors. Showing all of them made the lower rung of the ladder the
    * Deeper of the two plates — 470 css px against the square's 323 — so stepping up shrank the
    * panel, and a plate that deep is in the column's lane on no window at all. What it is bounded by
    * is the square, the size one press above it: as many whole floors as stand inside that depth.
@@ -387,12 +389,48 @@ describe('the layer panel', () => {
   });
 
   /**
+   * The floors scroll only downward. Their tracks are fractions of their own width, so nothing in
+   * them is laid out past their sides; what passes them is drawn by a transform (the tiles' travel
+   * between the sizes, a hovered row's plate) and is clipped either way. Left to `auto`, the travel
+   * drew a horizontal scrollbar under the file for the length of the resize.
+   */
+  it('never gives the floors a sideways scroll', () => {
+    mount();
+    openPanel();
+    expect(screen.getByTestId('shell-layer-floors').style.overflowX, 'the file').toBe('hidden');
+    press('bigger');
+    expect(screen.getByTestId('shell-layer-floors').style.overflowX, 'the square').toBe('hidden');
+  });
+
+  /**
+   * One leading column down the panel: the numbers toggle at the head, the notes row's "?" and the
+   * floors' chips start at one x at both sizes, read off the styles that place them (jsdom lays
+   * nothing out; `artifacts/` holds the browser check of the drawn rects).
+   */
+  it('starts the numbers toggle, the notes help and every chip on one left edge', () => {
+    mount();
+    openPanel();
+    const px = (value: string) => parseFloat(value || '0');
+    const help = screen.getByTestId('shell-layer-annotation-help');
+    const helpLeft = px(help.parentElement!.parentElement!.style.paddingLeft) + px(help.style.marginLeft);
+    for (const size of ['file', 'square'] as const) {
+      if (size === 'square') press('bigger');
+      expect(px(screen.getByTestId('shell-layer-head').style.paddingLeft), `${size}: the numbers toggle`).toBe(helpLeft);
+      for (const elev of [0, ELEVATION_MAX]) {
+        const tile = screen.getByTestId(`shell-layer-row-${elev}`).parentElement!;
+        const chip = screen.getByTestId(`shell-layer-line-${elev}`).querySelector('span')!;
+        expect(px(tile.style.paddingLeft) + px(chip.style.marginLeft), `${size}: floor ${elev}'s chip`).toBe(helpLeft);
+      }
+    }
+  });
+
+  /**
    * A bar only where there is something to scroll to. A scrollbar on a stack that is all showing
    * says there is more below when there is not, and it takes a lane out of the tiles for nothing.
    * The panel knows which it is before it draws: both the depth and the room are declared.
    *
    * Which is a difference between the two sizes rather than between two windows. The file draws
-   * five floors of nine, so it has something to scroll to at every window; the square shows the
+   * five floors of ten, so it has something to scroll to at every window; the square shows the
    * whole stack, so it has one only where the lane cannot hand it its 323.
    */
   it('wears a scrollbar on the size that scrolls and not on the one that does not', () => {
@@ -474,12 +512,12 @@ describe('the layer panel', () => {
   });
 
   /**
-   * The same nine floors, in both sizes. A floor travels from the row it was on to the row it is now
+   * The same floors, in both sizes. A floor travels from the row it was on to the row it is now
    * on (`layout`), which needs it to be the same element in both arrangements — a plate redrawn with
-   * nine new tiles has nothing to travel. jsdom lays nothing out, so what a DOM test can hold is
+   * new tiles has nothing to travel. jsdom lays nothing out, so what a DOM test can hold is
    * that structure: every floor is listed in both sizes, and nothing else is.
    */
-  it('lists the same nine floors in both sizes, so a floor can travel between them', () => {
+  it('lists the same floors in both sizes, so a floor can travel between them', () => {
     const listed = () => [...document.querySelectorAll('[data-testid^="shell-layer-row-"]')]
       .map((el) => Number(el.getAttribute('data-testid')!.replace('shell-layer-row-', '')));
     mountAt(1440);
@@ -588,9 +626,9 @@ describe('the layer panel', () => {
   });
 
   /**
-   * A square, read upward. Nine floors over the ground are three rows of three, and the rows are
-   * filled from the ground up: every floor in the DOM's first row stands above every floor in the
-   * one after it, which is what keeps "higher is up" true of a wrapped list, and each row itself
+   * A square, read upward. The floors make rows of `colsOf('grid')`, filled from the ground up, so
+   * a short row is the top one: every floor in the DOM's first row stands above every floor
+   * in the one after it, which is what keeps "higher is up" true of a wrapped list, and each row itself
    * ascends left to right. The panel draws the rows in that order, so the plate's bottom row is the
    * bottom of the stack.
    */
@@ -601,11 +639,15 @@ describe('the layer panel', () => {
     press('bigger');
     const listed = [...document.querySelectorAll('[data-testid^="shell-layer-row-"]')]
       .map((el) => Number(el.getAttribute('data-testid')!.replace('shell-layer-row-', '')));
-    const cols = Math.ceil(Math.sqrt(ELEVATION_MAX + 1));
-    expect(cols, 'nine floors over the ground make three rows of three').toBe(3);
+    const cols = columnsShown();
+    expect(cols, 'the floors make the square\'s rows').toBe(colsOf('grid'));
+    expect(cols, 'and the square is wider than the file').toBeGreaterThan(1);
 
+    // Rows are cut from the ground up, so the DOM's first row holds the remainder.
     const bands: number[][] = [];
-    for (let i = 0; i < listed.length; i += cols) bands.push(listed.slice(i, i + cols));
+    const first = listed.length % cols || cols;
+    bands.push(listed.slice(0, first));
+    for (let i = first; i < listed.length; i += cols) bands.push(listed.slice(i, i + cols));
     for (const band of bands) {
       expect(band, 'a row ascends left to right').toEqual([...band].sort((a, b) => a - b));
     }
@@ -689,9 +731,8 @@ describe('the layer panel', () => {
   });
 
   /**
-   * One name per floor. The ground is the implicit base and stores no terrain cell at all, so it has
-   * a word rather than an index, and two places derive that word: deriving it separately gives a
-   * plate reading "Layer 0" over a tile reading "Ground".
+   * One name per floor, numbered as the game numbers it: the ground is layer 1. Two places derive
+   * the name, and deriving it separately gives a plate and a tile one apart.
    *
    * The head is not one of those places, so the pair guarded here is the collapsed count and the
    * tiles — the same two derivations, one click apart.
@@ -699,14 +740,14 @@ describe('the layer panel', () => {
   it('names a floor the same way on the count as in its tiles', () => {
     useEditorStore.setState({ activeLayer: 0 });
     mount();
-    expect(screen.getByTestId('shell-layer-readout').textContent).toBe('Ground');
+    expect(screen.getByTestId('shell-layer-readout').textContent).toBe('Layer 1');
     openPanel();
-    expect(screen.getByTestId('shell-layer-row-0').getAttribute('aria-label')).toBe('Ground');
+    expect(screen.getByTestId('shell-layer-row-0').getAttribute('aria-label')).toBe('Layer 1');
 
     fireEvent.click(screen.getByTestId('shell-layer-row-3'));
-    expect(screen.getByTestId('shell-layer-row-3').getAttribute('aria-label')).toBe('Layer 3');
+    expect(screen.getByTestId('shell-layer-row-3').getAttribute('aria-label')).toBe('Layer 4');
     closePanel();
-    expect(screen.getByTestId('shell-layer-readout').textContent).toBe('Layer 3');
+    expect(screen.getByTestId('shell-layer-readout').textContent).toBe('Layer 4');
   });
 
   it('marks the floor being built on, and moves it when a row is pressed', () => {
@@ -787,5 +828,65 @@ describe('the layer panel', () => {
       });
     });
     expect(screen.getByTestId('shell-layer-refused-1').style.opacity).toBe('0');
+  });
+});
+
+/** A row plate's drawn fill as `r,g,b,a`, whichever spelling the style holds it in. */
+function fillOf(el: HTMLElement): string {
+  const parts = /rgba?\(([^)]+)\)/.exec(el.style.backgroundColor)?.[1]?.split(',').map((p) => Number(p.trim())) ?? [];
+  const [r = 0, g = 0, b = 0, a = parts.length ? 1 : 0] = parts;
+  return [r, g, b, a].join(',');
+}
+const SELECTED_FILL = '255,218,126,1';
+const pressedRows = () => [...document.querySelectorAll('[data-testid="shell-layer-annotation"], [data-testid^="shell-layer-row-"]')]
+  .filter((el) => el.getAttribute('aria-pressed') === 'true').map((el) => (el as HTMLElement).dataset.testid);
+
+/**
+ * One row of the panel is selected at a time: the notes row while annotate is armed, by whichever
+ * door, and the floor a stroke lands on otherwise. Its plate wears the selected fill even when the
+ * pointer that pressed it is still on it, and keeps it once the pointer leaves.
+ */
+describe('the selected row', () => {
+  beforeEach(() => { useEditorStore.getState().setEditMode({ mode: null }); });
+
+  const doors: [string, () => void][] = [
+    ['its own row', () => fireEvent.click(screen.getByTestId('shell-layer-annotation'))],
+    ['the notes door', () => showNotesForEditing()],
+    ['the export window', () => showNotesForEditing({ close: 'share' })],
+    ['a tour step', () => useEditorStore.getState().enterTourStep({ mode: 'annotate' })],
+  ];
+  it.each(doors)('selects the notes row alone when annotate is entered through %s', async (_door, enter) => {
+    mount();
+    openPanel();
+    expect(pressedRows()).toEqual(['shell-layer-row-2']);
+    act(enter);
+    expect(isAnnotating(useEditorStore.getState())).toBe(true);
+    expect(pressedRows()).toEqual(['shell-layer-annotation']);
+    await waitFor(() => expect(fillOf(screen.getByTestId('shell-layer-annotation'))).toBe(SELECTED_FILL));
+  });
+
+  it('hands the selection back to a floor, and to the floor it was on when the notes row lets go', () => {
+    mount();
+    openPanel();
+    fireEvent.click(screen.getByTestId('shell-layer-annotation'));
+    fireEvent.click(screen.getByTestId('shell-layer-row-1'));
+    expect(isAnnotating(useEditorStore.getState())).toBe(false);
+    expect(pressedRows()).toEqual(['shell-layer-row-1']);
+    fireEvent.click(screen.getByTestId('shell-layer-annotation'));
+    fireEvent.click(screen.getByTestId('shell-layer-annotation'));
+    expect(pressedRows()).toEqual(['shell-layer-row-1']);
+  });
+
+  it.each(['shell-layer-annotation', 'shell-layer-row-1'])('fills %s once pressed under the pointer, and keeps the fill as it leaves', async (id) => {
+    mount();
+    openPanel();
+    const plate = screen.getByTestId(id);
+    fireEvent.pointerEnter(plate, { pointerType: 'mouse' });
+    await waitFor(() => expect(fillOf(plate)).not.toBe(SELECTED_FILL));
+    fireEvent.click(plate);
+    await waitFor(() => expect(fillOf(plate)).toBe(SELECTED_FILL));
+    fireEvent.pointerLeave(plate, { pointerType: 'mouse' });
+    await new Promise((r) => setTimeout(r, 400));
+    expect(fillOf(plate)).toBe(SELECTED_FILL);
   });
 });

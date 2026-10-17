@@ -6,7 +6,7 @@
 import type { MacroCoord, ValidationError } from '../../core/model/types';
 import { translateFor } from '../../i18n/context';
 import type { Translate } from '../../i18n/keys';
-import { violationToast } from '../../i18n/rule-copy';
+import { violationToast } from '../../i18n/terms/rule-copy';
 import { ruleHint } from './rule-hints';
 import type { ToolResultDetail } from '../core/types';
 import { normalizeGeometry, missingScalars } from './geometry';

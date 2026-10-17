@@ -82,8 +82,9 @@ export function RegionButton({ bounds, marking, onPress }: {
       aria-label={label}
       aria-pressed={marking}
       onClick={onPress}
+      fill={lit ? ACTIVE : rgbaOf(ACTIVE, 0)}
       hoverFill={ACTIVE}
-      style={{ ...BUTTON_BASE, background: lit ? ACTIVE : 'transparent' }}
+      style={BUTTON_BASE}
     >
       <Icon id="pw-region-frame" size={16} />
     </ActionButton>

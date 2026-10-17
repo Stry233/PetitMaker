@@ -6,6 +6,7 @@ import { TOOL_DEFAULTS, defaultRoadId } from '../../../agent/tools/defaults';
 import { describeToolArgs } from '../../../agent/tools/describe';
 import { translateFor } from '../../../i18n/context';
 import type { TextKey } from '../../../i18n/keys';
+import { layerNumber } from '../../../core/game/profile';
 
 function setup(w = 30, h = 30) {
   const state = makeState(w, h);
@@ -31,7 +32,7 @@ describe('tool defaults', () => {
   });
 
   it('describes omitted terraform arguments with the values the handlers use', async () => {
-    expect(describeToolArgs({ name: 'sculpt_wall', input: { x1: 0, y1: 0, x2: 9, y2: 9 } }, en)).toContain(String(TOOL_DEFAULTS.wallCrest));
+    expect(describeToolArgs({ name: 'sculpt_wall', input: { x1: 0, y1: 0, x2: 9, y2: 9 } }, en)).toContain(String(layerNumber(TOOL_DEFAULTS.wallCrest)));
     expect(describeToolArgs({ name: 'sculpt_terrace', input: { cx: 5, cy: 5, baseRadius: 4 } }, en))
       .toBe(describeToolArgs({ name: 'sculpt_terrace', input: { cx: 5, cy: 5, baseRadius: 4, tiers: TOOL_DEFAULTS.terraceTiers } }, en));
     expect(describeToolArgs({ name: 'carve_river', input: { points: [{ x: 1, y: 1 }] } }, en))

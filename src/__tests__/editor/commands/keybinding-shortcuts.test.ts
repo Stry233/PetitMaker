@@ -8,12 +8,13 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { act, renderHook } from '@testing-library/react';
 import { COMMANDS, COMMAND_BY_ID } from '../../../editor/commands/commands';
 import { useEditorShortcuts } from '../../../ui/shell/use-editor-shortcuts';
-import { ALIASES, META_BY_ID } from '../../../state/keymap/registry';
+import { ALIASES, META_BY_ID, PRESETS } from '../../../state/keymap/registry';
 import { comboFromEvent, normalizeCombo, prettyCombo } from '../../../platform/input/combo';
 import { effectiveCombo, bindingIndex, aliasIndex, matchesUiZoomCombo, uiZoomVariantCombos, type Overrides } from '../../../state/keymap/resolve';
 import { useKeybinds } from '../../../state/keymap/store';
 import { KEY_ROWS, NAV, NUMPAD, comboFor, type Layer } from '../../../ui/chrome/modals/keyboard/layout';
 import { translations } from '../../../i18n/translations';
+import { TOOLBAR_CONTEXTS } from '../../../state/keymap/toolbar';
 import { useEditorStore } from '../../../state/store';
 import { setStoreState } from '../../_support/store';
 import { makeState, makeObject } from '../../_support/map-state';
@@ -188,8 +189,8 @@ describe('keyboard layout', () => {
       'arrowup', 'arrowdown', 'arrowleft', 'arrowright']) {
       expect(navTokens.has(t), `nav missing ${t}`).toBe(true);
     }
-    // Delete resolves to the delete command; the numpad carries num0..num9.
-    expect(bindingIndex({}).get('delete')).toBe('selection.delete');
+    // Delete resolves to the delete command (as an alias); the numpad carries num0..num9.
+    expect(aliasIndex().get('delete')).toBe('selection.delete');
     for (let d = 0; d <= 9; d++) expect(NUMPAD.some((k) => k.base === `num${d}`)).toBe(true);
     // Grid keys carry a placement; the tall +/Enter span 2 rows, the wide 0 spans 2 cols.
     expect(NUMPAD.find((k) => k.base === 'numadd')?.rowSpan).toBe(2);
@@ -451,14 +452,15 @@ describe('the shortcut engine wires the registry', () => {
     setStoreState({ commandExecutor: executor });
     useKeybinds.getState().rebind('overlay.grid', 'ctrl+y');
     const view = renderHook(() => useEditorShortcuts(deps));
-    const before = useEditorStore.getState().showGrid;
+    const before = useEditorStore.getState().gridMode;
+    setStoreState({ gridMode: 'object' });
     try {
       send({ key: 'y', ctrlKey: true });
-      expect(useEditorStore.getState().showGrid).toBe(!before);
+      expect(useEditorStore.getState().gridMode).toBe('off');
       expect(redo).not.toHaveBeenCalled();
     } finally {
       view.unmount();
-      setStoreState({ showGrid: before });
+      setStoreState({ gridMode: before });
       vi.restoreAllMocks();
     }
   });
@@ -472,5 +474,71 @@ describe('the shortcut engine wires the registry', () => {
     } finally {
       view.unmount();
     }
+  });
+
+  describe('deleting the selection', () => {
+    const ref = { kind: 'object', id: 'o1' } as const;
+    const armed = (): void => { setStoreState({ selection: [ref], deletePopover: null }); };
+    const asked = (): boolean => useEditorStore.getState().deletePopover !== null;
+    afterEach(() => { setStoreState({ selection: [], deletePopover: null }); });
+
+    it.each([['r'], ['Delete'], ['Backspace']])('%s deletes in the default scheme', (key) => {
+      const view = renderHook(() => useEditorShortcuts(deps));
+      try {
+        armed();
+        expect(send({ key }).defaultPrevented).toBe(true);
+        expect(asked()).toBe(true);
+      } finally { view.unmount(); }
+    });
+
+    it('fires nothing while typing in a text field', () => {
+      const view = renderHook(() => useEditorShortcuts(deps));
+      const input = document.createElement('input');
+      document.body.appendChild(input);
+      try {
+        armed();
+        for (const key of ['r', 'Delete', 'Backspace']) {
+          const e = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true });
+          act(() => { input.dispatchEvent(e); });
+          expect(e.defaultPrevented, key).toBe(false);
+        }
+        expect(asked()).toBe(false);
+      } finally { input.remove(); view.unmount(); }
+    });
+
+    it('keeps a custom combo, and R then answers nothing for delete', () => {
+      useKeybinds.getState().rebind('selection.delete', 'k');
+      const view = renderHook(() => useEditorShortcuts(deps));
+      try {
+        armed();
+        send({ key: 'r' });
+        expect(asked()).toBe(false);
+        send({ key: 'k' });
+        expect(asked()).toBe(true);
+      } finally { view.unmount(); }
+    });
+
+    it('Pro keeps R for the rectangle and Delete for deleting', () => {
+      useKeybinds.getState().applyBinds(PRESETS.find((p) => p.id === 'pro')!.binds);
+      expect(effectiveCombo(useKeybinds.getState().overrides, 'tool.rect')).toBe('r');
+      expect(effectiveCombo(useKeybinds.getState().overrides, 'selection.delete')).toBe('delete');
+      const view = renderHook(() => useEditorShortcuts(deps));
+      try {
+        armed();
+        send({ key: 'r' });
+        expect(asked()).toBe(false);
+        armed();
+        send({ key: 'Delete' });
+        expect(asked()).toBe(true);
+      } finally { view.unmount(); }
+    });
+  });
+
+  it('R is free everywhere else in the default scheme, in every toolbar context', () => {
+    for (const context of TOOLBAR_CONTEXTS) {
+      const holders = [...bindingIndex({}, context)].filter(([combo]) => combo === 'r').map(([, id]) => id);
+      expect(holders, context).toEqual(['selection.delete']);
+    }
+    expect(ALIASES.some((a) => a.combo === 'r')).toBe(false);
   });
 });

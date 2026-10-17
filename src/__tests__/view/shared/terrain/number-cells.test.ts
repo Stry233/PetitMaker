@@ -27,13 +27,13 @@ const find = (cells: { x: number; y: number; label: string }[], x: number, y: nu
   cells.find((c) => c.x === x && c.y === y);
 
 describe('chunkNumberCells', () => {
-  it('labels every cell with its elevation, staying inside the chunk and the map', () => {
+  it('labels every cell with its layer number, staying inside the chunk and the map', () => {
     const state = makeState(20, 20);
     setTerrain(state, 3, 3, TerrainType.Mountain, 4);
     const cells = chunkNumberCells(state, 0, 0, new Set());
     expect(cells).toHaveLength(16 * 16);
-    expect(find(cells, 3, 3)?.label).toBe('4');
-    expect(find(cells, 0, 0)?.label).toBe('0');
+    expect(find(cells, 3, 3)?.label).toBe('5');
+    expect(find(cells, 0, 0)?.label).toBe('1');
     expect(cells.every((c) => c.x < 16 && c.y < 16)).toBe(true);
   });
 
@@ -47,7 +47,7 @@ describe('chunkNumberCells', () => {
     const cells = chunkNumberCells(state, 0, 0, new Set());
     expect(find(cells, 4, 4)).toBeUndefined();
     expect(find(cells, 5, 5)).toBeUndefined();
-    expect(find(cells, 6, 4)?.label).toBe('0'); // one past the footprint labels again
+    expect(find(cells, 6, 4)?.label).toBe('1'); // one past the footprint labels again
   });
 
   it('drops hidden layers and ground-islet cells', () => {
@@ -74,8 +74,8 @@ describe('chunkNumberCells', () => {
     expect(find(cells, 7, 5)).toBeUndefined();
     expect(find(cells, 8, 5)).toBeUndefined();
     expect(find(cells, 9, 5)).toBeUndefined();
-    expect(find(cells, 6, 5)?.label).toBe('0'); // one short of the footprint labels again
-    expect(find(cells, 10, 5)?.label).toBe('0'); // one past it too
+    expect(find(cells, 6, 5)?.label).toBe('1'); // one short of the footprint labels again
+    expect(find(cells, 10, 5)?.label).toBe('1'); // one past it too
   });
 
   it('an edge chunk clips to the map', () => {

@@ -114,9 +114,9 @@ export const MODES: readonly ModeArt[] = MODES_DRAWN.map((art) => ({
   selected: { src: art.on, ...atWidth(art.sel, BLOCK_W_ON) },
 }));
 
-/** The mode row's modes: the planet session's (`modesInSession`), every block outside one. */
-export function sessionModes(planetSession: PlanetSession | null): BuildMode[] {
-  return [...(modesInSession(planetSession) ?? MODES.map((art) => art.id))];
+/** The mode row's modes: the planet session's or a hand repair's (`modesInSession`), every block outside them. */
+export function sessionModes(planetSession: PlanetSession | null, repairing = false): BuildMode[] {
+  return [...(modesInSession(planetSession, repairing) ?? MODES.map((art) => art.id))];
 }
 
 /** The i18n key naming mode `id`, inside a planet session or outside one. */
@@ -126,8 +126,8 @@ export function modeLabelKey(id: ModeArt['id'], inSession: boolean): I18nKey {
 }
 
 /** The mode row's blocks for the session state, each carrying the name it wears there. */
-export function sessionModeArt(planetSession: PlanetSession | null): ModeArt[] {
-  return sessionModes(planetSession).map((id) => {
+export function sessionModeArt(planetSession: PlanetSession | null, repairing = false): ModeArt[] {
+  return sessionModes(planetSession, repairing).map((id) => {
     const art = MODES.find((a) => a.id === id)!;
     return { ...art, labelKey: modeLabelKey(art.id, planetSession !== null) };
   });

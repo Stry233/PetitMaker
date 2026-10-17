@@ -6,7 +6,7 @@
  * other planet pictures use.
  */
 import { useObservedSize } from '../../../primitives/use-observed-size';
-import { useEffect, useLayoutEffect, useRef, type CSSProperties } from 'react';
+import { useEffect, useRef, type CSSProperties } from 'react';
 import { motion, useReducedMotionConfig } from 'framer-motion';
 import { type MapTemplate } from '../../../../core/model/types';
 import { useT } from '../../../../i18n/context';
@@ -19,9 +19,9 @@ import { roleFont } from '../../../design/text-weight';
 import { skin } from '../../../design/window-skin';
 import { ON_DARK } from '../../../design/tokens';
 import { CheckIcon } from '../../../primitives/line-glyphs';
-import { paintPlanet } from '../../../../view/map2d/capture/planet-painter';
+import { PlanetStill } from './PlanetStill';
 import { Spinner } from '../../../primitives/Spinner';
-import { stageOutline } from '../export/pan-zoom-stage';
+import { stageOutline } from '../../../primitives/pan-zoom-stage';
 import { SEA } from '../../../design/tokens';
 
 /** Each stage's copy key. */
@@ -98,14 +98,10 @@ function ScanPicture({ preview }: { preview: ScanPreview | undefined }) {
 /** The planet as the editor will open it, with its landmark. */
 function FinishedPlanet({ template }: { template: MapTemplate }) {
   const reduced = useReducedMotionConfig() === true;
-  const ref = useRef<HTMLCanvasElement>(null);
-  useLayoutEffect(() => {
-    if (ref.current) paintPlanet(ref.current, { template }, { tx: 0, ty: 0, scale: 1 }, { margin: FINISHED_MARGIN });
-  }, [template]);
   return (
     <motion.div data-testid="scan-finished" initial={reduced ? false : { opacity: 0 }} animate={{ opacity: 1 }} transition={framerMotion('scan.preview.finish', reduced)}
       style={{ position: 'absolute', inset: 0, background: SEA }}>
-      <canvas ref={ref} aria-hidden style={fillStyle} />
+      <PlanetStill template={template} margin={FINISHED_MARGIN} style={fillStyle} />
     </motion.div>
   );
 }

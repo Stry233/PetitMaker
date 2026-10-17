@@ -10,14 +10,17 @@ const SHOWS: Array<(o: OverlayLayer) => void> = [
   (o) => o.showBuildableRegion(cellSet('terrain', [{ x: 2, y: 2 }]), 1),
   (o) => o.showPath(cellSet('terrain', [{ x: 3, y: 3 }])),
   (o) => o.showCellMarks(cellSet('terrain', [{ x: 4, y: 4 }]), null),
+  (o) => o.showFlaggedObjects([{ id: 'f', catalogId: 'tree-apple', position: { x: 7, y: 7 }, rotation: 0, elevation: 0 }]),
   (o) => o.showPlacementGhost({ catalogId: 'tree-apple', x: 5, y: 5, rotation: 0, elevation: 0 }, false),
   (o) => o.showGroupPlacementGhost([{ catalogId: 'tree-apple', x: 6, y: 6, rotation: 0, elevation: 0 }], true),
   (o) => o.showSelection({ x: 1, y: 1, w: 1, h: 1 }, 'object', { elevation: 2 }),
+  (o) => o.showNoteGhost({ kind: 'measure', id: 'g', points: [{ x: 1, y: 1 }, { x: 1, y: 1 }], color: '#ffffff' }, ''),
 ];
 
 const PARTS = [
-  'buildableGraphics', 'routeGraphics', 'reviewGraphics', 'planetFrameGraphics', 'planetFrameFlash', 'commitGraphics',
-  'curveGraphics', 'ghostGraphics', 'previewIcon', 'hoverGraphics', 'bandGraphics', 'selectionGraphics', 'selectionFrame',
+  'buildableGraphics', 'routeGraphics', 'reviewGraphics', 'planetFrameGraphics', 'planetFrameFlash',
+  'washGraphics', 'spriteSlot', 'edgeGraphics', 'commitGraphics',
+  'curveGraphics', 'ghostGraphics', 'previewIcon', 'noteSlot', 'hoverGraphics', 'bandGraphics', 'selectionGraphics', 'selectionFrame',
   'dimensionSlot', 'placementSlot', 'groupSlot', 'labelSlot', 'errorGraphics',
 ];
 

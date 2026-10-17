@@ -40,7 +40,7 @@ describe('V-CHUNK-01 on transforms in an overloaded region', () => {
   });
 
   it('lets a multi-cell object turn in place in its overloaded region', () => {
-    const state = overloaded([cabin('c', 0, 0)]);
+    const state = overloaded([cabin('c', 2, 0)]);
     const exec = makeExecutor(state);
     expect(planObjectRotation(exec, state, state.objects.get('c')!, 90).errors).toEqual([]);
     const res = rotateObject(exec, state, state.objects.get('c')!, 90, { from: 0, to: 90 });

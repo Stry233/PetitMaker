@@ -6,7 +6,7 @@
 
 import { memberUrl, type LegalConfig } from './config';
 import { DOC_IDS, DOC_SLUGS, type DocId } from './site-paths';
-import { brandName } from '../i18n/brand';
+import { brandName } from '../i18n/terms/brand';
 import { parseLegalMarkdown, type Inline, type MdNode } from './markdown';
 import { agentProviderDisclosureList, illustrationProviderDisclosureList } from './providers-list';
 import { loadedTable } from '../i18n/translations';

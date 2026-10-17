@@ -35,6 +35,7 @@ import { islandBounds } from '../camera/controls';
 import { SceneCamera, maxHeight } from '../camera/scene-camera';
 import { layerToY, mapCenterOffset } from '../geometry/coords';
 import { alignGridUniforms, createGridUniforms } from '../draw/grid-drape';
+import { GridShift } from '../../shared/grid/grid-shift';
 import { LabelLayer3D } from '../layers/label-layer';
 import { ObjectLayer3D } from '../layers/object-layer';
 import { ObjectMotion } from '../layers/object-motion';
@@ -72,7 +73,9 @@ export class MapRenderer3D implements ViewSettingsTarget {
   private sharedMat: THREE.MeshLambertMaterial;
   private modelMat: THREE.MeshLambertMaterial;
   private gridUniforms = createGridUniforms();
-  private passive = { grid: false, numbers: false, chunks: false };
+  private passive: PassiveOverlays = { grid: null, numbers: false, chunks: false };
+  /** Where the draped cell lines stand, gliding when the shown grid changes. */
+  private readonly gridShift = new GridShift();
   private terrain!: TerrainLayer3D;
   private roads!: RoadSurfaces3D;
   private instances: ObjectLayer3D;
@@ -108,6 +111,7 @@ export class MapRenderer3D implements ViewSettingsTarget {
     () => this.motion.tickPlops(),
     () => this.motion.tickSpins(),
     () => this.motion.tickGroupArc(),
+    () => this.stepGridShift(),
   ]);
   private running = true;
   private raf = 0;
@@ -460,17 +464,31 @@ export class MapRenderer3D implements ViewSettingsTarget {
     this.requestRender();
   }
 
-  /** Settings toggles for the passive overlays. The grid + chunk bounds are draped via the terrain
-   *  shader (see `draw/grid-drape.ts`) — toggling is a single uniform write, no rebuild; only the
-   *  layer numbers remesh with their chunks. */
+  /** Settings choices for the passive overlays. The grid + chunk bounds are draped via the terrain
+   *  shader (see `draw/grid-drape.ts`) — a change is a uniform write, no rebuild, and a shown grid
+   *  moving to another grid glides there frame by frame; only the layer numbers remesh with their
+   *  chunks. */
   setPassiveOverlays(flags: PassiveOverlays): void {
     const rebuild = flags.numbers !== this.passive.numbers;
+    if (flags.grid !== null) this.gridShift.aim(flags.grid, this.passive.grid !== null);
+    this.writeCellShift();
     this.passive = { ...flags };
     if (rebuild) this.terrain.dirtyAll(this.liveState.template);
-    this.gridUniforms.uGrid.value = flags.grid ? 1 : 0;
+    this.gridUniforms.uGrid.value = flags.grid !== null ? 1 : 0;
     this.gridUniforms.uChunks.value = flags.chunks ? 1 : 0;
     this.legend.rebuild(this.liveState.template, this.passive.chunks);
     this.requestRender();
+  }
+
+  private writeCellShift(): void {
+    this.gridUniforms.uCellShift.value.set(this.gridShift.offset.x, this.gridShift.offset.y);
+  }
+
+  /** One frame of a grid glide; whether the lines moved. */
+  private stepGridShift(): boolean {
+    if (!this.gridShift.step()) return false;
+    this.writeCellShift();
+    return true;
   }
 
   /** Remesh every chunk an edit dirtied — called once per rendered frame, so a
@@ -611,9 +629,9 @@ export class MapRenderer3D implements ViewSettingsTarget {
           else this.motion.turnGroup(turn, onFrame);
           this.requestRender();
         },
-        // No animateRemove: `deleteGroup` fires this hook, then removes the object, then execute()
-        // emits objects-changed synchronously — this scene's own listener frees the departing
-        // instance's slot and repacks a different object into it before any render frame runs. A
+        // No animateRemove: `deleteGroup` fires this hook, then removes the object, and the
+        // objects-changed its transaction publishes has this scene's own listener free the departing
+        // instance's slot and repack a different object into it before any render frame runs. A
         // tween would need a decoy mesh outside the InstancedMesh's dense packing, which this view
         // does not have; the object simply disappears with the InstancedMesh's next repaint.
         camera: this.cameraVerbs(),

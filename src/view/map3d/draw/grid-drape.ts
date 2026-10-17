@@ -4,6 +4,7 @@
  */
 import * as THREE from 'three';
 import type { MapTemplate } from '../../../core/model/types';
+import type { GridId } from '../../../core/grid/grids';
 import { mapChunkOrigin, mapFrame } from '../../../core/grid/map-chunks';
 import { CHUNK_SIZE } from '../../../core/game/profile';
 import { CELL_GRID_STYLE, CHUNK_GRID_STYLE } from '../../shared/grid/reference-grid';
@@ -15,6 +16,8 @@ export interface GridUniforms {
   uGrid: { value: number };
   uChunks: { value: number };
   uGridOff: { value: THREE.Vector2 };
+  /** Where the cell lines stand against the map's lattice, in cells (`shared/grid/grid-shift.ts`). */
+  uCellShift: { value: THREE.Vector2 };
   uChunkOrigin: { value: THREE.Vector2 };
   uChunkEnd: { value: THREE.Vector2 };
   uGridPixelRatio: { value: number };
@@ -28,6 +31,7 @@ export function addGridOverlay(mat: THREE.Material, u: GridUniforms): void {
     shader.uniforms.uGrid = u.uGrid;
     shader.uniforms.uChunks = u.uChunks;
     shader.uniforms.uGridOff = u.uGridOff;
+    shader.uniforms.uCellShift = u.uCellShift;
     shader.uniforms.uChunkOrigin = u.uChunkOrigin;
     shader.uniforms.uChunkEnd = u.uChunkEnd;
     shader.uniforms.uGridPixelRatio = u.uGridPixelRatio;
@@ -37,7 +41,7 @@ export function addGridOverlay(mat: THREE.Material, u: GridUniforms): void {
     const K = CHUNK_SIZE.toFixed(1);
     const halfWidth = CHUNK_GRID_STYLE.map3d.widthPx / 2;
     shader.fragmentShader = shader.fragmentShader
-      .replace('#include <common>', '#include <common>\nvarying vec3 vGridW;\nuniform float uGrid;\nuniform float uChunks;\nuniform vec2 uGridOff;\nuniform vec2 uChunkOrigin;\nuniform vec2 uChunkEnd;\nuniform float uGridPixelRatio;')
+      .replace('#include <common>', '#include <common>\nvarying vec3 vGridW;\nuniform float uGrid;\nuniform float uChunks;\nuniform vec2 uGridOff;\nuniform vec2 uCellShift;\nuniform vec2 uChunkOrigin;\nuniform vec2 uChunkEnd;\nuniform float uGridPixelRatio;')
       .replace('#include <fog_fragment>', [
         '#include <fog_fragment>',
         'if ( uGrid > 0.5 || uChunks > 0.5 ) {',
@@ -69,8 +73,9 @@ export function addGridOverlay(mat: THREE.Material, u: GridUniforms): void {
         `\t\t\tfloat subFade = smoothstep( ${CELL_GRID_STYLE.map3d.subFadePx[0].toFixed(1)}, ${CELL_GRID_STYLE.map3d.subFadePx[1].toFixed(1)}, cellPixels );`,
         `\t\t\tfloat cellHalf = ${(CELL_GRID_STYLE.map3d.widthPx / 2).toFixed(3)} * uGridPixelRatio;`,
         `\t\t\tfloat subHalf = ${(CELL_GRID_STYLE.subWidthPx / 2).toFixed(3)} * uGridPixelRatio;`,
-        '\t\t\tvec2 dc = abs( fract( gc - 0.5 ) - 0.5 ) / cellStep;',
-        '\t\t\tvec2 ds = abs( fract( gc ) - 0.5 ) / cellStep;',
+        '\t\t\tvec2 lc = gc - uCellShift;',
+        '\t\t\tvec2 dc = abs( fract( lc - 0.5 ) - 0.5 ) / cellStep;',
+        '\t\t\tvec2 ds = abs( fract( lc ) - 0.5 ) / cellStep;',
         '\t\t\tfloat cellLine = 1.0 - smoothstep( cellHalf - 0.5, cellHalf + 0.5, min( dc.x, dc.y ) );',
         '\t\t\tfloat subLine = 1.0 - smoothstep( subHalf - 0.5, subHalf + 0.5, min( ds.x, ds.y ) );',
         `\t\t\tfloat whiteInk = max( cellLine * cellFade * ${CELL_GRID_STYLE.map3d.opacity}, subLine * subFade * ${CELL_GRID_STYLE.map3d.subOpacity} );`,
@@ -108,20 +113,20 @@ export function addLabelFade(mat: THREE.Material, pixelRatio: GridUniforms['uGri
 export function createGridUniforms(): GridUniforms {
   return {
     uGrid: { value: 0 }, uChunks: { value: 0 },
-    uGridOff: { value: new THREE.Vector2() }, uChunkOrigin: { value: new THREE.Vector2() },
+    uGridOff: { value: new THREE.Vector2() }, uCellShift: { value: new THREE.Vector2() }, uChunkOrigin: { value: new THREE.Vector2() },
     uChunkEnd: { value: new THREE.Vector2() },
     uGridPixelRatio: { value: 1 },
   };
 }
 
 /** Aligns the drape to the map's macro cells and chunk frame, and seeds the live toggles. */
-export function alignGridUniforms(u: GridUniforms, template: MapTemplate, shown: { grid: boolean; chunks: boolean }): void {
+export function alignGridUniforms(u: GridUniforms, template: MapTemplate, shown: { grid: GridId | null; chunks: boolean }): void {
   const goff = mapCenterOffset(template.width, template.height);
   u.uGridOff.value.set(goff.x, goff.z);
   const origin = mapChunkOrigin(template);
   u.uChunkOrigin.value.set(origin.x, origin.y);
   const frame = mapFrame(template);
   u.uChunkEnd.value.set(frame.x + frame.width, frame.y + frame.height);
-  u.uGrid.value = shown.grid ? 1 : 0;
+  u.uGrid.value = shown.grid !== null ? 1 : 0;
   u.uChunks.value = shown.chunks ? 1 : 0;
 }

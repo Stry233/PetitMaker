@@ -1,36 +1,52 @@
 import { describe, expect, it } from 'vitest';
-import { fitPalette, paletteLookup } from '../../../../pipelines/planet-scan/ground/classify';
-import { GRASS, lutIndex, PaletteSampler, SAND, SEA, toLab } from '../../../../pipelines/planet-scan/ground/color';
-import { rng } from '../synthetic';
+import { fitPalette } from '../../../../pipelines/planet-scan/ground/classify';
+import { centresAt, GRASS, localPalette, nearestCentre, PaletteSampler, SAND, SEA, toLab } from '../../../../pipelines/planet-scan/ground/color';
+import { SCAN_PROFILE } from '../../../../pipelines/planet-scan/profile';
+import { COLOURS, islandScene, paintWorld, scanPositions, testLattice, viewTile } from './ground-synthetic';
 
-function samples(colours: readonly (readonly number[])[], count: number): Float32Array {
-  const r = rng(5);
-  const out = new Float32Array(count * 3);
+const sceneOf = (() => {
+  const lattice = testLattice(37.3, 81.9);
+  const world = paintWorld(islandScene(), lattice);
+  const { width: W, height: H } = SCAN_PROFILE.tile;
+  const positions = scanPositions(world, W, H);
+  return { tiles: positions.map((p, k) => viewTile(world, p, { width: W, height: H }, k)), positions, W, H };
+})();
+
+/** The island's palette, its tiles first recoloured by `recolour`, and the class of a colour. */
+function paletteOf(recolour: (rgb: readonly number[]) => number[]) {
+  const { tiles, positions, W, H } = sceneOf;
+  const sampler = new PaletteSampler(W, H);
+  tiles.forEach((t, k) => {
+    const data = new Uint8ClampedArray(t.data.length);
+    for (let p = 0; p < data.length; p += 4) data.set([...recolour([t.data[p]!, t.data[p + 1]!, t.data[p + 2]!]), 255], p);
+    sampler.push({ width: W, height: H, data }, positions[k]!);
+  });
+  const palette = fitPalette(sampler);
   const lab = new Float64Array(3);
-  const jitter = (v: number) => Math.max(0, Math.min(255, Math.round(v + (r() - 0.5) * 10)));
-  for (let i = 0; i < count; i++) {
-    const c = colours[i % colours.length]!;
-    toLab(jitter(c[0]!), jitter(c[1]!), jitter(c[2]!), lab);
-    out.set(lab, i * 3);
-  }
-  return out;
+  const classOf = (rgb: readonly number[]) => {
+    const [r, g, b] = recolour(rgb);
+    toLab(r!, g!, b!, lab);
+    return palette.classes[nearestCentre(lab, palette.centres, palette.classes.length)];
+  };
+  return { palette, classOf };
 }
 
 describe('the ground palette', () => {
-  const sea = [70, 125, 215];
-  const sand = [222, 205, 160];
-  const grass = [120, 175, 80];
-  const s = samples([sea, sea, sand, grass, grass, [60, 110, 190], [210, 190, 150]], 7000);
-
-  it('classes sea by hue and splits sand from grass at the land hue threshold', () => {
-    const lut = paletteLookup(fitPalette(s));
-    expect(lut[lutIndex(70, 125, 215)]).toBe(SEA);
-    expect(lut[lutIndex(222, 205, 160)]).toBe(SAND);
-    expect(lut[lutIndex(120, 175, 80)]).toBe(GRASS);
+  // The clusters are named by where they lie on the ground, so the island keeps its surfaces however
+  // its colours are drawn: as painted, with the channels turned (grass blue, sea pink) and inverted.
+  it.each([
+    ['as painted', (c: readonly number[]) => [...c]],
+    ['with its channels turned', (c: readonly number[]) => [c[2]!, c[0]!, c[1]!]],
+    ['inverted', (c: readonly number[]) => c.map((v) => 255 - v)],
+  ])('names the sea, the sand and the grass by where they lie, %s', (_name, recolour) => {
+    const { classOf } = paletteOf(recolour);
+    expect(classOf(COLOURS.sea)).toBe(SEA);
+    expect(classOf(COLOURS.sand)).toBe(SAND);
+    expect(classOf(COLOURS.grass)).toBe(GRASS);
   });
 
   it('is deterministic', () => {
-    expect(fitPalette(s)).toEqual(fitPalette(s));
+    expect(paletteOf((c) => [...c]).palette).toEqual(paletteOf((c) => [...c]).palette);
   });
 });
 
@@ -83,5 +99,47 @@ describe('the palette sampler', () => {
     const s = sampler.samples();
     expect(s.length / 3).toBeLessThanOrEqual(20);
     expect(s.length / 3).toBeGreaterThan(10);
+  });
+});
+
+describe('the local palette', () => {
+  // Sand between grass and sea, its west half under a tint, read with one centre a class.
+  const W = 40;
+  const H = 20;
+  const colours = { grass: [120, 175, 80], sand: [222, 205, 160], tinted: [210, 205, 190], sea: [70, 125, 215] };
+  const labOf = (rgb: readonly number[]) => {
+    const lab = new Float64Array(3);
+    toLab(rgb[0]!, rgb[1]!, rgb[2]!, lab);
+    return lab;
+  };
+  const centres = Float64Array.from([...labOf(colours.sea), ...labOf(colours.sand), ...labOf(colours.grass)]);
+  const classes = Uint8Array.from([SEA, SAND, GRASS]);
+  const region = SCAN_PROFILE.chunk.width * SCAN_PROFILE.ground.localPalette.regionChunks;
+  const sampler = new PaletteSampler(W, H, 100_000, 4, 0);
+  for (let j = 0; j < 40; j++) {
+    for (let i = 0; i < Math.round((4 * region) / W); i++) {
+      const c = j >= 28 ? colours.sea : j < 7 ? colours.grass : i * W < 2 * region ? colours.tinted : colours.sand;
+      const data = new Uint8Array(W * H * 4);
+      for (let p = 0; p < W * H; p++) data.set([c[0]!, c[1]!, c[2]!, 255], p * 4);
+      sampler.push({ width: W, height: H, data }, { x: i * W, y: j * H });
+    }
+  }
+  const local = localPalette(centres, classes, sampler);
+  const here = (x: number) => {
+    const out = new Float64Array(9);
+    centresAt(local, x, 300, out);
+    return out;
+  };
+  const distance = (a: ArrayLike<number>, b: ArrayLike<number>) => Math.hypot(a[0]! - b[0]!, a[1]! - b[1]!, a[2]! - b[2]!);
+
+  it('fits the sand to each region\'s own', () => {
+    expect(distance(here(region / 2).subarray(3, 6), labOf(colours.tinted))).toBeLessThan(1);
+    expect(distance(here(3.5 * region).subarray(3, 6), labOf(colours.sand))).toBeLessThan(1);
+    expect(distance(labOf(colours.tinted), labOf(colours.sand))).toBeGreaterThan(10);
+  });
+
+  it('keeps the recording\'s sea and grass', () => {
+    const west = here(region / 2);
+    for (const c of [0, 2]) for (let q = 0; q < 3; q++) expect(west[c * 3 + q]).toBeCloseTo(centres[c * 3 + q]!, 9);
   });
 });

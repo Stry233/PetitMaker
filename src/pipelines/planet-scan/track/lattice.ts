@@ -1,4 +1,4 @@
-import type { AxisPins } from './path-solve';
+import { EDGE_CONSECUTIVE, SOURCE_ASSUMED, SOURCE_LINES, type AxisPins, type EdgeList } from './path-solve';
 import { gaussianKernel } from '../../../core/base/fields';
 import { median, medianInPlace } from '../../../core/base/math';
 import { convolve, gaussianBlur, reflectIndex as reflect } from '../ground/raster';
@@ -116,7 +116,8 @@ function interpolate(p: Float64Array, t: number): number {
 }
 
 /**
- * Fits the comb `phase + n * period` to a profile: the trend is removed, the phase maximising the
+ * Fits the comb `phase + n * period` to a profile: the trend (`detrendSigma`, by default the
+ * lattice's) is removed, the phase maximising the
  * mean interpolated profile over the teeth is searched every `phaseStep` samples, each tooth's
  * line is then located to sub-sample precision as the parabolic peak of the largest sample within
  * `lineRadius`, and the phase moves by the lines' median offset. Null when the profile is shorter
@@ -125,14 +126,17 @@ function interpolate(p: Float64Array, t: number): number {
 export function fitComb(
   profile: ArrayLike<number>,
   period: number,
-  options: { readonly phaseStep: number; readonly lineRadius: number },
+  options: {
+    readonly phaseStep: number; readonly lineRadius: number; readonly detrendSigma?: number;
+    readonly around?: { readonly phase: number; readonly radius: number };
+  },
 ): CombFit | null {
   const n = profile.length;
   if (n < period + 2) return null;
   const raw = new Float32Array(n);
   for (let i = 0; i < n; i++) raw[i] = profile[i]!;
   const trend = Float32Array.from(raw);
-  convolve(trend, n, 1, gaussianKernel(L.detrendSigma, 4), true);
+  convolve(trend, n, 1, gaussianKernel(options.detrendSigma ?? L.detrendSigma, 4), true);
   const p = new Float64Array(n);
   let mean = 0;
   for (let i = 0; i < n; i++) mean += p[i] = raw[i]! - trend[i]!;
@@ -143,8 +147,11 @@ export function fitComb(
 
   let best = -Infinity;
   let phase = 0;
-  for (let k = 0; k * options.phaseStep < period; k++) {
-    const ph = k * options.phaseStep;
+  // With `around`, only phases within `radius` samples of `around.phase` (mod period) are searched.
+  const a = options.around;
+  const from = a ? a.phase - a.radius : 0, count = a ? Math.floor((2 * a.radius) / options.phaseStep) + 1 : Math.ceil(period / options.phaseStep);
+  for (let k = 0; k < count; k++) {
+    const ph = a ? (((from + k * options.phaseStep) % period) + period) % period : k * options.phaseStep;
     let s = 0;
     let teeth = 0;
     for (let t = ph; t < n - 1; t += period, teeth++) s += interpolate(p, t);
@@ -203,11 +210,36 @@ export function runLattice(profiles: LineProfiles, period: LatticePeriod = CHUNK
   return { x: axis(profiles.x, period.x), y: axis(profiles.y, period.y) };
 }
 
-/** Where one kept frame's own lines sit, read from its half-resolution grey tile with a still run's
- *  gates. A frame shows the region load lines as faint ridges among the ground's own, so its
- *  reading is a weak pin the path solve rejects when it disagrees. */
-export function frameLines(half: GreyImage, period: LatticePeriod = CHUNK_PERIOD, scratch?: LineScratch): RunLattice {
-  return runLattice(lineProfiles(half, 2, scratch), period);
+/** Where one kept frame's own lines sit, read from its dash plane (`ground/color.ts:dashPlane`) at
+ *  tile resolution with a still run's gates in tile pixels (`SCAN_PROFILE.lattice.frame`). A frame
+ *  shows the region load lines as faint ridges among the ground's own, so its reading is a weak pin
+ *  the path solve rejects when it disagrees. `prior` is where the frame's tracked position predicts
+ *  a line per axis, tile pixels (NaN where unknown): the comb is then searched within
+ *  `framePrior.window` of it, which keeps it off ridges the prediction rules out (dashes drawn on
+ *  raised tops, which the drawn offset and lean move 9 to 25 px north, and ground texture), and one
+ *  line in view pins the axis, as the tile's height often allows only one. */
+export function frameLines(
+  plane: GreyImage, period: LatticePeriod = CHUNK_PERIOD, scratch?: LineScratch, prior?: { readonly x: number; readonly y: number },
+): RunLattice {
+  const profiles = lineProfiles(plane, 1, scratch);
+  const F = L.frame;
+  const axis = (a: 'x' | 'y'): number | null => {
+    const p = period[a];
+    const at = prior?.[a];
+    if (at === undefined || !Number.isFinite(at)) {
+      const fit = fitComb(profiles[a], p, F);
+      return fit && fit.score > L.minScore && fit.spread < F.maxSpread ? fit.phase : null;
+    }
+    const w = L.framePrior.window;
+    const around = ((at % p) + p) % p;
+    const fit = fitComb(profiles[a], p, { ...F, around: { phase: around, radius: w } });
+    if (!fit || fit.score <= L.minScore) return null;
+    // One line in view pins the axis here: the prior settles the phase it leaves open.
+    if (fit.deviations.length > 1 && !(fit.spread < F.maxSpread)) return null;
+    if (fit.deviations.length === 0 || Math.abs(((fit.phase - around) % p + 1.5 * p) % p - p / 2) > w) return null;
+    return fit.phase;
+  };
+  return { x: axis('x'), y: axis('y') };
 }
 
 /** Each kept frame's own line phases per axis (`frameLines`), NaN where none was read. */
@@ -220,10 +252,12 @@ export interface FrameLines {
 export interface RunProfiles {
   readonly distinct: number;
   readonly frames: number;
+  /** Seconds from the run's first frame to its last. */
+  readonly seconds: number;
   readonly profiles: LineProfiles;
 }
 
-/** The path solve's pins: every still run of at least `latticeMinFrames` frames whose lines
+/** The path solve's pins: every still run of at least `latticeMinSeconds` whose lines
  *  locate the lattice, per axis, then each kept frame's own lines from `lines` on every axis no
  *  still run at that frame pinned, marked moving. */
 export function latticePins(runs: readonly RunProfiles[], period: LatticePeriod = CHUNK_PERIOD, lines?: FrameLines): { x: AxisPins; y: AxisPins } {
@@ -231,7 +265,7 @@ export function latticePins(runs: readonly RunProfiles[], period: LatticePeriod 
   const pins = { x: axisPins(), y: axisPins() };
   const still = { x: new Set<number>(), y: new Set<number>() };
   for (const run of runs) {
-    if (run.frames < SCAN_PROFILE.latticeMinFrames) continue;
+    if (run.seconds < SCAN_PROFILE.latticeMinSeconds) continue;
     const seen = runLattice(run.profiles, period);
     for (const axis of ['x', 'y'] as const) {
       const phase = seen[axis];
@@ -327,9 +361,14 @@ function placeProfiles(runs: readonly PlacedRun[], axis: 'x' | 'y'): { origin: n
       cover[j + 1]! += f * wt;
     }
   }
-  const profile = new Float64Array(n);
-  for (let i = 0; i < n; i++) profile[i] = cover[i]! >= L.minWeight ? sum[i]! / cover[i]! : 0;
-  return { origin, profile };
+  // The scan's ends, past the last sample any run weighs enough, hold no line the comb could locate.
+  let first = 0;
+  let last = n - 1;
+  while (first < last && cover[first]! < L.minWeight) first++;
+  while (last > first && cover[last]! < L.minWeight) last--;
+  const profile = new Float64Array(last - first + 1);
+  for (let i = first; i <= last; i++) profile[i - first] = cover[i]! >= L.minWeight ? sum[i]! / cover[i]! : 0;
+  return { origin: origin + first * step, profile };
 }
 
 /**
@@ -375,15 +414,15 @@ export interface PeriodScale {
 /**
  * The scale of the line period the still runs show, searched over `SCAN_PROFILE.import`'s scale
  * range, which tells a recording made at another zoom (its lines fit another period) from one
- * without the region load display (its lines fit none). Each run of at least `latticeMinFrames`
- * frames gives, per axis, the scale whose comb scores best among the scales passing the run gates.
+ * without the region load display (its lines fit none). Each run of at least `latticeMinSeconds`
+ * gives, per axis, the scale whose comb scores best among the scales passing the run gates.
  */
 export function periodScale(runs: readonly RunProfiles[], period: LatticePeriod = CHUNK_PERIOD): PeriodScale {
   const { scaleRange: [lo, hi], scaleStep } = SCAN_PROFILE.import;
   const steps = Math.round((hi - lo) / scaleStep);
   const scales: number[] = [];
   for (const run of runs) {
-    if (run.frames < SCAN_PROFILE.latticeMinFrames) continue;
+    if (run.seconds < SCAN_PROFILE.latticeMinSeconds) continue;
     for (const a of ['x', 'y'] as const) {
       let best = -Infinity;
       let at = 1;
@@ -399,4 +438,139 @@ export function periodScale(runs: readonly RunProfiles[], period: LatticePeriod 
   }
   if (scales.length === 0) return { scale: 1, fitted: 0 };
   return { scale: median(scales, 'upper'), fitted: scales.length };
+}
+
+/** What `resolveChunkSlips` did, per axis. */
+export interface ChunkSlips {
+  /** The consecutive edges it moved by a chunk, as edge indices. */
+  readonly x: Int32Array;
+  readonly y: Int32Array;
+  /** Steps it could not decide and left as tracked: between neighbours moving one way, a step
+   *  under `moving` of a chunk, or one reversing them that the nearer-chunk test keeps. A pan step
+   *  of about a chunk or more, slipped a chunk short, reads as such a small step. */
+  readonly suspect: { readonly x: Int32Array; readonly y: Int32Array };
+  /** Tracked pixels per line pixel, from the steps both of whose frames read their lines; 1 with
+   *  fewer than `SCALE_STEPS` of them. */
+  readonly scale: { readonly x: number; readonly y: number };
+}
+
+/** Steps the tracked-to-line scale needs before it is measured. */
+const SCALE_STEPS = 8;
+
+/**
+ * Moves each consecutive edge that slipped a whole chunk onto the chunk the camera's motion
+ * continues, in place. On ground repeating every chunk, tracking can match a pan of more than half
+ * a chunk one chunk of ground short, as a smaller step backwards, which a frame's own lines (they
+ * place it only within a chunk) cannot see. Such an edge reverses both neighbours, each moving one
+ * way by at least `tracking.chunkSlip.moving` of a chunk; it slipped when one ground chunk on in
+ * their direction lies nearer their mean, since the camera cannot turn round and back within two
+ * frames. The moved shift is the frames' line difference on that chunk where both read lines, else
+ * that step, in tracked pixels (`scale`). Kept steps are assumed under about a chunk: a longer
+ * one slips to a small step forwards, which only `suspect` counts.
+ */
+export function resolveChunkSlips(edges: EdgeList, lines?: FrameLines, period: LatticePeriod = CHUNK_PERIOD): ChunkSlips {
+  let frames = 0;
+  for (let e = 0; e < edges.count; e++) frames = Math.max(frames, edges.a[e]! + 1, edges.b[e]! + 1);
+  // The verified consecutive edge from frame k to k + 1, or -1.
+  const step = new Int32Array(frames).fill(-1);
+  for (let e = 0; e < edges.count; e++) {
+    if (edges.kind[e] !== EDGE_CONSECUTIVE || edges.source[e] === SOURCE_ASSUMED || edges.b[e] !== edges.a[e]! + 1) continue;
+    step[edges.a[e]!] = e;
+  }
+  const moving = SCAN_PROFILE.tracking.chunkSlip.moving;
+  const resolve = (axis: 'x' | 'y') => {
+    const shift = axis === 'x' ? edges.dx : edges.dy;
+    const P = period[axis];
+    const seen = lines?.[axis];
+    // pos[k] - pos[k + 1] is the line difference up to whole chunks, in line pixels.
+    const lineStep = (k: number) => (seen ? seen[k + 1]! - seen[k]! : Number.NaN);
+    const ratios: number[] = [];
+    for (let k = 0; k + 1 < frames; k++) {
+      const e = step[k]!;
+      const l = lineStep(k);
+      if (e < 0 || !Number.isFinite(l) || Math.abs(shift[e]!) < moving * P) continue;
+      const near = l + P * Math.round((shift[e]! - l) / P);
+      if (Math.abs(near) >= moving * P) ratios.push(shift[e]! / near);
+    }
+    const scale = ratios.length >= SCALE_STEPS ? median(ratios, 'mean') : 1;
+    const moved: number[] = [];
+    const to: number[] = [];
+    const suspect: number[] = [];
+    for (let k = 1; k + 1 < frames - 1; k++) {
+      const e = step[k]!, before = step[k - 1]!, after = step[k + 1]!;
+      if (e < 0 || before < 0 || after < 0) continue;
+      const a = shift[before]!, b = shift[after]!, d = shift[e]!;
+      const s = Math.sign(a);
+      if (s === 0 || Math.sign(b) !== s || Math.min(Math.abs(a), Math.abs(b)) < moving * P) continue;
+      if (d * s >= moving * P) continue;
+      const mean = (a + b) / 2;
+      const on = d + s * scale * P;
+      if (d * s >= 0 || Math.abs(on - mean) >= Math.abs(d - mean)) {
+        suspect.push(e);
+        continue;
+      }
+      const l = lineStep(k);
+      moved.push(e);
+      to.push(Number.isFinite(l) ? scale * (l + P * Math.round((on / scale - l) / P)) : on);
+    }
+    moved.forEach((e, i) => (shift[e] = to[i]!));
+    return { moved: Int32Array.from(moved), suspect: Int32Array.from(suspect), scale };
+  };
+  const x = resolve('x');
+  const y = resolve('y');
+  return { x: x.moved, y: y.moved, suspect: { x: x.suspect, y: y.suspect }, scale: { x: x.scale, y: y.scale } };
+}
+
+/**
+ * Places each lost consecutive step (`SOURCE_ASSUMED`) whose two frames both read their own lines on
+ * both axes, in place: on each axis the step is the line difference moved by the whole chunks that
+ * put it nearest the camera's motion, the mean of the step before it (already placed when it was
+ * lost too) and the next tracked step, and is taken only when that lies within
+ * `tracking.chunkSlip.bridge` of a chunk of the mean and under a chunk. The camera pans
+ * continuously, so a step changes little from the steps around it and never reaches a chunk;
+ * nothing assumes it pans at a constant speed. `scale` is the tracked-to-line scale per axis
+ * (`ChunkSlips.scale`). Returns the edges placed.
+ */
+export function bridgeLostSteps(
+  edges: EdgeList, lines: FrameLines, scale: { readonly x: number; readonly y: number } = { x: 1, y: 1 }, period: LatticePeriod = CHUNK_PERIOD,
+): Int32Array {
+  let frames = 0;
+  for (let e = 0; e < edges.count; e++) frames = Math.max(frames, edges.a[e]! + 1, edges.b[e]! + 1);
+  const step = new Int32Array(frames).fill(-1);
+  for (let e = 0; e < edges.count; e++) {
+    if (edges.kind[e] === EDGE_CONSECUTIVE && edges.b[e] === edges.a[e]! + 1) step[edges.a[e]!] = e;
+  }
+  const known = (e: number) => e >= 0 && edges.source[e] !== SOURCE_ASSUMED;
+  const reach = SCAN_PROFILE.tracking.chunkSlip.bridge;
+  const placed: number[] = [];
+  for (let k = 0; k + 1 < frames; k++) {
+    const e = step[k]!;
+    if (e < 0 || edges.source[e] !== SOURCE_ASSUMED) continue;
+    let next = -1;
+    for (let j = k + 1; j + 1 < frames && next < 0; j++) if (known(step[j]!)) next = step[j]!;
+    const before = k > 0 && known(step[k - 1]!) ? step[k - 1]! : -1;
+    if (before < 0 && next < 0) continue;
+    const to = { x: 0, y: 0 };
+    let ok = true;
+    for (const axis of ['x', 'y'] as const) {
+      const a = lines[axis][k]!, b = lines[axis][k + 1]!;
+      if (!Number.isFinite(a) || !Number.isFinite(b)) { ok = false; break; }
+      const shift = axis === 'x' ? edges.dx : edges.dy;
+      const around = [before, next].filter((n) => n >= 0).map((n) => shift[n]!);
+      const mean = around.reduce((t, v) => t + v, 0) / around.length / scale[axis];
+      const P = period[axis];
+      // pos[k] - pos[k + 1] is the line difference up to whole chunks, in line pixels.
+      const l = b - a;
+      const near = l + P * Math.round((mean - l) / P);
+      if (Math.abs(near - mean) >= reach * P || Math.abs(near) >= P) { ok = false; break; }
+      to[axis] = near * scale[axis];
+    }
+    if (!ok) continue;
+    edges.dx[e] = to.x;
+    edges.dy[e] = to.y;
+    edges.weight[e] = 1;
+    edges.source[e] = SOURCE_LINES;
+    placed.push(e);
+  }
+  return Int32Array.from(placed);
 }

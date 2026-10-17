@@ -215,12 +215,17 @@ export function getObjectIndex(state: GridState): ObjectIndex {
  * It resolves the index per call: an untrusted delta replaces the whole `ObjectIndex`, so a
  * captured handle would go stale, and binding must stay free for the auto-trim preview, which
  * binds a lookup over a scratch grid per pointer move. The settled-path resolve is a WeakMap hit
- * plus two comparisons.
+ * plus two comparisons. An object a hand repair has yet to settle (`GridState.unsettled`) is no
+ * surface here.
  */
 export function roadLookup(state: GridState): RoadLookup {
-  const lookup: RoadLookup = (x, y) => getObjectIndex(state).roadByCell.get(cellKey(x, y)) ?? null;
+  const settled = (o: PlacedObject): boolean => !state.unsettled?.has(o.id);
+  const lookup: RoadLookup = (x, y) => {
+    const road = getObjectIndex(state).roadByCell.get(cellKey(x, y));
+    return road && settled(road) ? road : null;
+  };
   lookup.coatingsAt = (x, y) => (getObjectIndex(state).byCell.get(cellKey(x, y)) ?? [])
-    .filter(e => e.coating && !e.obj.patchOnly && e.obj.position.x === x && e.obj.position.y === y)
+    .filter(e => e.coating && !e.obj.patchOnly && settled(e.obj) && e.obj.position.x === x && e.obj.position.y === y)
     .map(e => e.obj);
   return lookup;
 }
@@ -255,12 +260,13 @@ export function objectAt(index: ObjectIndex, coord: MacroCoord): PlacedObject | 
  * The object whose footprint holds map point `point`, or null: the point test the pointer needs,
  * where `objectAt`'s cell test also answers for a half-anchored footprint over the half of the cell
  * it does not cover. Footprints are half-open, [x, x + w) on each axis, and the priority is
- * `objectAt`'s.
+ * `objectAt`'s. `among`, when given, is the only objects it may answer.
  */
-export function objectAtPoint(index: ObjectIndex, point: MapPoint): PlacedObject | null {
+export function objectAtPoint(index: ObjectIndex, point: MapPoint, among?: ReadonlySet<string>): PlacedObject | null {
   let picked: ObjectIndexEntry | undefined;
   for (const e of entriesCovering(index, { x: Math.floor(point.x), y: Math.floor(point.y), w: 1, h: 1 })) {
     const r = e.rect;
+    if (among && !among.has(e.obj.id)) continue;
     if (!e.item || point.x < r.x || point.x >= r.x + r.w || point.y < r.y || point.y >= r.y + r.h) continue;
     if (outranks(e, picked)) picked = e;
   }

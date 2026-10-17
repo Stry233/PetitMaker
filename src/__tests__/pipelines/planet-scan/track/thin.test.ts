@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { PaletteSampler } from '../../../../pipelines/planet-scan/ground/color';
 import { SCAN_PROFILE } from '../../../../pipelines/planet-scan/profile';
 import { StillRunGrouper, type StillRun } from '../../../../pipelines/planet-scan/track/still-runs';
-import { KeptFrames, MotionThinner } from '../../../../pipelines/planet-scan/track/thin';
+import { KeptFrames, LinePrior, MotionThinner } from '../../../../pipelines/planet-scan/track/thin';
 import { Tracker } from '../../../../pipelines/planet-scan/track/track';
 import { broadbandField, cropAt } from '../synthetic';
 
@@ -85,7 +85,7 @@ describe('the kept frames', () => {
   const show = (k: number) => {
     const time = shownAt.push(k) - 1;
     const tile = cropAt(field, { x: pan[k]!.x, y: pan[k]!.y }, { width: TW, height: TH });
-    const verdict = grouper.push(tile);
+    const verdict = grouper.push(tile, time / 60);
     if (verdict.distinct) distinctAt.push(k);
     const run = kept.push(verdict, tile, (out) => out.fill(128), time);
     if (run) runs.push(run);
@@ -131,7 +131,7 @@ describe('the kept frames', () => {
     const xs = [...Array.from({ length: 20 }, (_, k) => 4 + k), 23 + 3 * limitX, 24 + 3 * limitX, 25 + 3 * limitX];
     xs.forEach((x, k) => {
       const tile = cropAt(field, { x, y: 4 }, { width: TW, height: TH });
-      kf.push(g.push(tile), tile, (out) => out.fill(128), k);
+      kf.push(g.push(tile, k / 60), tile, (out) => out.fill(128), k);
     });
     kf.finish(g.finish());
     expect(kf.times).toContain(19);
@@ -146,5 +146,39 @@ describe('the kept frames', () => {
       expect(step).toBeLessThanOrEqual(maxGap);
       expect(1.5 * step).toBeLessThanOrEqual(limitX);
     }
+  });
+});
+
+describe('the line prior', () => {
+  const PY = SCAN_PROFILE.chunk.height;
+
+  it('predicts a frame\'s line from the scan phase of the frames read before it, past one misread', () => {
+    const prior = new LinePrior();
+    expect(prior.predict({ x: 0, y: 0 }).y).toBeNaN();
+    // Lines at scan phase 30 seen from frames 7 px apart; the fourth frame read a ridge 20 px off.
+    for (let k = 0; k < 5; k++) {
+      const at = { x: 0, y: 7 * k };
+      const t = (((30 - at.y) % PY) + PY) % PY;
+      prior.record({ x: null, y: k === 3 ? t + 20 : t }, at);
+    }
+    expect(prior.predict({ x: 0, y: 100 }).y).toBeCloseTo((((30 - 100) % PY) + PY) % PY, 6);
+  });
+
+  it('follows the scan phase as it drifts with the tracked position, the motion 3 % off the lines\' scale', () => {
+    const prior = new LinePrior();
+    const line = (y: number) => (((30 - 1.03 * y) % PY) + PY) % PY;
+    for (let k = 0; k < 7; k++) prior.record({ x: null, y: line(40 * k) }, { x: 0, y: 40 * k });
+    // 40 px on from the last read the phase has moved 1.2 px; a median of phases would be 3.6 px off.
+    expect(Math.abs(prior.predict({ x: 0, y: 280 }).y - line(280))).toBeLessThan(0.3);
+  });
+
+  it('forgets the phases after a reset and after patience frames with nothing found', () => {
+    const prior = new LinePrior();
+    prior.record({ x: 10, y: null }, { x: 0, y: 0 });
+    prior.reset();
+    expect(prior.predict({ x: 0, y: 0 }).x).toBeNaN();
+    prior.record({ x: 10, y: null }, { x: 0, y: 0 });
+    for (let k = 0; k < SCAN_PROFILE.lattice.framePrior.patience; k++) prior.record({ x: null, y: null }, { x: 0, y: 0 });
+    expect(prior.predict({ x: 0, y: 0 }).x).toBeNaN();
   });
 });

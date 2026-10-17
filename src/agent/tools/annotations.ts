@@ -1,4 +1,4 @@
-import { generateAnnotationId, isCustomTagId, nextZoneNumber, type MapAnnotation } from '../../core/model/annotations';
+import { HALVES, generateAnnotationId, isCustomTagId, nextZoneNumber, zoneHalfCells, type MapAnnotation } from '../../core/model/annotations';
 import { ANNOTATION_COLORS } from '../../config/annotation-palette';
 import { SELECTABLE_ANNOTATION_TAGS, isTagId } from '../../config/annotation-tags';
 import { anchorHandles } from '../../core/base/spline';
@@ -19,7 +19,7 @@ export const getAnnotationsTool = defineTool({
 });
 
 export const setAnnotationTool = defineTool({
-  description: 'Create a planning annotation, or update the supplied id. Updates preserve omitted fields and cannot change kind. Zone cells and measurement endpoints use integer map coordinates; chips and routes may use fractional coordinates. Zones may have tag null. Chips require a tag. Measurements require two aligned endpoints. This edits annotation history independently of terrain history.',
+  description: 'Create a planning annotation, or update the supplied id. Updates preserve omitted fields and cannot change kind. Zone cells use integer map coordinates and measurement endpoints multiples of 0.5, each naming the cell whose top-left corner it is; chips and routes may use fractional coordinates. A zone read with grid "half" counts its cells in half cells, cell x covering x/2 to x/2+0.5. Zones may have tag null. Chips require a tag. Measurements require two aligned endpoints. This edits annotation history independently of terrain history.',
   input: obj({
     id: str(),
     kind: oneOf(['zone', 'chip', 'route', 'measure']),
@@ -60,14 +60,15 @@ function getAnnotations(deps: AgentToolDeps, input: Record<string, unknown>): To
 
 const failure = (content: string): ToolOutcome => ({ isError: true, content });
 
-function points(value: unknown, state: GridState, whole: boolean): MacroCoord[] | null {
+/** Coordinates on the lattice of `per` steps a cell, or free with 0. */
+function points(value: unknown, state: GridState, per: number): MacroCoord[] | null {
   if (!Array.isArray(value) || value.length === 0 || value.length > state.template.width * state.template.height) return null;
   const result: MacroCoord[] = [];
   for (const p of value) {
     if (!p || typeof p !== 'object' || typeof p.x !== 'number' || typeof p.y !== 'number'
       || !Number.isFinite(p.x) || !Number.isFinite(p.y)
       || p.x < 0 || p.y < 0 || p.x >= state.template.width || p.y >= state.template.height
-      || (whole && (!Number.isInteger(p.x) || !Number.isInteger(p.y)))) return null;
+      || (per > 0 && (!Number.isInteger(p.x * per) || !Number.isInteger(p.y * per)))) return null;
     result.push({ x: p.x, y: p.y });
   }
   return result;
@@ -77,7 +78,8 @@ function points(value: unknown, state: GridState, whole: boolean): MacroCoord[] 
 function insideRegion(note: MapAnnotation, region: MacroCoord[]): boolean {
   if (!region.length) return true;
   const allowed = new Set(region.map(p => cellKey(p.x, p.y)));
-  if (note.kind === 'zone') return note.cells.every(p => allowed.has(cellKey(p.x, p.y)));
+  // A zone on the half grid needs every whole cell it touches.
+  if (note.kind === 'zone') return zoneHalfCells(note).every(p => allowed.has(cellKey(Math.floor(p.x / HALVES), Math.floor(p.y / HALVES))));
   const vertices: MacroCoord[] = note.kind === 'chip' ? [note] : [...note.points];
   if (note.kind === 'route') {
     const handles = anchorHandles(note.points);
@@ -122,14 +124,20 @@ function editAnnotation(deps: AgentToolDeps, input: Record<string, unknown>, rem
   const id = existing?.id ?? generateAnnotationId();
   let note: MapAnnotation;
   if (value.kind === 'zone') {
-    const cells = points(value.cells, state, true);
-    if (!cells) return failure('A zone needs nonempty integer cells within the map.');
-    note = { kind: 'zone', id, color, size, tag, cells: [...new Map(cells.map(p => [cellKey(p.x, p.y), p])).values()], num: existing?.kind === 'zone' ? existing.num : nextZoneNumber(data?.items ?? []) };
+    const num = existing?.kind === 'zone' ? existing.num : nextZoneNumber(data?.items ?? []);
+    if (input.cells === undefined && existing?.kind === 'zone') {
+      // Omitted cells keep the zone's own, on whichever grid they lie.
+      note = { ...existing, color, size, tag, num };
+    } else {
+      const cells = points(value.cells, state, 1);
+      if (!cells) return failure('A zone needs nonempty integer cells within the map.');
+      note = { kind: 'zone', id, color, size, tag, cells: [...new Map(cells.map(p => [cellKey(p.x, p.y), p])).values()], num };
+    }
   } else if (value.kind === 'chip') {
-    if (!tag || !points([{ x: value.x, y: value.y }], state, false)) return failure('A chip needs a tag and an in-map position.');
+    if (!tag || !points([{ x: value.x, y: value.y }], state, 0)) return failure('A chip needs a tag and an in-map position.');
     note = { kind: 'chip', id, color, size, tag, x: value.x as number, y: value.y as number };
   } else if (value.kind === 'route' || value.kind === 'measure') {
-    const coords = points(value.points, state, value.kind === 'measure');
+    const coords = points(value.points, state, value.kind === 'measure' ? HALVES : 0);
     if (!coords || coords.length < 2) return failure('At least two valid points are required.');
     if (value.kind === 'measure') {
       if (coords.length !== 2 || (coords[0]!.x !== coords[1]!.x && coords[0]!.y !== coords[1]!.y)) return failure('Measurement endpoints must share a row or column.');

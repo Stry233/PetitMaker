@@ -24,6 +24,7 @@ const FROZEN_WIRE: Readonly<Record<string, string>> = {
   'src/io/share/codec/catalog-order.ts': 'the share-code item table: an item\'s position is its index in every code already shared, so it spells each id',
   'src/io/save/format/migrations/001-v1-to-v2.ts': 'the version 1 to 2 save migration: it rewrites the ramp ids version 1 saves wrote',
   'src/io/share/codec/template-record.ts': 'the share-code template record: one bit per cell records grass',
+  'src/io/save/format/earlier-landmarks.ts': 'where released saves laid the landmarks on each built-in planet: saves record none, so the layout they were written against is spelled per template and landmark id',
   'src/io/share/codec/template-mask.ts': 'the share-code buildable masks: append-only revisions keyed by the built-in template ids codes already carry',
 };
 

@@ -2,7 +2,7 @@
  * Compact text serialization of editor state for the LLM agent.
  *
  * One char per cell so grids stay column-aligned in the model's context:
- * mountain elev 1-8 → '1'..'8'; water elev 0-8 → 'A'..'I' (A=0); bare zones
+ * mountain elevation N → the digit N; water elevation N → 'A' + N; bare zones
  * use glyphs (see TOKEN_LEGEND). Detailed reads are tool-driven and capped at
  * REGION_CAP per axis — the agent subdivides rather than dumping whole maps.
  */
@@ -23,7 +23,7 @@ import { BUILDABLE_ZONES, ZONE_ORDER, anchorTerm, zoneName } from './game-terms'
 export const REGION_CAP = 45;
 
 // Highest water glyph: 'A'(=0) + ELEVATION_MAX. Derived so the token vocabulary
-// tracks the elevation ceiling instead of hardcoding '8'/'I'.
+// tracks the elevation ceiling.
 const WATER_GLYPH_MAX = String.fromCharCode(65 + ELEVATION_MAX);
 
 // A buildable zone is marked buildable, and the rim unbuildable because it draws as land.

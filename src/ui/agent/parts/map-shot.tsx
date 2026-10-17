@@ -45,7 +45,7 @@ export function MapShot({ box, width, height, whole = false, placeholder, versio
     // `focusFrame` answers null for "the map entire", which is also what a missing box means
     // here, so the two paths need no branch of their own.
     const frame: CellFrame | null = frameBox ? focusFrame(frameBox, grid.template, aspect) : null;
-    void renderThumbnail(grid, Math.max(width, height), aspect, frame, version).then((shot) => {
+    void renderThumbnail(grid, Math.max(width, height), { aspect, frame, ...(version !== undefined ? { version } : {}) }).then((shot) => {
       if (live) setPng(shot);
     });
     return () => { live = false; };

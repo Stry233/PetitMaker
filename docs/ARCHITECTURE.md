@@ -74,7 +74,7 @@ Source: [scripts/layers.mts](../scripts/layers.mts), `LAYERS`, `CORE_FOLDERS`, `
 | `assets/` | static icons, fonts and team art (resolved by `icon-urls.ts`), the cursor catalogue and the brand palette | `core`, `platform`, and `config` beside it |
 | `state/` | the Zustand store (wires executor, registry and bus), the item catalog, object-footprint geometry, the memoized whole-map derivations (`map-stats`, `layer-utils`), the pure selection derivations and `BlockRef` (`selection`), the editor's vocabulary above the kernel (`editing/`: tool types and modes, the edit-mode selectors, `EditorEvents`), the per-view camera pose (`view-camera`), the keymap and the fuzzy scorer (`fuzzy`) | `core` through `assets` |
 | `rules/` | two-phase validators (pre-command and post-stroke), one rule family per file | `core` through `state` |
-| `i18n/` | the seven-locale translation tables, the `localizedName` and `translate` helpers, and the brand name (`brand.ts`) | `core` through `rules` |
+| `i18n/` | the seven-locale translation tables, the `localizedName` and `translate` helpers, and the brand name (`terms/brand.ts`) | `core` through `rules` |
 | `tools/` | interaction handlers (gesture to `Command`) behind the `pointer/runtime/` contract, and the libraries, which import no pointer tool: shared placement and object edits, Smart Build macros, map readings and `generation/` (designed planets, mazes, stencil pictures, the carry between planets, and the run that builds candidates in a worker pool) | `core` through `i18n` |
 | `pipelines/` | self-contained feature pipelines, one folder each behind its own door: `planet-scan/` (ground from a game recording), `stylize/` (the export illustration), `moderation/` (text and picture checks); pipelines never import one another, and what one needs from a higher layer arrives as an argument | `core` through `tools` |
 | `view/` | the view side of the seam (`active-view.ts`, implementing `tools/pointer/runtime/view-seam.ts`), the shared `interaction/` pointer machine, which executes the plan the pointer-semantics floor in `interaction/press/` resolves (the button constants, the camera-verb catalogue and `resolvePress`, the one function that answers what a press, a tap and a drag each mean) and drives the active view, and the two live editing views: `map2d/` (PixiJS) and `map3d/` (three.js) | `core` through `pipelines` |
@@ -85,7 +85,7 @@ Source: [scripts/layers.mts](../scripts/layers.mts), `LAYERS`, `CORE_FOLDERS`, `
 | `ui/` | the app roots in `app/` and the owning surfaces: `shell/` (the frame around the map: mode blocks, bars, windows), `chrome/` (modals, floating overlays, the tour, guards), `agent/` (the assistant's panel), over two shared layers: `design/` (tokens, the scaling factors, the motion registry, the cursor CSS) and `primitives/` (the generic parts and behaviour hooks any surface could reach for) | `core` through `legal` |
 | entry | the root files of `src/` and `src/lite/`, which compose the app; nothing imports them | `core` through `ui` |
 
-Ranked with a lower layer than their folder: `i18n/keys` with `config`, `i18n/locales/` with `config`.
+Ranked with a lower layer than their folder: `i18n/keys` with `config`, `i18n/terms/layer-name` with `config`, `i18n/locales/` with `config`.
 
 <!-- generated:layers:end -->
 
@@ -105,7 +105,7 @@ Porting to another game that shares this terrain model (a square cell grid of st
 - the pipeline profiles: `pipelines/planet-scan/profile.ts`, `calibration.json` and its landmark reader `ground/landmark.ts`, and the stylize scene wording, presets and legend colours;
 - the designed generator's layout guidance, which `tools/generation/designer/` carries as code: the street ranks (`designer/types.ts:TRUNK_W`, `BRANCH_W`), the theme library `designer/themes.ts`, and the centre-to-rim, backing-hill and furnished-leisure habits its stages follow;
 - the frozen wire tables where the new catalog or templates differ, since they are a format rather than branching: `io/share/codec/catalog-order.ts`, `io/share/codec/template-mask.ts`, `io/share/codec/template-record.ts`, `io/save/format/migrations/001-v1-to-v2.ts` and `io/save/canonical.ts:templateHash`, which hashes category ids;
-- the surfaces that name the game or its art: Help figures, `ui/help/facts.ts` and `ui/help/search-examples.ts`, the locale tables, `i18n/brand.ts`, `src/legal/`, `src/assets/`, `public/boot-guard.js` with its own copy, and `public/manifest.webmanifest`.
+- the surfaces that name the game or its art: Help figures, `ui/help/facts.ts` and `ui/help/search-examples.ts`, the locale tables, `i18n/terms/brand.ts`, `src/legal/`, `src/assets/`, `public/boot-guard.js` with its own copy, and `public/manifest.webmanifest`.
 
 A game with a different terrain model also replaces:
 
@@ -195,7 +195,7 @@ The mutation-during-validation pattern for `waterSpan` and `heightDrop` is inten
 
 The `LayerInfo` type (`{ elevation, cellCount }`) and the derivation that produces it live in `state/layer-utils.ts`, since it reads the per-layer counts `state/map-stats.ts` derives from the catalog.
 
-**`getActiveLayers(state, activeLayer)`** (`state/layer-utils.ts`) derives a contiguous `LayerInfo[]` (Ground..top) for the layer panel UI from `getMapStats(state)`. Cell counts are cumulative: a cell at elevation 3 counts in layers 1, 2, and 3; an object counts only at its own elevation, Ground included. `top` is the higher of `activeLayer` and the map's highest occupied layer, clamped to `ELEVATION_MAX`, so a newly selected empty layer still appears and an added intermediate layer stays listed once a higher one is active.
+**`getActiveLayers(state, activeLayer)`** (`state/layer-utils.ts`) derives a contiguous `LayerInfo[]` (elevation 0 up to the top) for the layer panel UI from `getMapStats(state)`; the panel names each by the game's numbering (`core/game/profile.ts:layerNumber`, the ground as layer 1). Cell counts are cumulative: a cell at elevation 3 counts in layers 1, 2, and 3; an object counts only at its own elevation, Ground included. `top` is the higher of `activeLayer` and the map's highest occupied layer, clamped to `ELEVATION_MAX`, so a newly selected empty layer still appears and an added intermediate layer stays listed once a higher one is active.
 
 `layer-utils` contains no rule logic: V-MTN-03 (3×3 base support) lives in exactly one place, `rules/base-support.ts`. The renderer's buildable-region overlay is driven by `host.buildableRegion.show(cells)` with externally supplied cells (generation preview), not by a predictor here.
 
@@ -211,12 +211,13 @@ Game facts. Source: [src/core/game/profile.ts](../src/core/game/profile.ts).
 |---|---|
 | `PLACEMENT_GRID` | `"object"` |
 | `TERRAIN_GRID` | `"terrain"` |
+| `HALF_GRID` | `"half"` |
 | `CHUNK_SIZE` | `16` |
 | `CHUNK_LOAD_LIMIT` | `10000` |
 | `CHUNK_LOAD_ENABLED` | `true` |
 | `LOAD_DECIMALS` | `1` |
 | `GAME_NAME` | `"Petit Planet"` |
-| `ELEVATION_MAX` | `8` |
+| `ELEVATION_MAX` | `9` |
 | `GROUND_SUPPORT_LAYER` | `1` |
 | `ZONE_ID_BITS` | `3` |
 
@@ -489,15 +490,16 @@ Source: [src/rules/index.ts](../src/rules/index.ts), through `createDefaultRegis
 | 5 | `V-WTR-01` | pre-command |
 | 6 | `V-PLACE-BLOCK` | pre-command |
 | 7 | `V-PLACE-TRAIT` | pre-command |
-| 8 | `V-GROUND-LOCK` | pre-command |
-| 9 | `V-ZONE-01` | pre-command |
-| 10 | `V-PLACE-OVERLAP` | pre-command |
-| 11 | `V-PLACE-MAX` | pre-command |
-| 12 | `V-CHUNK-01` | pre-command |
-| 13 | `V-MTN-03` | post-stroke |
-| 14 | `V-WTR-02` | post-stroke |
-| 15 | `V-WTR-03` | post-stroke |
-| 16 | `V-PLACE-COATED` | post-stroke |
+| 8 | `V-PLACE-DOOR` | pre-command |
+| 9 | `V-GROUND-LOCK` | pre-command |
+| 10 | `V-ZONE-01` | pre-command |
+| 11 | `V-PLACE-OVERLAP` | pre-command |
+| 12 | `V-PLACE-MAX` | pre-command |
+| 13 | `V-CHUNK-01` | pre-command |
+| 14 | `V-MTN-03` | post-stroke |
+| 15 | `V-WTR-02` | post-stroke |
+| 16 | `V-WTR-03` | post-stroke |
+| 17 | `V-PLACE-COATED` | post-stroke |
 
 <!-- generated:rules:end -->
 
@@ -527,7 +529,7 @@ Rules read this state and the command purely; the `waterSpan` and `heightDrop` t
 
 **V-LOCK-01 (`layer-lock.ts`)**: Applies to `PaintTerrain` and `EraseTerrain`. Fast-paths on an empty `lockedLayers`. For `PaintTerrain`, it first checks whether the *target* elevation is locked (blocking entire command immediately), then checks existing terrain at each cell. For `EraseTerrain` it only checks existing terrain. The helper `isOccupyingLockedLayer` walks layers 1..cell.terrain.elevation for each cell. This reflects the cumulative-layer model: a cell at elevation 3 occupies layers 1, 2, and 3, so locking any of those blocks the cell.
 
-**V-ZONE-01 (`zone-restriction.ts`)**: Rejects any edit on a non-Grass zone (`isBuildableZone`). For `PlaceObject` it walks the rotated footprint from `getPlacedObjectSize`; for terrain edits it walks the command's own cells. Out-of-bounds differs by command on purpose: an object may not hang over the void, so a null cell is an error there, while a terrain edit off-map is simply skipped. It does not apply to `RemoveObject`: removal must always succeed, or an object that somehow reached a non-grass cell could never be cleared. The plaza needs no clause of its own here: it is a locked object, and the object rules cover it. One error per invalid cell. A planet-session ground command rewrites the zone itself, so it is checked only for the half-cell bleed: a ground command that leaves a cell non-grass while its right, lower or lower-right neighbour holds terrain is refused with `error.ground_under_block`.
+**V-ZONE-01 (`zone-restriction.ts`)**: Rejects any edit on a non-Grass zone (`isBuildableZone`). For `PlaceObject` it walks the rotated footprint from `getPlacedObjectSize` and reads the item's ground zones (`core/model/traits.ts:groundZonesOf`, the `groundZones` trait: wholly on grass, wholly on sand, across the boundary; grass alone by default), refusing a footprint across grass and sand with `error.across_zone_boundary` unless the item allows it; for terrain edits it walks the command's own cells. Out-of-bounds differs by command on purpose: an object may not hang over the void, so a null cell is an error there, while a terrain edit off-map is simply skipped. It does not apply to `RemoveObject`: removal must always succeed, or an object that somehow reached a non-grass cell could never be cleared. The plaza needs no clause of its own here: it is a locked object, and the object rules cover it. One error per invalid cell. A planet-session ground command rewrites the zone itself, so it is checked only for the half-cell bleed: a ground command that leaves a cell non-grass while its right, lower or lower-right neighbour holds terrain is refused with `error.ground_under_block`.
 
 **V-GROUND-LOCK (`ground-lock.ts`)**: Applies to `PaintTerrain` and `EraseTerrain`, in the default registry only. It refuses any terrain command that carries `ground`, so the ordinary editor never edits layer 0; the ground shape belongs to the planet session.
 
@@ -555,7 +557,7 @@ The trait validators cover these trait types:
 
 - `surfaceCoating`: Checks every cell in the footprint has non-null, non-water terrain. Roads must be placed on land. Simple rejection with `error.road_needs_terrain`.
 
-- `exclusionRadius`: Rejects when another object of the same catalog category sits within `trait.radius` on both axes (a Chebyshev check), with `error.too_close_same_kind`.
+- `exclusionRadius`: Two items that both carry the trait keep the larger of their radii as open cells between their footprints, diagonals included (`spacingClash`, which generators ask before planting). Trees and houses carry it, so two houses, a house and a tree, and two trees each keep a cell apart, refused with `error.house_too_close`, `error.house_tree_too_close` or `error.too_close_same_kind`.
 
 - `terrainBase`: Not a placement check but a declaration: this object's footprint counts as solid structural support at its own elevation, so terrain may use it as the 3×3 base V-MTN-03 asks for. The central plaza is the only carrier today, and its `CatalogItem` body lives in `config/catalog/landmark.json`, listed with the other landmarks in `config/catalog/landmarks.ts` outside every category barrel, so it never appears in a placement list.
 
@@ -564,6 +566,8 @@ The trait validators cover these trait types:
 - `halfStep`: Passive: grants the item a half-cell anchor on both axes (`state/object-geometry:hasHalfStep`). An item without it is what the fractional-position guard rejects, so ramps, bridges and the landmarks may sit flush with the terrain grid while everything else stays whole-celled.
 
 - `footprintTurn`: Passive: the item turns as a whole footprint about its centre (width and height swap) instead of by its own rotation, and only while the planet session shapes the map and the item is unlocked (`editor/operations/planet-session.ts:turnsInSession` is the one test every rotate entry point asks). The central plaza is the only carrier; on a finished map it is locked, so it never turns there.
+
+**V-PLACE-DOOR (`door-ground.ts`)**: Applies to `PlaceObject`, `PaintTerrain` and `EraseTerrain`. A house with a door (`state/object-geometry.ts:hasGate`) needs the ground in front of its whole door side (`doorGroundRect`, with the depths in `core/game/profile.ts:DOOR`) to be land no lower than the house to the drop depth, and neither higher than the house nor water to the rise depth. A placement is refused where the strip fails; a terrain or ground edit is refused only where it breaks a strip that held before it, so a map saved with a broken doorstep still opens and edits. Evidence is the strip itself.
 
 **V-CHUNK-01 (`chunk-load.ts`)**: Applies to `PlaceObject` when `isChunkLoadEnforced(state)` is true. The rule prices objects from the catalog and compares each touched region's resulting load with `CHUNK_LOAD_LIMIT`; exactly the limit is permitted. Cosmetic patches do not contribute load. A replacement subtracts its prior contribution in each region it already touched. On an overloaded map where the user re-enables enforcement, neutral and cheaper replacements remain possible, while placements that increase an overloaded region's load are refused.
 
@@ -805,7 +809,7 @@ Source: [src/tools/pointer/runtime/types.ts](../src/tools/pointer/runtime/types.
 ```ts
 export interface Tool<G extends GridId = GridId, C extends ToolContext = ToolContext> {
     id: ToolType;
-    grid(ctx: C): G;
+    grid(ctx: Pick<C, 'arming'>): G;
     cursor(ctx: C): CursorId;
     canActAt?(cell: GridCell<G>, ctx: C): boolean;
     cancelPending?(ctx: C): boolean;
@@ -1123,7 +1127,7 @@ The Zustand store (`src/state/store.ts`) is the composition root of the entire e
 
 **The edit slice**: the arming: `editMode: EditModeInputs` is the one stored input, and the active tool, drawing mode, content, armed item and macro and brush size are selectors over it (`state/editing/edit-mode.ts`: `activeToolOf`, `designModeOf`, `contentTypeOf`, `armedItemOf`, `armedMacroOf`, `brushSizeOf`), so they cannot disagree. Beside it: `placementRotation`, `tileMaterial` + `tileMaterialPicked`, `autoEdgeCut`, `eraserShape`, `activeLayer`, `displayLayer`, `layerVisibility`, `drawingBrushSize` + `eraserBrushSize`, and the region cluster (`region`, `selectingRegion`, `regionTool`, `regionBrushSize`). Layer locks live on the map itself (`GridState.lockedLayers`), which the rules, copies and the save read. Tools read these through `ToolContext.arming` (`state/editing/arming.ts:armingOf`), one snapshot per store state.
 
-**The prefs and shell slices**: persisted preferences (`locale`, `viewMode`, `showGrid`, `showChunkBounds`, motion, UI zoom and the rest, all through `platform/storage/prefs.ts`'s one key table) and the interface's open-surface state (`modals`, the mode row, panel flags). Every persisted key is declared once in `PREFS` and read and written only through that module's `readPref`, `writePref`, `readStoredPref` (the raw stored value, or that storage is unavailable) and `removePref`.
+**The prefs and shell slices**: persisted preferences (`locale`, `viewMode`, `gridMode`, `showChunkBounds`, motion, UI zoom and the rest, all through `platform/storage/prefs.ts`'s one key table) and the interface's open-surface state (`modals`, the mode row, panel flags). Every persisted key is declared once in `PREFS` and read and written only through that module's `readPref`, `writePref`, `readStoredPref` (the raw stored value, or that storage is unavailable) and `removePref`.
 
 **The annotations and planet-session slices**: the planning-note tool, its options, selection, draft and its own undo lanes (`annotations.ts`, stepped through `state/history-lane.ts`), and the planet editor's state (`planet-session.ts`: `planetSession`, which is null outside the session and otherwise holds the entry being edited and the parked editor, `planetMaterial`, and `planetReturn`, the planet the Change a planet window shows selected after a session ends).
 
@@ -1194,7 +1198,7 @@ The Road family comes from the in-game path entries (`path-*`); each icon is als
 
 The exported surface is a set of pure reads on these maps: the lookups (`getCatalogItem`, `getOfferedItem`, `getCatalogByCategory`, `getPlaceableByCategory`, `getAllItems`, `getKnownItems`), the per-object questions (`categoryOf`, `isDecoration`), `getRoadMaterials` (the tile brush's surface list), and `catalogLoadValue` (the `LoadValueLookup` every `CommandExecutor` construction injects). There is no lazy loading and no hot-reload path; the one mutation door, `__setCatalogItem`, is test support (rule unit tests register controlled footprints). `getAllItems` returns the same array until the catalog changes, so a higher-layer memo cache keys on its identity.
 
-The category registry holds each category's facts once: its items, its search-term locale key, its effect tint, its stylize word, and, for categories placed item by item, the icon, Place menu action, shelf tab and menu keys, and its position on the Place menu, the shelf and the build checklist. `state/catalog-search.ts:searchCatalog` scores the offered items and takes the category words from its caller (`i18n/category-terms.ts:categorySearchTerms` gathers every locale's search words and shelf tab and Place menu names, the active locale's first, then English), so the store holds no copy.
+The category registry holds each category's facts once: its items, its search-term locale key, its effect tint, its stylize word, and, for categories placed item by item, the icon, Place menu action, shelf tab and menu keys, and its position on the Place menu, the shelf and the build checklist. `state/catalog-search.ts:searchCatalog` scores the offered items and takes the category words from its caller (`i18n/terms/category-terms.ts:categorySearchTerms` gathers every locale's search words and shelf tab and Place menu names, the active locale's first, then English), so the store holds no copy.
 
 `CatalogItem` (`types.ts`) carries the `PlacementTrait[]` array that drives `V-PLACE-TRAIT` (`rules/placement.ts`). Each trait is a tagged union variant; the rule iterates the trait list and dispatches to per-trait validation logic. Adding a new trait type therefore needs no change to the registry or executor: add it to the union in `types.ts`, handle it in `placement.ts`, and give any other module that asks about it a predicate in `core/model/traits.ts`, the one home for trait questions (`hasTrait`, `findTrait`, `isCoating`, `isBridge`, `isRamp`, `isCrossing`, `standsOnCoating` and the like), so no higher layer open-codes a trait scan or matches item ids. A new category is one entry in `config/catalog/categories.ts`, which holds its items and the facts the menus, shelf and checklist read.
 

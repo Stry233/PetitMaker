@@ -8,8 +8,8 @@ import { ANNOTATION_COLORS } from '../../../../config/annotation-palette';
 import { SELECTABLE_ANNOTATION_TAGS } from '../../../../config/annotation-tags';
 import { type AnnotationTool } from '../../../../state/editing/vocabulary';
 import { approvedTexts, onTextVerdicts, textVerdictsVersion } from '../../../../state/text-verdicts';
-import { ChunkBoundary } from '../../../primitives/ChunkBoundary';
-import { ChunkNotice } from '../../../chrome/guards/ChunkNotice';
+import { RenderBoundary } from '../../../primitives/RenderBoundary';
+import { ChunkNotice } from '../../../chrome/guards/FailureNotice';
 import { useSurfaceScope } from '../../../primitives/surface-scope';
 import { amplitude, presence, cssMotion } from '../../../design/motion';
 import { helpTargetAttr } from '../../../session/help-targets';
@@ -282,13 +282,13 @@ function TagRow() {
       <TagPill buttonRef={removeRef} label={<SignGlyph />} aria={t('annot.tag_remove_mode')} on={removing} disabled={!canRemove}
         onPress={() => setRemoving((on) => !on)} />
       {/* The card and its text check load when the add pill is first pressed. */}
-      <ChunkBoundary resetKey={adding} fallback={<ChunkNotice />}>
+      <RenderBoundary resetKey={adding} fallback={<ChunkNotice />}>
         <Suspense fallback={null}>
           <AnimatePresence>
             {adding && <NewTagCard key="new-tag" anchor={addRef} custom={allCustom} onClose={() => setAdding(false)} />}
           </AnimatePresence>
         </Suspense>
-      </ChunkBoundary>
+      </RenderBoundary>
     </div>
   );
 }

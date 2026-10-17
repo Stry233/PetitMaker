@@ -1,4 +1,4 @@
-import { providerName } from '../../i18n/providers';
+import { providerName } from '../../i18n/terms/providers';
 import { en } from '../../i18n/locales/en';
 import { zh } from '../../i18n/locales/zh';
 import { expect } from 'vitest';

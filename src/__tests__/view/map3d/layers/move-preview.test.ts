@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as THREE from 'three';
 import { OverlayLayer3D } from '../../../../view/map3d/layers/overlay-layer';
 import { setReducedMotion } from '../../../../platform/channels/motion-state';
-import { MoveOrigins3D } from '../../../../view/map3d/layers/move-origins';
+import { BodyOutlines3D } from '../../../../view/map3d/layers/body-outlines';
 import { MapRenderer3D } from '../../../../view/map3d/scene/map-renderer';
 import { ObjectLayer3D } from '../../../../view/map3d/layers/object-layer';
 import { InstanceSlots } from '../../../../view/map3d/geometry/instance-slots';
@@ -28,7 +28,7 @@ describe('3D object move preview', () => {
     const camera = new THREE.PerspectiveCamera(45, 1, .1, 100);
     camera.position.set(15, 15, 15);
     camera.lookAt(0, 0, 0);
-    const origins = new MoveOrigins3D(group, camera);
+    const origins = new BodyOutlines3D(group, { camera });
     origins.show(state, [original.id]);
     const line = group.children[0] as THREE.Mesh<THREE.BufferGeometry, THREE.MeshBasicMaterial>;
     expect(line.material.color.getHex()).toBe(0xffffff);
@@ -60,7 +60,7 @@ describe('3D object move preview', () => {
     setReducedMotion(false);
     let now = 0;
     const group = new THREE.Group();
-    const origins = new MoveOrigins3D(group, undefined, undefined, () => now);
+    const origins = new BodyOutlines3D(group, { nowMs: () => now });
     const state = fixture();
     origins.show(state, [original.id]);
     const mesh = group.children[0] as THREE.Mesh<THREE.BufferGeometry, THREE.MeshBasicMaterial>;

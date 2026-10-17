@@ -14,13 +14,14 @@ export interface SerializedProvenance {
   objects: { id: string; t: UnitTaint }[];
 }
 
-export function serializeProvenance(state: ProvenanceState): SerializedProvenance {
+/** `state` as a save writes it; with `onMap`, only the taint of objects it answers for. */
+export function serializeProvenance(state: ProvenanceState, onMap?: (id: string) => boolean): SerializedProvenance {
   const cells: { k: string; t: UnitTaint }[] = [];
   for (let y = 0; y < state.cellTaint.length; y++) {
     const row = state.cellTaint[y]; if (!row) continue;
     for (let x = 0; x < row.length; x++) { const t = row[x]; if (t) cells.push({ k: cellKey(x, y), t }); }
   }
-  const objects = [...state.objectTaint.entries()].map(([id, t]) => ({ id, t }));
+  const objects = [...state.objectTaint.entries()].filter(([id]) => !onMap || onMap(id)).map(([id, t]) => ({ id, t }));
   return { v: 1, ledger: state.ledger, session: state.session, cells, objects };
 }
 

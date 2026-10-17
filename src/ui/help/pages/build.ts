@@ -116,7 +116,7 @@ export const BUILD_PAGES: readonly HelpPage[] = [
       { kind: 'prose', anchor: 'objects-tabs', titleKey: 'help.objects.tabs_t', bodyKeys: ['help.objects.tabs_b1'], figure: { kind: 'surface', surface: 'object-shelf', captionKey: 'help.objects.shelf_figcap' } },
       { kind: 'prose', anchor: 'objects-pick', titleKey: 'help.select.pick_t', bodyKeys: ['help.select.pick_b1'] },
       {
-        kind: 'prose', anchor: 'objects-place', titleKey: 'help.objects.place_t', bodyKeys: ['help.objects.place_b1', 'help.objects.place_b2'],
+        kind: 'prose', anchor: 'objects-place', titleKey: 'help.objects.place_t', bodyKeys: ['help.objects.place_b1', 'help.objects.place_b2', 'help.objects.place_b3'],
         figure: { kind: 'demo', scene: 'spacing' },
       },
       {
@@ -132,6 +132,7 @@ export const BUILD_PAGES: readonly HelpPage[] = [
         kind: 'prose', anchor: 'objects-planting', titleKey: 'help.objects.planting_t', bodyKeys: ['help.objects.planting_b1'],
         figure: { kind: 'demo', scene: 'smartpatch' },
       },
+      { kind: 'prose', anchor: 'objects-houses', titleKey: 'help.objects.houses_t', bodyKeys: ['help.objects.houses_b1', 'help.objects.houses_b2', 'help.objects.houses_b3'] },
       { kind: 'callout', bodyKey: 'help.objects.co1' },
     ],
     qa: [

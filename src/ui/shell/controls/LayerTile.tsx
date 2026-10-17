@@ -1,5 +1,6 @@
 /** One floor of the layer panel: its name, how full it is, and its eye and lock. */
-import { tileOf, Row } from './layer-plate';
+import { chipShift, tileOf, Row } from './layer-plate';
+import { LayerRowPlate } from './LayerRowPlate';
 import { ActionButton } from '../../primitives/ActionButton';
 import { type CSSProperties } from 'react';
 import { motion } from 'framer-motion';
@@ -12,7 +13,7 @@ import { type LayerMode } from '../frame';
 import { useTransition } from '../../design/motion/use-motion';
 import { cssMotion } from '../../design/motion';
 import { frameZoomAttr } from '../../design/motion/zoom-corrected-radius';
-import { ACTIVE, ERROR, INK, INSET, PLATE_INK, TRACK } from '../../design/tokens';
+import { ERROR, INK, PLATE_INK, TRACK } from '../../design/tokens';
 import { TEXT } from '../units';
 import { useFrameReadableWeight, useFrameZoom, useZoomedLayoutTransform } from '../use-frame-zoom';
 
@@ -93,7 +94,9 @@ export function LayerTile({ row, mode, active, visible, locked, refused }: {
     >
       <span
         style={{
+          // On the leading column with the notes row's "?"; the opposite margin keeps the name where it was.
           width: tile.swatch, height: tile.swatch, borderRadius: radii.sm, flex: 'none',
+          marginLeft: chipShift(mode), marginRight: -chipShift(mode),
           background: band, opacity: visible ? 1 : 0.35,
         }}
       />
@@ -143,20 +146,15 @@ export function LayerTile({ row, mode, active, visible, locked, refused }: {
       {...shape}
       style={{ position: 'relative', padding: `${tile.padY}px ${tile.padX}px` }}
     >
-      <ActionButton
+      <LayerRowPlate
         {...shape}
-        interaction="row"
-        hoverFill={active ? undefined : INSET}
+        selected={active}
         aria-label={row.name}
-        aria-pressed={active}
         data-testid={`shell-layer-row-${row.elevation}`}
         // Pressing the pinned floor again unpins it, so the water brush follows the ground again.
         // Choosing a floor stands annotate down, or the panel would show two selected rows at once.
         onClick={() => selectLayer(row.elevation)}
-        style={{
-          ...btnReset, ...behind, background: active ? ACTIVE : 'transparent', cursor: cursors.clickable,
-          transition: cssMotion('layer.select.fade', ['background']),
-        }}
+        style={{ borderRadius: tile.radius }}
       />
       {locked ? (
         <motion.span

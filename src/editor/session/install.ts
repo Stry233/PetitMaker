@@ -19,6 +19,7 @@ import { autosave } from './autosave';
 import { editorPort } from './context';
 import { startEditorTools } from './editor-tools';
 import { installPlanetOverlays } from './planet-overlays';
+import { installRepairWatch } from './landmark-repair';
 import { onSessionLibraryChange, sessionLibraryPlace } from './planet-editing';
 
 /** Readies the page before the first render: the DOM stencil browser every shelf draws stencils
@@ -64,14 +65,15 @@ function watchSessionPlanetName(): () => void {
 
 /**
  * Schedules an autosave after every map edit and every change of the map, its notes or its
- * annotations, never while a planet session holds the scratch canvas. The map live at install, or
- * the first one installed after none, is saved as `initialize`.
+ * annotations, never while a planet session holds the scratch canvas or a landmark repair is under
+ * way, and not for the map a cancelled repair brings back, which the autosave already holds. The map
+ * live at install, or the first one installed after none, is saved as `initialize`.
  */
 function installAutosaveTriggers(): () => void {
   const bus = useEditorStore.getState().eventBus;
   const save = (): void => {
-    const { gridState: map, planetSession } = useEditorStore.getState();
-    if (map && !planetSession) autosave.schedule(map);
+    const { gridState: map, planetSession, repairSession } = useEditorStore.getState();
+    if (map && !planetSession && !repairSession) autosave.schedule(map);
   };
   bus.on('cells-changed', save);
   bus.on('objects-changed', save);
@@ -82,7 +84,9 @@ function installAutosaveTriggers(): () => void {
   const offStore = useEditorStore.subscribe((next, previous) => {
     const notesChanged = next.gridState?.notes !== notes;
     notes = next.gridState?.notes;
-    if (!next.gridState || next.planetSession) return;
+    if (!next.gridState || next.planetSession || next.repairSession) return;
+    const was = previous.repairSession;
+    if (was?.phase === 'hand' && next.gridState === was.cancelTo?.gridState) return;
     if (next.gridState !== previous.gridState || next.annotationsEpoch !== previous.annotationsEpoch || notesChanged) {
       if (previous.gridState) autosave.schedule(next.gridState);
       else autosave.schedule(next.gridState, 'initialize');
@@ -120,6 +124,7 @@ export function installEditorSession({ frameFlashMs }: EditorSessionOptions): ()
     startEditorTools(),
     watchRegionBrush(),
     installPlanetOverlays(frameFlashMs),
+    installRepairWatch(),
     installSelectionViewSync(),
     watchCustomTags(),
     watchSessionPlanetName(),

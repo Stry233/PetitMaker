@@ -77,16 +77,17 @@ function decorationCount(state: GridState): number {
 }
 
 describe('road contract: a press never deletes what a hand placed', () => {
-  it('roads: a tree standing in a house\'s gate strip survives the whole-map press', () => {
+  it('roads: a flower standing in a house\'s gate strip survives the whole-map press', () => {
     const kit = makeKit();
     const house = place(kit, 'building-myhouse', 20, 20);
     const rect = objectRect(house);
     const { clear } = buildingGate(rect, house.rotation);
-    // The clear strip's own footprint row plus the approach row beyond it — the tree goes on the
-    // approach row, off the door cell itself but still inside the reserved clearance zone.
+    // The clear strip's own footprint row plus the approach row beyond it — the plant goes on the
+    // approach row, off the door cell itself but still inside the reserved clearance zone. A flower,
+    // since a tree keeps a cell from a house (exclusionRadius).
     const outsideFootprint = (c: MacroCoord): boolean => !(c.x >= rect.x && c.x < rect.x + rect.w && c.y >= rect.y && c.y < rect.y + rect.h);
     const stripCell = clear.find((c) => outsideFootprint(c) && kit.state.cells[c.y]?.[c.x])!;
-    const tree = place(kit, 'tree-apple', stripCell.x, stripCell.y);
+    const plant = place(kit, 'flower-rose', stripCell.x, stripCell.y);
     // A flower on the open ground between the house and the hub: `roads` never needs to report a
     // route this can route around by construction (its occupied set excludes decorated cells), so
     // the honest assertion here is survival, not a `blocked` report — see the road-link case below
@@ -95,7 +96,7 @@ describe('road contract: a press never deletes what a hand placed', () => {
 
     const outcome = applyMacro(kit, 'roads', { seed: 1 });
     expect(outcome.changes, outcome.reason ?? '').toBeGreaterThan(0);
-    expect(kit.state.objects.has(tree.id), 'the gate-strip tree was swept').toBe(true);
+    expect(kit.state.objects.has(plant.id), 'the gate-strip flower was swept').toBe(true);
     expect(kit.state.objects.has(flower.id), 'the flower on open ground was swept').toBe(true);
   });
 

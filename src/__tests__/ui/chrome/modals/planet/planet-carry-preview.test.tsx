@@ -12,6 +12,7 @@ import { getMapTemplate } from '../../../../../config/maps';
 import { createGridState } from '../../../../../core/model/template';
 import type { GridState, MapTemplate } from '../../../../../core/model/types';
 import type { TransferPreview, TransferPreviewRequest } from '../../../../../editor/operations';
+import { useEditorStore } from '../../../../../state/store';
 
 interface Asked { state: GridState; target: MapTemplate; request: TransferPreviewRequest; answer: (p: TransferPreview | null) => void }
 const asked: Asked[] = [];
@@ -82,6 +83,17 @@ describe('the carry preview request', () => {
     expect(asked[0]!.request.signal.aborted).toBe(true);
     await answer(0, previewOf(tafa));
     expect(hook.result.current).toBeNull();
+    const p = previewOf(tafa);
+    await answer(1, p);
+    expect(hook.result.current).toBe(p);
+  });
+
+  it('asks again once the plan notes changed, since they carry and edit in place', async () => {
+    const hook = renderHook(() => useCarryPreview(map, tafa, true));
+    await answer(0, previewOf(tafa));
+    act(() => { useEditorStore.setState((s) => ({ annotationsEpoch: s.annotationsEpoch + 1 })); });
+    expect(hook.result.current).toBeNull();
+    expect(asked).toHaveLength(2);
     const p = previewOf(tafa);
     await answer(1, p);
     expect(hook.result.current).toBe(p);

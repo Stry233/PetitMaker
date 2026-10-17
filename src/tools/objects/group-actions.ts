@@ -245,8 +245,8 @@ export function deleteGroup(
   // A throw part-way takes the removals already applied back with it.
   const deleted = executor.transaction({ silent: true }, (tx) => {
     const n = members.reduce((count, obj) => {
-      // Probed before the command, or the hook has nothing left to animate once execute() emits
-      // objects-changed and the view destroys the wrapper for this id.
+      // Before the command, while the object still stands: the probe judges its removal, and the
+      // hook animates the body the view still draws.
       if (executor.getRegistry().validatePreCommand(removeObjectCommand(obj), state).length === 0) {
         onWillRemove?.(obj);
       }
@@ -263,17 +263,32 @@ export function deleteGroup(
   return { deleted: 0, kept: members.length, refusal: { cmd, errors } };
 }
 
-/** Whether `moveGroup` would be accepted — what the drag ghost tints itself by. Validates every
- *  member's destination with the whole group lifted, and refuses a locked member because its
- *  removal would refuse. Non-mutating. */
-export function previewGroupMove(
+/** What a group drag previews: whether `moveGroup` would be accepted, and each member as it would
+ *  land (a bridge or ramp snapped onto its span, as `planObjectMove` resolves a single move). */
+export interface GroupMovePlan {
+  valid: boolean;
+  landed: PlacedObject[];
+}
+
+/** Plans `moveGroup` without running it, what the drag ghost draws and tints itself by. Validates
+ *  every member's destination with the whole group lifted, and refuses a locked member because its
+ *  removal would refuse; a member whose removal is refused lands unresolved, as in
+ *  `planObjectPlacement`. Every member reads the one lifted view, which the probe cache keeps for the
+ *  whole drag, so a move costs one rule pass per member and never rebuilds the map's indexes.
+ *  Non-mutating. */
+export function planGroupMove(
   executor: CommandExecutor, state: GridState, ids: readonly string[], dx: number, dy: number,
-): boolean {
+): GroupMovePlan {
   const members = groupMembers(state, ids);
-  if (members.length === 0 || members.some((obj) => obj.locked)) return false;
+  const rules = executor.getRegistry();
   const probe = probeWithout(state, members);
-  return members.every((obj) => {
-    const cmd = placeObjectCommand(movedObject(state, obj, obj.position.x + dx, obj.position.y + dy));
-    return executor.getRegistry().validatePreCommand(cmd, probe.view, probe.scope).length === 0;
+  const cmds = members.map((obj) => placeObjectCommand(movedObject(state, obj, obj.position.x + dx, obj.position.y + dy)));
+  const landed = members.map((obj, i) => {
+    const cmd = cmds[i]!;
+    const removal = rules.validatePreCommand(removeObjectCommand(obj), state);
+    return removal.length > 0 ? cmd.object : rules.resolve(cmd, probe.view).object;
   });
+  const valid = members.length > 0 && !members.some((obj) => obj.locked)
+    && cmds.every((cmd) => rules.validatePreCommand(cmd, probe.view, probe.scope).length === 0);
+  return { valid, landed };
 }

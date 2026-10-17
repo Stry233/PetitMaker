@@ -12,6 +12,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { LOCALES } from '../../../../../core/model/locale';
 import type { CellSet } from '../../../../../core/grid/grids';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { MotionConfig } from 'framer-motion';
 
 vi.mock('../../../../../ui/shell/bars/generate/use-stencil-review', () => ({
   useStencilReview: () => ({ allowed: true, pending: false, note: null, retry: undefined }),
@@ -92,7 +93,7 @@ import {
 } from '../../../../../ui/shell/bars/generate/generate-shelf';
 import { batchSeeds, kindConfig } from '../../../../../tools/generation/kinds';
 import { IMAGE_POOL, sampleName } from '../../../../../ui/shell/bars/generate/stencil-samples';
-import { APP_NAME, brandName } from '../../../../../i18n/brand';
+import { APP_NAME, brandName } from '../../../../../i18n/terms/brand';
 import { ROW, SCROLL, SEARCH, SHELF_BOX, tabRowGap } from '../../../../../ui/shell/bars/objects/object-shelf';
 import { SHELF_SCALE, SHELF_TABS, standsInNameRow } from '../../../../../ui/shell/units';
 import { makeState, placeCmd } from '../../../../_support/map-state';
@@ -992,6 +993,49 @@ describe('the card you type', () => {
     await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Recipe: 31415' })); });
     await waitFor(() => expect(kit.state.generation?.seed).toBe(31415));
   }, 60_000);
+
+  /** Each kind's card is its own: a recipe number half-typed on one tab never shows up as another
+   *  tab's letters or number, and coming back finds the field as it was left. */
+  it('keeps what each tab typed to that tab', async () => {
+    installKit();
+    mount();
+    await settle();
+    const letters = () => screen.getByLabelText('Your own letters') as HTMLInputElement;
+    const open = async (name: string) => { fireEvent.click(screen.getByRole('tab', { name })); await settle(); };
+
+    fireEvent.change(field(), { target: { value: '12' } });
+    await open('Letter');
+    await waitFor(() => expect(letters().value).toBe(''));
+    fireEvent.change(letters(), { target: { value: 'AB' } });
+    await open('Planet');
+    await waitFor(() => expect((field() as HTMLInputElement).value).toBe(''));
+
+    await open('Maze');
+    await waitFor(() => expect((field() as HTMLInputElement).value).toBe('12'));
+    await open('Letter');
+    await waitFor(() => expect(letters().value).toBe('AB'));
+  }, 60_000);
+
+  it('files each tab\'s confirmed card on its own', async () => {
+    installKit();
+    mount();
+    await settle();
+    const open = async (name: string) => { fireEvent.click(screen.getByRole('tab', { name })); await settle(); };
+
+    await typeRecipe(24680);
+    await open('Letter');
+    fireEvent.change(screen.getByLabelText('Your own letters'), { target: { value: 'ABC' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Use this text' }));
+    await settle();
+    expect((await screen.findByRole('button', { name: 'Edit text' })).textContent).toBe('ABC ✎');
+    await open('Planet');
+    await waitFor(() => expect((field() as HTMLInputElement).value).toBe(''));
+
+    await open('Maze');
+    expect(await screen.findByRole('button', { name: 'Recipe: 24680' })).toBeTruthy();
+    await open('Letter');
+    expect((await screen.findByRole('button', { name: 'Edit text' })).textContent).toBe('ABC ✎');
+  }, 60_000);
 });
 
 /**
@@ -1863,4 +1907,42 @@ describe('the own card per build', () => {
     expect(screen.queryByTestId('shell-candidate-import')).toBeNull();
     expect(cards()).toBe(CANDIDATES);
   }, 30_000);
+});
+
+/**
+ * Reduced motion swaps every animated part for its settled state at once. Returning to a kind whose
+ * batch is cached repaints its pictures from promises while the row of names and the two scroll rows
+ * re-measure on each render, which must not feed itself into a render loop.
+ */
+describe('the shelf under reduced motion', () => {
+  it('walks Maze, Letter, Planet and back to Maze without failing', async () => {
+    __resetCandidateCache();
+    installKit();
+    setMapRenderer({
+      captureState: async () => ({ width: 1706, height: 1000, toDataURL: () => 'data:image/png;base64,x' }),
+    } as unknown as MapRenderer);
+    vi.mocked(barrelCandidate).mockImplementation((...args) => generateCandidate(...args));
+    const failed = vi.spyOn(console, 'error').mockImplementation(() => {});
+    useEditorStore.getState().setEditMode({ mode: 'generate' });
+    render(
+      <MotionConfig reducedMotion="always">
+        <I18nProvider>
+          <ScaleProvider value={0.5}>
+            <GenerateShelf />
+          </ScaleProvider>
+        </I18nProvider>
+      </MotionConfig>,
+    );
+    const pictured = (): number => screen.getAllByRole('button', { name: /^Recipe/ })
+      .filter((c) => c.querySelector('img[src^="data:image/png"]')).length;
+    await waitFor(() => expect(pictured()).toBe(CANDIDATES), { timeout: 20_000 });
+
+    for (const name of ['Letter', 'Planet', 'Maze']) {
+      fireEvent.click(screen.getByRole('tab', { name }));
+      await elapse(420);
+    }
+    await waitFor(() => expect(pictured()).toBe(CANDIDATES), { timeout: 20_000 });
+    expect(screen.getByRole('tab', { name: 'Maze' }).getAttribute('aria-selected')).toBe('true');
+    expect(failed.mock.calls.map((call) => String(call[0]))).toEqual([]);
+  }, 60_000);
 });

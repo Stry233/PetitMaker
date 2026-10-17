@@ -3,7 +3,8 @@
  * button is the app's camera contract; the tests below are that contract written down.
  */
 import { describe, it, expect, beforeEach } from 'vitest';
-import { createCameraGestures, DRAG_THRESHOLD, pinchZoom, type GestureCamera } from '../../../view/interaction/camera-gestures';
+import { createCameraGestures, pinchZoom, type GestureCamera } from '../../../view/interaction/camera-gestures';
+import { DRAG_THRESHOLD } from '../../../view/interaction/press/travel';
 import type { DragKind } from '../../../view/interaction/cursor-controller';
 
 interface Call { verb: string; args: number[] }

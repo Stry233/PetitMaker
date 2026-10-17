@@ -3,9 +3,9 @@ import { helpTranslations, loadHelpTables, loadLocale, localeTablesVersion, onLo
 import { useEditorStore } from '../state/store';
 import { landmarkItem } from '../state/catalog';
 import { ANCHOR_LANDMARK } from '../core/game/profile';
-import { brandName, GLYPH_NAME } from './brand';
+import { brandName, GLYPH_NAME } from './terms/brand';
 import type { Locale, LocalizedName } from '../core/model/locale';
-import type { TextKey, Translate } from './keys';
+import type { ParamsFor, TextKey, Translate } from './keys';
 import { localeTag } from './locale-info';
 
 /** Resolve a content name for the active locale, falling back to English. */
@@ -15,13 +15,13 @@ export function localizedName(name: LocalizedName, locale: Locale): string {
 
 const I18nContext = createContext<Translate>((key) => key);
 
-/** A translator answering in `locale`, carrying it for the quantity formatting `rule-copy.ts` does. */
+/** A translator answering in `locale`, carrying it for the quantity formatting `terms/rule-copy.ts` does. */
 export function translatorFor(locale: Locale): Translate {
-  return Object.assign((key: TextKey, params?: Record<string, string | number>) => translateFor(locale, key, params), { locale });
+  return Object.assign(<K extends TextKey>(key: K, params?: ParamsFor<K>) => translateFor(locale, key, params), { locale });
 }
 
 /** Tokens every string may use without a caller passing them, each read from its one source: `{app}`
- *  and `{glyph}` from brand.ts, `{landmark}` from the anchor landmark's catalog name, empty for a game
+ *  and `{glyph}` from terms/brand.ts, `{landmark}` from the anchor landmark's catalog name, empty for a game
  *  without one. A locale may leave one out, since no caller supplies it. */
 export const RESOLVED_TOKENS: Readonly<Record<string, (locale: Locale) => string>> = {
   app: brandName,
@@ -96,7 +96,7 @@ const withoutEllipsis = (label: string): string => label.replace(/(…|\.\.\.)$/
  *  scanned again, so a param carrying typed text such as `{n}` stays literal. Params are inserted as
  *  written; quantities go through `quantityParams` first. A numeric `{n}` picks the plural form, so
  *  callers pass the base key whatever the count. */
-export function translateFor(locale: Locale, key: TextKey, params?: Record<string, string | number>): string {
+export function translateFor<K extends TextKey>(locale: Locale, key: K, params?: ParamsFor<K>): string {
   const count = countOf(params?.n);
   const text = lookup(locale, key, count) ?? lookup('en', key, count) ?? key;
   if (!text.includes('{')) return text;
@@ -111,7 +111,7 @@ export function translateFor(locale: Locale, key: TextKey, params?: Record<strin
 
 /** Hook-free translate for imperative code outside the provider (e.g. toasts in event
  *  handlers). Reads the active locale from the store, like other imperative store access. */
-export function translate(key: TextKey, params?: Record<string, string | number>): string {
+export function translate<K extends TextKey>(key: K, params?: ParamsFor<K>): string {
   return translateFor(useEditorStore.getState().locale, key, params);
 }
 

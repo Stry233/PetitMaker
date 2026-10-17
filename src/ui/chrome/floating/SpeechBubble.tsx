@@ -5,7 +5,7 @@
 import { useMemo, useState, type CSSProperties, type ReactNode } from 'react';
 import { motion } from 'framer-motion';
 import { useT } from '../../../i18n/context';
-import { timedHint } from '../../../i18n/timed-hint';
+import { timedHint } from '../timed-hint';
 import { cursors, font, z, radii } from '../../design/styles';
 import { presence } from '../../design/motion';
 import { roleFont } from '../../design/text-weight';

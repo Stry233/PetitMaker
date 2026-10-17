@@ -60,8 +60,8 @@ describe('buildChecklistText', () => {
         '  Dirt: 5 cells',
         '',
         'Terrain, layer by layer:',
-        '  Ground water 2',
-        '  Layer 1 10 cells',
+        '  Layer 1 water 2',
+        '  Layer 2 10 cells',
       ].join('\n'),
     );
   });
@@ -85,7 +85,7 @@ describe('buildChecklistText', () => {
     const text = buildChecklistText(single, 'en', t);
     expect(text).toContain('Road surfaces (1 cell)');
     expect(text).toContain('  Dirt: 1 cell');
-    expect(text).toContain('  Layer 1 1 cell');
+    expect(text).toContain('  Layer 2 1 cell');
   });
 
   it('names what it cannot recognize', () => {

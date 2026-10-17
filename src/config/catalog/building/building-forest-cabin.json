@@ -23,6 +23,16 @@
     },
     {
       "type": "coatingSupport"
+    },
+    {
+      "type": "exclusionRadius",
+      "radius": 1
+    },
+    {
+      "type": "groundZones",
+      "onGrass": true,
+      "onSand": true,
+      "acrossBoundary": false
     }
   ]
 }

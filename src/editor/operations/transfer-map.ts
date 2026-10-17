@@ -15,24 +15,24 @@ import { mapRevisionOf } from '../../state/map-revision';
 
 export { hasCarriableContent } from '../../tools/generation/transfer';
 
-/** What a transfer preview was worked out from: the map's revision and whether it ignores the
- *  chunk load. A preview answers only while this key holds. */
-export function transferPreviewKey(state: GridState): string {
-  return `${mapRevisionOf(state)}|${!!state.ignoreChunkLoad}`;
+/** What a transfer preview was worked out from: the map's revision, whether it ignores the chunk
+ *  load, and the store's notes epoch, since plan notes change in place without moving the revision.
+ *  A preview answers only while this key holds. */
+export function transferPreviewKey(state: GridState, notesEpoch: number): string {
+  return `${mapRevisionOf(state)}|${!!state.ignoreChunkLoad}|${notesEpoch}`;
 }
 
 /** One transfer preview per map version and destination, so a view change never asks again. */
 const previews = new WeakMap<GridState, { key: string; byTarget: Map<string, TransferPreview> }>();
 
-/** The preview remembered for `state` as it stands and `target`, or null. */
-export function cachedTransferPreview(state: GridState, target: MapTemplate): TransferPreview | null {
+/** The preview remembered for `state` under `key` (`transferPreviewKey`) and `target`, or null. */
+export function cachedTransferPreview(state: GridState, key: string, target: MapTemplate): TransferPreview | null {
   const entry = previews.get(state);
-  return entry && entry.key === transferPreviewKey(state) ? entry.byTarget.get(target.id) ?? null : null;
+  return entry && entry.key === key ? entry.byTarget.get(target.id) ?? null : null;
 }
 
-/** Remembers `preview` for `state` as it stands and `target`. */
-export function rememberTransferPreview(state: GridState, target: MapTemplate, preview: TransferPreview): void {
-  const key = transferPreviewKey(state);
+/** Remembers `preview` for `state` under `key` (`transferPreviewKey`) and `target`. */
+export function rememberTransferPreview(state: GridState, key: string, target: MapTemplate, preview: TransferPreview): void {
   let entry = previews.get(state);
   if (!entry || entry.key !== key) {
     entry = { key, byTarget: new Map() };

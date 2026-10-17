@@ -17,10 +17,11 @@ import { encodeCells } from '../../../../core/model/grid-wire';
 import type { WireTransferPreview } from '../../../../tools/generation/run/candidate-wire';
 import type { RuleDispatcher } from '../../../../core/model/rule-dispatcher';
 import { ANCHOR_LANDMARK } from '../../../_support/anchor';
+import type { AnnotationsState } from '../../../../core/model/annotations';
 
 type Pool = typeof import('../../../../tools/generation/run/candidate-pool');
 
-interface Posted { worker: FakeWorker; id: number; kind: string; hasTemplate: boolean; templates: string[]; rules?: string }
+interface Posted { worker: FakeWorker; id: number; kind: string; hasTemplate: boolean; templates: string[]; rules?: string; annotations?: AnnotationsState }
 
 /** Which job ids the next `postMessage` refuses. Armed per test. */
 let failPost: (id: number) => boolean = () => false;
@@ -41,14 +42,15 @@ class FakeWorker {
   }
 
   postMessage(msg: unknown, _transfer?: unknown[]): void {
-    const { id, kind, grid, templates, rules: set } = msg as {
-      id: number; kind: string; grid: { template?: unknown }; templates?: MapTemplate[]; rules?: string;
+    const { id, kind, grid, templates, rules: set, annotations } = msg as {
+      id: number; kind: string; grid: { template?: unknown }; templates?: MapTemplate[]; rules?: string; annotations?: AnnotationsState;
     };
     if (failPost(id)) throw new Error('DataCloneError: could not be cloned');
     totalPosts++;
     posted.push({
       worker: this, id, kind, hasTemplate: grid.template !== undefined, templates: (templates ?? []).map((t) => t.id),
       ...(set ? { rules: set } : {}),
+      ...(annotations ? { annotations } : {}),
     });
   }
 
@@ -220,7 +222,7 @@ describe('a carry preview in the pool', () => {
   const answerFor = (state: GridState): { preview: WireTransferPreview } => ({
     preview: {
       grid: { wire: encodeCells(state.cells, 2, 2), objects: [], lockedLayers: [], cellsVersion: 3, objectsVersion: 4 },
-      dropped: [{ x: -1, y: 0 }], moved: { cells: 1, objects: 0 }, droppedCounts: { cells: 1, objects: 0 },
+      dropped: [{ x: -1, y: 0, grid: 'terrain' }], moved: { cells: 1, objects: 0 }, droppedCounts: { cells: 1, objects: 0 },
     },
   });
   const planet = (id: string): MapTemplate => ({ ...tinyState().template, id });
@@ -240,7 +242,7 @@ describe('a carry preview in the pool', () => {
     const preview = await first;
     expect(preview?.state.template).toBe(target);
     expect(preview?.state.cellsVersion).toBe(3);
-    expect(preview?.dropped).toEqual([{ x: -1, y: 0 }]);
+    expect(preview?.dropped).toEqual([{ x: -1, y: 0, grid: 'terrain' }]);
     expect(preview?.droppedCounts).toEqual({ cells: 1, objects: 0 });
 
     const again = pool.runTransferPreviewInPool(state, target);
@@ -259,6 +261,20 @@ describe('a carry preview in the pool', () => {
     expect(posted[0]).toMatchObject({ kind: 'transfer', hasTemplate: true, templates: [] });
     await deliverOne(answerFor(state));
     expect((await job)?.state.template).toBe(state.template);
+  });
+
+  it('sends the map\'s plan notes with the grid and revives the notes it is answered with', async () => {
+    const pool = await loadPool();
+    const state = tinyState();
+    const notes: AnnotationsState = {
+      items: [{ kind: 'chip', id: 'c', x: 1, y: 1, tag: 'homes', size: 'm', color: '#ff0000' }], visible: false, locked: false,
+    };
+    state.annotations = notes;
+    const job = pool.runTransferPreviewInPool(state, planet('pool-target'));
+    expect(posted[0]!.annotations).toEqual(notes);
+    const answer = answerFor(state);
+    await deliverOne({ preview: { ...answer.preview, annotations: notes } });
+    expect((await job)?.state.annotations).toEqual(notes);
   });
 
   it('resolves null without posting when cancelled while it waits', async () => {

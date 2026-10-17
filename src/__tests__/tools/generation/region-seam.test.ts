@@ -274,8 +274,9 @@ describe('what a region run reports when it built nothing', () => {
       const t = getCell(state.cells, c.x, c.y)?.terrain;
       return [`${c.x},${c.y}`, t ? `${t.type}:${t.elevation}` : '-'] as const;
     }));
+    // A cap below the support the plateau's top needs, so the outside wants all of the region.
     const outcome = await generateMap(ctx, {
-      config: defaultConfig('designed', { maxElevation: 8, richness: 0.7, seed: 42, region }),
+      config: defaultConfig('designed', { maxElevation: 4, richness: 0.7, seed: 42, region }),
       region,
     });
     expect(outcome.violations).toEqual([]);

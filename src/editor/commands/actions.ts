@@ -8,7 +8,7 @@
 import { placedCategories } from '../../config/catalog/categories';
 import { inEdition, SUPPORTS_JSON_FILES } from '../../platform/build/edition';
 import type { I18nKey } from '../../i18n/keys';
-import { contentTypeOf, designModeArming, isContentMode, modeOpenIn, type ContentType } from '../../state/editing/edit-mode';
+import { contentTypeOf, designModeArming, isAnnotating, isContentMode, modeOpenIn, type ContentType } from '../../state/editing/edit-mode';
 import type { DesignMode } from '../../state/editing/vocabulary';
 import { useEditorStore } from '../../state/store';
 
@@ -54,8 +54,9 @@ export const ACTION_BY_ID: ReadonlyMap<string, EditorAction> = new Map(ACTIONS.m
  */
 export function openBuildSurface(design: DesignMode): void {
   const s = useEditorStore.getState();
-  if (s.editMode.mode === 'annotate') return;
+  if (isAnnotating(s)) return;
   const wanted = isContentMode(s.editMode.mode) ? s.editMode.mode : contentTypeOf(s);
+  if (s.repairSession?.phase === 'hand') return;
   const surface = modeOpenIn(s.planetSession, wanted) ? wanted : 'mountain';
   s.setEditMode({ mode: surface, arm: designModeArming(design) });
 }

@@ -4,6 +4,7 @@ import { isBuildableZone } from '../../../core/game/zones';
 import { TerrainType, type MacroCoord } from '../../../core/model/types';
 import { type AutoEdgeCut } from '../../../state/editing/vocabulary';
 import { getObjectIndex } from '../../../state/object-index';
+import { doorstepTerrain } from '../../../state/object-geometry';
 import type { MacroContext } from '../context';
 import { isClean, isWaterAt, paint, surfaceAt, trimWithin } from './terrain';
 import { paintBleedsOffBuildable } from '../../../rules/zone-restriction';
@@ -27,7 +28,8 @@ export class TerrainDraft {
     this.height = ctx.state.template.height;
     this.region = region?.length ? new Set(region.map(c => this.key(c))) : null;
     this.protectedCells = new Uint8Array(this.width * this.height);
-    for (const { rect } of getObjectIndex(ctx.state).entries) {
+    for (const { obj, item, rect } of getObjectIndex(ctx.state).entries) {
+      for (const c of doorstepTerrain(obj, item)) if (this.inside(c)) this.protectedCells[this.key(c)] = 1;
       for (let y = Math.max(0, Math.floor(rect.y)); y <= Math.min(this.height - 1, Math.ceil(rect.y + rect.h)); y++) {
         for (let x = Math.max(0, Math.floor(rect.x)); x <= Math.min(this.width - 1, Math.ceil(rect.x + rect.w)); x++) {
           if (rectsOverlap(rect, terrainCellRect({ x, y }))) this.protectedCells[y * this.width + x] = 1;

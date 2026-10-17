@@ -48,6 +48,14 @@ describe('zone border paths', () => {
     }
   });
 
+  it('draws a half-grid zone in map cells, half a cell over from its whole-cell twin', () => {
+    const whole = zoneBorderPaths(rect(2, 2, 3, 2), 0.1, 'object')[0]!;
+    const halves = rect(5, 4, 8, 5);
+    const half = zoneBorderPaths(halves, 0.1, 'half')[0]!;
+    const sorted = (path: Array<[number, number]>) => path.map(([x, y]) => `${x.toFixed(4)},${y.toFixed(4)}`).sort();
+    expect(sorted(half)).toEqual(sorted(whole.map(([x, y]) => [x + 0.5, y] as [number, number])));
+  });
+
   it('keeps a hole as its own closed path', () => {
     const ring = rect(0, 0, 4, 4).filter((c) => !(c.x === 2 && c.y === 2));
     expect(zoneBorderPaths(ring, 0.1)).toHaveLength(2);

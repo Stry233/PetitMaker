@@ -1,12 +1,13 @@
 /** Planning annotations are independent of buildable map content and rule validation. Coordinates
- * use macro-grid cell units; zones and measurements use whole cells, while chips and routes may be fractional. */
+ * use macro-grid cell units. Zones lie on the placement grid, or on the half grid when a half-cell
+ * step needs it; measurements count whole cells whose corners lie on the half-cell lattice; the
+ * route tool lays anchors on that lattice, and chips are free. */
 import type { MacroCoord } from './types';
 import { type CurveAnchor } from '../base/spline';
 import { generateId } from './object-id';
-import { cellCentre } from '../grid/grid-convert';
-import { cellKey } from '../grid/rect';
-import { gridCellAt } from '../grid/grids';
-import { GRIDS, PLACEMENT_GRID } from '../game/profile';
+import { cellKey, snapHalf } from '../grid/rect';
+import { gridCellAt, gridCellCentre, gridCellSize } from '../grid/grids';
+import { GRIDS, HALF_GRID, PLACEMENT_GRID } from '../game/profile';
 
 /** A tag the map's author typed. Its text is drawn only once the text check has approved it. */
 export interface CustomTag {
@@ -65,7 +66,10 @@ export function keepCustomTags(state: AnnotationsState, keep: (tag: CustomTag) =
 export interface ZoneNote {
   kind: 'zone';
   id: string;
+  /** Cells of the zone's grid (`zoneGrid`). */
   cells: MacroCoord[];
+  /** Set when the cells lie on the half grid; a zone whole cells hold omits it (`zoneCellsOnGrid`). */
+  grid?: typeof HALF_GRID;
   /** A hex from `ANNOTATION_COLORS` today; any CSS hex renders. */
   color: string;
   tag: NoteTag | null;
@@ -166,14 +170,16 @@ export function mergeZones(items: readonly MapAnnotation[], ids: readonly string
   if (zones.length < 2) return null;
   const [head, ...rest] = zones as [ZoneNote, ...ZoneNote[]];
   const restIds = new Set(rest.map((z) => z.id));
-  const cells = addZoneCells(head.cells, rest.flatMap((z) => z.cells));
-  const merged = items.map((n) => (n.id === head.id ? { ...head, cells } : n)).filter((n) => !restIds.has(n.id));
+  const joined = zones.every((z) => !z.grid)
+    ? { ...head, cells: addZoneCells(head.cells, rest.flatMap((z) => z.cells)) }
+    : zoneWithHalfCells(head, addZoneCells(zoneHalfCells(head), rest.flatMap((z) => zoneHalfCells(z))));
+  const merged = items.map((n) => (n.id === head.id ? joined : n)).filter((n) => !restIds.has(n.id));
   return { items: merged, head: head.id };
 }
 
-/** Whether two points span a measurement: whole cells on one row or column. */
+/** Whether two points span a measurement: cells cornered on the half-cell lattice, on one row or column. */
 export function isMeasureSpan(points: readonly [MacroCoord, MacroCoord]): boolean {
-  if (points.some((p) => !Number.isInteger(p.x) || !Number.isInteger(p.y))) return false;
+  if (points.some((p) => !onHalfLattice(p.x) || !onHalfLattice(p.y))) return false;
   return points[0].x === points[1].x || points[0].y === points[1].y;
 }
 
@@ -194,15 +200,94 @@ export function nextZoneNumber(annotations: readonly MapAnnotation[]): number {
   return max + 1;
 }
 
-/** Note cells are placement-grid cells, the grid roads and objects lie on, so a zone's edges meet
- *  road and object edges exactly in both views. Return the cell under the point `p`. */
-export function zoneCellAt(p: { x: number; y: number }): MacroCoord {
-  return gridCellAt(GRIDS[PLACEMENT_GRID], p.x, p.y);
+/** The grids a zone's cells can lie on. */
+export type ZoneGridId = typeof PLACEMENT_GRID | typeof HALF_GRID;
+
+/** The grid `zone`'s cells lie on. */
+export function zoneGrid(zone: Pick<ZoneNote, 'grid'>): ZoneGridId {
+  return zone.grid ?? PLACEMENT_GRID;
 }
 
-/** The drawn centre of a note cell. */
-export function zoneCellCentre(c: MacroCoord): { x: number; y: number } {
-  return cellCentre(c);
+/** Note cells are placement-grid cells, the grid roads and objects lie on, so a zone's edges meet
+ *  road and object edges exactly in both views; a zone with a half-cell step lies on the half grid.
+ *  Return the cell of `grid` under the point `p`. */
+export function zoneCellAt(p: { x: number; y: number }, grid: ZoneGridId = PLACEMENT_GRID): MacroCoord {
+  return gridCellAt(GRIDS[grid], p.x, p.y);
+}
+
+/** The drawn centre of a note cell of `grid`. */
+export function zoneCellCentre(c: MacroCoord, grid: ZoneGridId = PLACEMENT_GRID): { x: number; y: number } {
+  return gridCellCentre(GRIDS[grid], c);
+}
+
+/** Half-grid cells per placement-grid cell along one axis. */
+export const HALVES = Math.round(gridCellSize(GRIDS[PLACEMENT_GRID]) / gridCellSize(GRIDS[HALF_GRID]));
+
+/** Whether `v` lies on the half-cell lattice. */
+function onHalfLattice(v: number): boolean {
+  return Number.isInteger(v * HALVES);
+}
+
+/** The whole cell a note step lands on: centred on the half-cell lattice point nearest `p`, so the
+ *  steps are half a cell and the cell's corner lies on that lattice. */
+export function noteStepCell(p: { x: number; y: number }): MacroCoord {
+  return { x: snapHalf(p.x) - 0.5, y: snapHalf(p.y) - 0.5 };
+}
+
+/** `zone`'s cells on the half grid: a placement-grid cell is its four halves. */
+export function zoneHalfCells(zone: Pick<ZoneNote, 'cells' | 'grid'>): MacroCoord[] {
+  if (zone.grid === HALF_GRID) return zone.cells;
+  const out: MacroCoord[] = [];
+  for (const c of zone.cells) {
+    for (let dy = 0; dy < HALVES; dy++) for (let dx = 0; dx < HALVES; dx++) out.push({ x: c.x * HALVES + dx, y: c.y * HALVES + dy });
+  }
+  return out;
+}
+
+/** The half-grid cells `half` on the coarsest grid that holds them: the placement grid when every
+ *  whole cell they touch is complete, else the half grid. Each zone has the one stored form. */
+export function zoneCellsOnGrid(half: readonly MacroCoord[]): { cells: MacroCoord[]; grid: ZoneGridId } {
+  const set = zoneCellSet(half);
+  const whole: MacroCoord[] = [];
+  const seen = new Set<string>();
+  for (const c of half) {
+    const w = { x: Math.floor(c.x / HALVES), y: Math.floor(c.y / HALVES) };
+    const k = cellKey(w.x, w.y);
+    if (seen.has(k)) continue;
+    seen.add(k);
+    for (let dy = 0; dy < HALVES; dy++) {
+      for (let dx = 0; dx < HALVES; dx++) {
+        if (!set.has(cellKey(w.x * HALVES + dx, w.y * HALVES + dy))) return { cells: [...half], grid: HALF_GRID };
+      }
+    }
+    whole.push(w);
+  }
+  return { cells: whole, grid: PLACEMENT_GRID };
+}
+
+/** `zone` holding the half-grid cells `half`, in its stored form (`zoneCellsOnGrid`). */
+export function zoneWithHalfCells<Z extends ZoneNote>(zone: Z, half: readonly MacroCoord[]): Z {
+  const { grid: _, ...rest } = zone;
+  const on = zoneCellsOnGrid(half);
+  return (on.grid === HALF_GRID ? { ...rest, cells: on.cells, grid: HALF_GRID } : { ...rest, cells: on.cells }) as Z;
+}
+
+/** `zone` moved by (dx, dy) cells, each rounded to the nearest half cell. */
+function movedZone<Z extends ZoneNote>(zone: Z, dx: number, dy: number): Z {
+  const hx = snapHalf(dx), hy = snapHalf(dy);
+  if (!zone.grid && Number.isInteger(hx) && Number.isInteger(hy)) return { ...zone, cells: zone.cells.map((c) => ({ x: c.x + hx, y: c.y + hy })) };
+  const sx = hx * HALVES, sy = hy * HALVES;
+  return zoneWithHalfCells(zone, zoneHalfCells(zone).map((c) => ({ x: c.x + sx, y: c.y + sy })));
+}
+
+/** `note` moved by (dx, dy) cells: zones, measurements and routes in half-cell steps, chips by the
+ *  exact amount. Points and cells are new objects; colour, tag and id are shared. */
+export function movedNote(note: MapAnnotation, dx: number, dy: number): MapAnnotation {
+  if (note.kind === 'zone') return movedZone(note, dx, dy);
+  if (note.kind === 'chip') return { ...note, x: note.x + dx, y: note.y + dy };
+  const hx = snapHalf(dx), hy = snapHalf(dy);
+  if (note.kind === 'measure') return { ...note, points: note.points.map((p) => ({ x: p.x + hx, y: p.y + hy })) as [MacroCoord, MacroCoord] };
+  return { ...note, points: note.points.map((pt) => ({ ...pt, x: pt.x + hx, y: pt.y + hy })) };
 }
 
 /** Build the shared zone-cell lookup used by rendering and hit testing. */

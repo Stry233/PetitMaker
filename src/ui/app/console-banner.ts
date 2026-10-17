@@ -1,7 +1,7 @@
 import logo from '../../assets/console-logo.svg?raw';
 import { LEGAL } from '../../legal/config';
 import { APP_VERSION } from '../../platform/build/build-info';
-import { APP_NAME } from '../../i18n/brand';
+import { APP_NAME } from '../../i18n/terms/brand';
 import { MAP_INK, MAP_TEXT } from '../../assets/brand-palette';
 import { ACTIVE } from '../design/tokens';
 

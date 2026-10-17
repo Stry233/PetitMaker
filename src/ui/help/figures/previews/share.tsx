@@ -213,7 +213,7 @@ async function candidateShot(seed: number, aspect: number): Promise<string | nul
   world.beginStroke();
   world.generateDesigned({ seed, richness: 0.7, maxElevation: 4, mode: 'mixed', region: null });
   world.commit();
-  const png = await renderThumbnail(world.state, 480, aspect);
+  const png = await renderThumbnail(world.state, 480, { aspect });
   if (png) candidateShots.set(seed, png);
   return png;
 }

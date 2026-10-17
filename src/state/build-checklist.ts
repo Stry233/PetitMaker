@@ -20,6 +20,7 @@ import { getAllItems, getCatalogByCategory, getCatalogItem, landmarkItems } from
 import { getMapStats } from './map-stats';
 import { getObjectIndex } from './object-index';
 import { placedCategories } from '../config/catalog/categories';
+import { layerName } from '../i18n/terms/layer-name';
 
 const CHECKLIST = placedCategories('checklistRank');
 
@@ -173,7 +174,7 @@ export function buildChecklistText(list: BuildChecklist, locale: Locale, t: Tran
   if (list.layers.length > 0) {
     lines.push('', `${t('checklist.sec_terrain')}:`);
     for (const layer of list.layers) {
-      const label = layer.layer === 0 ? t('export.layer_ground') : t('export.layer_level', { n: layer.layer });
+      const label = layerName(t, layer.layer);
       const bits: string[] = [];
       if (layer.blocks > 0) bits.push(t('units.cells', { n: layer.blocks }));
       if (layer.water > 0) bits.push(t('checklist.water_part', { n: layer.water }));

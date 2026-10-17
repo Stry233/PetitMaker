@@ -1,16 +1,21 @@
 /**
  * Every refusal message a rule can raise, with the category key a toast leads with. A rule's
- * `fail` accepts only these keys, and `i18n/rule-copy.ts` reads the category from here. A refusal a
- * tool raises itself has its category in `i18n/rule-copy.ts:TOOL_REFUSALS`.
+ * `fail` accepts only these keys, and `i18n/terms/rule-copy.ts` reads the category from here. A refusal a
+ * tool raises itself has its category in `i18n/terms/rule-copy.ts:TOOL_REFUSALS`.
  */
 import type { I18nKey } from '../i18n/keys';
 
 export const RULE_MESSAGES = {
   'error.zone_restricted': 'rule.category.placement',
   'error.landmark_coast': 'rule.category.placement',
+  'error.across_zone_boundary': 'rule.category.placement',
   'error.placement_not_flat': 'rule.category.placement',
   'error.placement_off_grid': 'rule.category.placement',
+  'error.door_near_drop': 'rule.category.placement',
+  'error.door_near_rise': 'rule.category.placement',
   'error.too_close_same_kind': 'rule.category.placement',
+  'error.house_too_close': 'rule.category.placement',
+  'error.house_tree_too_close': 'rule.category.placement',
   'error.object_overlap': 'rule.category.placement',
   'error.object_on_road': 'rule.category.placement',
   'error.max_count': 'rule.category.placement',

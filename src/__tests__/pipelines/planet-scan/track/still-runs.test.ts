@@ -39,9 +39,10 @@ describe('still runs', () => {
     const verdicts = [];
     const closed = [];
     let seed = 10;
+    let k = 0;
     for (let s = 0; s < scenes.length; s++) {
       for (let f = 0; f < lengths[s]!; f++) {
-        const v = grouper.push(frame(scenes[s]!, seed++, lines[s]![f]!));
+        const v = grouper.push(frame(scenes[s]!, seed++, lines[s]![f]!), k++ / 30);
         verdicts.push(v);
         if (v.closed) closed.push(v.closed);
       }
@@ -54,6 +55,9 @@ describe('still runs', () => {
     expect(verdicts.map((v) => v.index)).toEqual([...Array(8).fill(0), ...Array(4).fill(1), ...Array(11).fill(2)]);
     // The four-frame run is too short to report.
     expect(closed.map((r) => [r.distinct, r.frames])).toEqual([[0, 8], [2, 11]]);
+    // A run lasts from its first frame to its last.
+    expect(closed[0]!.seconds).toBeCloseTo(7 / 30, 9);
+    expect(closed[1]!.seconds).toBeCloseTo(10 / 30, 9);
 
     const stats = (values: number[]) => {
       const m = values.reduce((t, v) => t + v, 0) / values.length;
@@ -71,7 +75,7 @@ describe('still runs', () => {
 
   it('reports nothing for a recording without still runs', () => {
     const grouper = new StillRunGrouper(W, H, { minFrames: 6 });
-    for (let s = 0; s < 5; s++) expect(grouper.push(frame(ground(20 + s), s, 0)).closed).toBeNull();
+    for (let s = 0; s < 5; s++) expect(grouper.push(frame(ground(20 + s), s, 0), s / 30).closed).toBeNull();
     expect(grouper.finish()).toBeNull();
     expect(grouper.distinct).toBe(5);
   });

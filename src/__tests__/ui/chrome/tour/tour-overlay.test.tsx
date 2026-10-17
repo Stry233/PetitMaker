@@ -14,7 +14,7 @@ import { useChromeScale } from '../../../../ui/design/scale';
 import { __resetUiZoomAnim } from '../../../../ui/design/ui-zoom-anim';
 import { placeBeside, VIEWPORT_MARGIN } from '../../../../ui/chrome/tour/place-beside';
 import { setStoreState } from '../../../_support/store';
-import { brandName } from '../../../../i18n/brand';
+import { brandName } from '../../../../i18n/terms/brand';
 
 const wrapper = ({ children }: { children: React.ReactNode }) => <I18nProvider>{children}</I18nProvider>;
 

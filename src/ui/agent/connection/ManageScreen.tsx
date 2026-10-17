@@ -1,5 +1,5 @@
 import { Pill } from '../../primitives/Pill';
-import { providerName } from '../../../i18n/providers';
+import { providerName } from '../../../i18n/terms/providers';
 /*
  * The post-setup connection surface: provider, custom endpoint, model and oversight, in that
  * dependency order, without changing the session phase. Connection changes apply to the next job;

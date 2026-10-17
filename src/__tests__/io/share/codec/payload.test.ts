@@ -164,6 +164,20 @@ describe('payload frame', () => {
     const dec = await decodeMapPayload(await encodeMapPayload(state, null, META));
     expect(dec.annotations).toEqual(state.annotations);
   });
+  it('round-trips half-grid zones, half-cell measurements and routes in a share code', async () => {
+    const state = registerSynthetic(makeState(12, 12));
+    state.annotations = {
+      items: [
+        { kind: 'zone', id: 'h1', cells: [{ x: 5, y: 6 }, { x: 6, y: 6 }], grid: 'half', color: '#FF8A7A', tag: 'homes', num: 1, size: 'm' },
+        { kind: 'measure', id: 'm1', points: [{ x: 1.5, y: 4 }, { x: 8, y: 4 }], color: '#FFB347' },
+        { kind: 'route', id: 'r1', points: [{ x: 1.5, y: 1 }, { x: 4.5, y: 2.5 }], color: '#2FBF9B', dashed: true },
+      ],
+      visible: true,
+      locked: false,
+    };
+    const dec = await decodeMapPayload(await encodeMapPayload(state, null, META));
+    expect(dec.annotations).toEqual(state.annotations);
+  });
   it('rejects a valid annotation record that does not match the content hash', async () => {
     const state = registerSynthetic(makeState(12, 12));
     state.annotations = annotations();

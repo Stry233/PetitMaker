@@ -1,6 +1,6 @@
 import { srgbToLinear } from '../../../core/base/color';
 import { SCAN_PROFILE } from '../profile';
-import type { RgbaImage } from '../types';
+import type { GreyImage, RgbaImage } from '../types';
 
 // Colour as the ground reader sees it: CIE L*a*b* (D65) from 8-bit sRGB, as OpenCV's 8-bit
 // conversion computes it (L in 0..100, a and b centred on 0), HSV saturation in 0..255, and the
@@ -10,7 +10,6 @@ import type { RgbaImage } from '../types';
 export const SEA = 0;
 export const SAND = 1;
 export const GRASS = 2;
-export type PixelClass = typeof SEA | typeof SAND | typeof GRASS;
 
 const LINEAR = new Float64Array(256);
 for (let i = 0; i < 256; i++) LINEAR[i] = srgbToLinear(i / 255);
@@ -36,6 +35,23 @@ export function toLab(r: number, g: number, b: number, out: Float32Array | Float
   out[at + 2] = 200 * (fy - labF(z));
 }
 
+/**
+ * The region load lines' dash plane of a rectified RGBA tile: L* - a* + b* per pixel, into `out`.
+ * A dash shifts the ground's colour towards yellow-green (+b*, -a*, L* never lower) on every
+ * ground, by 11 to 75 units of this projection, while it changes the luma of sand by under one
+ * level and the grass's flowers are bright luma blobs.
+ */
+export function dashPlane(tile: RgbaImage, out = new Float32Array(tile.width * tile.height)): GreyImage {
+  const d = tile.data;
+  const lab = new Float64Array(3);
+  const n = tile.width * tile.height;
+  for (let p = 0; p < n; p++) {
+    toLab(d[4 * p]!, d[4 * p + 1]!, d[4 * p + 2]!, lab);
+    out[p] = lab[0]! - lab[1]! + lab[2]!;
+  }
+  return { width: tile.width, height: tile.height, data: out };
+}
+
 /** HSV saturation in 0..255 of an sRGB colour. */
 export function saturation(r: number, g: number, b: number): number {
   const v = Math.max(r, g, b);
@@ -48,33 +64,28 @@ export function labHue(a: number, b: number): number {
   return h < 0 ? h + 360 : h;
 }
 
-/** Whether a hue angle lies in the sea's band (`SCAN_PROFILE.ground.seaHue`). */
-export const inSeaBand = (hue: number): boolean => hue > SCAN_PROFILE.ground.seaHue[0] && hue < SCAN_PROFILE.ground.seaHue[1];
+/** Bits per channel of the colour index pixels are classed by: a pixel takes the class of its
+ *  quantisation step's centre colour, so colours under a step apart class alike. */
+const STEP_BITS = 6;
+const STEP_SHIFT = 8 - STEP_BITS;
 
-/** Bits per channel of the class lookup's colour index. */
-const LUT_BITS = 6;
-const LUT_SHIFT = 8 - LUT_BITS;
-
-/** Index of an 8-bit colour into a class lookup. */
-export function lutIndex(r: number, g: number, b: number): number {
-  return ((r >> LUT_SHIFT) << (2 * LUT_BITS)) | ((g >> LUT_SHIFT) << LUT_BITS) | (b >> LUT_SHIFT);
+/** Index of an 8-bit colour's quantisation step into `stepColours`. */
+export function stepIndex(r: number, g: number, b: number): number {
+  return ((r >> STEP_SHIFT) << (2 * STEP_BITS)) | ((g >> STEP_SHIFT) << STEP_BITS) | (b >> STEP_SHIFT);
 }
 
-/** The class of every colour quantised to `LUT_BITS` per channel, by `classify` on the
- *  quantisation step's centre colour. */
-export function classLookup(classify: (r: number, g: number, b: number) => PixelClass): Uint8Array {
-  const steps = 1 << LUT_BITS;
-  const half = (1 << LUT_SHIFT) / 2;
-  const lut = new Uint8Array(steps ** 3);
+/** The L*a*b* of every quantisation step's centre colour, three values a step (3 MB). */
+export function stepColours(): Float32Array {
+  const steps = 1 << STEP_BITS;
+  const half = (1 << STEP_SHIFT) / 2;
+  const out = new Float32Array(steps ** 3 * 3);
+  const c = (v: number) => Math.min(255, Math.floor((v << STEP_SHIFT) + half));
   for (let r = 0; r < steps; r++) {
     for (let g = 0; g < steps; g++) {
-      for (let b = 0; b < steps; b++) {
-        const c = (v: number) => Math.min(255, Math.floor((v << LUT_SHIFT) + half));
-        lut[(r << (2 * LUT_BITS)) | (g << LUT_BITS) | b] = classify(c(r), c(g), c(b));
-      }
+      for (let b = 0; b < steps; b++) toLab(c(r), c(g), c(b), out, ((r << (2 * STEP_BITS)) | (g << STEP_BITS) | b) * 3);
     }
   }
-  return lut;
+  return out;
 }
 
 const W = SCAN_PROFILE.evidence.weight;
@@ -212,4 +223,127 @@ export class PaletteSampler {
     }
     return out.subarray(0, kept * 3);
   }
+}
+
+/**
+ * The palette with its sand centres fitted again over each region of the ground, from a palette
+ * sampler's mosaic. The game lights some places in their own tint, the same on every pass; a tinted
+ * beach lies far enough from the recording's sand for the shallows' centre to take its wet edge, and
+ * read against the sand of its own region the coast stays where the beach ends. The sea and grass
+ * centres stay the recording's: fitted per region they move the station's deck and shallows off sea.
+ */
+export interface LocalPalette {
+  /** Every centre's class, as in the recording's palette. */
+  readonly classes: Uint8Array;
+  /** Ground pixel of the first region's corner, a region's size in ground pixels, and the region grid. */
+  readonly x0: number;
+  readonly y0: number;
+  readonly width: number;
+  readonly height: number;
+  readonly cols: number;
+  readonly rows: number;
+  /** Per region, every centre's L*a*b*, region-major. */
+  readonly centres: Float64Array;
+}
+
+const LP = SCAN_PROFILE.ground.localPalette;
+
+/** Interpolates the centres of a region grid bilinearly between region centres at region coordinates (u, v), into `out`. */
+function regionCentres(local: LocalPalette, u: number, v: number, out: Float64Array): void {
+  const { cols, rows, centres } = local;
+  const k3 = local.classes.length * 3;
+  const cu = Math.max(0, Math.min(cols - 1, u));
+  const cv = Math.max(0, Math.min(rows - 1, v));
+  const x0 = Math.max(0, Math.min(cols - 2, Math.floor(cu)));
+  const y0 = Math.max(0, Math.min(rows - 2, Math.floor(cv)));
+  const ax = cols > 1 ? Math.min(1, cu - x0) : 0;
+  const ay = rows > 1 ? Math.min(1, cv - y0) : 0;
+  const x1 = Math.min(cols - 1, x0 + 1);
+  const y1 = Math.min(rows - 1, y0 + 1);
+  const corners = [[y0 * cols + x0, (1 - ax) * (1 - ay)], [y0 * cols + x1, ax * (1 - ay)], [y1 * cols + x0, (1 - ax) * ay], [y1 * cols + x1, ax * ay]] as const;
+  out.fill(0, 0, k3);
+  for (const [r, w] of corners) for (let j = 0; j < k3; j++) out[j] = out[j]! + w * centres[r * k3 + j]!;
+}
+
+/** The centres at ground pixel (x, y) of a local palette, into `out` (three values a centre). */
+export function centresAt(local: LocalPalette, x: number, y: number, out: Float64Array): void {
+  regionCentres(local, (x - local.x0) / local.width - 0.5, (y - local.y0) / local.height - 0.5, out);
+}
+
+/** The nearest of `k` centres to the L*a*b* colour at `at` in `lab`. */
+export function nearestCentre(lab: ArrayLike<number>, centres: ArrayLike<number>, k: number, at = 0): number {
+  const l = lab[at]!, a = lab[at + 1]!, b = lab[at + 2]!;
+  let best = 0;
+  let bd = Infinity;
+  for (let c = 0; c < k; c++) {
+    const d = (l - centres[c * 3]!) ** 2 + (a - centres[c * 3 + 1]!) ** 2 + (b - centres[c * 3 + 2]!) ** 2;
+    if (d < bd) {
+      bd = d;
+      best = c;
+    }
+  }
+  return best;
+}
+
+/**
+ * A local palette from a sampler's mosaic: regions of `localPalette.regionChunks` chunks, each sand
+ * centre the mean of the region's mosaic bins nearest to it and at most `localPalette.margin` times
+ * as far from it as from any other centre (a bin mixing sand with the sea or grass beside it is
+ * left out), drawn towards the recording's centre by `localPalette.prior` bins and refitted
+ * `localPalette.iterations` times; deterministic.
+ */
+export function localPalette(centres: Float64Array, classes: Uint8Array, sampler: PaletteSampler): LocalPalette {
+  const m = sampler.mosaic;
+  const k = classes.length;
+  const width = SCAN_PROFILE.chunk.width * LP.regionChunks;
+  const height = SCAN_PROFILE.chunk.height * LP.regionChunks;
+  const x0 = m.x0 * m.step;
+  const y0 = m.y0 * m.step;
+  const cols = Math.max(1, Math.ceil((m.cols * m.step) / width));
+  const rows = Math.max(1, Math.ceil((m.rows * m.step) / height));
+  const lab: number[] = [];
+  const at: number[] = [];
+  const one = new Float64Array(3);
+  for (let j = 0; j < m.rows; j++) {
+    for (let i = 0; i < m.cols; i++) {
+      const o = (j * m.cols + i) * 4;
+      const w = m.sums[o + 3]!;
+      if (!(w > sampler.minWeight)) continue;
+      const c = (v: number) => Math.min(255, Math.max(0, Math.round(v / w)));
+      toLab(c(m.sums[o]!), c(m.sums[o + 1]!), c(m.sums[o + 2]!), one);
+      lab.push(one[0]!, one[1]!, one[2]!);
+      at.push((i * m.step) / width, (j * m.step) / height);
+    }
+  }
+  const local: LocalPalette = { classes, x0, y0, width, height, cols, rows, centres: new Float64Array(cols * rows * k * 3) };
+  for (let r = 0; r < cols * rows; r++) local.centres.set(centres.subarray(0, k * 3), r * k * 3);
+  const here = new Float64Array(k * 3);
+  for (let it = 0; it < LP.iterations; it++) {
+    const sum = new Float64Array(cols * rows * k * 3);
+    const count = new Float64Array(cols * rows * k);
+    for (let b = 0; b < lab.length / 3; b++) {
+      regionCentres(local, at[b * 2]! - 0.5, at[b * 2 + 1]! - 0.5, here);
+      let c = 0, near = Infinity, next = Infinity;
+      for (let q = 0; q < k; q++) {
+        const d = Math.hypot(lab[b * 3]! - here[q * 3]!, lab[b * 3 + 1]! - here[q * 3 + 1]!, lab[b * 3 + 2]! - here[q * 3 + 2]!);
+        if (d < near) {
+          next = near;
+          near = d;
+          c = q;
+        } else if (d < next) next = d;
+      }
+      if (classes[c] !== SAND || near > LP.margin * next) continue;
+      const r = Math.min(rows - 1, Math.floor(at[b * 2 + 1]!)) * cols + Math.min(cols - 1, Math.floor(at[b * 2]!));
+      count[r * k + c]! += 1;
+      for (let q = 0; q < 3; q++) sum[(r * k + c) * 3 + q]! += lab[b * 3 + q]!;
+    }
+    for (let r = 0; r < cols * rows; r++) {
+      for (let c = 0; c < k; c++) {
+        if (classes[c] !== SAND) continue;
+        const o = (r * k + c) * 3;
+        for (let q = 0; q < 3; q++) local.centres[o + q] = (sum[o + q]! + LP.prior * centres[c * 3 + q]!) / (count[r * k + c]! + LP.prior);
+      }
+    }
+  }
+  return local;
 }

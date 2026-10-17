@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { APP_NAME } from '../../i18n/brand';
+import { APP_NAME } from '../../i18n/terms/brand';
 import { LEGAL, memberUrl } from '../../legal/config';
 
 // The public root documents: the facts they carry come from `legal/config.ts`, their links reach

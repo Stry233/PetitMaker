@@ -27,6 +27,7 @@ export function WhatsNewGate({ splashActive }: { splashActive: boolean }) {
     if (!returning.current) { decided.current = true; recordSeenVersion(); return undefined; }
     const gate = arrivalOpens({
       splashActive, blocked, tourRunning, tourSettled: hasSeenTour(), tourDoneOpen: modals.tourDone, whatsNewOpen: modals.whatsNew,
+      repairOpen: useEditorStore.getState().repairSession !== null,
     });
     if (!gate || anyModalOpen({ modals })) return undefined;
     // Decided in this commit's effects: the arrival notice defers its own reading past them, so the

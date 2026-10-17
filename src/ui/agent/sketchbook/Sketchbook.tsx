@@ -55,7 +55,6 @@ const CARD_STYLE: CSSProperties = {
   gap: 8,
   width: '100%',
   textAlign: 'left',
-  background: PLATE,
   border: edge,
   borderRadius: radii.md,
   padding: 9,
@@ -388,6 +387,7 @@ export function Sketchbook({ ideas, onOrder, mapVersion }: SketchbookProps) {
       <ActionButton
         type="button"
         interaction="actionTap"
+        fill={PLATE}
         hoverFill={INSET}
         data-testid="sketch-card"
         data-kind={idea.kind}

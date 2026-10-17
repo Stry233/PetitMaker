@@ -3,6 +3,7 @@
  * the `petit-planet-` prefix; existing non-prefixed keys remain stable for saved preferences.
  */
 import { LOCALES, type Locale } from '../../core/model/locale';
+import { PLACEMENT_GRID, TERRAIN_GRID } from '../../core/game/profile';
 
 export const HINT_LEVELS = ['full', 'concise', 'off'] as const;
 export type HintLevel = typeof HINT_LEVELS[number];
@@ -14,6 +15,11 @@ export type ViewMode = typeof VIEW_MODES[number];
 /** Animation preference: 'system' follows the OS prefers-reduced-motion, the others override it. */
 export const MOTION_PREFS = ['system', 'reduced', 'full'] as const;
 export type MotionPref = typeof MOTION_PREFS[number];
+/** Which grid the map draws: the one the active tool works on (`auto`), the placement or terrain
+ *  grid always, or none, in the order the Settings grid tile cycles through them. The half grid
+ *  only places notes and is never drawn. */
+export const GRID_MODES = ['auto', PLACEMENT_GRID, TERRAIN_GRID, 'off'] as const;
+export type GridMode = typeof GRID_MODES[number];
 /** Which end of the window the assistant's panel docks at. */
 export const DOCK_SIDES = ['left', 'right'] as const;
 export type DockSide = typeof DOCK_SIDES[number];
@@ -80,7 +86,9 @@ export const PREFS = {
   assistantPinned: pref<boolean>({  key: 'petit-planet-assistant-pinned', parse: asBool, fallback: () => false, write: fromBool }),
   assistantDockSide: pref<DockSide>({ key: 'petit-planet-assistant-dock-side', parse: oneOf(DOCK_SIDES), fallback: () => 'left' }),
   enforceChunkLoad: pref<boolean>({ key: 'petit-planet-enforce-chunk-load', parse: asBool, fallback: () => true, write: fromBool }),
-  showGrid:       pref<boolean>({   key: 'petit-planet-show-grid',       parse: asBool, fallback: () => true, write: fromBool }),
+  gridMode:       pref<GridMode>({  key: 'petit-planet-grid-mode',       parse: oneOf(GRID_MODES), fallback: migratedGridMode }),
+  // The grid switch `gridMode` replaced, read once to carry its choice over and removed on the first write.
+  legacyShowGrid: pref<boolean | null>({ key: 'petit-planet-show-grid', parse: asBool, fallback: () => null }),
   showChunkBounds: pref<boolean>({  key: 'petit-planet-chunk-bounds',    parse: asBool, fallback: () => true, write: fromBool }),
   keybinds:       pref<string>({    key: 'petit-planet-keybinds',        parse: raw, fallback: none }),
 
@@ -117,6 +125,11 @@ export const PREFS = {
 export const BROWSER_DATABASES = {
   agentVault: 'petit-agent-vault',
 } as const;
+
+/** A grid switched off stays off; a grid that was on follows the active tool. */
+function migratedGridMode(): GridMode {
+  return readPref('legacyShowGrid') === false ? 'off' : 'auto';
+}
 
 export type PrefId = keyof typeof PREFS;
 /** The preferences that hold a JSON record. */

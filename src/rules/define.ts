@@ -9,17 +9,18 @@ import type {
   ValidationError,
 } from '../core/model/types';
 import type { RuleMessageKey } from './messages';
+import type { ParamsFor } from '../i18n/keys';
 
 type WithoutKeys<T, K extends PropertyKey> = T extends unknown ? Omit<T, K> : never;
 
 /** Where an error's cause lies: `evidenceOn(grid, cells)` or `bodyEvidence(rects)`. */
 type Evidence = WithoutKeys<ValidationError, 'ruleId' | 'message' | 'messageParams'>;
 
-/** What an error may add to its message and evidence. */
-type Extra = Pick<ValidationError, 'messageParams'>;
+/** What an error may add to its message and evidence: the params message `K` takes. */
+type Extra<K extends RuleMessageKey> = { messageParams?: ParamsFor<K> };
 
 /** One error of the rule this was made for: an i18n message key and its evidence. */
-export type Fail = (message: RuleMessageKey, evidence: Evidence, extra?: Extra) => ValidationError;
+export type Fail = <K extends RuleMessageKey>(message: K, evidence: Evidence, extra?: Extra<K>) => ValidationError;
 
 /** The `Fail` of rule `ruleId`, for a helper outside the rule's own `validate`. */
 export function failFor(ruleId: string): Fail {

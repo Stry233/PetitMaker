@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 // The build defines the edition flag; unset under test, so it is set before the edition module loads.
 vi.hoisted(() => { (globalThis as { __PETIT_LITE__?: boolean }).__PETIT_LITE__ = true; });
-import { APP_NAME, baseBrandName, brandName } from '../../i18n/brand';
+import { APP_NAME, baseBrandName, brandName } from '../../i18n/terms/brand';
 
 describe('Lite brand identity', () => {
   it('uses a parenthesized edition in plain text and a bare wordmark for headings', () => {

@@ -56,7 +56,7 @@ describe('a figure renderer', () => {
     const renderer = new MapRenderer(bus, document.createElement('div'), 64, 64, { preferCanvas: true });
     vi.spyOn(renderer.app.renderer, 'render').mockImplementation(() => {});
     try {
-      renderer.initMap(state, false, false, { labels: false });
+      renderer.initMap(state, null, false, { labels: false });
       const added: PlacedObject = { id: 'r8', catalogId: ROAD, position: { x: 8, y: 6 }, rotation: 0, elevation: 0 };
       state.objects.set(added.id, added);
       bus.emit('objects-changed', { added: [added] });

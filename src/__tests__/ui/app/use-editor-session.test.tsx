@@ -7,12 +7,15 @@ import { useEditorSession } from '../../../ui/app/use-editor-session';
 import { restoreSession } from '../../../editor/session/restore';
 
 vi.mock('../../../editor/session/restore', () => ({
-  restoreSession: vi.fn((save: { state: ReturnType<typeof makeState> }) => useEditorStore.setState({ gridState: save.state })),
+  restoreSession: vi.fn((save: { state: ReturnType<typeof makeState> }, onInstalled?: () => void) => {
+    useEditorStore.setState({ gridState: save.state });
+    onInstalled?.();
+  }),
 }));
 afterEach(() => { cleanup(); vi.clearAllMocks(); });
 
 describe('useEditorSession', () => {
-  it('restores between the fade callbacks, then settles on the committed map', () => {
+  it('restores between the fade callbacks, the rest following the map in, then settles on the committed map', () => {
     useEditorStore.setState({ gridState: makeState() });
     const settle = vi.fn();
     const before = vi.fn();
@@ -21,7 +24,7 @@ describe('useEditorSession', () => {
     settle.mockClear();
     const map = makeState();
     act(() => result.current({ state: map }));
-    expect(restoreSession).toHaveBeenCalledWith({ state: map });
+    expect(restoreSession).toHaveBeenCalledWith({ state: map }, after);
     expect(before.mock.invocationCallOrder[0]).toBeLessThan(vi.mocked(restoreSession).mock.invocationCallOrder[0]!);
     expect(vi.mocked(restoreSession).mock.invocationCallOrder[0]).toBeLessThan(after.mock.invocationCallOrder[0]!);
     expect(settle).toHaveBeenCalledWith(map);

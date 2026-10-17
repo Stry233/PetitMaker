@@ -7,37 +7,43 @@ import type { GhostCell, GhostPaint, PlacementGhost, SelectionOpts } from '../..
 import type { CellSet, GridId, MixedCellSet } from '../../../core/grid/grids';
 import type { RowSpan } from '../../../core/grid/cell-spans';
 import type { PlanetFrame } from '../../../core/model/planet';
-import type { OverlayHost } from './overlay/host';
+import type { MapAnnotation } from '../../../core/model/annotations';
+import { OverlayNoteGhost, type NoteGhostHost } from './overlay/note-ghost';
 import { OverlayFlashes } from './overlay/flash';
 import { OverlayGhosts } from './overlay/ghost';
 import { OverlayMarks } from './overlay/marks';
 import { OverlayRegions } from './overlay/region';
 import { OverlayPlanetFrame } from './overlay/planet-frame';
 import { OverlayBand } from './overlay/band';
+import { OverlayFlagged } from './overlay/flagged';
 
 /**
  * The 2D tool overlay: the view's `ToolOverlay`, drawn by its parts in `overlay/`. Paint order is
  * fixed at construction, whatever is shown first: the region marks lowest, then the planet frame,
- * the flashes and ghosts, the hover box, the band and the selection marks, with the error flash
+ * the flagged objects, the flashes and ghosts, the hover box, the band and the selection marks, with the error flash
  * on top of everything. At click time the ghost covers exactly the violating cells, and a flash
  * underneath its fill, outline or sprite reads as no feedback at all. The hover box sits under the
  * selection marks so selecting visibly commits it into them; the band sits under them too, so
  * members already in the group stay legible while dragging over them. Every part reuses its
  * Graphics with clear(), so nothing is re-added above the parts stacked after it.
  */
-export class OverlayLayer implements OverlayHost {
+export class OverlayLayer implements NoteGhostHost {
   public readonly container = new PIXI.Container();
   viewZoom = 1;
+  /** The map's `annotationInkScale`, which the renderer hands over with every notes draw. */
+  noteInkScale = 1;
   /** Set by `dispose`: the renderer destroys these Graphics with its app, and a tool or UI teardown
    *  may still call in afterwards. */
   disposed = false;
 
   private readonly flashes = new OverlayFlashes(this);
   private readonly ghosts = new OverlayGhosts(this).init();
+  private readonly noteGhost = new OverlayNoteGhost(this);
   private readonly marks = new OverlayMarks(this);
   private readonly regions = new OverlayRegions(this);
   private readonly planet = new OverlayPlanetFrame(this);
   private readonly band = new OverlayBand(this);
+  private readonly flagged = new OverlayFlagged(this);
 
   /** Opens the owning renderer's render window. */
   constructor(readonly requestRender: () => void) {
@@ -48,10 +54,14 @@ export class OverlayLayer implements OverlayHost {
       this.regions.reviewGraphics,
       this.planet.planetFrameGraphics,
       this.planet.planetFrameFlash,
+      this.flagged.washGraphics,
+      this.flagged.spriteSlot,
+      this.flagged.edgeGraphics,
       this.flashes.commitGraphics,
       this.ghosts.curveGraphics,
       this.ghosts.ghostGraphics,
       this.ghosts.previewIcon,
+      this.noteGhost.noteSlot,
       this.marks.hoverGraphics,
       this.band.bandGraphics,
       this.marks.selectionGraphics,
@@ -70,6 +80,7 @@ export class OverlayLayer implements OverlayHost {
     this.disposed = true;
     this.flashes.dispose();
     this.ghosts.dispose();
+    this.noteGhost.dispose();
     this.marks.dispose();
     this.regions.dispose();
     this.planet.endFrameFlash();
@@ -84,9 +95,11 @@ export class OverlayLayer implements OverlayHost {
   setViewZoom(zoom: number): void {
     if (!(zoom > 0) || Math.abs(zoom - this.viewZoom) / this.viewZoom < 0.03) return;
     this.viewZoom = zoom;
+    this.noteGhost.rezoom(zoom);
     this.planet.rezoom();
     this.regions.rezoom(zoom);
     this.marks.rezoom();
+    this.flagged.rezoom();
   }
 
   flashErrors(errors: ValidationError[]): void { this.flashes.flashErrors(errors); }
@@ -107,7 +120,8 @@ export class OverlayLayer implements OverlayHost {
     if (ghosts.length === 1) this.ghosts.showPlacementGhost(ghosts[0]!, valid);
     else this.ghosts.showGroupPlacementGhost(ghosts, valid);
   }
-  clearGhost(): void { this.ghosts.clearGhost(); }
+  showNoteGhost(note: MapAnnotation, label: string): void { this.noteGhost.show(note, label); }
+  clearGhost(): void { this.ghosts.clearGhost(); this.noteGhost.clear(); }
   showCurveFootprint(set: CellSet): void { this.ghosts.showCurveFootprint(set); }
   clearCurveFootprint(): void { this.ghosts.clearCurveFootprint(); }
 
@@ -120,6 +134,7 @@ export class OverlayLayer implements OverlayHost {
   clearBuildableRegion(): void { this.regions.clearBuildableRegion(); }
   pulseBuildableRegion(durationMs: number, dip: number): void { this.regions.pulseBuildableRegion(durationMs, dip); }
   showCellMarks(cells: CellSet | null, outline: Rect | null): void { this.regions.showCellMarks(cells, outline); }
+  showFlaggedObjects(objects: readonly PlacedObject[] | null): void { this.flagged.show(objects); }
   showPath(set: CellSet): void { this.regions.showPath(set); }
   clearPath(): void { this.regions.clearPath(); }
 

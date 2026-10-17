@@ -22,7 +22,7 @@ const { PlanetCarryStep } = await import('../../../../../ui/chrome/modals/planet
 describe('the carry step fit', () => {
   it('gives both previews one fit, the box the painter gives the destination with the dropped cells', () => {
     const target = getMapTemplate('tafa');
-    const dropped = [{ x: -30, y: -20 }, { x: target.width + 10, y: target.height + 5 }];
+    const dropped = [{ x: -30, y: -20, grid: 'terrain' as const }, { x: target.width + 10, y: target.height + 5, grid: 'object' as const }];
     const preview: TransferPreview = {
       state: createGridState(target), dropped, moved: { cells: 0, objects: 0 }, droppedCounts: { cells: 2, objects: 0 },
     };

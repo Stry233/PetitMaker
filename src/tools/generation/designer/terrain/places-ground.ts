@@ -10,6 +10,7 @@ import type { MacroCoord, MapTemplate } from '../../../../core/model/types';
 import { getCatalogItem } from '../../../../state/catalog';
 import { getRotatedSize } from '../../../../core/grid/footprint';
 import { buildingGate } from '../../../placement/object';
+import { doorstepTerrain } from '../../../../state/object-geometry';
 import type { TerrainPlan } from '../../terrain-plan/types';
 import type { AnchorPlan } from '../places/anchors';
 import { PLATE_STEP_MAX } from '../composition/composition';
@@ -46,6 +47,7 @@ export function flatReservation(
 ): Uint8Array {
   const W = template.width, H = template.height;
   const core = new Uint8Array(W * H);
+  const doorsteps: MacroCoord[] = [];
   const mark = (rect: Rect): void => {
     for (let y = Math.max(0, rect.y); y < Math.min(H, rect.y + rect.h); y++) {
       for (let x = Math.max(0, rect.x); x < Math.min(W, rect.x + rect.w); x++) core[flatIndex(x, y, W)] = 1;
@@ -67,6 +69,7 @@ export function flatReservation(
     const door = buildingGate(rect, p.rotation);
     markCell(door.approach);
     for (const c of door.clear) markCell(c);
+    doorsteps.push(...doorstepTerrain({ id: '', catalogId: p.catalogId, position: p.position, rotation: p.rotation, elevation: 0 }, item));
   }
 
   const out = new Uint8Array(W * H);
@@ -81,6 +84,8 @@ export function flatReservation(
       }
     }
   }
+  // V-PLACE-DOOR reads the terrain in front of each door side.
+  for (const c of doorsteps) if (c.x >= 0 && c.y >= 0 && c.x < W && c.y < H) out[flatIndex(c.x, c.y, W)] = 1;
   for (const c of streets.cells) {
     for (const [dx, dy] of [[0, 0], [1, 0], [0, 1], [1, 1]] as const) {
       const x = c.x + dx, y = c.y + dy;

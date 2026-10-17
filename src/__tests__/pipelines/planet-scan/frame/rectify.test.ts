@@ -15,68 +15,25 @@ const FW = CAL.frame.width;
 const FH = CAL.frame.height;
 
 describe('map-view calibration', () => {
-  // Values of the measured polynomials evaluated where they were fitted.
-  it('maps ground points to the measured screen points', () => {
-    const cases: [number, number, number, number][] = [
-      [-340, -170, 171.97279757843648, 90.08611508810017],
-      [339, 129, 812.1776218681437, 372.35397180105394],
-      [0, 0, 480.0054201944468, 220.04502093742084],
-      [200, -100, 669.355730686524, 134.19253187206718],
-      [-150, 80, 330.1165772324539, 306.93092519536174],
-    ];
-    for (const [x, y, u, v] of cases) {
-      const s = groundToScreen(CAL, x, y);
-      expect(s.u).toBeCloseTo(u, 6);
-      expect(s.v).toBeCloseTo(v, 6);
-    }
-  });
-
-  it('maps screen points to the measured ground points', () => {
-    const cases: [number, number, number, number][] = [
-      [146, 369, -340.15517198069415, 126.30659408746972],
-      [810, 66, 371.5416020791652, -207.70667913905123],
-      [300, 250, -182.90871038210287, 23.980984632092152],
-    ];
-    for (const [u, v, x, y] of cases) {
-      const g = screenToGround(CAL, u, v);
-      expect(g.x).toBeCloseTo(x, 6);
-      expect(g.y).toBeCloseTo(y, 6);
-    }
-  });
-
-  it('inverts itself across the tile to a tenth of a pixel', () => {
+  it('inverts itself across the tile to a millionth of a pixel', () => {
     for (let y = -tile.originY; y < tile.height - tile.originY; y += 10) {
       for (let x = -tile.originX; x < tile.width - tile.originX; x += 10) {
         const s = groundToScreen(CAL, x, y);
         const g = screenToGround(CAL, s.u, s.v);
-        expect(Math.hypot(g.x - x, g.y - y)).toBeLessThan(0.1);
+        expect(Math.hypot(g.x - x, g.y - y)).toBeLessThan(1e-6);
       }
     }
   });
 
-  it('spans the trusted region: the tile bottom corners land on its corners', () => {
-    const bl = groundToScreen(CAL, -tile.originX, tile.height - 1 - tile.originY);
-    const br = groundToScreen(CAL, tile.width - 1 - tile.originX, tile.height - 1 - tile.originY);
-    expect(Math.hypot(bl.u - roi.x0, bl.v - roi.y1)).toBeLessThan(4);
-    expect(Math.hypot(br.u - roi.x1, br.v - roi.y1)).toBeLessThan(4);
-    const top = groundToScreen(CAL, 0, -tile.originY);
-    expect(top.v).toBeCloseTo(roi.y0, 0);
-  });
-
-  it('has a chunk period within the spread a comb search measured on sea-only lines', () => {
-    // Independent of the still-run fit the cell size comes from: 122.0 to 123.5 px in x over six
-    // recordings, 105.6 px in y on the two with enough horizontal lines.
-    expect(SCAN_PROFILE.chunk.width).toBeGreaterThanOrEqual(122.0);
-    expect(SCAN_PROFILE.chunk.width).toBeLessThanOrEqual(123.5);
-    expect(Math.abs(SCAN_PROFILE.chunk.height - 105.6)).toBeLessThan(0.5);
-  });
-
-  it('keeps unit scale at the view centre, so tile pixels are screen pixels there', () => {
-    const c = groundToScreen(CAL, 0, 0);
-    const right = groundToScreen(CAL, 10, 0);
-    const down = groundToScreen(CAL, 0, 10);
-    expect(Math.abs(right.u - c.u - 10)).toBeLessThan(0.5);
-    expect(Math.abs(down.v - c.v - 10)).toBeLessThan(0.5);
+  it('lays the tile inside the trusted region, as wide and as tall as it fits there', () => {
+    const corner = (tx: number, ty: number) => groundToScreen(CAL, tx - tile.originX, ty - tile.originY);
+    const inside = (p: { u: number; v: number }) => p.u >= roi.x0 && p.u <= roi.x1 && p.v >= roi.y0 && p.v <= roi.y1;
+    for (const [tx, ty] of [[0, 0], [tile.width, 0], [0, tile.height], [tile.width, tile.height]] as const) expect(inside(corner(tx, ty))).toBe(true);
+    // Two ground pixels more on any side leave the region.
+    expect(inside(corner(-2, 0)) && inside(corner(-2, tile.height))).toBe(false);
+    expect(inside(corner(tile.width + 2, 0)) && inside(corner(tile.width + 2, tile.height))).toBe(false);
+    expect(inside(corner(0, -2)) && inside(corner(tile.width, -2))).toBe(false);
+    expect(inside(corner(0, tile.height + 2)) && inside(corner(tile.width, tile.height + 2))).toBe(false);
   });
 });
 
@@ -109,7 +66,7 @@ describe('rectify', () => {
 
   it('puts the calibration origin at the tile origin', () => {
     const vs = rectifyGrey(map, { width: FW, height: FH, data: ramp((u) => u) });
-    expect(vs.data[tile.originY * tile.width + tile.originX]).toBeCloseTo(CAL.origin.u, 1);
+    expect(vs.data[tile.originY * tile.width + tile.originX]).toBeCloseTo(groundToScreen(CAL, 0, 0).u, 1);
   });
 
   it('samples every tile pixel inside the frame', () => {

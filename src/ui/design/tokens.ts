@@ -56,6 +56,12 @@ export const STOPPED_TAUPE = '#C3B7A3';
 export const REVERT_AMBER = '#B97F24';
 /** The frame ink at any alpha: the hairline and shadow ink family. */
 export const inkTint = (alpha: number): string => rgbaOf(FRAME_INK, alpha);
+/** A 6-digit hex or `rgb()`/`rgba()` colour at no alpha, so a fade to or from it never passes through black. */
+export function clearOf(colour: string): string {
+  if (colour.startsWith('#')) return rgbaOf(colour, 0);
+  const channels = /rgba?\(([^,]+),([^,]+),([^,)]+)/.exec(colour);
+  return channels ? `rgba(${channels[1]!.trim()}, ${channels[2]!.trim()}, ${channels[3]!.trim()}, 0)` : colour;
+}
 /** The hairline the older borders use. */
 export const HAIRLINE = inkTint(0.12);
 
@@ -84,6 +90,8 @@ export const FOCUS_HALO = PLATE;
 /** Text fields show focus with their caret instead. A colour rather than a missing rule, so the
  *  stylesheet's own `var()` fallback stays reachable. */
 export const FOCUS_RING_FIELD = 'transparent';
+/** The run a field has selected, where the field paints its own text instead of the browser. */
+export const FIELD_SELECTION = ACTIVE;
 /** The ring's corner around a control whose shape is a drawing (a mode block, the top-right
  *  cluster): an illustration has no border-radius for an outline to follow. Everything else is a
  *  pill, disc or plate and carries its own. */

@@ -66,12 +66,12 @@
       "reason": "Kept: the private moderation suites' reset of which texts this page has tried, so a case can reuse one; a `__` hook needs a caller under `src/__tests__`, which those suites are not."
     },
     {
-      "path": "src/editor/session/context.ts:installLoadedMap",
-      "reason": "Kept: a private research harness and the private panel-harness open a save through it by name; the app reaches it as `editorPort.installLoaded`."
-    },
-    {
       "path": "src/i18n/context.tsx:RESOLVED_TOKENS",
       "reason": "Kept: the token names the translator fills itself; the parity, agent-key and Help-table suites tell them apart from caller params in every locale's copy, which needs the name set."
+    },
+    {
+      "path": "src/i18n/keys.ts:LAYER_PARAMS",
+      "reason": "Kept: the app reads it only as a type (`ParamsFor` types a layer string's param to `LayerNumber`); `i18n/layer-name.test.ts` holds the value to every table string naming a layer, so a new one cannot escape the type."
     },
     {
       "path": "src/io/export/paint.ts:paintCodeBand",
@@ -183,7 +183,7 @@
     },
     {
       "path": "src/pipelines/planet-scan/frame/hud.ts:barMatches",
-      "reason": "Read by the private `planet-scan` tool; `pipelines/planet-scan/frame/hud.test.ts` pins it too."
+      "reason": "An internal step of `hud.ts`; `pipelines/planet-scan/frame/hud.test.ts` pins it directly."
     },
     {
       "path": "src/pipelines/planet-scan/frame/hud.ts:hudScale",
@@ -208,6 +208,10 @@
     {
       "path": "src/pipelines/planet-scan/frame/rectify.ts:tileToGround",
       "reason": "The per-pixel ground point `rectify.test.ts` checks `buildSampleMap` against."
+    },
+    {
+      "path": "src/pipelines/planet-scan/ground/classify.ts:inlandWater",
+      "reason": "The private `planet-scan-eval` writes the shore model's training features from the evidence `readGround` reads the coast from, so a retrain sees what the reading sees; `ground.test.ts` pins which water it reads as grass."
     },
     {
       "path": "src/pipelines/planet-scan/ground/classify.ts:shoreBand",
@@ -294,12 +298,12 @@
       "reason": "A constant of `path-solve.ts`; `pipelines/planet-scan/track/path-solve.test.ts` derives its expectations from it."
     },
     {
-      "path": "src/pipelines/planet-scan/track/phase-correlate.ts:overlapNcc",
-      "reason": "Read by the private `planet-scan` tool; `pipelines/planet-scan/track/phase-correlate.test.ts` pins it too."
-    },
-    {
       "path": "src/pipelines/planet-scan/track/still-runs.ts:meanAbsDiff",
       "reason": "An internal step of `still-runs.ts`; `pipelines/planet-scan/track/still-runs.test.ts` pins it directly."
+    },
+    {
+      "path": "src/pipelines/planet-scan/track/thin.ts:LinePrior",
+      "reason": "An internal step of `thin.ts:KeptFrames`; `pipelines/planet-scan/track/thin.test.ts` pins it directly."
     },
     {
       "path": "src/pipelines/planet-scan/track/thin.ts:MotionThinner",

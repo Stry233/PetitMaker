@@ -1,5 +1,5 @@
 import type { KernelEvents } from './events';
-import { EventBus } from './event-bus';
+import type { EventSink } from './event-bus';
 import { bumpCellsVersion, bumpObjectsVersion, clearsTerrain, cloneCell, clonePlacedObject, commandGrid, createDefaultTerrainCell, getCell, setCell } from '../model/grid-model';
 import { cellSet, type CellSet } from '../grid/grids';
 import {
@@ -109,7 +109,7 @@ export function touchedObjectId(cmd: Command): string | undefined {
 }
 
 /** One `objects-changed` for a set of removals and additions, or none when both are empty. */
-function emitObjectsChanged(eventBus: EventBus<KernelEvents>, removed: string[], added: PlacedObject[]): void {
+function emitObjectsChanged(eventBus: EventSink<KernelEvents>, removed: string[], added: PlacedObject[]): void {
   if (removed.length === 0 && added.length === 0) return;
   eventBus.emit('objects-changed', { ...(removed.length ? { removed } : {}), ...(added.length ? { added } : {}) });
 }
@@ -125,7 +125,7 @@ export type TrimApplier = (
 ) => void;
 
 /** Applies `cmd` to `state`; `trims` lands a corner trim, and `cause` tags the events it emits. */
-export function applyCommand(cmd: Command, state: GridState, eventBus: EventBus<KernelEvents>, trims: TrimApplier, cause?: string): void {
+export function applyCommand(cmd: Command, state: GridState, eventBus: EventSink<KernelEvents>, trims: TrimApplier, cause?: string): void {
   const objectsChanged = (change: KernelEvents['objects-changed']): void =>
     eventBus.emit('objects-changed', cause === undefined ? change : { ...change, cause });
   switch (cmd.type) {
@@ -179,7 +179,7 @@ export function applyCommand(cmd: Command, state: GridState, eventBus: EventBus<
 /** Replays `ops` onto the map: deletes `take` before restoring `put`, so an object in both (edited
  *  in place) lands as `put` holds it. The map receives copies: history keeps its own objects, which
  *  later in-place edits must not reach. */
-function replayObjects(take: PlacedObject[], put: PlacedObject[], state: GridState, eventBus: EventBus<KernelEvents>): void {
+function replayObjects(take: PlacedObject[], put: PlacedObject[], state: GridState, eventBus: EventSink<KernelEvents>): void {
   const placed = put.map(clonePlacedObject);
   for (const o of take) state.objects.delete(o.id);
   for (const o of placed) state.objects.set(o.id, o);
@@ -192,7 +192,7 @@ function replayObjects(take: PlacedObject[], put: PlacedObject[], state: GridSta
  * `objectOps` backwards. Returns the affected cell coords. The caller (executor) owns taint
  * threading and history bookkeeping around this.
  */
-export function revertEntryState(entry: HistoryEntry, state: GridState, eventBus: EventBus<KernelEvents>): MacroCoord[] {
+export function revertEntryState(entry: HistoryEntry, state: GridState, eventBus: EventSink<KernelEvents>): MacroCoord[] {
   if (entry.generation) writeGenerationMark(state, entry.generation.before);
   const coords: MacroCoord[] = [];
   for (const snap of entry.before) {
@@ -206,7 +206,7 @@ export function revertEntryState(entry: HistoryEntry, state: GridState, eventBus
 
 /** Re-applies a single history entry's state: restores its `after` cell snapshots and replays its
  *  `objectOps` forwards. Inverse of revertEntryState. */
-export function reapplyEntryState(entry: HistoryEntry, state: GridState, eventBus: EventBus<KernelEvents>): MacroCoord[] {
+export function reapplyEntryState(entry: HistoryEntry, state: GridState, eventBus: EventSink<KernelEvents>): MacroCoord[] {
   if (entry.generation) writeGenerationMark(state, entry.generation.after);
   const coords: MacroCoord[] = [];
   for (const snap of entry.after) {

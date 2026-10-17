@@ -1,23 +1,21 @@
 /**
- * A planet as a flat top-down picture fitted to the land's bounding box, with chunk dashes across the
- * whole template and optionally the cells a planet change would drop. The map is rasterised once per
- * input (and when the revision its caller hands over moves) at two pixels per cell, so half-cell offsets
- * land on whole pixels; later paints only scale that raster.
+ * A planet as a top-down picture fitted to the land's bounding box, with chunk dashes across the
+ * whole template and optionally cells marked in the loss red. The map itself is
+ * `thumbnail.ts`'s picture, the renderer's own drawing of it with its plan notes and any flagged
+ * objects; this painter only places it, over the frame the capture took, so a pan or a zoom repaints
+ * from the one picture and never draws the map again.
  */
 import { LOSS_COLOR } from '../../shared/viewport/view-constants';
-import { ELEVATION_COLORS, WATER_COLOR, ZONE_COLORS } from '../../../core/model/palette';
-import { hasLandmark, isLandmarkItem, landmarkObjects } from '../../../core/model/landmarks';
 import { numberToHexString } from '../../../core/base/color';
-import { isCoating } from '../../../core/model/traits';
-import { TerrainType, type GridState, type MacroCoord, type MapTemplate, type PlacedObject, type TerrainCell } from '../../../core/model/types';
+import { TerrainType, type GridState, type MapTemplate, type PlacedObject } from '../../../core/model/types';
+import { gridCellRect, type GridCellRef } from '../../../core/grid/grids';
+import { GRIDS } from '../../../core/game/profile';
 import { isOpenSeaZone } from '../../../core/game/zones';
-import { iconUrl } from '../../../assets/icon-urls';
-import { getCatalogItem } from '../../../state/catalog';
+import { TERRAIN_GRID_OFFSET } from '../../../core/grid/grid-convert';
 import { getPlacedObjectSize } from '../../../state/object-geometry';
 import { createGridState } from '../../../core/model/template';
-import { objectMarkColor } from '../../shared/terrain/layer-section';
 import { CHUNK_GRID_STYLE, chunkGridRects, chunkStrokeCells } from '../../shared/grid/reference-grid';
-import { ELEVATION_MAX } from '../../../core/game/profile';
+import { mapPicture, mapPictureFrame } from './thumbnail';
 
 interface PlanetView {
   /** Pan in css px, applied after the zoom. */
@@ -27,29 +25,36 @@ interface PlanetView {
   scale: number;
 }
 
-interface PlanetPaintInput {
+export interface PlanetPaintInput {
   /** The map to draw; absent draws the template as a fresh map would open on it. */
   state?: GridState;
-  /** `state`'s edit revision, which keys its raster; absent rasterises it again. */
+  /** `state`'s edit revision, which keys its picture and land; absent takes them again. */
   revision?: string;
   template: MapTemplate;
-  /** Cells drawn in the loss red, in the template's coordinates; may lie outside it. */
-  dropped?: readonly MacroCoord[];
+  /** Cells drawn in the loss red, each where its own grid lays it (a terrain cell half a cell up and
+   *  left of a placement cell of the same index), in the template's coordinates; may lie outside it. */
+  dropped?: readonly GridCellRef[];
+  /** Objects the picture draws flagged, as the live overlay flags them; they need not stand on `state`. */
+  flagged?: readonly PlacedObject[];
 }
 
-/** Raster pixels per cell: two, so half-cell positions are whole pixels. */
-const PX = 2;
 const DROPPED_ALPHA = 0.8;
 const CHUNK_INK = numberToHexString(CHUNK_GRID_STYLE.planetPreview.ink);
+/** The picture's long side comes in these steps, so a zoom asks for a sharper one only now and then. */
+const PICTURE_STEPS = [256, 512, 1024, 2048, 4096] as const;
 
 /** A box in cell units: `x0, y0` inclusive, `x1, y1` exclusive. */
 export interface CellExtent { x0: number; y0: number; x1: number; y1: number }
 
 interface Raster { canvas: HTMLCanvasElement; x: number; y: number; w: number; h: number }
-interface MapRaster { revision: string | undefined; raster: Raster | null; land: CellExtent | null }
 
-const mapRasters = new WeakMap<GridState, MapRaster>();
-const droppedRasters = new WeakMap<readonly MacroCoord[], Raster | null>();
+const lands = new WeakMap<GridState, { revision: string | undefined; land: CellExtent | null }>();
+const droppedRasters = new WeakMap<readonly GridCellRef[], Raster | null>();
+/** Raster pixels per cell for the dropped marks: every grid's cells start and end on half cells. */
+const MARK_RASTER = 2;
+const freshMaps = new WeakMap<MapTemplate, GridState>();
+/** The revision a fresh map is kept under: it is never edited. */
+const FRESH = 'fresh';
 
 function makeCanvas(w: number, h: number): { canvas: HTMLCanvasElement; ctx: CanvasRenderingContext2D } | null {
   const canvas = document.createElement('canvas');
@@ -59,73 +64,17 @@ function makeCanvas(w: number, h: number): { canvas: HTMLCanvasElement; ctx: Can
   return ctx ? { canvas, ctx } : null;
 }
 
-function terrainColor(t: TerrainCell): string | null {
-  if (t.type === TerrainType.Water) return WATER_COLOR;
-  if (t.type === TerrainType.Mountain && t.elevation >= 1) {
-    return ELEVATION_COLORS[Math.min(t.elevation, ELEVATION_MAX)] ?? ELEVATION_COLORS[1]!;
-  }
-  return null;
-}
-
-/** Fills one raster row as runs of equal colour, so a coastline costs a call per run, not per cell. */
-function fillRuns(ctx: CanvasRenderingContext2D, y: number, width: number, colorAt: (x: number) => string | null, dx = 0): void {
-  let start = 0, run: string | null = null;
-  for (let x = 0; x <= width; x++) {
-    const c = x < width ? colorAt(x) : null;
-    if (c === run) continue;
-    if (run) { ctx.fillStyle = run; ctx.fillRect((start * PX) + dx, y * PX + dx, (x - start) * PX, PX); }
-    start = x; run = c;
-  }
-}
-
-/** Zones, then terrain half a cell up-left, then coatings under solids. One pixel of margin on the
- *  top and left holds the half cell terrain on row and column zero reaches past the map. */
-function mapRaster(state: GridState, revision: string | undefined): MapRaster {
-  const hit = mapRasters.get(state);
-  if (hit && revision !== undefined && hit.revision === revision) return hit;
-  const { width, height } = state.template;
-  const land = landBounds(state);
-  const made = makeCanvas(width * PX + 1, height * PX + 1);
-  if (!made) { const entry = { revision, raster: null, land }; mapRasters.set(state, entry); return entry; }
-  const { canvas, ctx } = made;
-
-  for (let y = 0; y < height; y++) {
-    const row = state.cells[y];
-    fillRuns(ctx, y, width, (x) => ZONE_COLORS[row?.[x]?.zone ?? 0] ?? ZONE_COLORS[0]!, 1);
-  }
-  for (let y = 0; y < height; y++) {
-    const row = state.cells[y];
-    fillRuns(ctx, y, width, (x) => { const t = row?.[x]?.terrain; return t ? terrainColor(t) : null; });
-  }
-  const coatings: PlacedObject[] = [], solids: PlacedObject[] = [];
-  for (const o of state.objects.values()) {
-    if (isLandmarkItem(o.catalogId)) continue;
-    const item = getCatalogItem(o.catalogId);
-    (item && isCoating(item) ? coatings : solids).push(o);
-  }
-  for (const o of [...coatings, ...solids]) {
-    const { w, h } = getPlacedObjectSize(o);
-    ctx.fillStyle = objectMarkColor(o.catalogId);
-    ctx.fillRect(o.position.x * PX + 1, o.position.y * PX + 1, w * PX, h * PX);
-  }
-
-  const raster = { canvas, x: -1 / PX, y: -1 / PX, w: width + 1 / PX, h: height + 1 / PX };
-  const entry = { revision, raster, land };
-  mapRasters.set(state, entry);
-  return entry;
-}
-
 function grow(b: CellExtent | null, x0: number, y0: number, x1: number, y1: number): CellExtent {
   if (!b) return { x0, y0, x1, y1 };
   return { x0: Math.min(b.x0, x0), y0: Math.min(b.y0, y0), x1: Math.max(b.x1, x1), y1: Math.max(b.y1, y1) };
 }
 
 /** What the picture shows of the planet: every cell off the sea (grass, sand, rim, plaza), every
- *  terrain cell where it is drawn (half a cell up-left) and every object footprint. `null` for a
- *  planet with nothing on it. */
+ *  raised or water terrain cell where it is drawn (at the terrain grid's offset) and every object
+ *  footprint. `null` for a planet with nothing on it. */
 function landBounds(state: GridState): CellExtent | null {
   let b: CellExtent | null = null;
-  const half = 1 / PX;
+  const { x: ox, y: oy } = TERRAIN_GRID_OFFSET;
   for (let y = 0; y < state.cells.length; y++) {
     const row = state.cells[y];
     if (!row) continue;
@@ -133,7 +82,10 @@ function landBounds(state: GridState): CellExtent | null {
       const c = row[x];
       if (!c) continue;
       if (!isOpenSeaZone(c.zone)) b = grow(b, x, y, x + 1, y + 1);
-      if (c.terrain && terrainColor(c.terrain)) b = grow(b, x - half, y - half, x + 1 - half, y + 1 - half);
+      const t = c.terrain;
+      if (t && (t.type === TerrainType.Water || (t.type === TerrainType.Mountain && t.elevation >= 1))) {
+        b = grow(b, x + ox, y + oy, x + 1 + ox, y + 1 + oy);
+      }
     }
   }
   for (const o of state.objects.values()) {
@@ -141,6 +93,63 @@ function landBounds(state: GridState): CellExtent | null {
     b = grow(b, o.position.x, o.position.y, o.position.x + w, o.position.y + h);
   }
   return b;
+}
+
+/** The map a template opens as, its own terrain and plaza included. */
+function freshMap(template: MapTemplate): GridState {
+  let state = freshMaps.get(template);
+  if (!state) { state = createGridState(template); freshMaps.set(template, state); }
+  return state;
+}
+
+/** The map `input` pictures and the revision it is kept under. */
+function shownMap(input: PlanetPaintInput): { state: GridState; revision: string | undefined } {
+  return input.state ? { state: input.state, revision: input.revision } : { state: freshMap(input.template), revision: FRESH };
+}
+
+function landOf(input: PlanetPaintInput): CellExtent | null {
+  const { state, revision } = shownMap(input);
+  const hit = lands.get(state);
+  if (hit && revision !== undefined && hit.revision === revision) return hit.land;
+  const land = landBounds(state);
+  lands.set(state, { revision, land });
+  return land;
+}
+
+function droppedRaster(dropped: readonly GridCellRef[]): Raster | null {
+  const hit = droppedRasters.get(dropped);
+  if (hit !== undefined) return hit;
+  const rects = dropped.map((c) => gridCellRect(GRIDS[c.grid], c));
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (const r of rects) {
+    if (r.x < x0) x0 = r.x;
+    if (r.y < y0) y0 = r.y;
+    if (r.x + r.w > x1) x1 = r.x + r.w;
+    if (r.y + r.h > y1) y1 = r.y + r.h;
+  }
+  const made = rects.length ? makeCanvas(Math.round((x1 - x0) * MARK_RASTER), Math.round((y1 - y0) * MARK_RASTER)) : null;
+  if (!made) { droppedRasters.set(dropped, null); return null; }
+  made.ctx.fillStyle = LOSS_COLOR;
+  const px = (v: number): number => Math.round(v * MARK_RASTER);
+  for (const r of rects) made.ctx.fillRect(px(r.x - x0), px(r.y - y0), px(r.w), px(r.h));
+  const raster = { canvas: made.canvas, x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
+  droppedRasters.set(dropped, raster);
+  return raster;
+}
+
+/** The box the rest view fits: the land of `input`'s map plus any dropped cells and flagged
+ *  objects, or the whole template when nothing is on it. Two pictures given one input's box share
+ *  scale and centre. */
+export function planetBounds(input: PlanetPaintInput): CellExtent {
+  const { template } = input;
+  let shown = landOf(input);
+  const lost = input.dropped?.length ? droppedRaster(input.dropped) : null;
+  if (lost) shown = grow(shown, lost.x, lost.y, lost.x + lost.w, lost.y + lost.h);
+  for (const o of input.flagged ?? []) {
+    const { w, h } = getPlacedObjectSize(o);
+    shown = grow(shown, o.position.x, o.position.y, o.position.x + w, o.position.y + h);
+  }
+  return shown ?? { x0: 0, y0: 0, x1: template.width, y1: template.height };
 }
 
 /** The rest view's placement: `bounds` scaled to fit the box less `margin` css px on every side and
@@ -153,108 +162,53 @@ function fitBounds(cssW: number, cssH: number, bounds: CellExtent, margin: numbe
   return { cell, x: (cssW - bw * cell) / 2 - bounds.x0 * cell, y: (cssH - bh * cell) / 2 - bounds.y0 * cell };
 }
 
-const freshMaps = new WeakMap<MapTemplate, GridState>();
-/** The revision a fresh map's raster is kept under. */
-const FRESH = 'fresh';
+interface PaintOpts { margin: number; bounds?: CellExtent }
 
-/** The map a template opens as, its own terrain and plaza included. */
-function freshMap(template: MapTemplate): GridState {
-  let state = freshMaps.get(template);
-  if (!state) { state = createGridState(template); freshMaps.set(template, state); }
-  return state;
+/** The css box `canvas` paints into. */
+function cssBox(canvas: HTMLCanvasElement): { cssW: number; cssH: number; dpr: number } {
+  const dpr = globalThis.devicePixelRatio || 1;
+  return { cssW: canvas.clientWidth || canvas.width / dpr, cssH: canvas.clientHeight || canvas.height / dpr, dpr };
 }
 
-function droppedRaster(dropped: readonly MacroCoord[]): Raster | null {
-  const hit = droppedRasters.get(dropped);
-  if (hit !== undefined) return hit;
-  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
-  for (const c of dropped) {
-    if (c.x < x0) x0 = c.x;
-    if (c.y < y0) y0 = c.y;
-    if (c.x > x1) x1 = c.x;
-    if (c.y > y1) y1 = c.y;
-  }
-  const made = dropped.length ? makeCanvas(x1 - x0 + 1, y1 - y0 + 1) : null;
-  if (!made) { droppedRasters.set(dropped, null); return null; }
-  made.ctx.fillStyle = LOSS_COLOR;
-  for (const c of dropped) made.ctx.fillRect(c.x - x0, c.y - y0, 1, 1);
-  const raster = { canvas: made.canvas, x: x0, y: y0, w: x1 - x0 + 1, h: y1 - y0 + 1 };
-  droppedRasters.set(dropped, raster);
-  return raster;
+/** The long side, in px, of the picture that is sharp in `canvas` at `view`: the device pixels a
+ *  cell takes there across the picture's frame, rounded up to the next step. */
+export function planetPictureSide(canvas: HTMLCanvasElement, input: PlanetPaintInput, view: PlanetView, opts: PaintOpts): number {
+  const { cssW, cssH, dpr } = cssBox(canvas);
+  const frame = pictureFrameOf(input);
+  const fit = fitBounds(cssW, cssH, opts.bounds ?? planetBounds(input), opts.margin);
+  const want = fit.cell * view.scale * dpr * Math.max(frame.width, frame.height);
+  return PICTURE_STEPS.find((step) => step >= want) ?? PICTURE_STEPS[PICTURE_STEPS.length - 1]!;
 }
 
-// Each landmark icon loads once; a paint that ran before one arrived runs again when it does. A failed
-// load leaves that landmark drawn by its zone colour alone and nothing waiting.
-const landmarkIcons = new Map<string, HTMLImageElement | 'failed'>();
-const awaitingIcon = new Map<HTMLCanvasElement, () => void>();
-
-function loadedLandmarkIcon(name: string): HTMLImageElement | null {
-  let icon = landmarkIcons.get(name);
-  if (icon === 'failed') return null;
-  if (!icon) {
-    const url = iconUrl(name);
-    if (!url || typeof Image === 'undefined') return null;
-    const img = new Image();
-    img.onload = () => {
-      const repaints = [...awaitingIcon.values()];
-      awaitingIcon.clear();
-      for (const repaint of repaints) repaint();
-    };
-    img.onerror = () => {
-      landmarkIcons.set(name, 'failed');
-      awaitingIcon.clear();
-    };
-    img.src = url;
-    landmarkIcons.set(name, img);
-    icon = img;
-  }
-  return icon.complete && icon.naturalWidth > 0 ? icon : null;
+/** The frame `input`'s picture is taken over (`thumbnail.ts:mapPictureFrame`). */
+function pictureFrameOf(input: PlanetPaintInput) {
+  return mapPictureFrame(shownMap(input).state, undefined, input.flagged);
 }
 
-/** Each landmark's laid footprint and icon basename, in profile order. */
-function landmarksOf(state: GridState): { x: number; y: number; w: number; h: number; icon: string | undefined }[] {
-  return landmarkObjects(state).filter((o) => hasLandmark(o)).map((o) => ({
-    x: o.position.x, y: o.position.y, w: o.width!, h: o.height!, icon: o.icon ?? getCatalogItem(o.catalogId)?.icon,
-  }));
-}
-
-/** Draws the icon upright, contained and centred in the laid footprint, as the 2D view does: a
- *  footprint-turning object's art rests upright in every footprint. */
-function drawLandmark(ctx: CanvasRenderingContext2D, icon: HTMLImageElement, p: { x: number; y: number; w: number; h: number }): void {
-  const fit = Math.min(p.w / icon.naturalWidth, p.h / icon.naturalHeight);
-  const iw = icon.naturalWidth * fit, ih = icon.naturalHeight * fit;
-  ctx.drawImage(icon, p.x + (p.w - iw) / 2, p.y + (p.h - ih) / 2, iw, ih);
-}
-
-/** The raster of `input`'s map; a fresh map is never edited, so its one raster always stands. */
-function shownRaster(input: PlanetPaintInput): MapRaster {
-  return input.state ? mapRaster(input.state, input.revision) : mapRaster(freshMap(input.template), FRESH);
-}
-
-/** The box the rest view fits: the land of `input`'s map plus any dropped cells, or the whole
- *  template when nothing is on it. Two pictures given one input's box share scale and centre. */
-export function planetBounds(input: PlanetPaintInput): CellExtent {
-  const { template } = input;
-  let shown = shownRaster(input).land;
-  const lost = input.dropped?.length ? droppedRaster(input.dropped) : null;
-  if (lost) shown = grow(shown, lost.x, lost.y, lost.x + lost.w, lost.y + lost.h);
-  return shown ?? { x0: 0, y0: 0, x1: template.width, y1: template.height };
+/** The picture of `input`'s map at `longSidePx`, drawn by the map's renderer with its plan notes as
+ *  its notes layer shows them and `input.flagged` flagged; null where no renderer stands yet. */
+export function planetPicture(input: PlanetPaintInput, longSidePx: number): Promise<HTMLCanvasElement | null> {
+  const { state, revision } = shownMap(input);
+  return mapPicture(state, longSidePx, {
+    ...(revision !== undefined ? { version: revision } : {}),
+    ...(input.flagged?.length ? { flagged: input.flagged } : {}),
+  });
 }
 
 /**
- * Paints the planet into `canvas`, sized to its css box at the device-pixel ratio. At `scale` 1 and
- * no pan the land and any dropped cells fit the box less `margin` css px on every side, centred;
+ * Paints the planet into `canvas`, sized to its css box at the device-pixel ratio, from `picture`
+ * (`planetPicture` of the same input; null paints the dashes and marks alone). At `scale` 1 and no
+ * pan the land and any dropped cells fit the box less `margin` css px on every side, centred;
  * `view` then zooms about the canvas centre and pans in css px. `opts.bounds` replaces that box.
  */
 export function paintPlanet(
   canvas: HTMLCanvasElement,
   input: PlanetPaintInput,
+  picture: CanvasImageSource | null,
   view: PlanetView,
-  opts: { margin: number; bounds?: CellExtent },
+  opts: PaintOpts,
 ): void {
-  const dpr = globalThis.devicePixelRatio || 1;
-  const cssW = canvas.clientWidth || canvas.width / dpr;
-  const cssH = canvas.clientHeight || canvas.height / dpr;
+  const { cssW, cssH, dpr } = cssBox(canvas);
   const backW = Math.max(1, Math.round(cssW * dpr)), backH = Math.max(1, Math.round(cssH * dpr));
   if (canvas.width !== backW) canvas.width = backW;
   if (canvas.height !== backH) canvas.height = backH;
@@ -266,8 +220,6 @@ export function paintPlanet(
   const { template } = input;
   if (template.width <= 0 || template.height <= 0) return;
 
-  const state = input.state ?? freshMap(template);
-  const { raster: map } = shownRaster(input);
   const lost = input.dropped?.length ? droppedRaster(input.dropped) : null;
   const fit = fitBounds(cssW, cssH, opts.bounds ?? planetBounds(input), opts.margin);
   const cx = cssW / 2, cy = cssH / 2;
@@ -276,15 +228,12 @@ export function paintPlanet(
   const oy = cy + (fit.y - cy) * view.scale + view.ty;
   // Cell units from here on.
   ctx.setTransform(dpr * cell, 0, 0, dpr * cell, dpr * ox, dpr * oy);
-  ctx.imageSmoothingEnabled = false;
 
-  if (map) ctx.drawImage(map.canvas, map.x, map.y, map.w, map.h);
-
-  for (const landmark of landmarksOf(state)) {
-    if (!landmark.icon) continue;
-    const icon = loadedLandmarkIcon(landmark.icon);
-    if (icon) drawLandmark(ctx, icon, landmark);
-    else if (landmarkIcons.has(landmark.icon) && landmarkIcons.get(landmark.icon) !== 'failed') awaitingIcon.set(canvas, () => paintPlanet(canvas, input, view, opts));
+  if (picture) {
+    // The frame the picture was taken over: what the map draws, not the reference grid's sea.
+    const frame = pictureFrameOf(input);
+    ctx.imageSmoothingEnabled = true;
+    ctx.drawImage(picture, frame.x, frame.y, frame.width, frame.height);
   }
 
   ctx.fillStyle = CHUNK_INK;
@@ -293,6 +242,8 @@ export function paintPlanet(
   ctx.globalAlpha = 1;
 
   if (lost) {
+    // Whole cells of each grid, edge to edge, at any zoom.
+    ctx.imageSmoothingEnabled = false;
     ctx.globalAlpha = DROPPED_ALPHA;
     ctx.drawImage(lost.canvas, lost.x, lost.y, lost.w, lost.h);
     ctx.globalAlpha = 1;

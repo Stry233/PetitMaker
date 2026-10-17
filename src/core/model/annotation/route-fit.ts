@@ -9,6 +9,9 @@
  * are screen px, read through the cell's on-screen size captured at
  * the press, so one gesture draws the same line at every zoom.
  *
+ * Anchors land on the half-cell lattice, so a route's anchors move in half-cell steps; an anchor
+ * that rounds onto the one before it is dropped.
+ *
  * The fit is incremental: once the simplified tail holds more than `heldAnchors` anchors, all but
  * the last few are committed and never refitted, so a long drag costs only its tail and the line
  * behind the pointer stays still. The live frame and the released route are both `routeFitAnchors`
@@ -16,6 +19,7 @@
  */
 import type { MacroCoord } from '../types';
 import type { CurveAnchor } from '../../base/spline';
+import { snapHalf } from '../../grid/rect';
 
 const ROUTE_FIT = {
   /** The least pointer travel, in css px, that adds a sample. */
@@ -101,8 +105,19 @@ export function extendRouteFit(fit: RouteFit, p: MacroCoord): boolean {
 
 /** The route's anchors as the fit stands: what the live frame draws and what release keeps. */
 export function routeFitAnchors(fit: RouteFit): CurveAnchor[] {
-  const tail = tailIndices(fit).slice(1).map((i) => copy(fit.samples[i]!));
-  return withCorners([...fit.committed.map(copy), ...tail]);
+  const tail = tailIndices(fit).slice(1).map((i) => fit.samples[i]!);
+  return withCorners(onHalfLattice([...fit.committed, ...tail]));
+}
+
+/** `points` rounded to the half-cell lattice, each that rounds onto the one before it dropped. */
+function onHalfLattice(points: readonly MacroCoord[]): MacroCoord[] {
+  const out: MacroCoord[] = [];
+  for (const p of points) {
+    const q = { x: snapHalf(p.x), y: snapHalf(p.y) };
+    const last = out[out.length - 1];
+    if (!last || last.x !== q.x || last.y !== q.y) out.push(q);
+  }
+  return out;
 }
 
 /** Interior anchors that turn by `cornerDeg` or more take zero handles on both sides. */

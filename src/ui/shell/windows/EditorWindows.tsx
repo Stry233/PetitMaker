@@ -7,14 +7,15 @@ import { assistantJobRunning, loadHelpModal, loadWhatsThisLayer, useContextHelp 
 import type { PlanetDraft } from '../../../editor/operations/planet-session';
 import { switchPlanet, type PlanetChange } from '../../../editor/session/planet-switch';
 import { useEditorStore } from '../../../state/store';
-import { ChunkBoundary } from '../../primitives/ChunkBoundary';
-import { ChunkNotice } from '../../chrome/guards/ChunkNotice';
+import { RenderBoundary } from '../../primitives/RenderBoundary';
+import { ChunkNotice } from '../../chrome/guards/FailureNotice';
 import { AboutModal } from '../../chrome/modals/about/AboutModal';
 import { KeyboardModal } from '../../chrome/modals/keyboard/KeyboardModal';
 import { ChangePlanetModal } from '../../chrome/modals/planet/ChangePlanetModal';
 import { SettingsModal } from '../../chrome/modals/settings/SettingsModal';
 import { AnnotationDiscardModal } from '../../chrome/modals/AnnotationDiscardModal';
 import { ChunkLoadWindow } from '../../chrome/modals/load/ChunkLoadWindow';
+import { LandmarkRepairWindow } from '../../chrome/modals/repair/LandmarkRepairWindow';
 import { useLatch } from '../../primitives/use-latch';
 import { loadPreview3D } from '../../chrome/loaders';
 
@@ -65,25 +66,26 @@ export function EditorWindows({ onPlanetChanged }: { onPlanetChanged: (outcome: 
       <KeyboardModal />
 
       {helpMounted && (
-        <ChunkBoundary resetKey={modals.help || whatsThis} fallback={<ChunkNotice />}>
+        <RenderBoundary resetKey={modals.help || whatsThis} fallback={<ChunkNotice />}>
           <Suspense fallback={null}>
             <HelpModal />
             <WhatsThisLayer />
           </Suspense>
-        </ChunkBoundary>
+        </RenderBoundary>
       )}
 
       <AboutModal />
 
       <ChunkLoadWindow />
+      <LandmarkRepairWindow />
       <AnnotationDiscardModal />
 
       {modals.preview3d && (
-        <ChunkBoundary resetKey={modals.preview3d} fallback={<ChunkNotice />}>
+        <RenderBoundary resetKey={modals.preview3d} fallback={<ChunkNotice />}>
           <Suspense fallback={null}>
             <Preview3D onClose={() => setModal('preview3d', false)} />
           </Suspense>
-        </ChunkBoundary>
+        </RenderBoundary>
       )}
 
     </>

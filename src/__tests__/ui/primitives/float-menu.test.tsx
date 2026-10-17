@@ -11,8 +11,8 @@
  * the list marks as current.
  */
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
-import { FloatMenu, floatMenuItemStyle, type FloatMenuItem } from '../../../ui/primitives/FloatMenu';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { FloatMenu, floatMenuItemFill, type FloatMenuItem } from '../../../ui/primitives/FloatMenu';
 import { UiPreviewProvider } from '../../../ui/design/preview';
 import { ACTIVE } from '../../../ui/design/tokens';
 import { radii, z } from '../../../ui/design/styles';
@@ -144,8 +144,19 @@ describe('the list', () => {
     const [sonnet, opus] = screen.getAllByRole('menuitemradio');
     expect(opus!.getAttribute('aria-checked')).toBe('true');
     expect(sonnet!.getAttribute('aria-checked')).toBe('false');
-    expect(floatMenuItemStyle(true).backgroundColor).toBe(ACTIVE);
-    expect(floatMenuItemStyle(false).backgroundColor).not.toBe(ACTIVE);
+    expect(floatMenuItemFill(true)).toBe(ACTIVE);
+    expect(floatMenuItemFill(false)).not.toBe(ACTIVE);
+  });
+
+  it('draws the current row\'s fill after a hover passed over it and the current moved there', async () => {
+    const { rerender } = render(<Menu open activeId="opus" />);
+    const sonnet = screen.getAllByRole('menuitemradio')[0]!;
+    fireEvent.pointerEnter(sonnet, { pointerType: 'mouse' });
+    fireEvent.pointerLeave(sonnet, { pointerType: 'mouse' });
+    rerender(<Menu open activeId="sonnet" />);
+    await waitFor(() => expect(screen.getAllByRole('menuitemradio')[0]!.style.backgroundColor).toMatch(/^rgba?\(255, 218, 126(, 1)?\)$/));
+    await new Promise((r) => setTimeout(r, 400));
+    expect(screen.getAllByRole('menuitemradio')[0]!.style.backgroundColor).toMatch(/^rgba?\(255, 218, 126(, 1)?\)$/);
   });
 
   it('hands the pick back by id and closes', () => {

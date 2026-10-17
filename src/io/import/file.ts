@@ -1,7 +1,7 @@
 /** Shared JSON and PetitGlyph import path. Inspection decodes without replacing the live map; callers present the returned outcomes. */
 import { isOwnImageExport } from '../export/own-image-receipts';
 import { parseSave } from '../save/parse';
-import type { LandmarkClearance } from '../../tools/generation/transfer';
+import type { CompatibilityReport, LandmarkClearance } from '../../state/landmark-clearance';
 import { loadParsedSave } from './open-save';
 import { ImportError, type ImportErrorCode, type ImportWarning } from '../save/import-error';
 import { MAX_IMPORT_BYTES } from '../save/limits';
@@ -28,6 +28,8 @@ export interface ImportPreview {
   state: GridState;
   notes?: MapNotes;
   warnings: ImportWarning[];
+  /** What the load found under the planet's landmarks, when it found anything. */
+  report?: CompatibilityReport;
 }
 
 /** The result of reading a file without touching the editor; `commit` installs the decoded map. */
@@ -54,11 +56,11 @@ export interface ImportFileDeps {
  *  warnings `settle` gives once the map is in. */
 function readyImport(
   source: ImportPreview['source'], state: GridState, warnings: ImportWarning[],
-  settle: (deps: ImportFileDeps) => ImportWarning[],
+  settle: (deps: ImportFileDeps) => ImportWarning[], report: CompatibilityReport | undefined,
 ): ImportInspection {
   return {
     status: 'ready',
-    preview: { source, state, warnings, ...(state.notes ? { notes: state.notes } : {}) },
+    preview: { source, state, warnings, ...(state.notes ? { notes: state.notes } : {}), ...(report ? { report } : {}) },
     commit: (deps) => {
       deps.loadMap(state);
       adoptInstalledPlanet(state);
@@ -94,7 +96,7 @@ export async function inspectImportFile(file: File | Blob, name: string): Promis
         warnings.push(...clearanceWarnings(cleared));
         if (integrity === 'modified') warnings.push({ kind: 'modified-after-export' });
         return warnings;
-      });
+      }, cleared.report);
     }
 
     if (source !== 'map-image') return { status: 'unsupported' };
@@ -109,7 +111,7 @@ export async function inspectImportFile(file: File | Blob, name: string): Promis
     if (result.state.imageAttribution && await isOwnImageExport(result.state)) delete result.state.imageAttribution;
     const warnings: ImportWarning[] = [...result.warnings];
     if (result.cleared) warnings.push(...clearanceWarnings(result.cleared));
-    return readyImport('raster', result.state, warnings, () => warnings);
+    return readyImport('raster', result.state, warnings, () => warnings, result.cleared?.report);
   } catch (e) {
     if (e instanceof ImportError) return { status: 'failed', code: e.code };
     console.error('[import] unexpected failure', e);

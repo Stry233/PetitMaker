@@ -10,7 +10,7 @@ import type { CSSProperties } from 'react';
 import { AnimatePresence, motion, useReducedMotionConfig } from 'framer-motion';
 import { iconUrl } from '../../../assets/icon-urls';
 import { useT } from '../../../i18n/context';
-import { timedHint } from '../../../i18n/timed-hint';
+import { timedHint } from '../timed-hint';
 import { useEditorStore } from '../../../state/store';
 import type { Arrival, ArrivalLine } from '../../session/arrival-bus';
 import { subscribeArrival } from '../../session/arrival-bus';
@@ -270,6 +270,7 @@ export function ArrivalToast({ splashActive }: ArrivalToastProps) {
   const blocked = useEditorStore((s) => s.portraitBlocked);
   const tourDoneOpen = useEditorStore((s) => s.modals.tourDone);
   const whatsNewOpen = useEditorStore((s) => s.modals.whatsNew);
+  const repairOpen = useEditorStore((s) => s.repairSession !== null);
   const gridState = useEditorStore((s) => s.gridState);
   const layer = useChromeLayer();
 
@@ -311,6 +312,7 @@ export function ArrivalToast({ splashActive }: ArrivalToastProps) {
         tourRunning: st.tourRunning,
         tourDoneOpen: st.modals.tourDone,
         whatsNewOpen: st.modals.whatsNew,
+        repairOpen: st.repairSession !== null,
         tourSettled: hasSeenTour(),
       });
       const template = st.gridState?.template;
@@ -320,7 +322,15 @@ export function ArrivalToast({ splashActive }: ArrivalToastProps) {
       setPending(null);
     }, 0);
     return () => clearTimeout(timer);
-  }, [pending, splashActive, tourRunning, blocked, tourDoneOpen, whatsNewOpen, gridState]);
+  }, [pending, splashActive, tourRunning, blocked, tourDoneOpen, whatsNewOpen, repairOpen, gridState]);
+
+  // A landmark repair asked over the notice standing: it waits as an arrival announced then would,
+  // and is said again once the repair ends.
+  useEffect(() => {
+    if (!repairOpen || !shown) return;
+    setPending((held) => held ?? shown.arrival);
+    setShown(null);
+  }, [repairOpen, shown]);
 
   // The cycle: the phrase holds one cadence, then each line takes the row in turn and the last one
   // stays. One timer per line rather than a chain, so a step cannot drift by the length of a render.

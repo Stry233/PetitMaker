@@ -1,7 +1,7 @@
 /**
- * The store is six slice factories composed at one `create()` call (`state/store.ts`). This
+ * The store is seven slice factories composed at one `create()` call (`state/store.ts`). This
  * pins the shape of that split: each file exports its factory, the composed store carries every
- * field the six slices declare, and — the one that matters — `shell.ts` imports nothing from
+ * field the seven slices declare, and — the one that matters — `shell.ts` imports nothing from
  * `engine.ts`. A shell field reaching for an engine handle (`gridState`/`commandExecutor`) is
  * exactly the coupling this split exists to prevent.
  */
@@ -15,6 +15,7 @@ import { createPrefsSlice } from '../../../state/slices/prefs';
 import { createShellSlice } from '../../../state/slices/shell';
 import { createAnnotationsSlice } from '../../../state/slices/annotations';
 import { createPlanetSessionSlice } from '../../../state/slices/planet-session';
+import { createRepairSessionSlice } from '../../../state/slices/repair-session';
 import { useEditorStore } from '../../../state/store';
 import { resetStore } from '../../_support/store';
 import { armedMacroOf } from '../../../state/editing/edit-mode';
@@ -48,18 +49,19 @@ const EXPECTED_STORE_FIELDS: readonly string[] = [
   'setHelpTarget', 'setLocale', 'setModal', 'setMotionPref', 'setPlacementRotation',
   'setPortraitBlocked', 'setPreview3DEdit', 'setRegion', 'setRegionBrushSize', 'setRegionDimensions', 'setRegionTool',
   'selectLayer',
-  'setSelectingRegion', 'setSelection', 'setShowChunkBounds', 'setShowGrid', 'setShowLayerNumbers',
+  'setSelectingRegion', 'setSelection', 'setShowChunkBounds', 'setGridMode', 'cycleGridMode', 'toggleGrid', 'setShowLayerNumbers',
   'setQuality3d', 'setSystemCursors', 'setTileMaterial', 'setTourRunning', 'setUiZoom', 'setViewMode', 'setWhatsThis',
-  'quality3d', 'showChunkBounds', 'showGrid', 'showLayerNumbers', 'systemCursors', 'tileMaterial', 'tileMaterialPicked',
+  'quality3d', 'showChunkBounds', 'gridMode', 'lastGridMode', 'showLayerNumbers', 'systemCursors', 'tileMaterial', 'tileMaterialPicked',
   'toggleSelection', 'tourRunning', 'tourView', 'uiZoom', 'viewMode', 'whatsThis',
   'planetMaterial', 'planetReturn', 'planetReviewShown', 'planetSession', 'setPlanetMaterial', 'returnToPlanets', 'setPlanetReviewShown', 'setPlanetSession',
   'restoreEditMode', 'restoreParkedEditor',
+  'repairSession', 'setRepairSession',
   'regionUndoLane', 'regionRedoLane', 'commitRegion', 'undoRegion', 'redoRegion', 'regionRequest', 'claimRegionRequest',
   'handedImport', 'handImport', 'takeHandedImport',
   'openAbout', 'takeAboutTarget', 'openHelpAt', 'toggleWhatsThis', 'startTour', 'finishTour', 'enterTourStep',
 ];
 
-describe('the store composes six slices', () => {
+describe('the store composes seven slices', () => {
   it('each slice file exports a factory function', () => {
     expect(typeof createEngineSlice).toBe('function');
     expect(typeof createEditSlice).toBe('function');
@@ -67,9 +69,10 @@ describe('the store composes six slices', () => {
     expect(typeof createShellSlice).toBe('function');
     expect(typeof createAnnotationsSlice).toBe('function');
     expect(typeof createPlanetSessionSlice).toBe('function');
+    expect(typeof createRepairSessionSlice).toBe('function');
   });
 
-  it('the composed store carries every field the six slices declare', () => {
+  it('the composed store carries every field the seven slices declare', () => {
     // Each factory is called on its own bare vanilla store, so this is the slice's own field
     // list — not whatever the full EditorStore's `get()` would let it reach.
     const bare = () => createStore<any>(() => ({}));
@@ -79,7 +82,8 @@ describe('the store composes six slices', () => {
     const shellFields = Object.keys(createShellSlice(bare().setState, bare().getState, bare()));
     const annotationFields = Object.keys(createAnnotationsSlice(bare().setState, bare().getState, bare()));
     const planetFields = Object.keys(createPlanetSessionSlice(bare().setState, bare().getState, bare()));
-    const declared = new Set([...engineFields, ...editFields, ...prefsFields, ...shellFields, ...annotationFields, ...planetFields]);
+    const repairFields = Object.keys(createRepairSessionSlice(bare().setState, bare().getState, bare()));
+    const declared = new Set([...engineFields, ...editFields, ...prefsFields, ...shellFields, ...annotationFields, ...planetFields, ...repairFields]);
 
     const composed = new Set(Object.keys(useEditorStore.getState()));
     expect(composed).toEqual(declared);

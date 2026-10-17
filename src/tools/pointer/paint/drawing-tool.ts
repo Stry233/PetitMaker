@@ -24,13 +24,14 @@ import { planPaint } from './paint-plan';
 import { StrokePreimage, restoreStroke } from './restore';
 import { adjustContext, curveArmingKey } from './curve-session';
 import type { CurveAnchor } from '../../../core/base/spline';
-import { ruleToast, violationToast } from '../../../i18n/rule-copy';
+import { ruleToast, violationToast } from '../../../i18n/terms/rule-copy';
 import type { GridId, GridCell, MapPoint } from '../../../core/grid/grids';
 import { CONTENT_GRID } from '../../../state/editing/edit-mode';
 import { cellSet } from '../../../core/grid/grids';
 import { StrokeCells, laysTiles, liveTrim, squareStroke } from './stroke-cells';
 import { FRESH_STROKE, trimOfCells, trimOfSpans } from './stroke-preview';
 import { settleStrokeLayer, showDabLayer } from './display-layer';
+import { layerNumber } from '../../../core/game/profile';
 
 
 export type { ContentType } from './paint-plan';
@@ -45,7 +46,7 @@ const CONTENT_ICON: Record<ContentType, PreviewIcon> = {
 
 export class DrawingTool implements Tool<GridId, CurveToolContext> {
   readonly id = ToolType.TerrainBrush;
-  grid(ctx: CurveToolContext): GridId { return CONTENT_GRID[ctx.arming.contentType]; }
+  grid(ctx: Pick<CurveToolContext, 'arming'>): GridId { return CONTENT_GRID[ctx.arming.contentType]; }
 
   /** The material, not the shape: the ghost already shows brush vs line vs rect. */
   cursor(ctx: CurveToolContext): CursorId {
@@ -419,7 +420,7 @@ export class DrawingTool implements Tool<GridId, CurveToolContext> {
     });
     // A refused water stroke names the one layer that would take it, where there is exactly one.
     if (violations.length > 0) {
-      ctx.notify(waterLayer !== null ? ruleToast(ctx.t, 'error.water_only_layer', { layer: waterLayer }) : violationToast(ctx.t, violations[0]!), 'warning');
+      ctx.notify(waterLayer !== null ? ruleToast(ctx.t, 'error.water_only_layer', { layer: layerNumber(waterLayer) }) : violationToast(ctx.t, violations[0]!), 'warning');
     }
 
     // Acknowledge a successful terrain/tile commit with one regional flash over the painted cells

@@ -382,7 +382,7 @@ describe('generation landing and clearing', () => {
     expect(terrainAt(w.state, 5, 5)).toBe(TerrainType.Mountain);
     expect(after(w)).toMatchInlineSnapshot(`
       {
-        "events": "objects-changed cells-changed history-changed objects-changed cells-changed history-changed",
+        "events": "cells-changed history-changed cells-changed history-changed objects-changed",
         "stack": "Human",
         "undo": 1,
       }
@@ -453,7 +453,7 @@ describe('single-object actions', () => {
     expect(removeObject(w.executor, w.state.objects.get(ANCHOR_LANDMARK.id)!).ok).toBe(false);
     expect(after(w, sources)).toMatchInlineSnapshot(`
       {
-        "events": "objects-changed cells-changed history-changed validation-failed",
+        "events": "cells-changed history-changed objects-changed validation-failed",
         "ran": "Human",
         "stack": "Human",
         "undo": 1,
@@ -470,7 +470,7 @@ describe('single-object actions', () => {
     expect(w.state.objects.get('h1')?.rotation).toBe(0);
     expect(after(w)).toMatchInlineSnapshot(`
       {
-        "events": "objects-changed cells-changed history-changed objects-changed cells-changed history-changed",
+        "events": "cells-changed history-changed cells-changed history-changed objects-changed",
         "stack": "Human",
         "undo": 0,
       }
@@ -504,7 +504,7 @@ describe('group transform', () => {
     expect(res.moved).toBe(2);
     expect(after(w)).toMatchInlineSnapshot(`
       {
-        "events": "objects-changed cells-changed history-changed objects-changed cells-changed history-changed objects-changed cells-changed history-changed objects-changed cells-changed history-changed",
+        "events": "cells-changed history-changed cells-changed history-changed cells-changed history-changed cells-changed history-changed objects-changed",
         "stack": "Human",
         "undo": 1,
       }
@@ -520,7 +520,7 @@ describe('group transform', () => {
     expect(w.state.objects.get('a')!.position).toEqual({ x: 4, y: 4 });
     expect(after(w)).toMatchInlineSnapshot(`
       {
-        "events": "objects-changed cells-changed history-changed objects-changed cells-changed history-changed",
+        "events": "cells-changed history-changed cells-changed history-changed objects-changed",
         "stack": "Human",
         "undo": 0,
       }
@@ -537,7 +537,7 @@ describe('group transform', () => {
     expect(w.state.objects.get('b')!.position).toEqual({ x: 8, y: 4 });
     expect(after(w)).toMatchInlineSnapshot(`
       {
-        "events": "objects-changed cells-changed history-changed objects-changed cells-changed history-changed objects-changed*2 cells-changed history-changed",
+        "events": "cells-changed history-changed cells-changed history-changed cells-changed history-changed objects-changed",
         "stack": "Human",
         "undo": 0,
       }
@@ -654,7 +654,7 @@ describe('planet-session plaza edits', () => {
     expect(removeSessionLandmark().success).toBe(true);
     expect(left(w)).toMatchInlineSnapshot(`
       {
-        "events": "objects-changed cells-changed history-changed validation-failed objects-changed cells-changed history-changed objects-changed cells-changed history-changed objects-changed cells-changed history-changed",
+        "events": "cells-changed history-changed objects-changed validation-failed cells-changed history-changed cells-changed history-changed objects-changed cells-changed history-changed objects-changed",
         "stack": "Human",
         "undo": 3,
       }
@@ -670,7 +670,7 @@ describe('planet-session plaza edits', () => {
     expect(w.state().objects.get(ANCHOR_LANDMARK.id)?.rotation).toBe(0);
     expect(left(w)).toMatchInlineSnapshot(`
       {
-        "events": "objects-changed cells-changed history-changed objects-changed cells-changed history-changed",
+        "events": "cells-changed history-changed cells-changed history-changed objects-changed",
         "stack": "Human",
         "undo": 1,
       }

@@ -21,6 +21,8 @@ import { inflateRect, rectsOverlap, type Rect, cellKey } from '../../../../core/
 import { fnv1a32 } from '../../../../core/base/hash';
 import { getRotatedSize } from '../../../../core/grid/footprint';
 import { buildingGate } from '../../../placement/object';
+import { doorGroundRect, hasGate } from '../../../../state/object-geometry';
+import { DOOR } from '../../../../core/game/profile';
 import { anchorCatalogItems } from './region-list';
 import { DOOR_ROTATION, type DesignInput, type DesignPlan, type Direction, type RegionPlan } from '../types';
 
@@ -68,8 +70,8 @@ export interface AnchorPlan {
  * set `region-list.ts` distributed among the regions in the first place.
  */
 export function planAnchors(
-  { seed, plan, catalog = anchorCatalogItems() }:
-    Pick<DesignInput, 'seed'> & { plan: DesignPlan; catalog?: readonly CatalogItem[] },
+  { seed, plan, catalog = anchorCatalogItems(), flights = [] }:
+    Pick<DesignInput, 'seed'> & { plan: DesignPlan; catalog?: readonly CatalogItem[]; flights?: readonly Rect[] },
 ): AnchorPlan {
   const byId = new Map(catalog.map((item) => [item.id, item] as const));
   const out: AnchorPlan = { placements: [], lanes: [], unplaced: [] };
@@ -81,7 +83,7 @@ export function planAnchors(
       for (const id of region.anchors) out.unplaced.push({ regionId: region.id, catalogId: id });
       continue;
     }
-    const laid = layoutRegion(region, lot, items, seed);
+    const laid = layoutRegion(region, lot, items, seed, flights);
     out.placements.push(...laid.placements);
     if (laid.lane) out.lanes.push(laid.lane);
     out.unplaced.push(...laid.unplaced);
@@ -139,23 +141,23 @@ interface RegionLayout {
 }
 
 function layoutRegion(
-  region: RegionPlan, lot: Rect, items: readonly CatalogItem[], seed: number,
+  region: RegionPlan, lot: Rect, items: readonly CatalogItem[], seed: number, flights: readonly Rect[],
 ): RegionLayout {
   const frame = frameOf(lot, region.entrySide);
   // Widest first: one row against the street, then the court, then the court packed tight. The
   // first arrangement that seats every building of the region wins.
   const spineHigh = (hash(region.id, seed) & 1) === 0;
   for (const gap of GAPS) {
-    const single = pack(region, frame, items, { gap, spine: null });
+    const single = pack(region, frame, items, { gap, spine: null, flights });
     if (single) return single;
   }
   for (const gap of GAPS) {
-    const court = pack(region, frame, items, { gap, spine: spineHigh ? 'high' : 'low' });
+    const court = pack(region, frame, items, { gap, spine: spineHigh ? 'high' : 'low', flights });
     if (court) return court;
-    const flipped = pack(region, frame, items, { gap, spine: spineHigh ? 'low' : 'high' });
+    const flipped = pack(region, frame, items, { gap, spine: spineHigh ? 'low' : 'high', flights });
     if (flipped) return flipped;
   }
-  return loose(region, frame, items);
+  return loose(region, frame, items, flights);
 }
 
 interface PackOpts {
@@ -163,6 +165,16 @@ interface PackOpts {
   /** Which end of the lot's entry side the court's spine runs down, or null for a single row with
    *  no lanes at all. */
   spine: 'low' | 'high' | null;
+  /** The street plan's ramp flights: a door facing one has stairs rising in front of it. */
+  flights: readonly Rect[];
+}
+
+/** Whether a door would face a flight within the rise depth V-PLACE-DOOR reads. */
+function doorMeetsFlight(p: AnchorPlacement, item: CatalogItem, flights: readonly Rect[]): boolean {
+  if (flights.length === 0 || !hasGate(item)) return false;
+  const size = getRotatedSize(item, p.rotation);
+  const strip = doorGroundRect({ ...p.position, w: size.w, h: size.h }, p.rotation, DOOR.riseDepth);
+  return flights.some((f) => rectsOverlap(inflateRect(strip, 0.5), f));
 }
 
 /**
@@ -214,7 +226,9 @@ function pack(
     let u = uLo + Math.floor((usable - row.width) / 2);
     for (const item of row.items) {
       const s = spanOf(item);
-      placements.push(placementAt(region.id, item, frame.rect(u, v, s.across, s.deep), region.orientation));
+      const p = placementAt(region.id, item, frame.rect(u, v, s.across, s.deep), region.orientation);
+      if (doorMeetsFlight(p, item, opts.flights)) return null;
+      placements.push(p);
       u += s.across + opts.gap;
     }
     v += row.deep;
@@ -248,7 +262,7 @@ function pack(
 /** The last resort: each building dropped on the first free spot of the lot, facing the entry side.
  *  A door here may open on nothing, which the pipeline reports; a building missing from the map is
  *  a hard-rule failure, and this is what keeps the two apart. */
-function loose(region: RegionPlan, frame: Frame, items: readonly CatalogItem[]): RegionLayout {
+function loose(region: RegionPlan, frame: Frame, items: readonly CatalogItem[], flights: readonly Rect[]): RegionLayout {
   const taken: Rect[] = [];
   const placements: AnchorPlacement[] = [];
   const unplaced: { regionId: string; catalogId: string }[] = [];
@@ -262,8 +276,10 @@ function loose(region: RegionPlan, frame: Frame, items: readonly CatalogItem[]):
         const rect = frame.rect(u, v, s.across, s.deep);
         const pad = inflateRect(rect, 1);
         if (clash(pad)) continue;
+        const p = placementAt(region.id, item, rect, region.orientation);
+        if (doorMeetsFlight(p, item, flights)) continue;
         taken.push(rect);
-        placements.push(placementAt(region.id, item, rect, region.orientation));
+        placements.push(p);
         placed = true;
       }
     }

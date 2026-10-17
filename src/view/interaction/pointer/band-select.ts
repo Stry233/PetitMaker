@@ -9,7 +9,7 @@ import { useEditorStore } from '../../../state/store';
 import { getActiveToolManager, getActiveView } from '../../active-view';
 import { cellUnder } from '../../../core/grid/pointer';
 import { PLACEMENT_GRID } from '../../../core/game/profile';
-import { DRAG_THRESHOLD } from '../camera-gestures';
+import { DRAG_THRESHOLD, travelledPast } from '../press/travel';
 import { macroRect, objectsInBand } from '../marquee';
 
 export class BandSelect {
@@ -32,7 +32,7 @@ export class BandSelect {
   move(x: number, y: number): boolean {
     if (!this.armed) return false;
     if (!this.active
-      && (Math.abs(x - this.startX) > DRAG_THRESHOLD || Math.abs(y - this.startY) > DRAG_THRESHOLD)) {
+      && travelledPast(x - this.startX, y - this.startY, DRAG_THRESHOLD)) {
       this.active = true;
     }
     const bandView = getActiveView();

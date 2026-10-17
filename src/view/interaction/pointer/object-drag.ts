@@ -7,7 +7,7 @@ import type { MacroCoord } from '../../../core/model/types';
 import { useEditorStore } from '../../../state/store';
 import { getActiveView } from '../../active-view';
 import { ObjectDragSession } from '../../../tools/pointer/objects';
-import { DRAG_THRESHOLD } from '../camera-gestures';
+import { DRAG_THRESHOLD, travelledPast } from '../press/travel';
 import { reportRefusal } from '../../../core/commands/refusal';
 import { setCursorDrag } from '../cursor-controller';
 
@@ -48,7 +48,7 @@ export class ObjectDrag {
   /** Arm past the threshold, then preview the drop. Returns whether the drag owns this move. */
   move(x: number, y: number): boolean {
     if (this.session.objectId && !this.dragging
-      && (Math.abs(x - this.startX) > DRAG_THRESHOLD || Math.abs(y - this.startY) > DRAG_THRESHOLD)) {
+      && travelledPast(x - this.startX, y - this.startY, DRAG_THRESHOLD)) {
       this.dragging = true;
     }
     const view = getActiveView();

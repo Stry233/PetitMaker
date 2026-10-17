@@ -28,6 +28,22 @@ describe('V-WTR-02: Water Containment', () => {
     expect(waterContainmentRule.validate(state)).toHaveLength(0);
   });
 
+  // The game's caps are the least mountain a fall needs: nothing stacks on them, so each cap sits
+  // exactly at the fall's upper level, and raising one leaves the fall uncapped.
+  it.each([[4, 5], [6, 5]])('refuses mountain painted onto the cap at (%i, %i) while the fall stands', (cx, cy) => {
+    const state = makeState(10, 10);
+    for (let x = 3; x <= 7; x++) for (let y = 3; y <= 5; y++) setTerrain(state, x, y, TerrainType.Mountain, 2);
+    setTerrain(state, 5, 5, TerrainType.Water, 2);
+    expect(waterContainmentRule.validate(state)).toHaveLength(0);
+    const executor = makeExecutor(state);
+    const stroke = executor.beginStroke();
+    expect(executor.execute(paint(cx, cy, TerrainType.Mountain, 3)).success).toBe(true);
+    const violations = stroke.commit();
+    expect(violations.map((v) => [v.ruleId, v.message])).toContainEqual(['V-WTR-02', 'error.water_uncapped']);
+    expect(state.cells[cy]![cx]!.terrain).toMatchObject({ type: TerrainType.Mountain, elevation: 2 });
+    expect(state.cells[5]![5]!.terrain).toMatchObject({ type: TerrainType.Water, elevation: 2 });
+  });
+
   it('rejects waterfall uncapped on one side', () => {
     const state = makeState(10, 10);
     setTerrain(state, 4, 5, TerrainType.Mountain, 1);

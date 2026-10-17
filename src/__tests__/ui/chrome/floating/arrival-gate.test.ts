@@ -21,6 +21,7 @@ const clear: ArrivalFacts = {
   tourSettled: true,
   tourDoneOpen: false,
   whatsNewOpen: false,
+  repairOpen: false,
 };
 
 describe('the arrival gate', () => {
@@ -45,6 +46,10 @@ describe('the arrival gate', () => {
 
   it('waits for the What\'s new window, which speaks first', () => {
     expect(arrivalOpens({ ...clear, whatsNewOpen: true })).toBe(false);
+  });
+
+  it('waits while a landmark repair is asked or under way, whose window or plate stands where it would', () => {
+    expect(arrivalOpens({ ...clear, repairOpen: true })).toBe(false);
   });
 
   // The saved-session offer is deliberately not among the facts: the card asks whether to pick the

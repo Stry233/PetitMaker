@@ -13,7 +13,7 @@ import { useEditorStore, type EditorStore } from '../../state/store';
 import { isCommandHeld } from '../../state/keymap/held';
 import { quantityParams, translateFor } from '../../i18n/context';
 import type { TextKey } from '../../i18n/keys';
-import { tagLabel } from '../../i18n/annotation-tags';
+import { tagLabel } from '../../i18n/terms/annotation-tags';
 import { showToast } from '../../platform/channels/toast-bus';
 import { poolAvailable, runMacroBuildInPool, runPreviewInPool } from '../../tools/generation/run';
 

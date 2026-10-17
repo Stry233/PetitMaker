@@ -2,7 +2,9 @@
 import type { MacroCoord } from '../types';
 import { splineSamples, type CurveAnchor } from '../../base/spline';
 import { cellKey as key, rectContains } from '../../grid/rect';
-import { zoneCellAt, zoneCellCentre, zoneCellSet, type MapAnnotation } from '../annotations';
+import { zoneCellAt, zoneCellCentre, zoneCellSet, zoneGrid, type MapAnnotation, type ZoneGridId } from '../annotations';
+import { gridSize } from '../../grid/grid-convert';
+import { PLACEMENT_GRID } from '../../game/profile';
 
 /** Trace zone boundaries into closed grid-corner loops and remove collinear points. Disconnected
  * regions and holes produce separate loops. */
@@ -60,13 +62,19 @@ function zoneLoops(cells: readonly MacroCoord[]): Array<Array<[number, number]>>
 }
 
 /** Zone-corner radius in cells: half a cell, the most a unit step holds, so the staircase of a
- *  diagonal stroke reads as one smooth line. Zones are painted in whole cells on every template,
- *  so the radius does not follow the map's ink scale. */
+ *  diagonal stroke reads as one smooth line. Zones are painted in cells of a fixed size on every
+ *  template, so the radius does not follow the map's ink scale; a shorter edge (a half-cell step)
+ *  rounds at half its length. */
 const ZONE_CORNER_CELLS = 0.5;
 
-/** Round zone-loop corners with sampled quadratic curves. The first point is repeated at the end. */
-export function roundedZoneLoops(cells: readonly MacroCoord[], radius = ZONE_CORNER_CELLS): Array<Array<[number, number]>> {
-  return zoneLoops(cells).map((loop) => {
+/** Round the corners of the loops around `cells` of `grid` with sampled quadratic curves, in map
+ *  cells. The first point is repeated at the end. */
+export function roundedZoneLoops(
+  cells: readonly MacroCoord[], radius = ZONE_CORNER_CELLS, grid: ZoneGridId = PLACEMENT_GRID,
+): Array<Array<[number, number]>> {
+  const size = gridSize(grid);
+  return zoneLoops(cells).map((raw) => {
+    const loop = size === 1 ? raw : raw.map(([x, y]) => [x * size, y * size] as [number, number]);
     const n = loop.length;
     const out: Array<[number, number]> = [];
     // Remove coincident samples so renderers receive no zero-length segments.
@@ -119,10 +127,10 @@ export function loopInwardNormals(loop: ReadonlyArray<[number, number]>): Array<
 }
 
 /** Return the mean of a zone's drawn cell centres for caption placement. */
-function zoneCentroid(cells: readonly MacroCoord[]): { x: number; y: number } {
+function zoneCentroid(cells: readonly MacroCoord[], grid: ZoneGridId): { x: number; y: number } {
   let sx = 0;
   let sy = 0;
-  for (const c of cells) { const m = zoneCellCentre(c); sx += m.x; sy += m.y; }
+  for (const c of cells) { const m = zoneCellCentre(c, grid); sx += m.x; sy += m.y; }
   const n = Math.max(1, cells.length);
   return { x: sx / n, y: sy / n };
 }
@@ -134,7 +142,7 @@ function zoneCentroid(cells: readonly MacroCoord[]): { x: number; y: number } {
  * the deepest cells win. Their mean is used when it lands inside the zone, so a rectangle's caption
  * sits at its exact centre; otherwise the deepest cell nearest the centroid is used.
  */
-export function zoneLabelAnchor(cells: readonly MacroCoord[]): { x: number; y: number } {
+export function zoneLabelAnchor(cells: readonly MacroCoord[], grid: ZoneGridId = PLACEMENT_GRID): { x: number; y: number } {
   if (cells.length === 0) return { x: 0, y: 0 };
   const set = zoneCellSet(cells);
   const depth = new Map<string, number>();
@@ -163,18 +171,18 @@ export function zoneLabelAnchor(cells: readonly MacroCoord[]): { x: number; y: n
     ring = next;
   }
   const deepest = cells.filter((c) => depth.get(key(c.x, c.y)) === level);
-  const mean = zoneCentroid(deepest);
-  const meanCell = zoneCellAt(mean);
+  const mean = zoneCentroid(deepest, grid);
+  const meanCell = zoneCellAt(mean, grid);
   if (set.has(key(meanCell.x, meanCell.y))) return mean;
-  const centroid = zoneCentroid(cells);
+  const centroid = zoneCentroid(cells, grid);
   let best = deepest[0]!;
   let bestDist = Infinity;
   for (const c of deepest) {
-    const m = zoneCellCentre(c);
+    const m = zoneCellCentre(c, grid);
     const d = Math.hypot(m.x - centroid.x, m.y - centroid.y);
     if (d < bestDist) { bestDist = d; best = c; }
   }
-  return zoneCellCentre(best);
+  return zoneCellCentre(best, grid);
 }
 
 /** Sample a route with the same spline implementation used by terrain curves. */
@@ -190,7 +198,10 @@ export function annotationsInRect(
   items: readonly MapAnnotation[],
 ): string[] {
   const caught = (n: MapAnnotation): boolean => {
-    if (n.kind === 'zone') return n.cells.some((c) => rectContains(rect, c.x, c.y));
+    if (n.kind === 'zone') {
+      const size = gridSize(zoneGrid(n));
+      return n.cells.some((c) => rectContains(rect, c.x * size, c.y * size));
+    }
     if (n.kind === 'chip') return rectContains(rect, n.x, n.y);
     if (n.kind === 'measure') {
       const [a, b] = n.points;

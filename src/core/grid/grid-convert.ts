@@ -4,7 +4,7 @@
  * its own cell size.
  */
 import { GRIDS, PLACEMENT_GRID, TERRAIN_GRID } from '../game/profile';
-import { gridCellAt, gridCellCentre, gridCellRect, gridCellsUnder, type CellSet, type GridId } from './grids';
+import { gridCellAt, gridCellCentre, gridCellSize, gridCellRect, gridCellsUnder, type CellSet, type GridId } from './grids';
 import type { MacroCoord } from '../base/coords';
 import type { Rect } from './rect';
 
@@ -14,6 +14,11 @@ export const TERRAIN_GRID_OFFSET = GRIDS[TERRAIN_GRID].offset;
 /** The offset of `grid`'s cells, in cells per axis. */
 export function gridOffset(grid: GridId): { readonly x: number; readonly y: number } {
   return GRIDS[grid].offset;
+}
+
+/** The side of `grid`'s cells, in map cells. */
+export function gridSize(grid: GridId): number {
+  return gridCellSize(GRIDS[grid]);
 }
 
 /** The area terrain cell `c` covers, in object-grid cells. */

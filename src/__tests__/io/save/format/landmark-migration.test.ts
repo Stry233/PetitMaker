@@ -3,7 +3,7 @@ import legacy from '../../../fixtures/saves/landmarks-v2.json';
 import expected from '../../../fixtures/saves/landmarks-v3.json';
 import { CURRENT_VERSION, migrateToCurrent } from '../../../../io/save/format';
 import { serialize, decodeSave } from '../../../../io/save/json-codec';
-import { clearUnderLandmarks } from '../../../../tools/generation/transfer';
+import { clearUnderLandmarks } from '../../../../state/landmark-clearance';
 import { parseSave } from '../../../../io/save/parse';
 import { inspectImportFile } from '../../../../io/import/file';
 import { parseTemplate, readPlanetFile, serializeTemplate } from '../../../../io/save/planet-codec';
@@ -24,7 +24,7 @@ const STATION = LANDMARKS.find((l) => !l.anchor)!;
 /** A save as a load path opens it: decoded as saved, then cleared under its landmarks. */
 function load(parsed: ReturnType<typeof parseSave>) {
   const state = decodeSave(parsed);
-  return { state, cleared: clearUnderLandmarks(state) };
+  return { state, cleared: clearUnderLandmarks(state, createDefaultRegistry()) };
 }
 
 /** Every cell the anchor rests on holds exactly the terrain its template lays there. */

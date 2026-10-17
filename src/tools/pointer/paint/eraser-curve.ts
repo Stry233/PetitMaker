@@ -1,5 +1,5 @@
 import type { MacroCoord } from '../../../core/model/types';
-import { violationToast } from '../../../i18n/rule-copy';
+import { violationToast } from '../../../i18n/terms/rule-copy';
 import { stampMap, stillStamped } from '../../../core/model/fingerprint';
 import { restoreStroke, type StrokePreimage } from './restore';
 import type { CurveToolContext } from './curve-session';

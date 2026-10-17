@@ -7,6 +7,7 @@ import { Pill } from '../../../primitives/Pill';
 import type { CSSProperties } from 'react';
 import { iconUrl } from '../../../../assets/icon-urls';
 import { localizedName, useLocale, useT } from '../../../../i18n/context';
+import { layerName } from '../../../../i18n/terms/layer-name';
 import {
   buildChecklist, buildChecklistText, CATEGORY_LABEL,
   type BuildChecklist as BuildChecklistData, type ChecklistGroup, type ChecklistItem, type ChecklistLayer,
@@ -141,7 +142,7 @@ function RoadsCard({ roads, roadTotal }: { roads: ChecklistItem[]; roadTotal: nu
   );
 }
 
-/** Terrain reads as one compact card of per-layer chips: a map's layer count can run to 8, and a
+/** Terrain reads as one compact card of per-layer chips: a map's layer count can run to 10, and a
  *  chip carries a layer's numbers in a fraction of a row's room. */
 function TerrainCard({ layers }: { layers: ChecklistLayer[] }) {
   const t = useT();
@@ -152,7 +153,7 @@ function TerrainCard({ layers }: { layers: ChecklistLayer[] }) {
       </div>
       <div style={chipsRow}>
         {layers.map((layer) => {
-          const label = layer.layer === 0 ? t('export.layer_ground') : t('export.layer_level', { n: layer.layer });
+          const label = layerName(t, layer.layer);
           return (
             <span key={layer.layer} style={layerChip}>
               <span>{label}</span>

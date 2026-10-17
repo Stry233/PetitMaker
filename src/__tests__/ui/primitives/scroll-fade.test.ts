@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, fireEvent, cleanup, act } from '@testing-library/react';
-import { createElement, createRef, useRef, useState, type RefObject } from 'react';
+import { createElement, createRef, startTransition, useRef, useState, type RefObject } from 'react';
 import { MotionConfig } from 'framer-motion';
 import { fadeMask, SCROLL_FADE, useScrollFade } from '../../../ui/primitives/scroll-fade';
 
@@ -275,5 +275,58 @@ describe('useScrollFade while the box it lives in is being tweened taller', () =
     fireEvent.scroll(box);
     pumpUntil(() => box.style.maskImage === '');
     expect(box.style.maskImage).toBe('');
+  });
+});
+
+/**
+ * Under reduced motion the shade is set from the binding effect, which re-measures on every render.
+ * A render that measured nothing new must queue no update: one queued on a component whose other
+ * state is still waiting on a lower-priority update re-renders it at once, and the same effect runs
+ * again in that render, which is the generate shelf's tab-switch loop.
+ */
+describe('useScrollFade under reduced motion, re-rendered', () => {
+  let renders = 0;
+  let poke: (() => void) | null = null;
+  let starve: (() => void) | null = null;
+
+  function Host() {
+    renders += 1;
+    const ref = useRef<HTMLDivElement>(null);
+    const [, setTick] = useState(0);
+    // A list whose updater always yields a new array, as a batch's pictures arriving one by one do.
+    const [, setList] = useState<number[]>([]);
+    poke = () => setTick((n) => n + 1);
+    starve = () => {
+      startTransition(() => setList((l) => [...l, 1]));
+      setList((l) => [...l]);
+    };
+    const style = useScrollFade(ref, 'x');
+    return createElement('div', { ref, style, 'data-testid': 'host' });
+  }
+  const reducedHost = () => createElement(MotionConfig, { reducedMotion: 'always' }, createElement(Host));
+
+  beforeEach(() => { renders = 0; });
+
+  it('renders once per render asked of it, with the shade standing or not', () => {
+    const { getByTestId } = render(reducedHost());
+    const el = getByTestId('host');
+    Object.defineProperty(el, 'scrollWidth', { value: 300, configurable: true });
+    Object.defineProperty(el, 'clientWidth', { value: 100, configurable: true });
+    Object.defineProperty(el, 'scrollLeft', { value: 0, configurable: true });
+    fireEvent.scroll(el);
+    expect(el.style.maskImage).toContain(`calc(100% - ${SCROLL_FADE}px)`);
+
+    const before = renders;
+    for (let i = 0; i < 5; i++) act(() => poke!());
+    expect(renders - before, 'one render per poke, none of its own').toBe(5);
+    expect(el.style.maskImage).toContain(`calc(100% - ${SCROLL_FADE}px)`);
+  });
+
+  it('does not loop while another update of the same component waits its turn', () => {
+    render(reducedHost());
+    const failed = vi.spyOn(console, 'error').mockImplementation(() => {});
+    expect(() => act(() => starve!())).not.toThrow();
+    expect(failed).not.toHaveBeenCalled();
+    expect(renders, 'mount, the default update and the transition').toBeLessThanOrEqual(4);
   });
 });

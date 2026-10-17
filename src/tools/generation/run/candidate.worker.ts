@@ -10,6 +10,7 @@ import { decodeGridState, encodeGridState } from '../../../core/model/grid-wire'
 import { isPlanetCanvasId } from './planet-canvas';
 import { createRuleRegistry, type RuleSetName } from '../../../rules';
 import type { GridState, MacroCoord, MapTemplate } from '../../../core/model/types';
+import type { AnnotationsState } from '../../../core/model/annotations';
 import type { GenerateConfig } from '../recipe';
 import { buildMacroRun, type MacroBuild, type MacroId, type MacroOpts } from '../../macros/run';
 import { detachedContext } from '../../macros/runtime/scratch';
@@ -24,7 +25,8 @@ export interface CandidateJobs {
   candidate: { config: GenerateConfig; region: MacroCoord[] | null; rules: RuleSetName };
   preview: { macro: MacroId; opts: MacroOpts; rules: RuleSetName };
   macro: { macro: MacroId; opts: MacroOpts; rules: RuleSetName };
-  transfer: { targetId: string };
+  /** The grid's wire leaves plan notes behind, so the carry is sent the ones it moves. */
+  transfer: { targetId: string; annotations?: AnnotationsState };
 }
 
 /** One job, by kind. `templates` carries the templates a job names by id besides its grid's own,
@@ -82,9 +84,11 @@ scope.listen((job) => {
         return;
       }
       if (job.kind === 'transfer') {
+        if (job.annotations) state.annotations = job.annotations;
         const built = transferPreviewOf(state, knownTemplate(job.targetId));
         const preview: WireTransferPreview = {
           grid: encodeGridState(built.state), dropped: built.dropped, moved: built.moved, droppedCounts: built.droppedCounts,
+          ...(built.state.annotations ? { annotations: built.state.annotations } : {}),
         };
         scope.post({ ok: true, preview }, [preview.grid.wire.buffer]);
         return;

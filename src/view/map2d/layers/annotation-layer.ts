@@ -6,7 +6,7 @@
  * It draws from the store's annotation data rather than the EventBus — annotations are not grid
  * state, and their epoch is bumped by every slice verb. Every note is its own node, reconciled by
  * the note's identity: an unchanged note keeps the node (and the PIXI.Text raster) it already has,
- * an edited one rebuilds only itself, and an arriving or leaving one fades over `FADE_MS` instead
+ * an edited one rebuilds only itself, and an arriving or leaving one fades (`animConfig.noteFade`) instead
  * of popping — planning ink appears on a map someone is looking at, and a mark from nowhere reads
  * as a glitch. Under reduced motion the fade is skipped to the end state.
  *
@@ -17,8 +17,8 @@
  */
 import * as PIXI from 'pixi.js-legacy';
 import { APP_FONT_FAMILY } from '../../../assets/fonts/family';
-import { TILE_SIZE } from '../geometry/world';
-import { chipTextSize, routeWidth, zoneHasCaption, type AnnotationsState, type ChipNote, type MapAnnotation, type RouteNote, type ZoneNote } from '../../../core/model/annotations';
+import { TILE_SIZE, gridCellPx } from '../geometry/world';
+import { chipTextSize, routeWidth, zoneGrid, zoneHasCaption, type AnnotationsState, type ChipNote, type MapAnnotation, type RouteNote, type ZoneNote } from '../../../core/model/annotations';
 import { INK_ZONE_DISC, isAnnotationInk } from '../../../config/annotation-palette';
 import { INK_CELLS } from '../../../core/model/annotation/text-metrics';
 import { routeSamples, zoneLabelAnchor } from '../../../core/model/annotation/geometry';
@@ -27,7 +27,7 @@ import { cellEdges, dimensionDrawing, measureDrawing, type DimensionDrawing } fr
 import { isMotionReduced } from '../../../platform/channels/motion-state';
 import { hexStringToNumber } from '../../../core/base/color';
 import { MAP_INK, MAP_TEXT as MAP_TEXT_HEX } from '../../../assets/brand-palette';
-import { easeOutQuad } from '../../shared/motion/anim-config';
+import { animConfig, easeOutQuad } from '../../shared/motion/anim-config';
 import {
   ANNOTATION_LINE, annotationDashes, annotationLineCells, annotationLineColor, dashRuns, zoneBorderPaths,
 } from '../../shared/annotation/annotation-line';
@@ -38,7 +38,6 @@ const INK = hexStringToNumber(MAP_INK);
 
 const WASH_ALPHA = 0.3;
 const WASH_ALPHA_INK = 0.38;
-const FADE_MS = 220;
 
 /** A saved note colour may carry an alpha pair (`#rrggbbaa`): the ink draws its rgb, and white for
  *  one that does not parse. */
@@ -79,8 +78,9 @@ export class AnnotationLayer {
   /** The line width in cells the standing lines were stroked at. */
   private lineCells = annotationLineCells(TILE_SIZE);
 
-  /** Opens the owning renderer's render window. */
-  constructor(readonly requestRender: () => void) {
+  /** `requestRender` opens the owning renderer's render window; `fadeMs` is how long a note takes to
+   *  arrive or leave, 0 for a layer whose owner fades it whole (the note ghost). */
+  constructor(readonly requestRender: () => void, private readonly fadeMs: number = animConfig.noteFade.durationMs) {
     this.container.addChild(this.washPass);
     this.container.addChild(this.routePass);
     this.container.addChild(this.labelPass);
@@ -159,7 +159,7 @@ export class AnnotationLayer {
       ];
       const caption = zoneLabel(note, label, opts.inkScale);
       if (caption) parts.push(this.labelPass.addChild(caption));
-      const bounds = cellEdges(note.cells);
+      const bounds = cellEdges(note.cells, zoneGrid(note));
       if (bounds && opts.zoneDimensions !== false && (selected || note === opts.draft)) {
         parts.push(this.labelPass.addChild(dimensionBody(dimensionDrawing(bounds, opts.inkScale), note.color, ink)));
       }
@@ -182,7 +182,7 @@ export class AnnotationLayer {
 
   private beginFade(id: string, node: NoteNode, to: number, fromOverride?: number): void {
     const from = fromOverride ?? this.alphaOf(node);
-    if (isMotionReduced()) {
+    if (isMotionReduced() || this.fadeMs <= 0) {
       this.settleFade(id, node, to);
       return;
     }
@@ -210,7 +210,7 @@ export class AnnotationLayer {
       for (const [id, node] of this.nodes) {
         const f = node.fade;
         if (!f) continue;
-        const t = Math.min(1, (now - f.start) / FADE_MS);
+        const t = Math.min(1, (now - f.start) / this.fadeMs);
         const eased = easeOutQuad(t);
         const alpha = f.from + (f.to - f.from) * eased;
         for (const part of node.parts) part.alpha = alpha;
@@ -282,8 +282,9 @@ function selectionStroke(g: PIXI.Graphics, runs: readonly (readonly number[])[],
 function zoneWash(zone: ZoneNote): PIXI.Graphics {
   const g = new PIXI.Graphics();
   g.beginFill(hex(zone.color), isAnnotationInk(zone.color) ? WASH_ALPHA_INK : WASH_ALPHA);
-  // Zone ink lives on the road grid: the wash covers whole road cells.
-  for (const c of zone.cells) g.drawRect(c.x * TILE_SIZE, c.y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
+  // Zone ink lives on the road grid, or the half grid for a half-cell step: the wash covers its cells.
+  const px = gridCellPx(zoneGrid(zone));
+  for (const c of zone.cells) g.drawRect(c.x * px, c.y * px, px, px);
   g.endFill();
   return g;
 }
@@ -291,7 +292,7 @@ function zoneWash(zone: ZoneNote): PIXI.Graphics {
 /** The border: one closed annotation line per outline, and its selection stroke. */
 function zoneOutline(zone: ZoneNote, selected: boolean, lineCells: number, restroke: Restroke[]): PIXI.Graphics {
   return lineGraphic((g, w) => {
-    const runs = zoneBorderPaths(zone.cells, w / TILE_SIZE).map(px);
+    const runs = zoneBorderPaths(zone.cells, w / TILE_SIZE, zoneGrid(zone)).map(px);
     strokeLine(g, runs, zone.color, w);
     if (selected) selectionStroke(g, runs, w);
   }, lineCells, restroke);
@@ -302,7 +303,7 @@ function zoneLabel(zone: ZoneNote, label: string, inkScale: number): PIXI.Contai
   const withNum = zone.num > 0;
   const box = new PIXI.Container();
   const fs = INK_CELLS.zoneLabel[chipTextSize(zone.size ?? 'm')] * inkScale * TILE_SIZE;
-  const { x, y } = zoneLabelAnchor(zone.cells);
+  const { x, y } = zoneLabelAnchor(zone.cells, zoneGrid(zone));
   const X = x * TILE_SIZE;
   const Y = y * TILE_SIZE;
   const text = label ? makeText(label, labelStyle(fs, MAP_TEXT)) : null;

@@ -3,7 +3,7 @@
  * context; `CONTEXT_KEYS` gives each context's keys their action and label, read by the toolbar's
  * labels and by the command bodies (`editor/commands/commands.ts`) alike.
  */
-import { isContentMode, type BuildMode } from '../editing/edit-mode';
+import { isAnnotating, isContentMode, type BuildMode } from '../editing/edit-mode';
 import type { AnnotationTool, DesignMode } from '../editing/vocabulary';
 import type { I18nKey } from '../../i18n/keys';
 import type { CommandId } from './registry';
@@ -26,12 +26,11 @@ export interface KeyContextInputs {
  *  terrain surface's build tools, or the map. */
 export function keyContext(s: KeyContextInputs): KeyContext {
   if (s.selectingRegion) return 'region';
-  const { mode } = s.editMode;
-  if (mode === 'annotate') {
+  if (isAnnotating(s)) {
     const tool = s.annotationTool;
     return tool === 'zone' || tool === 'erase' || tool === 'chip' || tool === 'route' ? `notes-${tool}` : 'notes-other';
   }
-  return isContentMode(mode) ? 'terrain' : 'map';
+  return isContentMode(s.editMode.mode) ? 'terrain' : 'map';
 }
 
 /** The toolbar whose keys a context uses. */

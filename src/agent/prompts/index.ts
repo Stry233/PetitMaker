@@ -18,7 +18,7 @@ import { ruleHint } from '../tools/rule-hints';
 import { BANNERS } from '../tools/feedback';
 import { getAllItems } from '../../state/catalog';
 import type { CatalogItem, PlacementTrait } from '../../core/model/types';
-import { APP_NAME } from '../../i18n/brand';
+import { APP_NAME } from '../../i18n/terms/brand';
 import { isLocale } from '../../core/model/locale';
 import { LOCALE_INFO } from '../../i18n/locale-info';
 
@@ -31,7 +31,7 @@ import recipes from './06-recipes.md?raw';
 import trust from './07-trust.md?raw';
 import contentPolicy from './08-content-policy.md?raw';
 import workflow from './09-workflow.md?raw';
-import { BASE_SUPPORT, ELEVATION_MAX, GAME_NAME } from '../../core/game/profile';
+import { BASE_SUPPORT, ELEVATION_MAX, GAME_NAME, layerNumber } from '../../core/game/profile';
 import { RAMP_UPPER_RUN } from '../../core/model/traits';
 import { BUILDABLE_ZONES, fixedFeatures } from '../tools/game-terms';
 
@@ -48,6 +48,7 @@ function traitStr(t: PlacementTrait): string {
     case 'waterSpan': return `waterSpan ${t.min}-${t.max}`;
     case 'heightDrop': return `heightDrop ${t.layers}`;
     case 'exclusionRadius': return `exclusionRadius ${t.radius}`;
+    case 'groundZones': return `groundZones ${[t.onGrass && 'grass', t.onSand && 'sand', t.acrossBoundary && 'across'].filter(Boolean).join('/')}`;
     default: return t.type;
   }
 }
@@ -80,7 +81,10 @@ export function buildSystemPrompt(registry: RuleDispatcher, opts?: { uiLocale?: 
   const sections = [
     inject(
       identity,
-      { elevMax: String(ELEVATION_MAX), app: APP_NAME, game: GAME_NAME, buildable: BUILDABLE_ZONES, uiLanguage: LOCALE_INFO[uiLocale].englishName },
+      {
+        elevMax: String(ELEVATION_MAX), topLayer: String(layerNumber(ELEVATION_MAX)),
+        app: APP_NAME, game: GAME_NAME, buildable: BUILDABLE_ZONES, uiLanguage: LOCALE_INFO[uiLocale].englishName,
+      },
     ),
     inject(rulesSection, { rules, ...BANNERS }),
     inject(traitsSection, { rampUpperRun: String(RAMP_UPPER_RUN) }),

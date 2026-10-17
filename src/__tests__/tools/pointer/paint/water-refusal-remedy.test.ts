@@ -10,6 +10,7 @@ import { makeState, setTerrain, makeExecutor } from '../../../_support/map-state
 import { makeToolCtx, arm, type ToolCtxOver } from '../../../_support/tool-ctx';
 import type { HostedToolContext } from '../../../../tools/pointer/runtime/host';
 import { cell, point } from '../../../_support/grid';
+import { layerNumber } from '../../../../core/game/profile';
 
 const exec = (s: GridState) => makeExecutor(s);
 const m = (x: number, y: number): MacroCoord => ({ x, y });
@@ -47,7 +48,7 @@ function waterDab(ctx: HostedToolContext, at: MacroCoord): void {
 }
 
 describe('a refused water stroke names the one layer that would hold it', () => {
-  it('the repro: layer 2 armed on a three-layer lip is refused, and the toast names layer 3', () => {
+  it('the repro: layer 2 armed on a three-layer lip is refused, and the toast names layer 3 by the game\'s number', () => {
     const state = mesa();
     const ex = exec(state);
     const { ctx, asked, toasts } = recording(state, ex, 2);
@@ -55,8 +56,8 @@ describe('a refused water stroke names the one layer that would hold it', () => 
 
     expect(terrainAt(state, 8, 8), 'the stroke is still refused, and nothing is quietly moved')
       .toEqual({ type: TerrainType.Mountain, elevation: 3 });
-    expect(asked).toEqual([{ key: 'error.water_only_layer', params: { layer: 3 } }]);
-    expect(toasts).toEqual([{ text: 'rule.category.water|error.water_only_layer:{"layer":3}', type: 'warning' }]);
+    expect(asked).toEqual([{ key: 'error.water_only_layer', params: { layer: layerNumber(3) } }]);
+    expect(toasts).toEqual([{ text: 'rule.category.water|error.water_only_layer:{"layer":4}', type: 'warning' }]);
   });
 
   it('layer 3 is what actually works there, which is what the message promises', () => {

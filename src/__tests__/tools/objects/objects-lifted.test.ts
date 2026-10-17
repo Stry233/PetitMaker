@@ -4,7 +4,7 @@ import { createDefaultRegistry } from '../../../rules';
 import { CommandType, type PlacedObject } from '../../../core/model/types';
 import { mapVersionKey } from '../../../core/model/grid-model';
 import { planObjectMove, probeWithout } from '../../../tools/placement/probe';
-import { previewGroupMove } from '../../../tools/objects/group-actions';
+import { planGroupMove } from '../../../tools/objects/group-actions';
 import { makeState, makeExecutor } from '../../_support/map-state';
 
 const cabin = (): PlacedObject => ({ id: 'o1', catalogId: 'building-myhouse', position: { x: 2, y: 2 }, rotation: 0, elevation: 0 });
@@ -43,7 +43,7 @@ describe('placement probes with objects taken off', () => {
     state.objects.set(obj.id, obj);
     const key = mapVersionKey(state);
     expect(planObjectMove(exec, state, obj, 3, 2).errors).toEqual([]);
-    expect(previewGroupMove(exec, state, [obj.id], 1, 0)).toBe(true);
+    expect(planGroupMove(exec, state, [obj.id], 1, 0).valid).toBe(true);
     expect(mapVersionKey(state)).toBe(key);
   });
 
@@ -55,7 +55,7 @@ describe('placement probes with objects taken off', () => {
 
   it('keep a group on the map when a rule throws while its move is previewed', () => {
     const { state, exec, obj } = crashing();
-    expect(() => previewGroupMove(exec, state, [obj.id], 1, 1)).toThrow('rule crashed');
+    expect(() => planGroupMove(exec, state, [obj.id], 1, 1)).toThrow('rule crashed');
     expect(state.objects.get(obj.id)).toBe(obj);
   });
 });

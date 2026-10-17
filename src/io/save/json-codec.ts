@@ -63,7 +63,8 @@ export function buildSaveFile(state: GridState, camera?: PersistedCamera): SaveF
     objects: objectList,
     metadata: { savedAt: new Date().toISOString() },
     ...(isCustomTemplate(template) ? { template: serializeTemplate(template) } : {}),
-    ...(state.provenance ? { provenance: serializeProvenance(state.provenance) } : {}),
+    // Taint kept for an object a load took off the map (for its return) is not the map's to save.
+    ...(state.provenance ? { provenance: serializeProvenance(state.provenance, (id) => objects.has(id)) } : {}),
     ...(notes ? { notes } : {}),
     ...(state.imageAttribution ? { imageAttribution: state.imageAttribution } : {}),
     // An empty annotation layer has no persisted visibility or lock state.

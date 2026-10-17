@@ -1,9 +1,13 @@
 /** The Settings pictures: the map stamp the grid, chunk and quality tiles draw, the motion samples and the cursor choices. */
-import { cssMotion } from '../../../design/motion';
+import { AnimatePresence, motion, useReducedMotionConfig } from 'framer-motion';
+import { cssMotion, holdSeconds, presence } from '../../../design/motion';
 import { ActionButton } from '../../../primitives/ActionButton';
-import { type CSSProperties, type ReactNode } from 'react';
+import { fadeMask } from '../../../primitives/scroll-fade';
+import { useSizeGlide } from '../../../primitives/use-size-glide';
+import { useTransient } from '../../../primitives/use-transient';
+import { useId, type CSSProperties, type ReactNode } from 'react';
 import { MotionSample } from '../../../design/motion/MotionSample';
-import { font, radii, cursors } from '../../../design/styles';
+import { font, radii, cursors, visuallyHidden } from '../../../design/styles';
 import { FRAME_INK, ON_DARK, inkTint, SHADE, rgbaOf } from '../../../design/tokens';
 import { skin } from '../../../design/window-skin';
 import { roleFont } from '../../../design/text-weight';
@@ -11,6 +15,9 @@ import { CellZone } from '../../../../core/game/zones';
 import { ELEVATION_COLORS, WATER_COLOR, ZONE_COLORS } from '../../../../core/model/palette';
 import { templateAnchor } from '../../../../core/model/landmarks';
 import { DEFAULT_MAP } from '../../../../config/maps';
+import { GRIDS, PLACEMENT_GRID, TERRAIN_GRID } from '../../../../core/game/profile';
+import type { GridId } from '../../../../core/grid/grids';
+import type { GridMode } from '../../../../platform/storage/prefs';
 import { cursorArt } from '../../../../assets/cursors/cursor-art';
 import { iconUrl } from '../../../../assets/icon-urls';
 import { resolveReducedMotion, useOsReducedMotion } from '../../../session/use-motion-enabled';
@@ -55,18 +62,45 @@ export function MapBase(): ReactNode {
   );
 }
 
-/** The overlays the two toggles show. Grid lines are white like the canvas's own (alpha raised —
- *  the canvas's 0.14 vanishes at stamp scale); chunk bounds are the renderer's black at 0.35. */
-export function MapOverlay({ kind, on }: { kind: 'grid' | 'chunks'; on: boolean }): ReactNode {
+/** Cell lines over the stamp and one cell past each edge, so a shifted set still covers it. */
+const CELL_LINES = (
+  <>
+    {Array.from({ length: 11 }, (_, i) => <line key={`v${i}`} x1={i * MAP_CELL} y1={-MAP_CELL} x2={i * MAP_CELL} y2={MAP_H + MAP_CELL} />)}
+    {Array.from({ length: 8 }, (_, i) => <line key={`h${i}`} x1={-MAP_CELL} y1={i * MAP_CELL} x2={MAP_W + MAP_CELL} y2={i * MAP_CELL} />)}
+  </>
+);
+
+/** The cell lines standing at `grid`'s offset, gliding when it changes. */
+function GridLines({ grid }: { grid: GridId }): ReactNode {
+  const { x, y } = GRIDS[grid].offset;
+  return (
+    <g style={{ transform: `translate(${x * MAP_CELL}px, ${y * MAP_CELL}px)`, transition: cssMotion('settings.grid.shift', ['transform']) }}>
+      {CELL_LINES}
+    </g>
+  );
+}
+
+/** The grid tile's lines for `mode`: the object grid, the terrain grid, or for the automatic grid
+ *  the object grid on the left and the terrain grid on the right of a diagonal. Off keeps the last
+ *  lines and fades them out. Lines are white like the canvas's own (alpha raised: the canvas's
+ *  0.14 vanishes at stamp scale). */
+export function GridOverlay({ mode, shown }: { mode: GridMode; shown: Exclude<GridMode, 'off'> }): ReactNode {
+  const clip = `grid-clip-${useId().replace(/[^\w-]/g, '')}`;
+  const left = shown === 'auto' ? PLACEMENT_GRID : shown;
+  const right = shown === 'auto' ? TERRAIN_GRID : shown;
+  return (
+    <g style={{ opacity: mode === 'off' ? 0 : 1, transition: cssMotion('control.fade', ['opacity']) }} stroke={rgbaOf(ON_DARK, 0.65)} strokeWidth={1}>
+      <clipPath id={`${clip}l`}><polygon points={`0,0 ${MAP_W * 0.65},0 ${MAP_W * 0.35},${MAP_H} 0,${MAP_H}`} /></clipPath>
+      <clipPath id={`${clip}r`}><polygon points={`${MAP_W * 0.65},0 ${MAP_W},0 ${MAP_W},${MAP_H} ${MAP_W * 0.35},${MAP_H}`} /></clipPath>
+      <g clipPath={`url(#${clip}l)`}><GridLines grid={left} /></g>
+      <g clipPath={`url(#${clip}r)`}><GridLines grid={right} /></g>
+    </g>
+  );
+}
+
+/** The chunk bounds the chunk tile shows, the renderer's black at 0.35. */
+export function ChunkOverlay({ on }: { on: boolean }): ReactNode {
   const style: CSSProperties = { opacity: on ? 1 : 0, transition: cssMotion('control.fade', ['opacity']) };
-  if (kind === 'grid') {
-    return (
-      <g style={style} stroke={rgbaOf(ON_DARK, 0.65)} strokeWidth={1}>
-        {Array.from({ length: 9 }, (_, i) => <line key={`v${i}`} x1={(i + 1) * MAP_CELL} y1={0} x2={(i + 1) * MAP_CELL} y2={MAP_H} />)}
-        {Array.from({ length: 6 }, (_, i) => <line key={`h${i}`} x1={0} y1={(i + 1) * MAP_CELL} x2={MAP_W} y2={(i + 1) * MAP_CELL} />)}
-      </g>
-    );
-  }
   return (
     <g style={style} stroke={rgbaOf(SHADE, 0.35)} strokeWidth={2}>
       <line x1={5 * MAP_CELL} y1={0} x2={5 * MAP_CELL} y2={MAP_H} />
@@ -128,11 +162,14 @@ export const tileStyle: CSSProperties = {
   cursor: cursors.clickable,
 };
 
+/** Space between a caption's dot and its text, in CSS px. */
+const CAP_GAP = 6;
+
 export const capStyle: CSSProperties = {
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',
-  gap: 6,
+  gap: CAP_GAP,
   ...roleFont('chip'),
   fontFamily: font.family,
   color: skin.plateInk,
@@ -146,21 +183,90 @@ export const capDot = (on: boolean): CSSProperties => ({
   transition: cssMotion('control.paint', ['background-color']),
 });
 
-export function MapTile({ kind, on, label, onToggle }: { kind: 'grid' | 'chunks'; on: boolean; label: string; onToggle: () => void }) {
+/** How long a pressed tile's caption shows the new value before it names the setting again. */
+const CAPTION_HOLD_MS = holdSeconds('settings.label.morph') * 1000;
+
+/** Each drawn wording lies over the box and centres in it; a wording wider than the box spills
+ *  evenly both ways, so text and box stay centred together while the width glides. */
+const morphLayer: CSSProperties = { position: 'absolute', inset: 0, display: 'flex', justifyContent: 'center', textAlign: 'center' };
+
+/** Room beside the box where a spilling wording fades out instead of being cut, as far as the dot
+ *  so it never covers it. */
+const SPILL_X = CAP_GAP;
+const SPILL_MASK = fadeMask('x', { start: SPILL_X, end: SPILL_X });
+/** Padded out by the spill room and pulled back by as much, so it takes only the box's own space;
+ *  the text stays inside the mask's opaque middle at rest, so the mask never needs to come off. */
+const spillFrame: CSSProperties = {
+  display: 'block', minWidth: 0,
+  margin: `0 -${SPILL_X}px`, padding: `0 ${SPILL_X}px`,
+  WebkitMaskImage: SPILL_MASK, maskImage: SPILL_MASK,
+};
+
+const CROSSFADE = presence('settings.label.morph', { opacity: 0 });
+
+/**
+ * A tile caption's drawn wording. The box takes the width of `text` from a hidden copy and glides
+ * to it when `text` changes, while the old wording fades out and the new one in over it; reduced
+ * motion swaps the text and the width at once. Purely visual: the tile speaks for itself.
+ */
+function MorphLabel({ text }: { text: string }): ReactNode {
+  const reduced = useReducedMotionConfig() === true;
+  const { ref, gliding } = useSizeGlide<HTMLSpanElement>(text, { axis: 'width', motionId: 'settings.label.morph' });
+  return (
+    <span aria-hidden style={spillFrame}>
+      {/* The box whose width glides; its white-space is inherited by every layer, so a wording on
+          its way out spills rather than wraps. */}
+      <span ref={ref} style={{ position: 'relative', display: 'block', whiteSpace: gliding ? 'nowrap' : 'normal' }}>
+        <span style={{ display: 'block', visibility: 'hidden', textAlign: 'center' }}>{text}</span>
+        {reduced ? <span data-testid="morph-label" style={morphLayer}><span>{text}</span></span> : (
+          <AnimatePresence initial={false}>
+            <motion.span
+              key={text}
+              data-testid="morph-label"
+              {...CROSSFADE}
+              style={morphLayer}
+            >
+              <span>{text}</span>
+            </motion.span>
+          </AnimatePresence>
+        )}
+      </span>
+    </span>
+  );
+}
+
+const dotSeat: CSSProperties = { display: 'flex', alignItems: 'center', flexShrink: 0 };
+
+/**
+ * A map-stamp tile: the picture is what the setting shows on the map. The caption names the setting
+ * at rest; a press morphs it to the value the press gave, `state`, which stands for the registry's
+ * hold (a further press shows the newer value and restarts it) before the name returns. `asSwitch`
+ * makes the tile an on and off switch named `name`; otherwise the button is named by `name` and
+ * `state`, and `announce` speaks a new `state` politely.
+ */
+export function MapTile({ on, name, state, asSwitch = false, announce = false, onPress, children }: {
+  on: boolean; name: string; state: string; asSwitch?: boolean; announce?: boolean; onPress: () => void; children: ReactNode;
+}) {
+  const pressed = useTransient<true>(CAPTION_HOLD_MS);
   return (
     <ActionButton interaction="toggle"
       type="button"
-      role="switch"
-      aria-checked={on}
-      aria-label={label}
+      {...(asSwitch ? { role: 'switch', 'aria-checked': on, 'aria-label': name } : {})}
       style={tileStyle}
-      onClick={onToggle}
+      onClick={() => { onPress(); pressed.show(true); }}
    >
       <svg viewBox={`0 0 ${MAP_W} ${MAP_H}`} preserveAspectRatio="none" style={picStyle(on)} aria-hidden>
         <MapBase />
-        <MapOverlay kind={kind} on={on} />
+        {children}
       </svg>
-      <span style={capStyle}><span style={capDot(on)} />{label}</span>
+      <span style={{ ...capStyle, alignItems: 'flex-start' }}>
+        {/* The zero-width space gives the seat one line of the caption's height, so the dot
+            stays centred on the first line if a caption ever wraps. */}
+        <span aria-hidden style={dotSeat}>{'\u200B'}<span style={capDot(on)} /></span>
+        {!asSwitch && <span style={visuallyHidden}>{name}</span>}
+        {!asSwitch && <span style={visuallyHidden} aria-live={announce ? 'polite' : undefined}>{state}</span>}
+        <MorphLabel text={pressed.value ? state : name} />
+      </span>
     </ActionButton>
   );
 }

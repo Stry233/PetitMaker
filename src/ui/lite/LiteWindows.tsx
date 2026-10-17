@@ -1,7 +1,7 @@
 import { lazy, Suspense, useCallback, useRef } from 'react';
 import { useT } from '../../i18n/context';
-import { ChunkBoundary } from '../primitives/ChunkBoundary';
-import { ChunkNotice } from '../chrome/guards/ChunkNotice';
+import { RenderBoundary } from '../primitives/RenderBoundary';
+import { ChunkNotice } from '../chrome/guards/FailureNotice';
 import { showToast } from '../../platform/channels/toast-bus';
 import { useEditorStore } from '../../state/store';
 import { EditorWindows, type PlanetChange } from '../shell/windows/EditorWindows';
@@ -23,9 +23,9 @@ export function LiteWindows() {
   return <>
     <EditorWindows onPlanetChanged={reportPlanetChange} />
     {/* Preserve the import card through its closing animation. */}
-    {importSeen.current && <ChunkBoundary resetKey={importOpen} fallback={<ChunkNotice />}>
+    {importSeen.current && <RenderBoundary resetKey={importOpen} fallback={<ChunkNotice />}>
       <Suspense fallback={null}><ImportModal /></Suspense>
-    </ChunkBoundary>}
+    </RenderBoundary>}
     <LiteShareWindow />
   </>;
 }

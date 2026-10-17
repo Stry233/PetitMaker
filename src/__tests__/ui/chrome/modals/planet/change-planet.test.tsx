@@ -30,6 +30,7 @@ import { currentEditor, editorPort } from '../../../../../editor/session/context
 import { useTransition } from '../../../../../ui/design/motion/use-motion';
 import { framerMotion } from '../../../../../ui/design/motion';
 import { createExecutor } from '../../../../../state/executor';
+import { installPictureRenderer } from '../../../../_support/picture-renderer';
 
 // Names are checked by the export text review; these tests stub its verdict as approved.
 vi.mock('../../../../../pipelines/moderation/text/reviewer', async (original) => ({
@@ -92,14 +93,17 @@ const press = async () => { await act(async () => { fireEvent.click(verb()); awa
 
 const toasts: [string, string][] = [];
 let unpresent: () => void = () => {};
+let pictures: ReturnType<typeof installPictureRenderer>;
 
 beforeEach(() => {
+  // The pictures come from the map's renderer, which jsdom stands in for.
+  pictures = installPictureRenderer();
   localStorage.clear();
   toasts.length = 0;
   unpresent = setToastPresenter((text, type) => { toasts.push([text, type]); });
   useEditorStore.setState({ exportedAt: null, locale: 'en' });
 });
-afterEach(() => { cleanup(); unpresent(); useEditorStore.setState({ exportedAt: null, tourRunning: false }); });
+afterEach(() => { cleanup(); unpresent(); pictures.uninstall(); useEditorStore.setState({ exportedAt: null, tourRunning: false }); });
 
 /** Row test ids under the Current planet and My planets headings of the list. */
 function listGroups() {

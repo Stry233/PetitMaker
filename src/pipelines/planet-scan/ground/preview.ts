@@ -1,10 +1,10 @@
-import { inSeaBand, labHue, toLab, GRASS, SAND, SEA, type PaletteSampler } from './color';
-import { SCAN_PROFILE } from '../profile';
+import { GRASS, SAND, SEA, type PaletteSampler } from './color';
 
 // What the import window draws while a scan runs: a coarse grid of the ground read so far, small
 // enough to post every few hundred milliseconds. Pass 1 sends the palette mosaic's coverage on the
-// tracked chain path, each unit classed by its mean colour's hue against fixed bands, with the
-// camera's view; pass 2 sends the lattice's cells as the ground evidence classes them so far. Both
+// tracked chain path, each unit in its mean colour, with the camera's view: no palette is fitted
+// yet, so nothing names the ground; pass 2 sends the lattice's cells as the ground evidence classes
+// them so far. Both
 // place the grid on the ground in rectified path pixels, so the two passes line up to within the
 // chain path's drift.
 
@@ -32,7 +32,8 @@ export interface ScanPreview {
   readonly unitH: number;
   readonly cols: number;
   readonly rows: number;
-  /** `cols * rows` classes, row-major, four to a byte, the first in the low bits. */
+  /** `cols * rows` classes, row-major, four to a byte, the first in the low bits; in pass 1 a seen
+   *  unit is `PREVIEW_SAND` whatever ground it shows, and `rgb` holds what the recording showed. */
   readonly classes: Uint8Array;
   /** Pass 1: each unit's mean colour in the recording, `cols * rows` R, G, B triples, row-major;
    *  a unit not seen yet is black. */
@@ -87,8 +88,7 @@ const COVERAGE_BINS = 2;
 /**
  * Pass 1's preview: the palette mosaic merged into units of `COVERAGE_BINS` bins (more when the
  * mosaic is wide), on the bin grid's own multiples so units stay put as the mosaic grows. A unit is
- * seen once its weight passes the sampler's `minWeight`; it carries its mean colour, classed by hue: sea
- * in the sea band, sand below `SCAN_PROFILE.ground.previewSplit`, grass above.
+ * seen once its weight passes the sampler's `minWeight`, and carries its mean colour.
  */
 export function coveragePreview(sampler: PaletteSampler, view: { x: number; y: number; w: number; h: number }): ScanPreview | null {
   const m = sampler.mosaic;
@@ -115,19 +115,14 @@ export function coveragePreview(sampler: PaletteSampler, view: { x: number; y: n
   }
   const grid = new PreviewGrid(cols, rows);
   const rgb = new Uint8Array(cols * rows * 3);
-  const lab = new Float64Array(3);
-  const split = SCAN_PROFILE.ground.previewSplit;
   for (let u = 0; u < cols * rows; u++) {
     const w = sums[u * 4 + 3]!;
     if (!(w > sampler.minWeight)) continue;
     const c = (v: number) => Math.min(255, Math.max(0, Math.round(v / w)));
-    const r = c(sums[u * 4]!), g = c(sums[u * 4 + 1]!), b = c(sums[u * 4 + 2]!);
-    rgb[u * 3] = r;
-    rgb[u * 3 + 1] = g;
-    rgb[u * 3 + 2] = b;
-    toLab(r, g, b, lab);
-    const h = labHue(lab[1]!, lab[2]!);
-    grid.set(u % cols, Math.floor(u / cols), inSeaBand(h) ? PREVIEW_SEA : h < split ? PREVIEW_SAND : PREVIEW_GRASS);
+    rgb[u * 3] = c(sums[u * 4]!);
+    rgb[u * 3 + 1] = c(sums[u * 4 + 1]!);
+    rgb[u * 3 + 2] = c(sums[u * 4 + 2]!);
+    grid.set(u % cols, Math.floor(u / cols), PREVIEW_SAND);
   }
   const unit = k * m.step;
   return { kind: 'coverage', x: ux0 * unit, y: uy0 * unit, unitW: unit, unitH: unit, cols, rows, classes: grid.classes, rgb, view };

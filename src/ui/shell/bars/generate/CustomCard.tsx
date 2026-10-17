@@ -2,7 +2,7 @@
 import { presence } from '../../../design/motion';
 import { ActionButton } from '../../../primitives/ActionButton';
 import { AnimatePresence, motion, useReducedMotionConfig } from 'framer-motion';
-import { useRef, useState, type CSSProperties } from 'react';
+import type { CSSProperties } from 'react';
 import { useT } from '../../../../i18n/context';
 import { LoadingDots } from '../../../primitives/LoadingDots';
 import { btnReset, cursors, radii } from '../../../design/styles';
@@ -14,6 +14,8 @@ import { limitTextGraphemes } from '../../../../tools/generation/stencil';
 import cardPlate from '../../../../assets/shell/shelf-generate/candidates/roundrect-1.svg';
 import picturePlate from '../../../../assets/shell/shelf-generate/candidates/roundrect-2.svg';
 import { MOTIONS } from '../../../design/motion/registry';
+import { PaintedText } from './PaintedText';
+import { useGhostField } from './use-ghost-field';
 import { BOX, ChosenPlate, FIELD_PAD, GIANT_SIZE, Landing, LINE, NoteText, PICTURE, PICTURE_CORNER } from './CandidateCard';
 /** The mark on the confirm pill: this frame draws no tick, and one glyph for one meaning is better
  *  than a word that does not fit a button this size in every language. */
@@ -55,11 +57,8 @@ const CONFIRM_PILL: CSSProperties = {
   display: 'flex', alignItems: 'center', justifyContent: 'center',
   background: ACTIVE, cursor: cursors.clickable,
 };
-/** The caret, sized off the digits' em; its blink is `.pw-caret-blink` in `animations.css`. */
-const CARET: CSSProperties = {
-  display: 'inline-block', width: '0.07em', height: '0.72em', marginLeft: '0.08em',
-  background: PLATE_INK, borderRadius: radii.hair, alignSelf: 'center',
-};
+/** The caret bar, sized off the digits' em. */
+const CARET: CSSProperties = { width: '0.07em', height: '100%', background: PLATE_INK, borderRadius: radii.hair };
 interface CustomProps {
   /** What the field takes: a recipe number, or the characters a letter kind builds the shape of. */
   field?: 'number' | 'glyph';
@@ -99,15 +98,15 @@ export function CustomCard({
   const t = useT();
   const flip = presence('candidate.custom.flip', { opacity: 0, scale: 1 - FLIP_RISE }, { reduced: useReducedMotionConfig() });
   const name = title ?? t('generate.custom');
-  /** Whether the hidden input holds focus: the empty slot shows the hint without it and the caret alone with it. */
-  const [focused, setFocused] = useState(false);
-  const composing = useRef(false);
   /** The field is showing whenever there is no number yet, or the number is being typed over. */
   const value = isGlyph ? glyph : (seed === null ? null : String(seed));
   const typing = value === null || draft !== null;
   /** What is standing in the frame right now — the confirm pill and the giant digits both read
    *  this, since there is nothing to confirm or to enlarge about an empty field. */
   const typed = draft ?? value ?? '';
+  /** The hidden input's focus and real selection, which the painted digits show in its place. */
+  const ghost = useGhostField(typed);
+  const { composing } = ghost;
 
   return (
     <div style={{ ...BOX, pointerEvents: 'auto' }} data-testid="shell-candidate-custom">
@@ -125,6 +124,7 @@ export function CustomCard({
             style={PICTURE}
           >
             <input
+              ref={ghost.inputRef}
               type="text"
               inputMode={isGlyph ? 'text' : 'numeric'}
               autoFocus={seed !== null}
@@ -133,18 +133,14 @@ export function CustomCard({
               onChange={(e) => onDraft(isGlyph
                 ? composing.current ? e.target.value : limitTextGraphemes(e.target.value, TEXT_MAX_CHARS)
                 : e.target.value.replace(/\D/g, '').slice(0, SEED_DIGITS))}
-              onCompositionStart={() => { composing.current = true; }}
               onCompositionEnd={(e) => {
-                composing.current = false;
                 if (isGlyph) onDraft(limitTextGraphemes(e.currentTarget.value, TEXT_MAX_CHARS));
               }}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && !(isGlyph && (composing.current || e.nativeEvent.isComposing || e.keyCode === 229))) onCommit();
               }}
-              onFocus={() => setFocused(true)}
-              onBlur={() => setFocused(false)}
               aria-label={name}
-              // `pw-ghost-field` also hides the selection highlight, which `color: transparent` alone repaints.
+              // `pw-ghost-field` also hides the native selection highlight; `PaintedText` paints the real one.
               className="pw-ghost-field"
               style={{
                 position: 'absolute', inset: 0, width: '100%', height: '100%',
@@ -168,8 +164,10 @@ export function CustomCard({
               <span style={SEED_RULE} />
               {/* The digits and the caret share one wrapper at the digits' size, since `CARET` is sized in em. */}
               <BarText size={GIANT_SIZE} color={PLATE_INK} weight={900}>
-                {typed}
-                {focused ? <span className="pw-caret-blink" style={CARET} /> : null}
+                <PaintedText
+                  text={typed} start={ghost.start} end={ghost.end} focused={ghost.focused} moves={ghost.moves}
+                  caret={CARET} paintRef={ghost.paintRef}
+                />
               </BarText>
             </span>
 

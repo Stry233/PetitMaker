@@ -16,6 +16,7 @@ const DEFAULT_ORDER = [
   ['V-WTR-01', 'pre-command'],
   ['V-PLACE-BLOCK', 'pre-command'],
   ['V-PLACE-TRAIT', 'pre-command'],
+  ['V-PLACE-DOOR', 'pre-command'],
   ['V-GROUND-LOCK', 'pre-command'],
   ['V-ZONE-01', 'pre-command'],
   ['V-PLACE-OVERLAP', 'pre-command'],

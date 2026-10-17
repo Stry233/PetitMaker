@@ -31,6 +31,7 @@ import {
   type TrimApplier,
 } from './command-apply';
 import { reportRefusal } from './refusal';
+import { holdObjectChanges, type ObjectChangeHold } from './held-object-changes';
 import { TERRAIN_GRID } from '../game/profile';
 import { cellSet, type CellSet } from '../grid/grids';
 import { cellsOn } from '../grid/grid-convert';
@@ -100,6 +101,8 @@ export interface Stroke {
 export class CommandExecutor {
   private state: GridState;
   private eventBus: EventBus<KernelEvents>;
+  /** What commands, reverts and replays announce object changes through; see `transaction`. */
+  private objectChanges: ObjectChangeHold;
   private registry: RuleDispatcher;
   private undoStack: HistoryEntry[] = [];
   private redoStack: HistoryEntry[] = [];
@@ -122,6 +125,7 @@ export class CommandExecutor {
   constructor(state: GridState, deps: ExecutorDeps) {
     this.state = state;
     this.eventBus = deps.bus;
+    this.objectChanges = holdObjectChanges(deps.bus);
     this.registry = deps.rules;
     this.policy = deps.policy;
     this.provenance = deps.provenance;
@@ -153,24 +157,31 @@ export class CommandExecutor {
    * commit or roll back through the handle; a body that returns without committing leaves its
    * entries uncollapsed on the stack. This is the one door for silence and authorship: a caller
    * that tries many candidate commands and expects refusals passes `silent`.
+   *
+   * `objects-changed` is held for the whole body and published, merged, when the outermost
+   * transaction returns or throws (`held-object-changes.ts`), so a group edit of many commands is
+   * a few notifications, not one per command.
    */
   transaction<T>(opts: TransactionOptions, body: (tx: Stroke) => T): T {
-    const start = this.undoStack.length;
-    const tx = this.beginStroke();
-    if (opts.source) this.pushSource(opts.source);
-    if (opts.silent) this.silentRuns++;
-    try {
-      return body(tx);
-    } catch (err) {
-      this.rollbackAfterThrow(start);
-      throw err;
-    } finally {
-      if (opts.silent) this.silentRuns--;
-      if (opts.source) this.popSource();
-    }
+    return this.objectChanges.hold(() => {
+      const start = this.undoStack.length;
+      const tx = this.beginStroke();
+      if (opts.source) this.pushSource(opts.source);
+      if (opts.silent) this.silentRuns++;
+      try {
+        return body(tx);
+      } catch (err) {
+        this.rollbackAfterThrow(start);
+        throw err;
+      } finally {
+        if (opts.silent) this.silentRuns--;
+        if (opts.source) this.popSource();
+      }
+    });
   }
 
-  /** `transaction` for a body that awaits; the source and silence hold until it settles. */
+  /** `transaction` for a body that awaits; the source and silence hold until it settles. Object
+   *  changes are not held across its awaits, so the map shows its progress. */
   async transactionAsync<T>(opts: TransactionOptions, body: (tx: Stroke) => Promise<T>): Promise<T> {
     const start = this.undoStack.length;
     const tx = this.beginStroke();
@@ -256,7 +267,7 @@ export class CommandExecutor {
     const objectBefore = touched === undefined ? undefined : this.state.objects.get(touched);
     const removed = objectBefore ? [clonePlacedObject(objectBefore)] : [];
     const cause = this.causes[this.causes.length - 1];
-    applyCommand(cmd, this.state, this.eventBus, this.trims, cause);
+    applyCommand(cmd, this.state, this.objectChanges.sink, this.trims, cause);
     const objectAfter = touched === undefined ? undefined : this.state.objects.get(touched);
     const objectOps = removed.length > 0 || objectAfter ? { removed, added: objectAfter ? [clonePlacedObject(objectAfter)] : [] } : undefined;
     if (cmd.type === CommandType.RemoveObject && removed[0]) this.lifted.set(cmd.objectId, removed[0]);
@@ -319,18 +330,20 @@ export class CommandExecutor {
 
     if (violations.length > 0) {
       const affectedCoords: MacroCoord[] = [];
-      let undone = 0;
-      while (undone < maxUndos) {
-        const entry = this.undoStack.pop();
-        if (!entry) break;
-        affectedCoords.push(...this.revertEntry(entry));
-        // Not pushed to the redo stack: an auto-reverted fragment is an illegal partial state.
-        // Redo would reinstate it unvalidated, and the fragment, below every later stroke's revert
-        // window, would then make every later commit revert its own stroke whole.
-        undone++;
-        const remaining = this.registry.validatePostStroke(this.state, { firstOnly: true });
-        if (remaining.length === 0) break;
-      }
+      this.objectChanges.hold(() => {
+        let undone = 0;
+        while (undone < maxUndos) {
+          const entry = this.undoStack.pop();
+          if (!entry) break;
+          affectedCoords.push(...this.revertEntry(entry));
+          // Not pushed to the redo stack: an auto-reverted fragment is an illegal partial state.
+          // Redo would reinstate it unvalidated, and the fragment, below every later stroke's revert
+          // window, would then make every later commit revert its own stroke whole.
+          undone++;
+          const remaining = this.registry.validatePostStroke(this.state, { firstOnly: true });
+          if (remaining.length === 0) break;
+        }
+      });
       if (affectedCoords.length > 0) {
         this.eventBus.emit('cells-changed', { cells: restoredCells(affectedCoords) });
         this.eventBus.emit('history-changed', { canUndo: this.canUndo(), canRedo: this.canRedo() });
@@ -373,9 +386,11 @@ export class CommandExecutor {
     this.abandonStroke();
     if (this.undoStack.length <= watermark) return;
     const coords: MacroCoord[] = [];
-    while (this.undoStack.length > watermark) {
-      coords.push(...this.revertEntry(this.undoStack.pop()!));
-    }
+    this.objectChanges.hold(() => {
+      while (this.undoStack.length > watermark) {
+        coords.push(...this.revertEntry(this.undoStack.pop()!));
+      }
+    });
     this.eventBus.emit('cells-changed', { cells: restoredCells(coords) });
     this.eventBus.emit('history-changed', { canUndo: this.canUndo(), canRedo: this.canRedo() });
   }
@@ -431,15 +446,17 @@ export class CommandExecutor {
     const affectedCoords: MacroCoord[] = [];
     const reverted: HistoryEntry[] = [];
 
-    while (this.undoStack.length > 0) {
-      const entry = this.undoStack.pop()!;
-      reverted.push(entry);
-      affectedCoords.push(...this.revertEntry(entry));
-      this.redoStack.push(entry);
+    this.objectChanges.hold(() => {
+      while (this.undoStack.length > 0) {
+        const entry = this.undoStack.pop()!;
+        reverted.push(entry);
+        affectedCoords.push(...this.revertEntry(entry));
+        this.redoStack.push(entry);
 
-      const violations = this.registry.validatePostStroke(this.state, { firstOnly: true });
-      if (violations.length === 0) break;
-    }
+        const violations = this.registry.validatePostStroke(this.state, { firstOnly: true });
+        if (violations.length === 0) break;
+      }
+    });
 
     const cells = restoredCells(affectedCoords);
     this.eventBus.emit('cells-changed', { cells });
@@ -456,15 +473,17 @@ export class CommandExecutor {
 
     const coords: MacroCoord[] = [];
     const reapplied: HistoryEntry[] = [];
-    while (this.redoStack.length > 0) {
-      const entry = this.redoStack.pop()!;
-      reapplied.push(entry);
-      coords.push(...this.reapplyEntry(entry));
-      this.undoStack.push(entry);
+    this.objectChanges.hold(() => {
+      while (this.redoStack.length > 0) {
+        const entry = this.redoStack.pop()!;
+        reapplied.push(entry);
+        coords.push(...this.reapplyEntry(entry));
+        this.undoStack.push(entry);
 
-      const violations = this.registry.validatePostStroke(this.state, { firstOnly: true });
-      if (violations.length === 0) break;
-    }
+        const violations = this.registry.validatePostStroke(this.state, { firstOnly: true });
+        if (violations.length === 0) break;
+      }
+    });
 
     const cells = restoredCells(coords);
     this.eventBus.emit('cells-changed', { cells });
@@ -487,13 +506,13 @@ export class CommandExecutor {
   /** Reverts a history entry: taint first (lockstep), then its cell/object state via command-apply. */
   private revertEntry(entry: HistoryEntry): MacroCoord[] {
     if (entry.taint) this.provenance.revertTaint(entry.taint);
-    return revertEntryState(entry, this.state, this.eventBus);
+    return revertEntryState(entry, this.state, this.objectChanges.sink);
   }
 
   /** Re-applies a history entry: taint first (lockstep), then its cell/object state via command-apply. */
   private reapplyEntry(entry: HistoryEntry): MacroCoord[] {
     if (entry.taint) this.provenance.reapplyTaint(entry.taint);
-    return reapplyEntryState(entry, this.state, this.eventBus);
+    return reapplyEntryState(entry, this.state, this.objectChanges.sink);
   }
 
   canUndo(): boolean { return this.undoStack.length > 0; }

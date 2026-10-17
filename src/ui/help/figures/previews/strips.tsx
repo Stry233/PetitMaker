@@ -100,7 +100,7 @@ export function ShelfStrip({ items, smart = false, selected = null, counts = nul
           if (!item) return null;
           return (
             <div key={id} data-strip-card style={{ position: 'relative' }}>
-              <ItemCard item={item} placed={counts?.get(id) ?? 0} selected={i + lead === selected} onToggle={noop} onReach={noop} />
+              <ItemCard item={item} placed={counts?.get(id) ?? 0} selected={i + lead === selected} onToggle={noop} onReach={noop} carries={false} />
             </div>
           );
         })}

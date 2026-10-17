@@ -4,7 +4,9 @@
  * structured-cloned grid objects; `candidate.worker.ts` is the other end.
  */
 import { decodeGridState, encodeGridState, type WireGridState } from '../../../core/model/grid-wire';
-import type { GridState, MacroCoord, MapTemplate } from '../../../core/model/types';
+import type { GridState, MapTemplate } from '../../../core/model/types';
+import type { GridCellRef } from '../../../core/grid/grids';
+import type { AnnotationsState } from '../../../core/model/annotations';
 import type { TransferPreview } from './planet-preview';
 import type { TransferCounts } from '../transfer';
 import type { Run } from './generation-run';
@@ -28,11 +30,12 @@ export type CandidateRun = Run & { state: GridState };
  *  side has the one the job was sent with. */
 export type WireCandidate = WireGridState & Run;
 
-/** A carry preview as it crosses back: the destination grid on the wire and the loss report as
- *  plain data. */
+/** A carry preview as it crosses back: the destination grid on the wire, and its plan notes and the
+ *  loss report as plain data. */
 export interface WireTransferPreview {
   grid: WireGridState;
-  dropped: MacroCoord[];
+  annotations?: AnnotationsState;
+  dropped: GridCellRef[];
   moved: TransferCounts;
   droppedCounts: TransferCounts;
 }
@@ -53,5 +56,7 @@ export function reviveCandidate(run: WireCandidate, template: MapTemplate): Cand
 
 /** The worker's carry preview as the painter reads it. */
 export function reviveTransferPreview(wire: WireTransferPreview, target: MapTemplate): TransferPreview {
-  return { state: decodeGridState(wire.grid, target), dropped: wire.dropped, moved: wire.moved, droppedCounts: wire.droppedCounts };
+  const state = decodeGridState(wire.grid, target);
+  if (wire.annotations) state.annotations = wire.annotations;
+  return { state, dropped: wire.dropped, moved: wire.moved, droppedCounts: wire.droppedCounts };
 }

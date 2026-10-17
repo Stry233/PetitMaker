@@ -224,7 +224,8 @@ export async function runCandidateInPool(
 export async function runTransferPreviewInPool(
   state: GridState, target: MapTemplate, signal?: AbortSignal,
 ): Promise<TransferPreview | null> {
-  const data = await enqueue(state, 'transfer', { targetId: target.id }, { signal, front: true, templates: [target] });
+  const request = { targetId: target.id, ...(state.annotations ? { annotations: state.annotations } : {}) };
+  const data = await enqueue(state, 'transfer', request, { signal, front: true, templates: [target] });
   return data?.preview ? reviveTransferPreview(data.preview, target) : null;
 }
 

@@ -37,7 +37,10 @@ const SEARCH_WORDS = /^catalog\.terms_/;
 const FOREIGN_LABELS: Readonly<Record<string, readonly string[]>> = { 'help.agentsetup.keys_claude_2': ['Settings'] };
 /** The game's own screens, which the planet scan's steps name as the game prints them. */
 const GAME_LABELS: Readonly<Record<string, readonly string[]>> = Object.fromEntries(
-  ['planet.scan_step_region', 'planet.scan_failed_not_map_view', 'planet.scan_failed_zoom'].map((key) => [key, ['地图', 'マップ']]),
+  [
+    'planet.video_step_region', 'planet.video_step_zoom', 'planet.video_step_clear', 'planet.video_step_rows', 'planet.video_fix_zoom', 'planet.video_fix_fast',
+    'planet.scan_failed_not_map_view', 'planet.scan_failed_zoom', 'planet.scan_failed_zoom_changed',
+  ].map((key) => [key, ['地图', 'マップ']]),
 );
 
 /** Text as a reader compares it: typographic apostrophes and spaces fold together. */

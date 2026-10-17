@@ -1,4 +1,5 @@
-import { lutIndex, positionWeights, saturation, toLab, GRASS, SEA } from './color';
+import { centresAt, nearestCentre, stepColours, stepIndex, positionWeights, saturation, toLab, GRASS, SEA, type LocalPalette } from './color';
+import { nameSurfaces, readRegions, surfaceVotes } from './surfaces';
 import { ScanError } from '../errors';
 import { PREVIEW_GRASS, PREVIEW_SAND, PREVIEW_SEA, PreviewGrid, previewMerge, type ScanPreview } from './preview';
 import { SCAN_PROFILE } from '../profile';
@@ -6,29 +7,30 @@ import type { FramePosition, LatticeModel } from '../track/scan-solve';
 import type { GreyImage, RgbaImage } from '../types';
 
 // Per-cell evidence of the ground, streamed from the kept distinct frames once the path and the lattice
-// are solved. Cells are placed in a frame's tile only through the lattice model's `cellToTile` and
-// `tileToCell`.
+// are solved; cells are placed in a frame's tile only through the lattice model's `cellToTile` and
+// `tileToCell`. Each cell is sampled at `subsamples` x `subsamples` points in every frame that sees
+// it, each sample weighted by its tile position (`SCAN_PROFILE.evidence.weight`: the view's edges are
+// blurred by depth of field). Per point the evidence sums the weight, each palette cluster's weight
+// and the L*a*b* colour; finishing reads the ground's regions from each point's leading cluster and
+// mean colour (`surfaces.ts:readRegions`) and the sea and grass votes from them
+// (`surfaces.ts:surfaceVotes`). Per cell it sums the
+// centre point's colour, saturation and lightness over trusted positions, the inner area's colour
+// (`SCAN_PROFILE.evidence.inner`) and the still runs' deviation at the centre (foam and load lines).
 //
-// Each cell is sampled at `subsamples` x `subsamples` points (the centres of equal sub-cells) in
-// every frame that sees it. A sample is the frame's bilinear colour there, weighted by the tile
-// position's weight (`SCAN_PROFILE.evidence.weight`): the view's edges are blurred by depth of
-// field. Per sample point the evidence sums the weight, the sea and grass votes of the palette's
-// pixel classes and the L*a*b* colour; at 5 x 5 a cell's inner area (`SCAN_PROFILE.evidence.inner`) is its central 3 x 3 points. Per cell
-// it sums, at the centre point, the L*a*b* colour, the HSV saturation and the lightness over
-// the trusted positions (for its temporal deviation); over the inner area, the L*a*b* colour; and
-// at the centre, the temporal deviation of the still runs placed on the path (the animation of
-// foam and region load lines).
-//
-// Memory: six float32 planes per sample point (600 bytes a cell at 5 x 5) and about 70 bytes of
-// per-cell sums, about 25 MB for a 12 x 12-chunk scan and at most 83 MB at the grid cap of
-// `SCAN_PROFILE.evidence.maxChunks` chunks a side. Frames are read and never kept; the still runs'
-// deviation images are kept reduced (`reduceDeviation`, 51 KB a run at half resolution) until the
-// path places them.
+// Memory: four float32 planes and a uint16 weight per cluster a point (800 bytes a cell at 5 x 5 with
+// eight clusters) and about 70 bytes of per-cell sums: about 32 MB for a 12 x 12-chunk scan, at most
+// 110 MB at the `SCAN_PROFILE.evidence.maxChunks` cap, and 3 MB for the colours pixels are classed
+// by; finishing adds three float32 planes (the votes and the objects on the sea) and lets the
+// cluster weights go. Still runs' deviation images are kept reduced (`reduceDeviation`, 23 KB a run)
+// until the path places them.
 
 const E = SCAN_PROFILE.evidence;
 const G = SCAN_PROFILE.ground;
 const S = E.subsamples;
 const CENTRE = S >> 1;
+/** A sample's weight counts in steps of 1 / `CLUSTER_STEPS` in a cluster's uint16 sum; a sample
+ *  point gathers a weight of at most about 40 over a minute's scan, far below the sum's 128. */
+const CLUSTER_STEPS = 512;
 
 /**
  * The weight of each of a cell axis's `sub` sample points in the central `share` of the side: 1
@@ -124,6 +126,8 @@ export interface CellEvidence {
     /** Sea and grass vote shares; an unseen point reads as all sea and no grass. */
     readonly sea: Float32Array;
     readonly grass: Float32Array;
+    /** Where an object in another surface's colour stands on the sea (`surfaces.ts:SurfaceVotes`). */
+    readonly seaObject: Float32Array;
     /** Mean L*a*b* colour; 0 where unseen. */
     readonly lightness: Float32Array;
     readonly a: Float32Array;
@@ -147,8 +151,9 @@ export class EvidenceAccumulator {
   private readonly pw: number;
   private readonly ph: number;
   private readonly pWeight: Float32Array;
-  private readonly pSea: Float32Array;
-  private readonly pGrass: Float32Array;
+  /** Per sample point, each cluster's weight in steps of 1 / `CLUSTER_STEPS`, point-major; let go
+   *  once finished. */
+  private pVotes: Uint16Array;
   private readonly pLight: Float32Array;
   private readonly pA: Float32Array;
   private readonly pB: Float32Array;
@@ -169,16 +174,19 @@ export class EvidenceAccumulator {
   private readonly wx: Float32Array;
   private readonly wy: Float32Array;
   private readonly lab = new Float64Array(3);
+  private readonly centres: Float64Array;
+  private readonly steps = stepColours();
   private finished = false;
 
   /**
-   * @param lut the palette's class of every quantised colour (`colour.ts:lutIndex`)
+   * @param palette the palette per region of the ground, where a frame's pixel lies at its solved
+   *   position plus its tile position; its classes only class the preview
    * @param width tile width in pixels, as every pushed tile has it
    */
   constructor(
     readonly grid: EvidenceGrid,
     private readonly lattice: LatticeModel,
-    private readonly lut: Uint8Array,
+    private readonly palette: LocalPalette,
     readonly width: number,
     readonly height: number,
   ) {
@@ -187,8 +195,7 @@ export class EvidenceAccumulator {
     const points = this.pw * this.ph;
     const cells = grid.cols * grid.rows;
     this.pWeight = new Float32Array(points);
-    this.pSea = new Float32Array(points);
-    this.pGrass = new Float32Array(points);
+    this.pVotes = new Uint16Array(points * palette.classes.length);
     this.pLight = new Float32Array(points);
     this.pA = new Float32Array(points);
     this.pB = new Float32Array(points);
@@ -209,6 +216,7 @@ export class EvidenceAccumulator {
     const w = positionWeights(width, height);
     this.wx = w.x;
     this.wy = w.y;
+    this.centres = new Float64Array(palette.classes.length * 3);
   }
 
   /** The grid cells a frame's tile touches: [x0, x1) x [y0, y1), clamped to the grid. */
@@ -241,7 +249,8 @@ export class EvidenceAccumulator {
     const d = tile.data;
     const { cellX0, cellY0, cols } = this.grid;
     const range = this.cellRange(at);
-    const { pw, lut, wx, wy, lab } = this;
+    const { pw, wx, wy, lab, palette, centres } = this;
+    const k = palette.classes.length;
     for (let gy = range.y0; gy < range.y1; gy++) {
       for (let gx = range.x0; gx < range.x1; gx++) {
         const X = cellX0 + gx;
@@ -254,6 +263,7 @@ export class EvidenceAccumulator {
         const eyx = oy.x - o.x;
         const eyy = oy.y - o.y;
         const cell = gy * cols + gx;
+        centresAt(palette, at.x + o.x + (exx + eyx) / 2, at.y + o.y + (exy + eyy) / 2, centres);
         for (let sy = 0; sy < S; sy++) {
           const fy = (sy + 0.5) / S;
           for (let sx = 0; sx < S; sx++) {
@@ -277,12 +287,12 @@ export class EvidenceAccumulator {
             const g = Math.round(d[i00 + 1]! * w00 + d[i10 + 1]! * w10 + d[i01 + 1]! * w01 + d[i11 + 1]! * w11);
             const b = Math.round(d[i00 + 2]! * w00 + d[i10 + 2]! * w10 + d[i01 + 2]! * w01 + d[i11 + 2]! * w11);
             const wt = wx[Math.round(px)]! * wy[Math.round(py)]!;
-            const cls = lut[lutIndex(r, g, b)]!;
+            const cluster = nearestCentre(this.steps, centres, k, stepIndex(r, g, b) * 3);
+            toLab(r, g, b, lab);
             const p = (gy * S + sy) * pw + gx * S + sx;
             this.pWeight[p]! += wt;
-            if (cls === SEA) this.pSea[p]! += wt;
-            else if (cls === GRASS) this.pGrass[p]! += wt;
-            toLab(r, g, b, lab);
+            const v = p * k + cluster;
+            this.pVotes[v] = Math.min(0xffff, this.pVotes[v]! + Math.round(wt * CLUSTER_STEPS));
             const l = lab[0]!;
             this.pLight[p]! += wt * l;
             this.pA[p]! += wt * lab[1]!;
@@ -346,9 +356,9 @@ export class EvidenceAccumulator {
 
   /**
    * The ground so far for the import's preview: units of one cell (more when the grid is wide), each
-   * classed by its cells' centre points' votes: sea or grass above `SCAN_PROFILE.ground.vote` of the weight, sand
-   * otherwise, unseen without weight. Reads the centre points only, so it costs a pass over the
-   * cells.
+   * classed by its cells' centre points' votes under the palette's classes: sea or grass above
+   * `SCAN_PROFILE.ground.vote` of the weight, sand otherwise, unseen without weight. Reads the centre
+   * points only, so it costs a pass over the cells.
    */
   preview(): ScanPreview {
     const { cellX0, cellY0, cols, rows } = this.grid;
@@ -356,16 +366,21 @@ export class EvidenceAccumulator {
     const ucols = Math.ceil(cols / f);
     const urows = Math.ceil(rows / f);
     const out = new PreviewGrid(ucols, urows);
-    const { pw, pWeight, pSea, pGrass } = this;
+    const { pw, pVotes } = this;
+    const { classes } = this.palette;
+    const k = classes.length;
     for (let ur = 0; ur < urows; ur++) {
       for (let uc = 0; uc < ucols; uc++) {
         let w = 0, sea = 0, grass = 0;
         for (let gy = ur * f; gy < Math.min(rows, (ur + 1) * f); gy++) {
           for (let gx = uc * f; gx < Math.min(cols, (uc + 1) * f); gx++) {
             const p = (gy * S + CENTRE) * pw + gx * S + CENTRE;
-            w += pWeight[p]!;
-            sea += pSea[p]!;
-            grass += pGrass[p]!;
+            for (let c = 0; c < k; c++) {
+              const v = pVotes[p * k + c]!;
+              w += v;
+              if (classes[c] === SEA) sea += v;
+              else if (classes[c] === GRASS) grass += v;
+            }
           }
         }
         if (!(w > 0)) continue;
@@ -380,25 +395,65 @@ export class EvidenceAccumulator {
     };
   }
 
-  /** Turns the sums into means in place; the accumulator takes no more frames. */
+  /** Turns the sums into means in place and reads each point's sea and grass votes from the ground's
+   *  regions; the accumulator takes no more frames. */
   finish(): CellEvidence {
     if (this.finished) throw new Error('the evidence is finished');
     this.finished = true;
-    const { pWeight, pSea, pGrass, pLight, pA, pB } = this;
-    for (let i = 0; i < pWeight.length; i++) {
+    const { pWeight, pVotes, pLight, pA, pB } = this;
+    const k = this.palette.classes.length;
+    const points = pWeight.length;
+    const label = new Int16Array(points).fill(-1);
+    const lab = new Float32Array(points * 3);
+    for (let i = 0; i < points; i++) {
       const w = pWeight[i]!;
       if (w > 0) {
-        pSea[i] = pSea[i]! / w;
-        pGrass[i] = pGrass[i]! / w;
         pLight[i] = pLight[i]! / w;
         pA[i] = pA[i]! / w;
         pB[i] = pB[i]! / w;
-      } else {
-        pSea[i] = 1;
-        pGrass[i] = 0;
-        pLight[i] = 0;
-      }
+      } else pLight[i] = 0;
+      // The regions are read on the points seen as well as cells are (`E.known`): the scan's rim,
+      // seen only at the views' blurred edges, draws a colour of its own.
+      if (!(w > E.known)) continue;
+      let best = -1;
+      let most = 0;
+      for (let c = 0; c < k; c++) if (pVotes[i * k + c]! > most) { most = pVotes[i * k + c]!; best = c; }
+      if (best < 0) continue;
+      label[i] = best;
+      lab[i * 3] = pLight[i]!;
+      lab[i * 3 + 1] = pA[i]!;
+      lab[i * 3 + 2] = pB[i]!;
     }
+    const raster = { w: this.pw, h: this.ph, label, lab, perCell: S * S };
+    const regions = readRegions(raster);
+    const { sea: pSea, grass: pGrass, seaObject } = surfaceVotes(raster, regions, Uint8Array.from(pWeight, (w) => (w > 0 ? 1 : 0)));
+    // On the grass a point votes sea for the frames it shows the sea's colours (a pond, a raised top's
+    // dark face), as the clusters are named by where they lie (`nameSurfaces`); the inland water rule
+    // reads them as grass and the terrain as wet.
+    const centres = new Float64Array(k * 3);
+    const count = new Float64Array(k);
+    for (let i = 0; i < points; i++) {
+      const c = label[i]!;
+      if (c < 0) continue;
+      count[c]! += 1;
+      for (let q = 0; q < 3; q++) centres[c * 3 + q]! += lab[i * 3 + q]!;
+    }
+    for (let c = 0; c < k; c++) for (let q = 0; q < 3; q++) centres[c * 3 + q] = count[c]! > 0 ? centres[c * 3 + q]! / count[c]! : 0;
+    const classes = nameSurfaces(centres, { ...raster, vote: (c, i) => pVotes[i * k + c]! });
+    for (let i = 0; i < points; i++) {
+      if (regions.surface[i] !== GRASS) continue;
+      let all = 0;
+      let sea = 0;
+      for (let c = 0; c < k; c++) {
+        all += pVotes[i * k + c]!;
+        if (classes[c] === SEA) sea += pVotes[i * k + c]!;
+      }
+      const share = all > 0 ? sea / all : 0;
+      if (!(share > pSea[i]!)) continue;
+      pGrass[i] = Math.min(pGrass[i]!, 1 - share);
+      pSea[i] = share;
+    }
+    this.pVotes = new Uint16Array(0);
     const cells = this.cWeight.length;
     const deviation = new Float32Array(cells);
     for (let c = 0; c < cells; c++) {
@@ -423,7 +478,7 @@ export class EvidenceAccumulator {
     return {
       grid: this.grid,
       sub: S,
-      points: { width: this.pw, height: this.ph, weight: pWeight, sea: pSea, grass: pGrass, lightness: pLight, a: pA, b: pB },
+      points: { width: this.pw, height: this.ph, weight: pWeight, sea: pSea, grass: pGrass, seaObject, lightness: pLight, a: pA, b: pB },
       weight: this.cWeight,
       lab: { l: this.cL, a: this.cA, b: this.cB },
       saturation: this.cSat,

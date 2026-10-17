@@ -10,9 +10,9 @@ describe('the shore classifier', () => {
     }
   });
 
-  it('names the 40 features the evidence computes', () => {
-    expect(SHORE_MODEL.features).toHaveLength(40);
-    expect(SHORE_MODEL.features.slice(-6)).toEqual(['anim', 'sat', 'L', 'a', 'b', 'tstdL']);
+  it('reads the sea vote round a cell and its foam, never its colour', () => {
+    expect(SHORE_MODEL.features).toHaveLength(36);
+    expect(SHORE_MODEL.features.every((f) => /^(psea|sd)-?[\d.]+,-?[\d.]+$/.test(f) || f === 'anim' || f === 'tstdL')).toBe(true);
   });
 
   it('sends a missing value the way its node says', () => {

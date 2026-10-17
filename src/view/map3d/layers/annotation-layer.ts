@@ -13,7 +13,7 @@
  */
 import * as THREE from 'three';
 import type { GridState, MacroCoord } from '../../../core/model/types';
-import { chipTextSize, routeWidth, zoneCellSet, zoneHasCaption, type AnnotationsState, type ChipNote, type MapAnnotation, type RouteNote, type ZoneNote } from '../../../core/model/annotations';
+import { chipTextSize, routeWidth, zoneCellSet, zoneGrid, zoneHalfCells, zoneHasCaption, type AnnotationsState, type ChipNote, type MapAnnotation, type RouteNote, type ZoneNote } from '../../../core/model/annotations';
 import { isAnnotationInk } from '../../../config/annotation-palette';
 import { annotationInkScale, INK_CELLS } from '../../../core/model/annotation/text-metrics';
 import { routeSamples, zoneLabelAnchor } from '../../../core/model/annotation/geometry';
@@ -24,11 +24,11 @@ import { densify, drapeHeights, labelPlaneHeight, ribbonStrips, worldPt } from '
 import { paintChipLabel, paintDimensionLabel, paintZoneCaption, rasterNoteLabel, type LabelPainter } from '../draw/note-label-raster';
 import { cellDecals, DECAL_LIFT } from '../geometry/overlay-decals';
 import { surfaceHeightAt } from '../geometry/pick';
-import { TERRAIN_GRID_OFFSET } from '../../../core/grid/grid-convert';
+import { gridSize } from '../../../core/grid/grid-convert';
 import {
   ANNOTATION_LINE, annotationDashes, annotationLineCells, annotationLineColor, dashRuns, zoneBorderPaths,
 } from '../../shared/annotation/annotation-line';
-import { PLACEMENT_GRID, TERRAIN_GRID } from '../../../core/game/profile';
+import { HALF_GRID, PLACEMENT_GRID, TERRAIN_GRID } from '../../../core/game/profile';
 import { cellKey } from '../../../core/grid/rect';
 import { bucketSpan } from '../../../core/grid/buckets';
 
@@ -165,7 +165,7 @@ export class AnnotationLayer3D {
       const baseInk = this.ink / INK_3D_BOOST;
       if (n.kind === 'measure') this.buildDimensions(state, measureDrawing(n.points, baseInk, n.flipped), n.color, usedTex, picked.has(n.id));
       if (n.kind === 'zone' && opts.zoneDimensions !== false && (picked.has(n.id) || n === opts.draft)) {
-        const bounds = cellEdges(n.cells);
+        const bounds = cellEdges(n.cells, zoneGrid(n));
         if (bounds) this.buildDimensions(state, dimensionDrawing(bounds, baseInk), n.color, usedTex);
       }
     });
@@ -289,6 +289,23 @@ export class AnnotationLayer3D {
     this.group.clear();
   }
 
+  /** The share of each material's own opacity the layer draws at: 1 for the notes, less for a note
+   *  ghost. Each material keeps its own opacity as `userData.opacity`. */
+  private strength = 1;
+
+  /** Draws every part at `strength` of its own opacity, the cached materials and any built later. */
+  setStrength(strength: number): void {
+    this.strength = strength;
+    for (const mat of this.mats.values()) mat.opacity = (mat.userData.opacity as number) * strength;
+  }
+
+  /** Caches `mat` under `key`, at the layer's strength. */
+  private keep(key: string, mat: THREE.Material): void {
+    mat.userData.opacity = mat.opacity;
+    mat.opacity *= this.strength;
+    this.mats.set(key, mat);
+  }
+
   /** A built part joins the note being built, and the group unless it is a re-drape's. */
   private add(o: THREE.Object3D): void {
     if (this.sink) { this.sink.parts.push(o); cover(this.sink, o); }
@@ -307,22 +324,23 @@ export class AnnotationLayer3D {
         depthWrite: false,
         depthTest: false,
       });
-      this.mats.set(key, mat);
+      this.keep(key, mat);
     }
     return mat;
   }
 
   private buildZone(state: GridState, zone: ZoneNote, selected = false): void {
     const toWorld = (x: number, y: number) => cellCornerWorld(x, y, state.template.width, state.template.height, PLACEMENT_GRID);
-    const decal = cellDecals(state, zone.cells, PLACEMENT_GRID);
+    const decal = cellDecals(state, zone.cells, zoneGrid(zone));
     // The wash covers the cell tops; a zone spanning terraces would read as strips with bare
     // ground-coloured walls between them, so the wall faces between two zone cells wear the wash
     // too and the region reads whole. Only interior steps: the rim is the outline's to mark.
-    // Zone cells cover [x, x + 1) and terrain cells [x - 0.5, x + 0.5), so a terrace step runs
-    // through the middle of a zone cell, and a ground step along an edge two zone cells share.
-    // Each half-cell length of either line takes its own wall, as the ground on each side of it
-    // belongs to a different terrain row.
-    const set = zoneCellSet(zone.cells);
+    // Placement cells cover [x, x + 1) and terrain cells [x - 0.5, x + 0.5), so a terrace step runs
+    // through the middle of a placement cell, and a ground step along an edge two of them share:
+    // both are edges between two of the zone's half-grid cells. Each half-cell length takes its own
+    // wall, as the ground on each side of it belongs to a different terrain row.
+    const half = zoneHalfCells(zone);
+    const set = zoneCellSet(half);
     const wall = (a: { x: number; z: number }, b: { x: number; z: number }, y0: number, y1: number): void => {
       const { x: ax, z: az } = a, { x: bx, z: bz } = b;
       const base = decal.positions.length / 3;
@@ -339,15 +357,11 @@ export class AnnotationLayer3D {
       const a = toWorld(ax, az), b = toWorld(ax + ux * 0.5, az + uz * 0.5);
       wall(a, b, Math.min(h1, h2), Math.max(h1, h2) + DECAL_LIFT);
     };
-    // Where the next terrain cell begins inside a zone cell.
-    const terraceX = 1 + TERRAIN_GRID_OFFSET.x, terraceY = 1 + TERRAIN_GRID_OFFSET.y;
-    for (const c of zone.cells) {
-      for (const half of [0, 0.5]) {
-        step(c.x + terraceX, c.y + half, 0, 1);
-        step(c.x + half, c.y + terraceY, 1, 0);
-        if (set.has(cellKey(c.x + 1, c.y))) step(c.x + 1, c.y + half, 0, 1);
-        if (set.has(cellKey(c.x, c.y + 1))) step(c.x + half, c.y + 1, 1, 0);
-      }
+    const side = gridSize(HALF_GRID);
+    for (const c of half) {
+      const x = c.x * side, y = c.y * side;
+      if (set.has(cellKey(c.x + 1, c.y))) step(x + side, y, 0, 1);
+      if (set.has(cellKey(c.x, c.y + 1))) step(x, y + side, 1, 0);
     }
     if (decal.positions.length > 0) {
       const geo = new THREE.BufferGeometry();
@@ -362,7 +376,7 @@ export class AnnotationLayer3D {
     // ribbon per outline. Each point's height is read at the point, so the drape follows each
     // terrace it crosses.
     const w = this.lineWidth();
-    const paths = zoneBorderPaths(zone.cells, w)
+    const paths = zoneBorderPaths(zone.cells, w, zoneGrid(zone))
       .map((path) => drapeHeights(state, densify(path.map(([x, y]) => worldPt(state, x, y))), [0, 0.8], w / 2, OUTLINE_LIFT));
     this.inkRibbons(paths, zone.color, w, OUTLINE_ORDERS);
     if (selected) this.selectionRibbons(paths, w);
@@ -451,7 +465,7 @@ export class AnnotationLayer3D {
         color: new THREE.Color('#FFFFFF'),
         transparent: true, opacity: 0.9, side: THREE.DoubleSide, depthWrite: false, depthTest: false,
       });
-      this.mats.set('select', mat);
+      this.keep('select', mat);
     }
     return mat;
   }
@@ -466,7 +480,7 @@ export class AnnotationLayer3D {
         color: new THREE.Color(shown),
         transparent: true, opacity: ANNOTATION_LINE.alpha, side: THREE.DoubleSide, depthWrite: false, depthTest,
       });
-      this.mats.set(key, mat);
+      this.keep(key, mat);
     }
     return mat;
   }
@@ -480,7 +494,7 @@ export class AnnotationLayer3D {
         color: new THREE.Color(ANNOTATION_LINE.halo.color),
         transparent: true, opacity: ANNOTATION_LINE.halo.alpha, side: THREE.DoubleSide, depthWrite: false, depthTest,
       });
-      this.mats.set(key, mat);
+      this.keep(key, mat);
     }
     return mat;
   }
@@ -516,7 +530,7 @@ export class AnnotationLayer3D {
     if (!zoneHasCaption(zone, label)) return;
     const withNum = zone.num > 0;
     const key = `zone:${this.ink}:${zone.color}:${zone.size ?? 'm'}:${withNum ? zone.num : ''}:${label}`;
-    const at = zoneLabelAnchor(zone.cells);
+    const at = zoneLabelAnchor(zone.cells, zoneGrid(zone));
     const worldH = INK_CELLS.zoneLabel[chipTextSize(zone.size ?? 'm')] * this.ink * BILLBOARD_PAD;
     const sprite = this.addLabel(state, { key, at, worldH }, used, (ctx, h) => paintZoneCaption(ctx, h, label, zone.num, zone.color));
     if (sprite && this.building.standing) this.labels.set(zone.id, sprite);
@@ -570,7 +584,7 @@ export class AnnotationLayer3D {
       mat = flat
         ? new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false, depthTest: true, side: THREE.DoubleSide })
         : new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false, depthTest: false });
-      this.mats.set(matKey, mat);
+      this.keep(matKey, mat);
     }
     const [wx, wz] = worldPt(state, at.x, at.y);
     const img = tex.image as HTMLCanvasElement;

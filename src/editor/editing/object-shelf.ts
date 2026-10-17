@@ -5,6 +5,7 @@ import { getCatalogItem } from '../../state/catalog';
 import { useEditorStore } from '../../state/store';
 import { macroForShelfCategory } from '../../tools/macros';
 import { armedItemOf, armedMacroOf } from '../../state/editing/edit-mode';
+import { startCarry, type Carry } from '../../view/interaction/pointer/carry';
 
 /** Puts down an armed item or planting card the shelf tab `category` does not hold, so no ghost outlives its card. */
 export function disarmOutsideCategory(category: CategoryId): void {
@@ -24,4 +25,38 @@ export function toggleArmedMacro(macro: MacroId): void {
 export function toggleArmedItem(itemId: string): void {
   const s = useEditorStore.getState();
   s.setEditMode({ mode: 'object', arm: armedItemOf(s) === itemId ? { kind: 'none' } : { kind: 'item', itemId } });
+}
+
+/** The pointer carrying a card: its id, the element holding its capture, and what to tell the card
+ *  when the carry ends, however it ends. */
+export interface CardHold {
+  pointerId: number;
+  surface: HTMLElement | null;
+  onEnd: () => void;
+}
+
+/**
+ * A press that carries an item card onto the map. The item is armed for the carry alone, so the
+ * drop is the placer's own click, with its rules, refusal and undo step, and what was armed before
+ * comes back with its pending rotation however the carry ends. Carrying the armed item changes
+ * nothing armed. Null when the item cannot be armed here.
+ */
+export function carryItem(itemId: string, hold: CardHold): Carry | null {
+  const s = useEditorStore.getState();
+  const before = { editMode: s.editMode, rotation: s.placementRotation };
+  const kept = armedItemOf(s) === itemId;
+  if (!kept) s.setEditMode({ mode: 'object', arm: { kind: 'item', itemId } });
+  if (armedItemOf(useEditorStore.getState()) !== itemId) return null;
+  return startCarry({
+    pointerId: hold.pointerId,
+    surface: hold.surface,
+    end: () => {
+      if (!kept) {
+        const now = useEditorStore.getState();
+        now.restoreEditMode(before.editMode);
+        now.setPlacementRotation(before.rotation);
+      }
+      hold.onEnd();
+    },
+  });
 }

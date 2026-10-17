@@ -1,19 +1,20 @@
 /** What a press on the notes layer lands on, read in the order both views paint the notes. */
 import type { MacroCoord } from '../../../core/model/types';
-import { zoneCellAt, zoneCellSet, zoneHasCaption, type ChipNote, type MapAnnotation, type RouteNote, type ZoneNote } from '../../../core/model/annotations';
+import { zoneCellAt, zoneCellSet, zoneGrid, zoneHasCaption, type ChipNote, type MapAnnotation, type RouteNote, type ZoneNote } from '../../../core/model/annotations';
 import { cellKey } from '../../../core/grid/rect';
 import { annotationInkScale, chipApproxHeightCells, chipApproxWidthCells, INK_CELLS, routeHitDistCells, zoneLabelApproxHeightCells, zoneLabelApproxWidthCells } from '../../../core/model/annotation/text-metrics';
 import { routeSamples, zoneLabelAnchor } from '../../../core/model/annotation/geometry';
 import { dimensionHit, measureDrawing } from '../../../core/model/annotation/dimensions';
 import type { AnnotateContext } from './channel';
 
-/** The topmost committed zone whose cells hold `cell`. */
-export function zoneBodyAt(cell: MacroCoord, ctx: AnnotateContext): ZoneNote | null {
+/** The topmost committed zone whose cells hold map point `p`. */
+export function zoneBodyAt(p: MacroCoord, ctx: AnnotateContext): ZoneNote | null {
   const items = ctx.state.annotations?.items ?? [];
-  const k = cellKey(cell.x, cell.y);
   for (let i = items.length - 1; i >= 0; i--) {
     const n = items[i]!;
-    if (n.kind === 'zone' && zoneCellSet(n.cells).has(k)) return n;
+    if (n.kind !== 'zone') continue;
+    const cell = zoneCellAt(p, zoneGrid(n));
+    if (zoneCellSet(n.cells).has(cellKey(cell.x, cell.y))) return n;
   }
   return null;
 }
@@ -36,7 +37,7 @@ function captionHit(p: MacroCoord, n: ZoneNote, ink: number, ctx: AnnotateContex
   if (ctx.annotationLabelHit !== undefined) return ctx.annotationLabelHit === n.id;
   const label = n.tag ? ctx.tagLabel(n.tag) : '';
   if (!zoneHasCaption(n, label)) return false;
-  const at = zoneLabelAnchor(n.cells);
+  const at = zoneLabelAnchor(n.cells, zoneGrid(n));
   return Math.abs(p.x - at.x) <= zoneLabelApproxWidthCells(n, label, ink) / 2
     && Math.abs(p.y - at.y) <= zoneLabelApproxHeightCells(n, ink) / 2;
 }
@@ -79,5 +80,5 @@ export function hitAt(p: MacroCoord, ctx: AnnotateContext): MapAnnotation | null
   }
   const route = routeAt(p, ctx);
   if (route) return route;
-  return zoneBodyAt(zoneCellAt(p), ctx);
+  return zoneBodyAt(p, ctx);
 }

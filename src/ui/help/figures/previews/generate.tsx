@@ -9,6 +9,7 @@ import { templateAnchor } from '../../../../core/model/landmarks';
 import { isBuildableZone } from '../../../../core/game/zones';
 import { renderThumbnail } from '../../../../view/map2d/capture/thumbnail';
 import { useT } from '../../../../i18n/context';
+import { layerName } from '../../../../i18n/terms/layer-name';
 import { LoadingDots } from '../../../primitives/LoadingDots';
 import { PLATE_INK } from '../../../design/tokens';
 import { figureCaption } from '../caption';
@@ -140,7 +141,7 @@ async function buildStencilShot({ sampleId, fill, text, compact, contrast, maxEl
   }, cells);
   if (!candidate) return null;
   const frame = drawnFrame(candidate.state, box);
-  return renderThumbnail(candidate.state, 760, frame.width / frame.height, frame);
+  return renderThumbnail(candidate.state, 760, { aspect: frame.width / frame.height, frame });
 }
 
 function ShotImg({ shot, height }: { shot: string | null; height: number }) {
@@ -278,7 +279,7 @@ async function buildIslandShot(richness: number, maxElevation: number): Promise<
   world.beginStroke();
   world.generateDesigned({ seed: SWEEP_SEED, richness, maxElevation, mode: 'mixed', region: null });
   world.commit();
-  return renderThumbnail(world.state, 520, world.state.template.width / world.state.template.height);
+  return renderThumbnail(world.state, 520, { aspect: world.state.template.width / world.state.template.height });
 }
 
 /** Scenery richness 20, 60, 100 on one recipe number: the knob's whole travel at a glance. */
@@ -292,12 +293,12 @@ export function IslandRichnessPreview() {
   return <ShotRow slots={slots} height={200} />;
 }
 
-/** The tallest-layer cap at 1, 4 and 8 on one recipe number: the lower the cap, the flatter. */
+/** The tallest-layer cap at each of `HEIGHT_SHOTS` on one recipe number: the lower the cap, the flatter. */
 export function IslandHeightPreview() {
   const t = useT();
   const slots = useMemo<ShotSlot[]>(() => HEIGHT_SHOTS.map((n) => ({
     id: `tall-${n}`,
-    label: t('generate.knob_reading', { knob: t('generate.max_layer'), reading: n }),
+    label: t('generate.knob_reading', { knob: t('generate.max_layer'), reading: layerName(t, n) }),
     build: () => islandShot(0.7, n),
   })), [t]);
   return <ShotRow slots={slots} height={200} />;
@@ -314,7 +315,7 @@ export function PictureTuningPreview() {
   })), [t]);
   const relief = useMemo<ShotSlot[]>(() => RELIEF_SHOTS.map((n) => ({
     id: `h-${n}`,
-    label: t('generate.knob_reading', { knob: t('generate.max_layer'), reading: n }),
+    label: t('generate.knob_reading', { knob: t('generate.max_layer'), reading: layerName(t, n) }),
     build: () => stencilShot({ sampleId: 'picture', fill: 'mountain', compact: true, maxElevation: n }),
   })), [t]);
   // Full width, stated: the figure box centers its child with shrink-to-fit sizing, and this

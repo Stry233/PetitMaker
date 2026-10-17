@@ -1,4 +1,4 @@
-import { brandName } from '../../i18n/brand';
+import { brandName } from '../../i18n/terms/brand';
 import { useEffect } from 'react';
 import { localeTag } from '../../i18n/locale-info';
 import { useEditorStore } from '../../state/store';

@@ -3,9 +3,9 @@
  * combo per command) or applying it would leave a broken keymap; import must reject conflicts so a
  * crafted/edited file can't collide two commands onto one key. Pure logic, unit-tested directly.
  */
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { PRESETS, withCurrentIds } from '../../../state/keymap/registry';
-import { presetBinds, detectPreset, effectiveCombo } from '../../../state/keymap/resolve';
+import { presetBinds, detectPreset, effectiveCombo, overridesFor } from '../../../state/keymap/resolve';
 import { serializeKeybinds, parseKeybinds } from '../../../state/keymap/file';
 import { useKeybinds } from '../../../state/keymap/store';
 import { normalizeCombo } from '../../../platform/input/combo';
@@ -59,7 +59,7 @@ describe('keymap presets', () => {
     const expects: Record<string, string | null> = {
       'tool.brush': '1', 'tool.erase': '2', 'tool.trim': '3', 'tool.smart': '4',
       'tool.measure': '5', 'tool.shape_cycle': '6', 'tool.free': null, 'tool.line': null, 'tool.curve': null, 'tool.rect': null, 'tool.circle': null, 'tool.option_cycle': 'q',
-      'selection.rotate_cw': 'e', 'selection.rotate_ccw': null,
+      'selection.rotate_cw': 'e', 'selection.rotate_ccw': null, 'selection.delete': 'r',
       'surface.mountain': null, 'tool.move': null, 'camera.pan_up': 'w',
     };
     for (const [id, combo] of Object.entries(expects)) expect(effectiveCombo({}, id), id).toBe(combo);
@@ -85,6 +85,8 @@ describe('preset apply + detect', () => {
     expect(effectiveCombo(ov(), 'tool.brush')).toBe('1');
     expect(effectiveCombo(ov(), 'tool.smart')).toBe('4');
     expect(effectiveCombo(ov(), 'tool.move')).toBe('v');
+    expect(effectiveCombo(ov(), 'selection.delete')).toBe('delete');
+    expect(effectiveCombo(ov(), 'tool.rect')).toBeNull();
     expect(effectiveCombo(ov(), 'camera.pan_up')).toBe('arrowup');
   });
 
@@ -142,5 +144,36 @@ describe('keybinds import / export', () => {
     expect(res.ok).toBe(true);
     expect(res.binds!['history.undo']).toBe('ctrl+alt+u');
     expect(res.binds!['app.ui_zoom_in']).toBe('ctrl+9');
+  });
+});
+
+describe('keymap load migration for stored Pro keymaps', () => {
+  const KEY = 'petit-planet-keybinds';
+  const loadWith = async (stored: Record<string, string | null>) => {
+    localStorage.setItem(KEY, JSON.stringify(stored));
+    vi.resetModules();
+    const [{ useKeybinds: store }, resolve] = await Promise.all([
+      import('../../../state/keymap/store'), import('../../../state/keymap/resolve'),
+    ]);
+    return { overrides: store.getState().overrides, resolve };
+  };
+  afterEach(() => { localStorage.removeItem(KEY); vi.resetModules(); });
+
+  it('freezes Delete for a keymap that holds the rectangle on R and leaves delete unset, so it reads as Pro', async () => {
+    const oldPro = { ...PRESETS.find((p) => p.id === 'pro')!.binds };
+    delete oldPro['selection.delete'];
+    const stored = overridesFor(oldPro);
+    expect('selection.delete' in stored).toBe(false);
+    const { overrides, resolve } = await loadWith(stored);
+    expect(overrides['selection.delete']).toBe('delete');
+    expect(resolve.detectPreset(overrides)).toBe('pro');
+    expect(JSON.parse(localStorage.getItem(KEY)!)['selection.delete']).toBe('delete');
+  });
+
+  it('leaves every other custom keymap untouched', async () => {
+    for (const stored of <Record<string, string | null>[]>[{ 'tool.brush': 'k' }, { 'tool.rect': 'r', 'selection.delete': null }, { 'tool.rect': 'u' }]) {
+      const { overrides } = await loadWith(stored);
+      expect(overrides).toEqual(stored);
+    }
   });
 });

@@ -3,12 +3,13 @@
  * once over the undo entries, and the file written and downloaded. The window keeps its choices,
  * the responsibility notice and the map check, and the paint before a long history is serialized.
  */
-import type { MapNotes } from '../../core/model/types';
+import type { GridState, MapNotes } from '../../core/model/types';
+import type { Locale } from '../../core/model/locale';
 import { isCustomTemplate } from '../../core/model/planet';
 import { needsTextReview, type TextPart } from '../../pipelines/moderation/facts';
 import { persistedCamera } from '../../io/save/camera';
-import { serializeWithSections, sectionSizeFormats, type ExportJsonOptions, type SectionSizes } from '../../io/save/sections';
-import { downloadJSON, exportFileName, safeName } from '../../io/export/download';
+import { carrying, serializeWithSections, sectionSizeFormats, type ExportJsonOptions, type SectionSizes } from '../../io/save/sections';
+import { downloadBlob, downloadJSON, exportFileName, safeName } from '../../io/export/download';
 import { exportableState } from '../../io/export/exportable';
 import {
   exportOptionsFor, historyDepthSteps, measuringOptions, type HistoryDepth, type JsonSectionAvailability, type JsonSections,
@@ -16,6 +17,7 @@ import {
 import { showToast } from '../../platform/channels/toast-bus';
 import { translate } from '../../i18n/context';
 import { useEditorStore } from '../../state/store';
+import type { LoadedOriginal } from '../../state/slices/repair-session';
 import { host } from '../host/host';
 import { planetNaming, shownPlanetName } from '../session/planet-names';
 
@@ -54,6 +56,35 @@ export function measureJsonSections(depth: HistoryDepth): { sizes: { compact: Se
   return { sizes, historySteps: entries.length };
 }
 
+/** The name a save file of `state` downloads under: its planet and the moment of the download. */
+export function saveFileName(state: GridState, locale: Locale): string {
+  return exportFileName([isCustomTemplate(state.template) ? safeName(shownPlanetName(state.template, locale)) : state.template.id, Date.now()], 'json');
+}
+
+/** Downloads the map a load brought, unrepaired (`LoadedOriginal`): a file as it was read, else the
+ *  map as a save file carrying its own notes, annotations, recipe and provenance; whether it was
+ *  written. Reads nothing of the live map and leaves its exported mark alone. Run after the notice
+ *  was confirmed. */
+export function downloadOriginal(original: LoadedOriginal): boolean {
+  try {
+    if (original.kind === 'file') {
+      const ext = original.format === 'json' ? 'json' : original.file.type.split('/')[1] || 'png';
+      downloadBlob(original.file, original.name || exportFileName(['map', Date.now()], ext));
+    } else {
+      const { state } = original;
+      const locale = useEditorStore.getState().locale;
+      const carry = carrying('annotations', 'notes', ...(state.generation ? ['generation' as const] : []), ...(state.provenance ? ['provenance' as const] : []));
+      downloadJSON(serializeWithSections(exportableState(state, planetNaming(locale)), { carry, pretty: false }), saveFileName(state, locale));
+    }
+    const image = original.kind === 'file' && original.format === 'image';
+    showToast(translate(image ? 'toast.exported_image' : 'toast.exported_json'), 'info');
+    return true;
+  } catch (e) {
+    showToast(translate('toast.export_failed', { detail: e instanceof Error ? e.message : translate('error.unknown') }), 'error');
+    return false;
+  }
+}
+
 /** Writes and downloads the save file the choices make, raising the result's notice; whether it was
  *  written. Run after the notice was confirmed and the map check passed. */
 export function writeJsonExport(sections: JsonSections, available: JsonSectionAvailability, notes: MapNotes | null): boolean {
@@ -62,7 +93,7 @@ export function writeJsonExport(sections: JsonSections, available: JsonSectionAv
   try {
     const opts = exportOptionsFor(sections, available, notes, { history: () => executor.getUndoEntries(), session: liveSession });
     const json = serializeWithSections(exportableState(state, planetNaming(locale)), opts);
-    downloadJSON(json, exportFileName([isCustomTemplate(state.template) ? safeName(shownPlanetName(state.template, locale)) : state.template.id, Date.now()], 'json'));
+    downloadJSON(json, saveFileName(state, locale));
     useEditorStore.getState().markExported();
     showToast(translate('toast.exported_json'), 'info');
     return true;

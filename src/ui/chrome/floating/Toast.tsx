@@ -10,7 +10,7 @@ import { useT } from '../../../i18n/context';
 import type { ValidationError } from '../../../core/model/types';
 import { setToastPresenter, type ToastType } from '../../../platform/channels/toast-bus';
 import { TOAST_BAND_TOP, bandTop } from './toast-band';
-import { refusalKey, ruleToast } from '../../../i18n/rule-copy';
+import { refusalKey, ruleToast } from '../../../i18n/terms/rule-copy';
 import { PANEL_EDGE, ERROR, ACCENT, SUCCESS, PLATE, FRAME_INK, ON_DARK } from '../../design/tokens';
 
 export { showToast } from '../../../platform/channels/toast-bus';

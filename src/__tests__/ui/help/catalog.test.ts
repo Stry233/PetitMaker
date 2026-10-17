@@ -37,7 +37,7 @@ import { getPlaceableByCategory } from '../../../state/catalog';
 import { NOTE_LIMITS } from '../../../core/model/notes';
 import { BASE_SUPPORT } from '../../../core/game/profile';
 import type { TextKey } from '../../../i18n/keys';
-import { illustrationProviderName } from '../../../i18n/providers';
+import { illustrationProviderName } from '../../../i18n/terms/providers';
 
 const ALL_IDS: readonly HelpPageId[] = [
   'welcome', 'frame', 'camera', 'tour',
@@ -100,6 +100,8 @@ function keysOf(page: HelpPage): string[] {
     if (s.kind === 'prose') {
       keys.push(...s.bodyKeys);
       if (s.figure) keys.push(...figureKeys(s.figure));
+    } else if (s.kind === 'list') {
+      keys.push(...(s.bodyKeys ?? []), ...s.items.map((item) => item.key));
     } else if (s.kind === 'steps') {
       keys.push(...(s.bodyKeys ?? []));
       for (const g of s.groups) keys.push(...g.stepKeys);
@@ -243,7 +245,7 @@ describe('the help tables and the facts they quote', () => {
   it('spells the support area by its window in every locale, with every number from the game profile', () => {
     for (const locale of LOCALES) {
       const line = HELP_TABLES[locale]['help.faq.mountain_b1']!;
-      for (const token of ['{supportFree}', '{supportFrom}', '{supportWindow}×{supportWindow}', '{supportReach}', '{supportFromBase}', '{supportHigh}']) {
+      for (const token of ['{supportFreeLayer}', '{supportFromLayer}', '{supportWindow}×{supportWindow}', '{supportReach}', '{supportBaseLayer}', '{supportHighLayer}']) {
         expect(line, `${locale} ${token}`).toContain(token);
       }
       const resolved = line.replace(/\{(\w+)\}/g, (_, name: string) => String(helpFacts(locale)[name as keyof ReturnType<typeof helpFacts>] ?? ''));

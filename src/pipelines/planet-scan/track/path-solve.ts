@@ -46,6 +46,8 @@ export const SOURCE_VERIFIED = 0;
 export const SOURCE_RECOVERED = 1;
 /** No match verified; the edge repeats the previous step. */
 export const SOURCE_ASSUMED = 2;
+/** No match verified; the two frames' own lines place the step (`lattice.ts:bridgeLostSteps`). */
+export const SOURCE_LINES = 3;
 
 /** A growable list of path edges in typed arrays. */
 export class EdgeList {

@@ -45,6 +45,14 @@ describe('V-PLACE-MAX: per-item placement cap', () => {
     expect(errs[0]!.messageParams).toEqual({ n: 3 });
   });
 
+  it('does not count the standing object a placement re-describes in place under its own id', () => {
+    const state = makeState(20, 20);
+    const cap = getCatalogItem('facility-pavilion')!.maxCount!;
+    for (let i = 0; i < cap; i++) state.objects.set(`a${i}`, obj(`a${i}`, 'facility-pavilion', 5 + i * 9, 5));
+    expect(placementMaxCountRule.validate(place(obj('a0', 'facility-pavilion', 5, 5)), state)).toHaveLength(0);
+    expect(placementMaxCountRule.validate(place(obj('other', 'facility-pavilion', 5, 12)), state)).toHaveLength(1);
+  });
+
   it('counts only the same catalogId (a different one-of item is unaffected)', () => {
     const state = makeState(20, 20);
     state.objects.set('a', obj('a', 'facility-pavilion', 5, 5));

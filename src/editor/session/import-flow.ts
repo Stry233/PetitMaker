@@ -5,14 +5,15 @@
  * `ui/chrome/modals/import/use-import-flow.ts`, which keeps the busy, pending and redirect state.
  */
 import { inspectImportFile, type ImportInspection } from '../../io/import/file';
+import { openThroughRepair } from './landmark-repair';
 import { classifyImportFile } from '../../io/import/kind';
 import type { HandedImport } from '../../state/slices/shell';
 import { useEditorStore } from '../../state/store';
 import { reportImport } from '../editing/import-report';
 import { getImportFileDeps } from './import-deps';
 
-/** A decoded map waiting for the user's word. */
-export interface PendingMap { inspection: Extract<ImportInspection, { status: 'ready' }>; name: string }
+/** A decoded map waiting for the user's word, with the file it was read from. */
+export interface PendingMap { inspection: Extract<ImportInspection, { status: 'ready' }>; name: string; file: File | Blob }
 
 /** What a surface does with a file of each kind: read it itself (`read`), show the card offering the
  *  window that reads it (`card`), hand it straight to that window (`hand`), or refuse it (`refuse`). */
@@ -46,12 +47,16 @@ export async function routeImport(file: File | Blob, name: string, routing: Impo
   if (how === 'refuse') return { to: 'refused' };
   if (kind === 'video') return file instanceof File ? { to: 'video', file } : { to: 'done' };
   const inspection = await inspectImportFile(file, name);
-  if (inspection.status === 'ready') return { to: 'pending', pending: { inspection, name } };
+  if (inspection.status === 'ready') return { to: 'pending', pending: { inspection, name, file } };
   reportImport(inspection);
   return { to: 'done' };
 }
 
-/** Installs a confirmed map and reports how the import went. */
+/** Installs a confirmed map and reports how the import went, through the repair's gate: a map whose
+ *  load changes what stood under a landmark waits for the visitor's choice, the open map untouched. */
 export function commitImport(pending: PendingMap): void {
-  reportImport(pending.inspection.commit(getImportFileDeps()));
+  const { preview } = pending.inspection;
+  const format = preview.source === 'json' ? 'json' : 'image';
+  openThroughRepair(preview.report, preview.state, () => reportImport(pending.inspection.commit(getImportFileDeps())),
+    { kind: 'file', file: pending.file, name: pending.name, format });
 }

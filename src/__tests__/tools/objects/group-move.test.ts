@@ -12,7 +12,9 @@ import { __setCatalogItem } from '../../../state/catalog';
 import { CommandType, TerrainType } from '../../../core/model/types';
 import type { GridState, PlacedObject } from '../../../core/model/types';
 import { makeState, setTerrain, makeExecutor } from '../../_support/map-state';
-import { moveGroup, previewGroupMove } from '../../../tools/objects/group-actions';
+import { moveGroup, planGroupMove } from '../../../tools/objects/group-actions';
+import { planObjectMove } from '../../../tools/placement/probe';
+import { bumpObjectsVersion } from '../../../core/model/grid-model';
 import { ItemCategory } from '../../../config/catalog/categories';
 
 __setCatalogItem({
@@ -128,11 +130,11 @@ describe('moveGroup', () => {
   });
 });
 
-describe('previewGroupMove', () => {
+describe('planGroupMove', () => {
   it('reads a group sliding into its own footprint as valid, and a blocked destination as invalid', () => {
     const { gs, exec } = mapWith([{ id: 'a', x: 4, y: 4 }, { id: 'b', x: 5, y: 4 }, { id: 'wall', x: 7, y: 4 }]);
-    expect(previewGroupMove(exec, gs, ['a', 'b'], 1, 0)).toBe(true);
-    expect(previewGroupMove(exec, gs, ['a', 'b'], 2, 0)).toBe(false);
+    expect(planGroupMove(exec, gs, ['a', 'b'], 1, 0).valid).toBe(true);
+    expect(planGroupMove(exec, gs, ['a', 'b'], 2, 0).valid).toBe(false);
     // The probe is non-mutating: nothing was lifted off the map for good.
     expect(gs.objects.size).toBe(3);
     expect(posOf(gs, 'a')).toEqual({ x: 4, y: 4 });
@@ -140,6 +142,30 @@ describe('previewGroupMove', () => {
 
   it('refuses a preview that contains a locked member, since the move would be refused', () => {
     const { gs, exec } = mapWith([{ id: 'a', x: 4, y: 4 }, { id: 'plaza', x: 8, y: 8, locked: true }]);
-    expect(previewGroupMove(exec, gs, ['a', 'plaza'], 1, 0)).toBe(false);
+    expect(planGroupMove(exec, gs, ['a', 'plaza'], 1, 0).valid).toBe(false);
+  });
+
+  it('lands each member where its own move plan would, a snapping ramp and a locked member included', () => {
+    // A mountain band at y <= 9, a shoulder at x = 7 and a water bank at x = 4 below it: the ramp's
+    // trait snaps a candidate one row down back onto the cliff, at the mountain's height.
+    const gs = makeState(20, 20);
+    for (let y = 0; y <= 9; y++) for (let x = 0; x < 20; x++) setTerrain(gs, x, y, TerrainType.Mountain, 1);
+    for (let y = 10; y <= 14; y++) {
+      setTerrain(gs, 7, y, TerrainType.Mountain, 1);
+      setTerrain(gs, 4, y, TerrainType.Water, 0);
+    }
+    const objects: PlacedObject[] = [
+      { id: 'r', catalogId: 'ramp-teak-stair', position: { x: 4.5, y: 9 }, rotation: 0, elevation: 1 },
+      { id: 'h', catalogId: 'grp-hut', position: { x: 12, y: 14 }, rotation: 0, elevation: 0 },
+      { id: 'lock', catalogId: 'grp-hut', position: { x: 15, y: 15 }, rotation: 0, elevation: 0, locked: true },
+    ];
+    for (const object of objects) gs.objects.set(object.id, object);
+    bumpObjectsVersion(gs, { added: objects });
+    const exec = makeExecutor(gs);
+    const plan = planGroupMove(exec, gs, objects.map((o) => o.id), 0, 1);
+    expect(plan.valid).toBe(false);
+    expect(plan.landed).toEqual(objects.map((o) => planObjectMove(exec, gs, o, o.position.x, o.position.y + 1).preview));
+    expect(plan.landed[0]!.elevation).toBe(1);
   });
 });
+

@@ -5,7 +5,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   activeToolOf, armedItemOf, buildShapeOf, buildToolOf, armedMacroOf, contentTypeOf, designModeOf, nextEditMode, REST_INPUTS,
-  designModeArming, isDrawingMode,
+  designModeArming, isAnnotating, isDrawingMode,
   type EditModeChange, type EditModeInputs,
 } from '../../../state/editing/edit-mode';
 
@@ -216,6 +216,14 @@ describe('the annotate mode', () => {
     const away = nextEditMode(there, { mode: 'annotate' });
     const back = nextEditMode(away, { mode: 'mountain' });
     expect(back.arming).toEqual({ kind: 'shape', shape: 'circle' });
+  });
+
+  it('is what isAnnotating answers, whatever arming it carries', () => {
+    const there = nextEditMode(REST_INPUTS, { mode: 'mountain', arm: { kind: 'shape', shape: 'circle' } });
+    expect(isAnnotating({ editMode: nextEditMode(there, { mode: 'annotate' }) })).toBe(true);
+    expect(isAnnotating({ editMode: nextEditMode(REST_INPUTS, { mode: 'annotate' }) })).toBe(true);
+    expect(isAnnotating({ editMode: there })).toBe(false);
+    expect(isAnnotating({ editMode: REST_INPUTS })).toBe(false);
   });
 });
 

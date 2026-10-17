@@ -14,6 +14,7 @@ import { openSave } from '../../../io/import/open-save';
 import { COMPRESS_RECORD_AT, encodeRecord } from '../../../io/storage/record-codec';
 import { encodeHistory } from '../../../io/save/history-codec';
 import { CURRENT_VERSION } from '../../../io/save/format';
+import { firstInland, halfAnchored, inlandSquare, latticeMap } from '../../_support/legal-maps';
 import { DEFAULT_MAP } from '../../../config/maps';
 import { createGrid } from '../../../core/model/grid-model';
 import { createGridState } from '../../../core/model/template';
@@ -48,15 +49,9 @@ Object.defineProperty(globalThis, 'localStorage', {
  *  mountain painted on the first Grass cell so the round-trip carries content. */
 function makeWorkingMap(): GridState {
   const state = createGridState(DEFAULT_MAP);
-  for (let y = 0; y < DEFAULT_MAP.height; y++) {
-    for (let x = 0; x < DEFAULT_MAP.width; x++) {
-      if (DEFAULT_MAP.zones[y]?.[x] === CellZone.Grass) {
-        state.cells[y]![x] = { zone: CellZone.Grass, terrain: { type: TerrainType.Mountain, elevation: 3 } };
-        return state;
-      }
-    }
-  }
-  throw new Error('no Grass cell in DEFAULT_MAP');
+  const { x, y } = firstInland(DEFAULT_MAP);
+  state.cells[y]![x] = { zone: CellZone.Grass, terrain: { type: TerrainType.Mountain, elevation: 3 } };
+  return state;
 }
 
 describe('autosave', () => {
@@ -147,9 +142,10 @@ describe('autosave', () => {
   });
 
   it('restores both the print and its paved terrain background across repeated resumes', () => {
-    let state = makeWorkingMap();
-    const y = state.cells.findIndex(row => row.some(cell => cell.terrain));
-    const x = state.cells[y]!.findIndex(cell => cell.terrain);
+    // A road stands on whole ground: a two-by-two block lies under all of its cell.
+    let state = createGridState(DEFAULT_MAP);
+    const { x, y } = inlandSquare(DEFAULT_MAP, 2);
+    for (const [dx, dy] of [[0, 0], [1, 0], [0, 1], [1, 1]] as const) state.cells[y + dy]![x + dx]!.terrain = { type: TerrainType.Mountain, elevation: 3 };
     for (const [id, catalogId] of [['pavement', 'path-garden-stone'], ['print', 'print-field-line']] as const) {
       state.objects.set(id, { id, catalogId, position: { x, y }, elevation: 3, rotation: 0 });
     }
@@ -167,14 +163,13 @@ describe('autosave', () => {
   });
 
   it('restores a half-cell anchor (it rides json-codec, so there is nothing of its own to do)', () => {
-    const state = makeWorkingMap();
-    state.objects.set('r', {
-      id: 'r', catalogId: 'ramp-plank', position: { x: 12.5, y: 20 }, rotation: 0, elevation: 1,
-    });
+    const state = createGridState(DEFAULT_MAP);
+    const ramp = halfAnchored(state, createDefaultRegistry(), 'ramp-plank', 'r');
+    state.objects.set(ramp.id, ramp);
     autosave.schedule(state);
     vi.advanceTimersByTime(2000);
 
-    expect(readAutosave()!.state.objects.get('r')!.position).toEqual({ x: 12.5, y: 20 });
+    expect(readAutosave()!.state.objects.get('r')!.position).toEqual(ramp.position);
   });
 
   describe('camera (resume from last restores the view too)', () => {
@@ -439,14 +434,7 @@ describe('autosave', () => {
     expect(hasAutosave()).toBe(true);
     expect(readRestorableAutosave()).toBeNull();
 
-    const large: GridState = { ...makeWorkingMap(), cells: createGrid(DEFAULT_MAP), objects: new Map() };
-    let painted = 0;
-    for (let y = 0; y < DEFAULT_MAP.height; y++) for (let x = 0; x < DEFAULT_MAP.width; x++) {
-      if (DEFAULT_MAP.zones[y]?.[x] !== CellZone.Grass) continue;
-      if (painted % 2) large.objects.set(`road-${x}-${y}`, { id: `road-${x}-${y}`, catalogId: 'path-garden-stone', position: { x, y }, rotation: 0, elevation: 0 });
-      else large.cells[y]![x] = { zone: CellZone.Grass, terrain: { type: TerrainType.Mountain, elevation: 1 + (painted / 2) % 3 } };
-      painted++;
-    }
+    const large = latticeMap(DEFAULT_MAP, 2);
     expect(serialize(large).length).toBeGreaterThan(COMPRESS_RECORD_AT);
     autosave.schedule(large);
     expect(hasAutosave()).toBe(true);

@@ -5,9 +5,11 @@
  * i18n table), so a change there changes the help with no copy edit. Pages receive the whole
  * record as `{token}` params on every string; a string uses the tokens it needs.
  */
-import { illustrationProviderName, providerName } from '../../i18n/providers';
+import { illustrationProviderName, providerName } from '../../i18n/terms/providers';
 import { NOTE_LIMITS } from '../../core/model/notes';
-import { PLANET_PROFILE, CHUNK_LOAD_LIMIT, ELEVATION_MAX, BASE_SUPPORT, LANDMARKS } from '../../core/game/profile';
+import { PLANET_PROFILE, CHUNK_LOAD_LIMIT, ELEVATION_MAX, BASE_SUPPORT, DOOR, LANDMARKS, layerNumber, type LayerNumber } from '../../core/game/profile';
+import { layerNumeral } from '../../i18n/terms/layer-name';
+import { hasGate } from '../../state/object-geometry';
 import { ANNOTATION_COLORS } from '../../config/annotation-palette';
 import { ItemCategory } from '../../config/catalog/categories';
 import { getAllItems, getCatalogItem, getPlaceableByCategory } from '../../state/catalog';
@@ -25,24 +27,27 @@ import { UI_SCALE_STEP } from '../chrome/modals/settings/UiScaleSlider';
 import { MAX_SHOTS, MIN_SHOTS } from '../../view/map3d/capture/shot-list';
 import { CREEP_FACTOR, RUN_FACTOR } from '../../view/interaction/use-view-shortcuts';
 import { CUSTOM_PROMPT_MAX, STYLIZE_PROVIDERS } from '../../pipelines/stylize/facts';
-import { ruleToast } from '../../i18n/rule-copy';
+import { ruleToast } from '../../i18n/terms/rule-copy';
 import { CONTRAST_SHOTS, HEIGHT_SHOTS, RELIEF_SHOTS, RICHNESS_SHOTS } from './figures/previews/generate-shots';
-import { brandName } from '../../i18n/brand';
+import { brandName } from '../../i18n/terms/brand';
 import { searchExamples } from './search-examples';
-import { formatNumber, localizedName, translateFor, translatorFor } from '../../i18n/context';
+import { formatNumber, localizedName, quantityParams, translateFor, translatorFor } from '../../i18n/context';
 import type { Locale } from '../../core/model/locale';
 import { joinList } from '../../i18n/locale-info';
-import { findTrait, hasTrait, RAMP_UPPER_RUN } from '../../core/model/traits';
+import { findTrait, groundZonesOf, hasTrait, RAMP_UPPER_RUN } from '../../core/model/traits';
 
+/** A fact ending in `Layer` is a layer number as the game counts it, made only by `layerNumber`; one
+ *  ending in `Layers` lists them. Copy names a layer only through those (`__tests__/i18n/layer-name.test.ts`). */
 interface HelpFacts {
+  readonly [key: `${string}Layer`]: LayerNumber;
   readonly [key: string]: string | number;
 }
 
 const cached = new Map<string, HelpFacts>();
 
-/** A cell count in the locale's own singular or plural form. */
+/** A cell count in the locale's own singular or plural form, a fraction written as the locale writes it. */
 function cells(n: number, locale: Locale): string {
-  return translateFor(locale, 'units.cells', { n });
+  return translateFor(locale, 'units.cells', quantityParams(locale, { n }));
 }
 
 /** Derived once per session and locale: the catalog is static data, and a live read per keystroke
@@ -59,6 +64,8 @@ export function helpFacts(locale: Locale = 'en'): HelpFacts {
   const trees = getPlaceableByCategory(ItemCategory.Tree);
   const spacing = findTrait(trees[0], 'exclusionRadius')!;
   const oneEach = getAllItems().filter((i) => i.maxCount === 1).length;
+  const houseGap = findTrait(getAllItems().find(hasGate), 'exclusionRadius')!.radius;
+  const sandNonHouses = getAllItems().filter((i) => !hasGate(i) && groundZonesOf(i).onSand);
   const narrowWidth = Math.min(...bridges.map((b) => b.width));
   const search = searchExamples(locale);
   const agentIds = PROVIDER_IDS.filter((id) => id !== 'custom');
@@ -71,13 +78,17 @@ export function helpFacts(locale: Locale = 'en'): HelpFacts {
   const percent = (fraction: number) => Math.round(fraction * 100);
   const facts: HelpFacts = {
     app: brandName(locale),
+    // `maxElev` and `mazeMaxElev` are counts of layers above the ground, not layer numbers.
     maxElev: ELEVATION_MAX,
-    supportFree: BASE_SUPPORT.fromLayer - 1,
-    supportFrom: BASE_SUPPORT.fromLayer,
+    groundLayer: layerNumber(0),
+    firstLayer: layerNumber(1),
+    topLayer: layerNumber(ELEVATION_MAX),
+    supportFreeLayer: layerNumber(BASE_SUPPORT.fromLayer - 1),
+    supportFromLayer: layerNumber(BASE_SUPPORT.fromLayer),
     supportWindow: BASE_SUPPORT.window,
     supportReach: BASE_SUPPORT.reach,
-    supportFromBase: BASE_SUPPORT.fromLayer - BASE_SUPPORT.reach,
-    supportHigh: BASE_SUPPORT.fromLayer + BASE_SUPPORT.reach,
+    supportBaseLayer: layerNumber(BASE_SUPPORT.fromLayer - BASE_SUPPORT.reach),
+    supportHighLayer: layerNumber(BASE_SUPPORT.fromLayer + BASE_SUPPORT.reach),
     chunkLimit: CHUNK_LOAD_LIMIT,
     planetMaxChunks: PLANET_PROFILE.maxChunks,
     coastLandmarks: joinList(locale, coastLandmarks.map((item) => localizedName(item.name, locale))),
@@ -90,20 +101,21 @@ export function helpFacts(locale: Locale = 'en'): HelpFacts {
     letterMinSide: STENCIL_MIN_SIDE.text,
     letterMaxChars: TEXT_MAX_CHARS,
     pictureMinSide: STENCIL_MIN_SIDE.image,
-    minElev: MIN_ELEVATION,
+    minLayer: layerNumber(MIN_ELEVATION),
     richMin: RICHNESS.min,
     richMax: RICHNESS.max,
     richDefault: RICHNESS.default,
     richShots: joinList(locale, RICHNESS_SHOTS.map(String)),
-    tallShots: joinList(locale, HEIGHT_SHOTS.map(String)),
+    tallShotLayers: joinList(locale, HEIGHT_SHOTS.map(layerNumeral)),
     contrastMin: CONTRAST.min,
     contrastMax: CONTRAST.max,
     contrastDefault: CONTRAST.default,
     contrastShots: joinList(locale, CONTRAST_SHOTS.map((n) => t('generate.percent', { n }))),
-    reliefShots: joinList(locale, RELIEF_SHOTS.map(String)),
+    reliefShotLayers: joinList(locale, RELIEF_SHOTS.map(layerNumeral)),
     corridorMin: CORRIDOR.min,
     corridorMax: CORRIDOR.max,
     mazeMaxElev: MAZE_MAX_ELEVATION,
+    mazeTopLayer: layerNumber(MAZE_MAX_ELEVATION),
     candidates: CANDIDATES,
     seedDigits: SEED_DIGITS,
     drawnSeedDigits: String(DRAWN_SEED_MAX - 1).length,
@@ -141,7 +153,11 @@ export function helpFacts(locale: Locale = 'en'): HelpFacts {
     searchWordB: search.wordsB,
     bridgeMin: span.min,
     bridgeMax: span.max,
-    treeGap: spacing.radius,
+    treeGapCells: cells(spacing.radius, locale),
+    houseGapCells: cells(houseGap, locale),
+    doorDrop: formatNumber(locale, DOOR.dropDepth),
+    doorRise: formatNumber(locale, DOOR.riseDepth),
+    sandFacilities: joinList(locale, sandNonHouses.map((item) => localizedName(item.name, locale))),
     roadCount: getPlaceableByCategory(ItemCategory.Road).length,
     plantableRoads: joinList(locale, getPlaceableByCategory(ItemCategory.Road).filter((road) => hasTrait(road, 'plantable')).map((road) => localizedName(road.name, locale))),
     oneEachCount: oneEach,

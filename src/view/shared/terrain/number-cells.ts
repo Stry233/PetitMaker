@@ -13,6 +13,7 @@ import { getPlacedObjectSize } from '../../../state/object-geometry';
 import { footprintCells } from '../../../core/grid/footprint';
 import { bucketSpan } from '../../../core/grid/buckets';
 import { cellKey } from '../../../core/grid/rect';
+import { layerNumeral } from '../../../i18n/terms/layer-name';
 
 export interface NumberCell { x: number; y: number; label: string }
 
@@ -67,7 +68,7 @@ export function chunkNumberCells(state: GridState, cx: number, cy: number, hidde
       if (cell.terrain && cell.terrain.type === TerrainType.None) continue;
       const elev = cell.terrain?.elevation ?? 0;
       if (hiddenLayers.has(elev)) continue;
-      out.push({ x, y, label: String(elev) });
+      out.push({ x, y, label: layerNumeral(elev) });
     }
   }
   return out;

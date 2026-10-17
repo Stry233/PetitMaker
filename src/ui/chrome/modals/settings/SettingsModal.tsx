@@ -21,8 +21,9 @@ import { KeymapMiniature } from '../keyboard/KeymapMiniature';
 import { useFullscreen } from '../../../primitives/use-fullscreen';
 import { helpTargetAttr } from '../../../session/help-targets';
 import { DANGER_INK, DANGER_SURFACE, WASH } from '../../../design/tokens';
-import { QUALITIES_3D } from '../../../../platform/storage/prefs';
-import { QualityShot, picStyle, tileStyle, capStyle, MapTile, stepStyle, stepName, MotionPref, MotionDemo, choiceStyle, SYSTEM_ARROW, PAINTED_ARROW_URL } from './settings-pictures';
+import { QUALITIES_3D, type GridMode } from '../../../../platform/storage/prefs';
+import type { I18nKey } from '../../../../i18n/keys';
+import { QualityShot, picStyle, tileStyle, capStyle, MapTile, GridOverlay, ChunkOverlay, stepStyle, stepName, MotionPref, MotionDemo, choiceStyle, SYSTEM_ARROW, PAINTED_ARROW_URL } from './settings-pictures';
 import { UiScaleSlider } from './UiScaleSlider';
 
 
@@ -62,6 +63,13 @@ const groupStyle: CSSProperties = {
 };
 
 const rowOfTiles: CSSProperties = { display: 'flex', gap: 12 };
+
+const GRID_MODE_LABELS: Record<GridMode, I18nKey> = {
+  auto: 'modal.settings_grid_auto',
+  object: 'modal.settings_grid_object',
+  terrain: 'modal.settings_grid_terrain',
+  off: 'modal.settings_grid_off',
+};
 
 // The keyboard row: the live keymap as one wide pressable tile on the same wash the groups sit
 // on, picture above and label below like every other tile here.
@@ -160,8 +168,9 @@ function SettingsBody({ onClose, onReset }: { onClose: () => void; onReset: () =
   const fullscreen = useFullscreen();
   const setModal = useEditorStore((s) => s.setModal);
   const locale = useLocale();
-  const showGrid = useEditorStore((s) => s.showGrid);
-  const onShowGridChange = useEditorStore((s) => s.setShowGrid);
+  const gridMode = useEditorStore((s) => s.gridMode);
+  const lastGridMode = useEditorStore((s) => s.lastGridMode);
+  const onCycleGrid = useEditorStore((s) => s.cycleGridMode);
   const showChunks = useEditorStore((s) => s.showChunkBounds);
   const onShowChunksChange = useEditorStore((s) => s.setShowChunkBounds);
   const motionPref = useEditorStore((s) => s.motionPref);
@@ -198,8 +207,15 @@ function SettingsBody({ onClose, onReset }: { onClose: () => void; onReset: () =
         {/* The map: what shows on it, and how it renders. */}
         <div {...helpTargetAttr('settings', 'settings-map')} style={groupStyle}>
           <div style={rowOfTiles}>
-            <MapTile kind="grid" on={showGrid} label={t('modal.settings_grid')} onToggle={() => onShowGridChange(!showGrid)} />
-            <MapTile kind="chunks" on={showChunks} label={t('modal.settings_chunks')} onToggle={() => onShowChunksChange(!showChunks)} />
+            {/* Each press moves to the next grid mode. */}
+            <MapTile on={gridMode !== 'off'} onPress={onCycleGrid} announce
+              name={t('modal.settings_grid')} state={t(GRID_MODE_LABELS[gridMode])}>
+              <GridOverlay mode={gridMode} shown={gridMode === 'off' ? lastGridMode : gridMode} />
+            </MapTile>
+            <MapTile on={showChunks} asSwitch onPress={() => onShowChunksChange(!showChunks)}
+              name={t('modal.settings_chunks')} state={t(showChunks ? 'modal.settings_chunks_shown' : 'modal.settings_chunks_hidden')}>
+              <ChunkOverlay on={showChunks} />
+            </MapTile>
           </div>
           {/* Graphics quality — governs the 3D scene and the 2D canvas's render-scale cap on a
               software rasterizer (device-quality.ts:maxRenderScale reads this pref). Auto follows

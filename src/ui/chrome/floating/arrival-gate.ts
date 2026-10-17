@@ -24,6 +24,9 @@ export interface ArrivalFacts {
   tourDoneOpen: boolean;
   /** The What's new window is up. It speaks first; the greeting follows it. */
   whatsNewOpen: boolean;
+  /** A landmark repair is asked or under way: its window or its plate stands where the notice would,
+   *  so the greeting waits until it ends. */
+  repairOpen: boolean;
 }
 
 /*
@@ -40,7 +43,8 @@ export function arrivalOpens(f: ArrivalFacts): boolean {
     && !f.tourRunning
     && f.tourSettled
     && !f.tourDoneOpen
-    && !f.whatsNewOpen;
+    && !f.whatsNewOpen
+    && !f.repairOpen;
 }
 
 /** The phrase the notice opens with, above the planet's name. A lead-in, so each locale writes

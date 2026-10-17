@@ -11,6 +11,7 @@ import { ACTIVE, INK, INSET, LINE, PANEL_EDGE, PANEL_EDGE_WIDTH, PLATE, PLATE_IN
 import { roleFont, weightVars } from '../design/text-weight';
 import { framerMotion } from '../design/motion';
 import { ChevronIcon } from './line-glyphs';
+import { hoverFillMotion } from './hover-fill';
 
 const ANCHOR_GAP = 6;
 const MAX_HEIGHT = 320;
@@ -127,12 +128,12 @@ export function FloatMenu({
             disabled={item.disabled}
             onClick={() => { onPick?.(item.id); onClose(); }}
             {...(keepFocus ? { onMouseDown: (event: React.MouseEvent) => event.preventDefault() } : {})}
-            whileHover={item.disabled ? undefined : { backgroundColor: hoverFill(item.id === activeId) }}
+            {...hoverFillMotion({
+              fill: item.id === highlightId && item.id !== activeId ? floatMenuHoverFill(false) : floatMenuItemFill(item.id === activeId),
+              hoverFill: item.disabled ? undefined : floatMenuHoverFill(item.id === activeId),
+            })}
             transition={framerMotion('surface.arrive')}
-            style={{
-              ...floatMenuItemStyle(item.id === activeId, item.disabled),
-              ...(item.id === highlightId && item.id !== activeId ? { backgroundColor: hoverFill(false) } : null)
-            }}
+            style={floatMenuItemStyle(item.id === activeId, item.disabled)}
           >
             <span>{item.label}</span>
             {item.sub != null ? <span style={subStyle}>{item.sub}</span> : null}
@@ -202,18 +203,21 @@ export function floatMenuItemStyle(active: boolean, disabled = false): CSSProper
     padding: '8px 14px',
     fontFamily: font.family,
     ...roleFont('menu'),
-    // An inactive row matches the card rather than being transparent, so a hover tints from a
-    // colour instead of flashing in.
-    backgroundColor: active ? ACTIVE : PLATE,
     color: active ? INK : PLATE_INK,
     cursor: disabled ? cursors.blocked : cursors.clickable,
     opacity: disabled ? UNAVAILABLE : 1,
   };
 }
 
+/** A row's resting fill, Framer's to draw (`hover-fill.ts`). An inactive row matches the card rather
+ *  than being transparent, so a hover tints from a colour instead of flashing in. */
+export function floatMenuItemFill(active: boolean): string {
+  return active ? ACTIVE : PLATE;
+}
+
 /** What a row's hover tints to: one step down the cream ramp from the plate it stands on, so the
  *  row under the pointer comes forward. The current row has no hover state to move to. */
-function hoverFill(active: boolean): string {
+export function floatMenuHoverFill(active: boolean): string {
   return active ? ACTIVE : INSET;
 }
 

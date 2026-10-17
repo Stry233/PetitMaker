@@ -29,7 +29,7 @@ import { plantSpecies, type HabitatResponse, type HabitatWants } from '../../../
 const MOISTURE_REACH = 8;
 /** How far the wind off a cliff carries, in cells. */
 const CLIFF_REACH = 3;
-/** The tier at which height alone counts as fully exposed — half of `ELEVATION_MAX`. Higher than
+/** The tier at which height alone counts as fully exposed. Higher than
  *  that a plateau is a ridge whatever else is around it. */
 const EXPOSURE_TIER_SPAN = 4;
 /** How far in from the last plantable cell still reads as the margin of the ground. */

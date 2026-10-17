@@ -3,6 +3,7 @@ import { TILE_SIZE } from '../geometry/world';
 import { clamp01, smoothstep } from '../../../core/base/math';
 import { mapFrame } from '../../../core/grid/map-chunks';
 import type { MapTemplate } from '../../../core/model/types';
+import type { MacroCoord } from '../../../core/base/coords';
 import { CELL_GRID_STYLE, cellGridRects, chunkStrokeCells } from '../../shared/grid/reference-grid';
 
 /** One cell texture handles line coverage and prevents alpha buildup at grid crossings. */
@@ -11,14 +12,16 @@ export class CellGrid extends PIXI.Graphics {
   private tileCanvas: HTMLCanvasElement | null = null;
   private lastScale = 0;
 
-  draw(template: MapTemplate, visible: boolean, scale: number, chunks: boolean): void {
+  /** Fills the map frame with cell lines standing at `offset` cells from the map's lattice. */
+  draw(template: MapTemplate, visible: boolean, scale: number, chunks: boolean, offset: Readonly<MacroCoord>): void {
     this.clear();
     const frame = mapFrame(template);
     this.position.set(frame.x * TILE_SIZE, frame.y * TILE_SIZE);
     if (!visible) return;
     if (!this.tile || scale !== this.lastScale) this.updateTile(scale);
     if (!this.tile) return;
-    const matrix = new PIXI.Matrix().scale(TILE_SIZE / this.tile.width, TILE_SIZE / this.tile.height);
+    const matrix = new PIXI.Matrix().scale(TILE_SIZE / this.tile.width, TILE_SIZE / this.tile.height)
+      .translate(offset.x * TILE_SIZE, offset.y * TILE_SIZE);
     this.beginTextureFill({ texture: this.tile, matrix });
     for (const rect of cellGridRects(template, chunks ? chunkStrokeCells(TILE_SIZE * scale) : 0)) {
       this.drawRect((rect.x - frame.x) * TILE_SIZE, (rect.y - frame.y) * TILE_SIZE, rect.width * TILE_SIZE, rect.height * TILE_SIZE);

@@ -7,9 +7,11 @@ export type ScanFailure =
   | 'not-map-view'
   /** The still runs show no animated chunk lines: the region load display was off. */
   | 'region-load-off'
-  /** The recording used another zoom than the map view's, read from the zoom slider or the
-   *  chunk lines' period. */
-  | 'different-zoom'
+  /** The recording never shows the map view at its maximum zoom, the one the scan reads, by the
+   *  zoom slider or the chunk lines' period. */
+  | 'not-max-zoom'
+  /** The zoom changed after the scan started at the maximum. */
+  | 'zoom-changed'
   /** The scan covers too little of a planet to read. */
   | 'too-little'
   /** The scan keeps more distinct frames than one import holds: it went over the same ground
@@ -27,7 +29,7 @@ export type ScanFailure =
 
 /** Every failure, in the order the import checks them. */
 export const SCAN_FAILURES: readonly ScanFailure[] = [
-  'framing', 'not-map-view', 'different-zoom', 'region-load-off', 'too-little', 'too-long', 'too-fast', 'blurry', 'too-large', 'no-ground',
+  'framing', 'zoom-changed', 'not-map-view', 'not-max-zoom', 'region-load-off', 'too-little', 'too-long', 'too-fast', 'blurry', 'too-large', 'no-ground',
 ];
 
 /** A scan refused for a reason the import reports to the person. */

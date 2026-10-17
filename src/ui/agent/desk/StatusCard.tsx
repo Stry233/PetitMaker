@@ -17,7 +17,7 @@ import { splitOnToken, type DeskSeat, type Face } from '../derive/desk-face';
 import type { RepairAct } from '../derive/repair';
 import { IconButton } from '../parts/IconButton';
 import { metaInk, recede, statePaper } from '../panel-skin';
-import { timedHint } from '../../../i18n/timed-hint';
+import { timedHint } from '../../chrome/timed-hint';
 
 /** Status-card height in pixels. */
 export const STATUS_CARD_HEIGHT = 74;

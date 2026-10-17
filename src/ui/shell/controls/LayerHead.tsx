@@ -16,7 +16,7 @@ import { ChevronLeftIcon, ChevronRightIcon } from '../../primitives/line-glyphs'
 import { stepLayerMode, type LayerMode } from '../frame';
 import { TEXT } from '../units';
 import { useFrameReadableWeight, useZoomedLayoutTransform } from '../use-frame-zoom';
-import { NOTES_ROW, PANEL, TILE, tileOf } from './layer-plate';
+import { LEAD_X, PANEL, tileOf } from './layer-plate';
 
 /**
  * One step of the size ladder. The plate grows leftward into the map, so the arrow pointing left
@@ -122,8 +122,8 @@ export function LayerHead({ mode, onMode }: { mode: LayerMode; onMode: (mode: La
       transformTemplate={zoomed}
       style={{
         flex: 'none', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: PANEL.headSplitGap,
-        // The left pill shares the notes help button's left edge at both sizes; the height is declared for `plateDepth`.
-        padding: `0 ${tileOf(mode).padX}px ${PANEL.headGap}px ${TILE.column.padX + NOTES_ROW.helpMarginX}px`,
+        // The left pill stands on the leading column at both sizes; the height is declared for `plateDepth`.
+        padding: `0 ${tileOf(mode).padX}px ${PANEL.headGap}px ${LEAD_X}px`,
         height: 2 * PANEL.headPadY + TEXT.head, boxSizing: 'content-box',
       }}
     >

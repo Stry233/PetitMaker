@@ -10,23 +10,26 @@ import {
   type GridState,
   type MacroCoord,
   type PlacedObject,
+  type Rotation,
+  ROTATIONS,
 } from '../../core/model/types';
 import type { ToolOutcome } from './spec';
 import { getCell } from '../../core/model/grid-model';
-import { isBuildableZone } from '../../core/game/zones';
+import { groundZone, isBuildableZone, isSandZone, SAND_ZONE } from '../../core/game/zones';
 import { getAllItems, getCatalogItem } from '../../state/catalog';
 import { surfaceElevation } from '../../core/domain/terrain/terrain-surface';
 import { detectBridgeSpan } from '../../core/domain/terrain/bridge-span';
-import { objectRect } from '../../state/object-geometry';
-import { footprintCells } from '../../core/grid/footprint';
-import { findTrait } from '../../core/model/traits';
+import { hasGate, objectRect } from '../../state/object-geometry';
+import { doorGroundRule } from '../../rules/door-ground';
+import { footprintCells, getRotatedSize } from '../../core/grid/footprint';
+import { findTrait, groundZonesOf } from '../../core/model/traits';
 import type { AgentToolDeps } from './deps';
 import { argError } from './feedback';
 import { nearPoint, pointInput } from './geometry';
 import { ELEVATION_MAX } from '../../core/game/profile';
-import { int, obj, str, req } from './schema';
+import { int, obj, oneOf, str } from './schema';
 import { defineTool } from './spec';
-import { BUILDABLE_ZONES, bridgeSpanText } from './game-terms';
+import { BUILDABLE_ZONES, bridgeSpanText, zoneName } from './game-terms';
 import { narrowestBridgeId } from '../../tools/placement';
 import { cellKey } from '../../core/grid/rect';
 
@@ -35,10 +38,12 @@ const nearX = int({ description: 'Prefer sites close to (nearX,nearY).' });
 /* ── search: flat areas a footprint fits on ─────────────────────────── */
 
 export const findFlatAreasTool = defineTool({
-  description: `Search the whole map for flat buildable spots where a footprint of minWidth x minHeight fits (${BUILDABLE_ZONES} zone, uniform elevation, no water, no objects; includes the +1 right/bottom margin the flat trait checks, so place_object at a returned anchor will pass). Use this instead of guessing where things fit.`,
+  description: `Search the whole map for flat buildable spots where a footprint of minWidth x minHeight fits (${BUILDABLE_ZONES} zone, uniform elevation, no water, no objects; includes the +1 right/bottom margin the flat trait checks, so place_object at a returned anchor will pass). Pass catalogId (and rotation) to search for that item: its own turned footprint, ${zoneName(SAND_ZONE)} as well where its groundZones allow it, and for a house the level ground its door side needs (V-PLACE-DOOR). Use this instead of guessing where things fit.`,
   input: obj({
-    minWidth: req(int({ min: 1 })),
-    minHeight: req(int({ min: 1 })),
+    minWidth: int({ min: 1, description: 'Footprint width; taken from catalogId when given.' }),
+    minHeight: int({ min: 1, description: 'Footprint height; taken from catalogId when given.' }),
+    catalogId: str({ description: 'The item to be placed: its footprint, ground zones and door decide the fit.' }),
+    rotation: oneOf([...ROTATIONS]),
     elevation: int({ min: 0, max: ELEVATION_MAX, description: 'Terrain elevation to search on (default 0 = flat ground).' }),
     nearX: int({ description: 'Prefer anchors close to (nearX,nearY).' }),
     nearY: int(),
@@ -50,11 +55,21 @@ export const findFlatAreasTool = defineTool({
   run: findFlatAreas,
 });
 
-function findFlatAreas(deps: AgentToolDeps, input: { minWidth: number; minHeight: number; elevation?: number; limit?: number }): ToolOutcome {
+type FlatQuery = {
+  minWidth?: number; minHeight?: number; catalogId?: string; rotation?: Rotation; elevation?: number; limit?: number;
+};
+
+function findFlatAreas(deps: AgentToolDeps, input: FlatQuery): ToolOutcome {
   const state = deps.getState();
   const { width, height } = state.template;
-  const minW = input.minWidth;
-  const minH = input.minHeight;
+  const item = input.catalogId ? getCatalogItem(input.catalogId) : undefined;
+  if (input.catalogId && !item) return argError(`unknown catalogId "${input.catalogId}"; use an id from the CATALOG section.`);
+  const rotation = input.rotation ?? 0;
+  const size = item ? getRotatedSize(item, rotation) : undefined;
+  const minW = size?.w ?? input.minWidth;
+  const minH = size?.h ?? input.minHeight;
+  if (!minW || !minH) return argError('give minWidth and minHeight, or a catalogId.');
+  const zones = item ? groundZonesOf(item) : { onGrass: true, onSand: false, acrossBoundary: false };
   const elevation = input.elevation ?? 0;
   const limit = input.limit ?? 5;
   const near = pointInput(input, 'near') ?? { x: Math.floor(width / 2), y: Math.floor(height / 2) };
@@ -70,44 +85,57 @@ function findFlatAreas(deps: AgentToolDeps, input: { minWidth: number; minHeight
     // own cells would read as flat and unoccupied.
     for (const { x, y } of footprintCells(r.x, r.y, r.w, r.h)) occupied.add(cellKey(x, y));
   }
-  const ok = (x: number, y: number): boolean => {
+  const level = (x: number, y: number): boolean => {
     const cell = state.cells[y]?.[x];
-    if (!cell || !isBuildableZone(cell.zone) || occupied.has(cellKey(x, y))) return false;
+    if (!cell || occupied.has(cellKey(x, y))) return false;
     const tr = cell.terrain;
     if (tr?.patchOnly || tr?.type === TerrainType.Water) return false;
     return (tr?.elevation ?? 0) === elevation && (elevation === 0 || tr?.type === TerrainType.Mountain);
   };
-  // prefix sums over the ok-grid → O(1) window checks
-  const sums = new Int32Array((width + 1) * (height + 1));
-  for (let y = 0; y < height; y++) {
-    for (let x = 0; x < width; x++) {
-      sums[(y + 1) * (width + 1) + (x + 1)] =
-        (ok(x, y) ? 1 : 0) + sums[y * (width + 1) + (x + 1)]! + sums[(y + 1) * (width + 1) + x]! - sums[y * (width + 1) + x]!;
+  const onGrass = (x: number, y: number): boolean => zones.onGrass && isBuildableZone(state.cells[y]![x]!.zone);
+  const onSand = (x: number, y: number): boolean => zones.onSand && isSandZone(groundZone(state.cells[y]![x]!));
+  // Prefix sums over each ground's ok-grid → O(1) window checks. A window is whole on one ground,
+  // or on either where the item may cross the boundary.
+  const sums = (ok: (x: number, y: number) => boolean): ((x: number, y: number) => boolean) => {
+    const t = new Int32Array((width + 1) * (height + 1));
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        t[(y + 1) * (width + 1) + (x + 1)] = (level(x, y) && ok(x, y) ? 1 : 0)
+          + t[y * (width + 1) + (x + 1)]! + t[(y + 1) * (width + 1) + x]! - t[y * (width + 1) + x]!;
+      }
     }
-  }
-  const at = (x: number, y: number): number => sums[y * (width + 1) + x]!;
-  const windowFull = (x: number, y: number): boolean =>
-    at(x + needW, y + needH) - at(x + needW, y) - at(x, y + needH) + at(x, y) === needW * needH;
+    const at = (x: number, y: number): number => t[y * (width + 1) + x]!;
+    return (x, y) => at(x + needW, y + needH) - at(x + needW, y) - at(x, y + needH) + at(x, y) === needW * needH;
+  };
+  const windows = zones.acrossBoundary
+    ? [sums((x, y) => onGrass(x, y) || onSand(x, y))]
+    : [sums(onGrass), ...(zones.onSand ? [sums(onSand)] : [])];
 
   const anchors: MacroCoord[] = [];
   for (let y = 0; y + needH <= height; y++) {
     for (let x = 0; x + needW <= width; x++) {
-      if (windowFull(x, y)) anchors.push({ x, y });
+      if (windows.some((full) => full(x, y))) anchors.push({ x, y });
     }
   }
-  if (anchors.length === 0) {
-    return { isError: false, content: `No flat ${minW}x${minH} spot at elevation ${elevation}. Try a smaller footprint, another elevation, or flatten an area first.` };
-  }
   anchors.sort((a, b) => (Math.abs(a.x - near.x) + Math.abs(a.y - near.y)) - (Math.abs(b.x - near.x) + Math.abs(b.y - near.y)));
+  // A house's door side is judged by the rule itself, nearest first, so a returned anchor holds.
+  const doorHolds = (a: MacroCoord): boolean => !item || !hasGate(item)
+    || doorGroundRule.validate(placeObjectCommand({ id: 'probe', catalogId: item.id, position: a, rotation, elevation }), state).length === 0;
   const picked: MacroCoord[] = [];
+  let fits = 0;
   const minGap = Math.max(minW, minH);
   for (const a of anchors) {
-    if (picked.length >= limit) break;
-    if (picked.every((p) => Math.abs(p.x - a.x) > minGap || Math.abs(p.y - a.y) > minGap)) picked.push(a);
+    if (!doorHolds(a)) continue;
+    fits++;
+    if (picked.length < limit && picked.every((p) => Math.abs(p.x - a.x) > minGap || Math.abs(p.y - a.y) > minGap)) picked.push(a);
+  }
+  const what = item ? `${item.id} at rotation ${rotation} (${minW}x${minH})` : `a ${minW}x${minH} footprint`;
+  if (picked.length === 0) {
+    return { isError: false, content: `No flat spot for ${what} at elevation ${elevation}. Try a smaller footprint, another rotation or elevation, or flatten an area first.` };
   }
   return {
     isError: false,
-    content: `${anchors.length} anchor(s) fit a ${minW}x${minH} footprint at elevation ${elevation}. Nearest (spread apart): ${picked.map((p) => `(${p.x},${p.y})`).join(' ')}`,
+    content: `${fits} anchor(s) fit ${what} at elevation ${elevation}. Nearest (spread apart): ${picked.map((p) => `(${p.x},${p.y})`).join(' ')}`,
   };
 }
 

@@ -103,8 +103,8 @@ describe('the save-and-share window', () => {
     expect(screen.getByText('Terrain, layer by layer')).toBeTruthy();
     expect(screen.getByText(localizedName(house.name, 'en'))).toBeTruthy();
     // Two layers under one 2-high cell, lowest first.
-    expect(screen.getByText('Layer 1')).toBeTruthy();
     expect(screen.getByText('Layer 2')).toBeTruthy();
+    expect(screen.getByText('Layer 3')).toBeTruthy();
     // The plaza is on the map but is not something to place: it comes with the template, so a list
     // for rebuilding by hand leaves it out. The omission is the fact: a sentence under the list
     // explaining it is one more thing to read.

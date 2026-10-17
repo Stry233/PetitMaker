@@ -36,6 +36,8 @@ const MODAL_IDS = [
   'whatsNew',
   // Import planet's window over Change Planet: from a planet file or from a game video.
   'planetImport',
+  // How to move what a just-opened map held under the planet's landmarks.
+  'landmarkRepair',
 ] as const;
 export type ModalId = typeof MODAL_IDS[number];
 

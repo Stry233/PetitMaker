@@ -14,6 +14,8 @@ import { TerrainType, type Rotation } from '../../../../core/model/types';
 import type { GridState } from '../../../../core/model/types';
 import type { SaveObject } from '../../../../io/save/format';
 import { exportable } from '../../../_support/exportable';
+import { halfAnchored } from '../../../_support/legal-maps';
+import { createDefaultRegistry } from '../../../../rules';
 
 const META = { appVersion: 'half-pin', saveVersion: 1 };
 
@@ -114,15 +116,19 @@ describe('share codec: half positions are additive', () => {
 
   it('carries a half anchor the whole way out and back', async () => {
     // Exercise image rendering, raster decoding, save loading, and import validation together.
-    const state = wholeMap();
-    place(state, 'e', 'ramp-teak-stair', { x: 40.5, y: 30, rotation: 0, elevation: 1 });
-    place(state, 'f', 'bridge-teak', { x: 44, y: 50.5, rotation: 90, elevation: 0, spanLength: 4 });
+    // The import holds the map to the rules, so the ramp and the bridge stand where the rules let them.
+    const state = createGridState(getMapTemplate('hexia'));
+    const rules = createDefaultRegistry();
+    const ramp = halfAnchored(state, rules, 'ramp-teak-stair', 'e');
+    state.objects.set(ramp.id, ramp);
+    const bridge = halfAnchored(state, rules, 'bridge-teak', 'f', 'river');
+    state.objects.set(bridge.id, bridge);
     const code = await buildShareCode(exportable(state), null, { ...META, saveVersion: CURRENT_VERSION }, 1600);
     const res = await importFromRaster(code!.rgba, code!.width, code!.height);
     expect(res.ok && res.warnings).toEqual([]);
     const objects = [...(res as { state: GridState }).state.objects.values()];
-    expect(objects.find((o) => o.catalogId === 'ramp-teak-stair')!.position).toEqual({ x: 40.5, y: 30 });
-    expect(objects.find((o) => o.catalogId === 'bridge-teak')!.position).toEqual({ x: 44, y: 50.5 });
+    expect(objects.find((o) => o.catalogId === 'ramp-teak-stair')!.position).toEqual(ramp.position);
+    expect(objects.find((o) => o.catalogId === 'bridge-teak')!.position).toEqual(bridge.position);
   }, 60_000);
 
   it('carries a half anchor under both parities', () => {

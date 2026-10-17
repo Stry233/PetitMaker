@@ -1,28 +1,22 @@
 import { channelLuma } from '../../../core/base/color';
-import type { GreyImage, Polynomial2, Rectification, RgbaImage, TileSpec } from '../types';
+import type { GreyImage, Homography, Rectification, RgbaImage, TileSpec } from '../types';
 
-/** `sum_k coef[k] * a^i_k * b^j_k`. */
-export function evalPolynomial(p: Polynomial2, a: number, b: number): number {
-  let sum = 0;
-  for (let k = 0; k < p.coef.length; k++) {
-    const [i, j] = p.terms[k]!;
-    sum += p.coef[k]! * a ** i * b ** j;
-  }
-  return sum;
+/** The point `h` takes (x, y) to. */
+function project(h: Homography, x: number, y: number): { a: number; b: number } {
+  const w = h[6] * x + h[7] * y + h[8];
+  return { a: (h[0] * x + h[1] * y + h[2]) / w, b: (h[3] * x + h[4] * y + h[5]) / w };
 }
 
 /** Ground point (rectified pixels from the calibration origin) to its screen pixel. */
 export function groundToScreen(cal: Rectification, x: number, y: number): { u: number; v: number } {
-  const a = x / cal.scale;
-  const b = y / cal.scale;
-  return { u: evalPolynomial(cal.toScreen.u, a, b), v: evalPolynomial(cal.toScreen.v, a, b) };
+  const p = project(cal.toScreen, x, y);
+  return { u: p.a, v: p.b };
 }
 
 /** Screen pixel to its ground point (rectified pixels from the calibration origin). */
 export function screenToGround(cal: Rectification, u: number, v: number): { x: number; y: number } {
-  const a = (u - cal.origin.u) / cal.scale;
-  const b = (v - cal.origin.v) / cal.scale;
-  return { x: evalPolynomial(cal.toGround.x, a, b), y: evalPolynomial(cal.toGround.y, a, b) };
+  const p = project(cal.toGround, u, v);
+  return { x: p.a, y: p.b };
 }
 
 /**
@@ -50,7 +44,7 @@ export function tileToGround(tile: TileSpec, step: number, col: number, row: num
 /**
  * Builds the remap for `tile` sampled every `step` ground pixels (1 for the full tile, 2 for half
  * resolution), with the world drawn `zoom` times its calibrated size about the frame's centre. The
- * polynomial runs once per output pixel here, never per frame.
+ * calibration runs once per output pixel here, never per frame.
  */
 export function buildSampleMap(cal: Rectification, tile: TileSpec, step = 1, zoom = 1): SampleMap {
   const width = Math.floor(tile.width / step);
@@ -60,22 +54,9 @@ export function buildSampleMap(cal: Rectification, tile: TileSpec, step = 1, zoo
   const index = new Int32Array(width * height);
   const fx = new Float32Array(width * height);
   const fy = new Float32Array(width * height);
-  const { u: pu, v: pv } = cal.toScreen;
-  const degree = Math.max(...pu.terms.flat(), ...pv.terms.flat());
-  const powA = new Float64Array(degree + 1);
-  const powB = new Float64Array(degree + 1);
   for (let row = 0; row < height; row++) {
-    const b = (row * step - tile.originY) / cal.scale;
-    powB[0] = 1;
-    for (let k = 1; k <= degree; k++) powB[k] = powB[k - 1]! * b;
     for (let col = 0; col < width; col++) {
-      const a = (col * step - tile.originX) / cal.scale;
-      powA[0] = 1;
-      for (let k = 1; k <= degree; k++) powA[k] = powA[k - 1]! * a;
-      let u = 0;
-      for (let k = 0; k < pu.coef.length; k++) u += pu.coef[k]! * powA[pu.terms[k]![0]]! * powB[pu.terms[k]![1]]!;
-      let v = 0;
-      for (let k = 0; k < pv.coef.length; k++) v += pv.coef[k]! * powA[pv.terms[k]![0]]! * powB[pv.terms[k]![1]]!;
+      let { u, v } = groundToScreen(cal, col * step - tile.originX, row * step - tile.originY);
       if (zoom !== 1) {
         u = fw / 2 + (u - fw / 2) * zoom;
         v = fh / 2 + (v - fh / 2) * zoom;

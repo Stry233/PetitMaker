@@ -6,6 +6,7 @@ import { planetTemplateId, PLANET_MAX_CELLS } from '../../../core/model/planet';
 import { landmarkAt } from '../../_support/planet';
 import { templateAnchor } from '../../../core/model/landmarks';
 import { LANDMARKS } from '../../../core/game/profile';
+import { ELEVATION_MAX } from '../../../core/game/profile';
 
 const G = CellZone.Grass, B = CellZone.Beach, V = CellZone.Void;
 const ok = (): MapTemplate => ({ id: 'custom-00000000', name: { en: 'P' }, width: 32, height: 32, zones: Array.from({ length: 32 }, () => Array(32).fill(G)), landmarks: [landmarkAt(2.5, 2)] });
@@ -29,7 +30,7 @@ describe('validatePlanetTemplate', () => {
   it('rejects a plaza standing on non-grass', () => { const t = ok(); t.zones[5]![5] = CellZone.Void; expect(validatePlanetTemplate(t)).toBe('landmark'); });
   it('rejects terrain of the wrong length or height', () => {
     const t = ok(); t.terrain = new Uint8Array(3); expect(validatePlanetTemplate(t)).toBe('terrain');
-    const u = ok(); u.terrain = new Uint8Array(32 * 32).fill(9); expect(validatePlanetTemplate(u)).toBe('terrain');
+    const u = ok(); u.terrain = new Uint8Array(32 * 32).fill(ELEVATION_MAX + 1); expect(validatePlanetTemplate(u)).toBe('terrain');
   });
   it('accepts a water mask and rejects one of the wrong length or with values other than 0 and 1', () => {
     const t = ok(); t.water = new Uint8Array(32 * 32); t.water[40] = 1; expect(validatePlanetTemplate(t)).toBeNull();

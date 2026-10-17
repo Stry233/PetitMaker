@@ -1,8 +1,9 @@
 /**
  * Transfers a build by aligning source and destination anchor landmark centres, clearing the
  * destination's own terrain under the carried build, repairing terrain against the new template,
- * and replaying terrain, corners, then objects through live rules. Paint batches split on refusal and land and
- * build use separate strokes. Work occurs on a detached map; `editor/operations/transfer-map.ts`
+ * and replaying terrain, corners, then objects through live rules, with the plan notes moved by the
+ * same offset (`annotations.ts`). Paint batches split on refusal and land and build use separate
+ * strokes. Work occurs on a detached map; `editor/operations/transfer-map.ts`
  * installs it when complete. Existing cell/object provenance is translated with the content. Nothing
  * here reaches the live editor, so the generation worker runs this module for the carry preview.
  */
@@ -12,6 +13,8 @@ import { getCell } from '../../../core/model/grid-model';
 import { hasLandmark, isLandmarkItem, templateAnchor } from '../../../core/model/landmarks';
 import { cellKey } from '../../../core/grid/rect';
 import { terrainCellsUnder, footprintCells } from '../../../core/grid/footprint';
+import type { GridCellRef, GridId } from '../../../core/grid/grids';
+import { PLACEMENT_GRID, TERRAIN_GRID } from '../../../core/game/profile';
 import { isBuildableZone } from '../../../core/game/zones';
 import { isCoating } from '../../../core/model/traits';
 import { createGridState, templateHasTerrain } from '../../../core/model/template';
@@ -38,6 +41,7 @@ import { getPlacedObjectSize } from '../../../state/object-geometry';
 import { backOffAt, type BackOffOptions, type SettleActions } from '../../../state/settle';
 import { planToCommands, repairPlan, type TerrainPlan } from '../terrain-plan';
 import { movedObject } from '../../placement/probe';
+import { carriedNotes } from './annotations';
 
 /** Cells and objects are counted apart, because the report names both. */
 export interface TransferCounts {
@@ -100,8 +104,10 @@ function carriedTerrain(state: GridState): (x: number, y: number) => TerrainCell
  * can never skip one that had something to move. A cell holding terrain counts however low it sits:
  * a ground-level edge cut is a `None` cell at elevation 0 with corners, which occupies no layer and
  * is invisible to any per-layer tally, and it is exactly the kind of work a silent skip would drop.
+ * A plan note counts too: a map holding only notes still has them to carry.
  */
 export function hasCarriableContent(state: GridState): boolean {
+  if (state.annotations?.items.length) return true;
   for (const o of state.objects.values()) if (!isLandmark(o)) return true;
   const terrainAt = carriedTerrain(state);
   for (let y = 0; y < state.template.height; y++) {
@@ -119,9 +125,11 @@ export interface BuiltTransfer {
   offset: MacroCoord;
   moved: TransferCounts;
   dropped: TransferCounts;
-  /** Every destination cell that would have held carried terrain or part of a carried object's
-   *  footprint and does not, cells off the destination included; each cell once. */
-  droppedCells: MacroCoord[];
+  /** Every destination cell that would have held carried terrain (on the terrain grid), part of a
+   *  carried object's footprint or a plan note left behind (`carriedNotes`, both on the placement
+   *  grid) and does not, cells off the destination included; each cell once, and no placement cell
+   *  the lost terrain already covers whole. */
+  droppedCells: GridCellRef[];
   violations: ValidationError[];
 }
 
@@ -185,8 +193,10 @@ export function buildTransfer(source: GridState, target: MapTemplate): BuiltTran
   // generation recipe does not: it named a map on another template, and this one no longer replays
   // from it.
   if (source.notes) dest.notes = { ...source.notes };
+  const notes = carriedNotes(source.annotations, offset, target);
+  if (notes.annotations) dest.annotations = notes.annotations;
 
-  const { moved, dropped, droppedCells } = countCarried(source, dest, offset);
+  const { moved, dropped, droppedCells } = countCarried(source, dest, offset, notes.lost);
   return { dest, registry, offset, moved, dropped, droppedCells, violations };
 }
 
@@ -503,18 +513,27 @@ function settleArrival(
  *
  * A cell counts as arrived when the destination holds terrain where the source did. Terrain that
  * arrived a tier lower is terrain that arrived: the loss the report is about is content that could
- * not land at all — a coast that moved, an edge that ran off the map.
+ * not land at all — a coast that moved, an edge that ran off the map. The cells of plan notes left
+ * behind (`lostNotes`) join the marked cells and no count. Each marked cell names its grid.
  */
 function countCarried(
   source: GridState,
   dest: GridState,
   offset: MacroCoord,
-): { moved: TransferCounts; dropped: TransferCounts; droppedCells: MacroCoord[] } {
+  lostNotes: readonly MacroCoord[],
+): { moved: TransferCounts; dropped: TransferCounts; droppedCells: GridCellRef[] } {
   const terrainAt = carriedTerrain(source);
-  const lost = new Map<string, MacroCoord>();
+  const lost = new Map<string, GridCellRef>();
+  const key = (grid: GridId, x: number, y: number): string => `${grid}:${cellKey(x, y)}`;
+  const loseGround = (x: number, y: number): void => {
+    const k = key(TERRAIN_GRID, x, y);
+    if (!lost.has(k)) lost.set(k, { x, y, grid: TERRAIN_GRID });
+  };
+  // A placement cell whose every terrain cell is already lost adds nothing to the marks.
   const lose = (x: number, y: number): void => {
-    const k = cellKey(x, y);
-    if (!lost.has(k)) lost.set(k, { x, y });
+    const k = key(PLACEMENT_GRID, x, y);
+    if (lost.has(k) || terrainCellsUnder({ x, y, w: 1, h: 1 }).every((t) => lost.has(key(TERRAIN_GRID, t.x, t.y)))) return;
+    lost.set(k, { x, y, grid: PLACEMENT_GRID });
   };
   let movedCells = 0, droppedCells = 0;
   for (let sy = 0; sy < source.template.height; sy++) {
@@ -524,7 +543,7 @@ function countCarried(
       if (!terrainAt(sx, sy)) continue;
       const dx = sx + offset.x, dy = sy + offset.y;
       if (getCell(dest.cells, dx, dy)?.terrain) movedCells++;
-      else { droppedCells++; lose(dx, dy); }
+      else { droppedCells++; loseGround(dx, dy); }
     }
   }
   let movedObjects = 0, droppedObjects = 0;
@@ -534,6 +553,7 @@ function countCarried(
     droppedObjects++;
     for (const c of carriedFootprint(o, offset)) lose(c.x, c.y);
   }
+  for (const c of lostNotes) lose(c.x, c.y);
   return {
     moved: { cells: movedCells, objects: movedObjects },
     dropped: { cells: droppedCells, objects: droppedObjects },

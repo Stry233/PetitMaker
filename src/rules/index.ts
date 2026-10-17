@@ -9,6 +9,7 @@ import { lockedObjectRule } from './locked-object';
 import { elevationRangeRule } from './elevation-range';
 import { mountainFloatingRule, waterFloatingRule } from './floating-block';
 import { traitPlacementRule } from './placement';
+import { doorGroundRule } from './door-ground';
 import { placementOverlapRule } from './placement-overlap';
 import { placementMaxCountRule } from './placement-max-count';
 import { objectBlocksTerrainRule } from './object-blocks-terrain';
@@ -21,7 +22,7 @@ import { objectOnCoatingRule } from './object-on-coating';
 /**
  * Every rule in canonical registration order.
  *
- * Pre-command order: lock → elevation → floating → block → trait placement → ground lock → zone → overlap → max-count → chunk
+ * Pre-command order: lock → elevation → floating → block → trait placement → door ground → ground lock → zone → overlap → max-count → chunk
  * Post-stroke order: base-support → water-containment → waterfall-adjacent-uniformity → object-on-coating
  *
  * Pre-command order sets the order of a refusal's errors, so locked-layer errors come first. Every
@@ -36,6 +37,7 @@ const ALL_RULES = [
   waterFloatingRule,
   objectBlocksTerrainRule,
   traitPlacementRule,
+  doorGroundRule,
   groundLockRule,
   zoneRestrictionRule,
   placementOverlapRule,

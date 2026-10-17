@@ -16,7 +16,7 @@ import { getPlacedObjectSize, hasHalfStep, resolveAnchor, snapsOwnPlacement } fr
 import { getCatalogItem } from '../../../state/catalog';
 import { planObjectMove } from '../../placement/probe';
 import { moveObject } from '../../objects/actions';
-import { groupMembers, moveGroup, previewGroupMove } from '../../objects/group-actions';
+import { groupMembers, moveGroup, planGroupMove } from '../../objects/group-actions';
 import type { ToolOverlay } from '../runtime/view-seam';
 
 /** What a drag reads and writes outside the map: the session's map, executor and selection, and the
@@ -114,17 +114,17 @@ export class ObjectDragSession {
       // A group is judged as a group: every member's destination, with the whole group lifted (so
       // a row sliding along itself is not a collision), and one tint for all of them.
       const members = groupMembers(gs, groupIds);
-      const valid = previewGroupMove(executor, gs, groupIds, dx, dy);
+      const { valid, landed } = planGroupMove(executor, gs, groupIds, dx, dy);
       const cells: MacroCoord[] = members.flatMap((m) => {
         const size = getPlacedObjectSize(m);
         return getFootprint(m.position.x + dx, m.position.y + dy, size.w, size.h);
       });
       view.overlay.showGhost(cellSet(PLACEMENT_GRID, cells), { wash: 'placement', valid });
-      // Each plan resolves elevation for half-cell anchors and terrain-snapped items.
-      view.overlay.showObjectMove(members.map((m) => {
-        const x = m.position.x + dx, y = m.position.y + dy;
-        return { ...m, position: { x, y }, elevation: planObjectMove(executor, gs, m, x, y).preview.elevation };
-      }), valid);
+      // Each member keeps its whole-cell destination and takes the elevation its plan resolved
+      // (half-cell anchors and terrain-snapped items).
+      view.overlay.showObjectMove(members.map((m, i) => (
+        { ...m, position: { x: m.position.x + dx, y: m.position.y + dy }, elevation: landed[i]!.elevation }
+      )), valid);
       return;
     }
     // The pointer read at the dragged item's own granularity (half-cell for a halfStep ramp or

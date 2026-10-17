@@ -8,6 +8,7 @@ import { isToolName, type ToolName } from './names';
 import type { Translate, I18nKey } from '../../i18n/keys';
 import type { Infer } from './schema';
 import type { TOOLS } from './registry';
+import { layerNumber } from '../../core/game/profile';
 
 type In = Record<string, unknown>;
 /** One tool's arguments as its schema declares them. A described call may be one the schema later
@@ -89,7 +90,7 @@ const DESCRIBERS: { [N in ToolName]?: Describer<N> } = {
   remove_annotation: (_i, t) => t('annot.layer'),
   paint_terrain: (i, t) => {
     const terrain = word(TERRAIN_KEY, i.terrain, t);
-    const elev = n(i.elevation);
+    const elev = layerNumber(n(i.elevation));
     const area = shape(i, t);
     return i.smooth
       ? t('agent.dc_paint_smooth', { terrain, elev, area, style: word(SMOOTH_KEY, i.smooth, t) })
@@ -122,7 +123,7 @@ const DESCRIBERS: { [N in ToolName]?: Describer<N> } = {
   sculpt_wall: (i, t) => t('agent.dc_wall', {
     w: Math.abs(n(i.x2) - n(i.x1)) + 1,
     h: Math.abs(n(i.y2) - n(i.y1)) + 1,
-    crest: n(i.crest) || TOOL_DEFAULTS.wallCrest,
+    crest: layerNumber(n(i.crest) || TOOL_DEFAULTS.wallCrest),
     flood: i.flood === true ? t('agent.dc_wall_flood') : '',
   }),
   draw_figure: (i, t, names) => t('agent.dc_figure', {

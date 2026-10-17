@@ -10,7 +10,9 @@
  * not the card's shape.
  */
 import { describe, it, expect, afterEach } from 'vitest';
-import { focusFrame, renderThumbnail, seaFrame } from '../../../../view/map2d/capture/thumbnail';
+import { focusFrame, mapPicture, renderThumbnail, seaFrame } from '../../../../view/map2d/capture/thumbnail';
+import { useEditorStore } from '../../../../state/store';
+import { drawnNotes, installPictureRenderer, sampleNotes } from '../../../_support/picture-renderer';
 import { setMapRenderer } from '../../../../view/map2d/scene/renderer-registry';
 import type { MapRenderer } from '../../../../view/map2d/scene/map-renderer';
 import { makeState } from '../../../_support/map-state';
@@ -19,12 +21,12 @@ afterEach(() => { setMapRenderer(null); });
 
 describe('taking a candidate picture', () => {
   it('is nothing at all where there is no renderer to take it with', async () => {
-    expect(await renderThumbnail(makeState(8, 8), 640, 2)).toBeNull();
+    expect(await renderThumbnail(makeState(8, 8), 640, { aspect: 2 })).toBeNull();
   });
 
   it('is nothing at all where the renderer could not draw, rather than a broken picture', async () => {
     setMapRenderer({ captureState: async () => null } as unknown as MapRenderer);
-    expect(await renderThumbnail(makeState(8, 8), 640, 2)).toBeNull();
+    expect(await renderThumbnail(makeState(8, 8), 640, { aspect: 2 })).toBeNull();
   });
 
   it('remembers a grid\'s picture, and takes it once', async () => {
@@ -51,16 +53,16 @@ describe('taking a candidate picture', () => {
     // moving, the way a session's whole life would without a bound.
     const shots: (string | null)[] = [];
     for (let v = 1; v <= 13; v++) {
-      shots.push(await renderThumbnail(state, 640, undefined, null, v));
+      shots.push(await renderThumbnail(state, 640, { version: v }));
     }
     expect(calls, 'every version is its own capture the first time').toBe(13);
 
     // The most recent ones are still remembered...
-    expect(await renderThumbnail(state, 640, undefined, null, 13)).toBe(shots[12]);
+    expect(await renderThumbnail(state, 640, { version: 13 })).toBe(shots[12]);
     expect(calls, 'answered from memory').toBe(13);
 
     // ...but the very first has aged out, and asking for it again takes a fresh picture.
-    await renderThumbnail(state, 640, undefined, null, 1);
+    await renderThumbnail(state, 640, { version: 1 });
     expect(calls, 'the oldest picture had already been evicted').toBe(14);
   });
 
@@ -122,10 +124,10 @@ describe('framing a picture on the region a run is bounded by', () => {
     } as unknown as MapRenderer);
     const state = makeState(8, 8);
     const frame = { x: 1, y: 1, width: 4, height: 3 };
-    await renderThumbnail(state, 640, undefined, frame);
-    await renderThumbnail(state, 640, undefined, frame);
+    await renderThumbnail(state, 640, { frame });
+    await renderThumbnail(state, 640, { frame });
     expect(framed).toEqual([frame]);
-    await renderThumbnail(state, 640, undefined, null);
+    await renderThumbnail(state, 640, { frame: null });
     expect(framed, 'the whole map is not the framed picture').toEqual([frame, undefined]);
   });
 });
@@ -164,3 +166,38 @@ describe('framing a map for a picture that is not its shape', () => {
     expect(captures).toBe(1);
     expect(new Set(images).size).toBe(1);
   });
+
+describe('the plan notes in a picture', () => {
+  afterEach(() => { useEditorStore.setState({ locale: 'en' }); });
+
+  it('takes the map\'s own notes by default, and the given notes or none when named', async () => {
+    const { calls, uninstall } = installPictureRenderer();
+    try {
+      const state = makeState(8, 8);
+      state.annotations = sampleNotes();
+      const given = sampleNotes();
+      await renderThumbnail(state, 640);
+      await mapPicture(state, 640, { notes: given });
+      await renderThumbnail(state, 640, { notes: null });
+      expect(calls.map(drawnNotes)).toEqual([state.annotations, given, null]);
+    } finally { uninstall(); }
+  });
+
+  it('is taken again when the notes change in place, show or hide, or the locale changes their labels', async () => {
+    const { calls, uninstall } = installPictureRenderer();
+    try {
+      const state = makeState(8, 8);
+      state.annotations = sampleNotes();
+      useEditorStore.setState({ locale: 'en' });
+      await mapPicture(state, 640);
+      await mapPicture(state, 640);
+      expect(calls).toHaveLength(1);
+      useEditorStore.setState((s) => ({ annotationsEpoch: s.annotationsEpoch + 1 }));
+      await mapPicture(state, 640);
+      expect(calls).toHaveLength(2);
+      useEditorStore.setState({ locale: 'zh' });
+      await mapPicture(state, 640);
+      expect(calls).toHaveLength(3);
+    } finally { uninstall(); }
+  });
+});

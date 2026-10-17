@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { layersFor } from '../../../io/export/layer-preview';
 import { TerrainType, type GridState, type MacroCell } from '../../../core/model/types';
 import { CellZone } from '../../../core/game/zones';
+import { ELEVATION_MAX } from '../../../core/game/profile';
 
 /** Build a tiny GridState whose cells carry the given (type, elevation) so we can probe the
  *  construction-step derivation directly. `peaks` is a flat list painted onto a 4x3 grass grid. */
@@ -31,7 +32,7 @@ function makeState(peaks: { type: TerrainType; elevation: number }[]): GridState
 describe('layersFor (construction sequence)', () => {
   it('all-ground map → a single ground step', () => {
     const steps = layersFor(makeState([]));
-    expect(steps).toEqual([{ level: 0, labelKey: 'export.layer_ground' }]);
+    expect(steps).toEqual([{ level: 0 }]);
   });
 
   it('max mountain elevation 3 → 4 steps, level 0..3', () => {
@@ -41,9 +42,6 @@ describe('layersFor (construction sequence)', () => {
       { type: TerrainType.Mountain, elevation: 2 },
     ]));
     expect(steps.map((s) => s.level)).toEqual([0, 1, 2, 3]);
-    expect(steps[0]!.labelKey).toBe('export.layer_ground');
-    expect(steps[1]!.labelKey).toBe('export.layer_level');
-    expect(steps[3]!.labelKey).toBe('export.layer_level');
   });
 
   it('water elevation also drives the max level', () => {
@@ -51,9 +49,9 @@ describe('layersFor (construction sequence)', () => {
     expect(steps.map((s) => s.level)).toEqual([0, 1, 2]);
   });
 
-  it('caps at ELEVATION_MAX (8) even if a cell somehow exceeds it', () => {
+  it('caps at ELEVATION_MAX even if a cell somehow exceeds it', () => {
     const steps = layersFor(makeState([{ type: TerrainType.Mountain, elevation: 20 }]));
-    expect(steps[steps.length - 1]!.level).toBe(8);
-    expect(steps).toHaveLength(9); // levels 0..8
+    expect(steps[steps.length - 1]!.level).toBe(ELEVATION_MAX);
+    expect(steps).toHaveLength(ELEVATION_MAX + 1);
   });
 });

@@ -12,6 +12,7 @@ import { viewportRect } from '../../../platform/device/viewport-space';
 import { useT } from '../../../i18n/context';
 import { layerRows } from '../../../state/layer-utils';
 import { useEditorStore } from '../../../state/store';
+import { isAnnotating } from '../../../state/editing/edit-mode';
 import { useMapDerived } from '../../session/use-map-derived';
 import { helpTargetAttr } from '../../session/help-targets';
 import { cssMotion } from '../../design/motion';
@@ -22,7 +23,7 @@ import { PANEL_EDGE, PLATE } from '../../design/tokens';
 import { useObservedSize } from '../../primitives/use-observed-size';
 import { useScrollFade } from '../../primitives/scroll-fade';
 import { LAYER_PANEL_TOP, type LayerMode } from '../frame';
-import { layerName } from '../../session/layer-name';
+import { layerTileName } from '../../../i18n/terms/layer-name';
 import { useFrameZoom, useZoomedLayoutTransform } from '../use-frame-zoom';
 import { PANEL, colsOf, fullDepth, plateDepth, tileOf, type Row } from './layer-plate';
 import { LayerHead } from './LayerHead';
@@ -51,7 +52,7 @@ function useFloorRows(open: boolean, cols: number) {
   // The map is mutated in place, so its revision reports a change; opening is a dependency because nothing is heard while closed.
   const rows = useMapDerived<Row[]>(() => {
     if (!gridState) return [];
-    return layerRows(gridState).map((row) => ({ ...row, name: layerName(t, row.elevation) }));
+    return layerRows(gridState).map((row) => ({ ...row, name: layerTileName(t, row.elevation) }));
   }, [open, gridState, t], { listening: open, timing: 'frame' });
   // Rows of `cols` filled from the ground up, drawn in reverse so the ground row is at the bottom.
   return useMemo(() => {
@@ -123,8 +124,9 @@ export function LayerPanel({ mode, onMode, right, maxHeight, top = LAYER_PANEL_T
   const displayLayer = useEditorStore((s) => s.displayLayer);
   const layerVisibility = useEditorStore((s) => s.layerVisibility);
   const lockedLayers = useEditorStore((s) => s.gridState?.lockedLayers);
-  const annotateSelected = useEditorStore((s) => s.editMode.mode === 'annotate');
-  const highlight = displayLayer ?? activeLayer;
+  const annotating = useEditorStore(isAnnotating);
+  // One row is selected: the notes while annotate is armed, else the floor a stroke would land on.
+  const selectedFloor = annotating ? null : displayLayer ?? activeLayer;
   // The plate draws at its natural depth or the room the rail gives it; whether the floors scroll is arithmetic, right on the first frame.
   const drawn = Math.min(plateDepth(mode), maxHeight);
   const scrolls = open && fullDepth(mode) > drawn;
@@ -139,7 +141,7 @@ export function LayerPanel({ mode, onMode, right, maxHeight, top = LAYER_PANEL_T
       key={row.elevation}
       row={row}
       mode={mode}
-      active={!annotateSelected && row.elevation === highlight}
+      active={row.elevation === selectedFloor}
       visible={layerVisibility[row.elevation] !== false}
       locked={lockedLayers?.has(row.elevation) === true}
       refused={refused}
@@ -181,7 +183,7 @@ export function LayerPanel({ mode, onMode, right, maxHeight, top = LAYER_PANEL_T
           }}
         >
           <LayerHead mode={mode} onMode={onMode} />
-          <NotesRow lane={lane} />
+          <NotesRow lane={lane} selected={annotating} />
           {/*
             The floors are the one part that scrolls, with a scrollbar only where the declared depths
             overflow, keeping its lane so the tiles never shift. Equal tracks draw every floor in the
@@ -197,7 +199,9 @@ export function LayerPanel({ mode, onMode, right, maxHeight, top = LAYER_PANEL_T
             transformTemplate={zoomed}
             layoutScroll
             style={{
-              minHeight: 0, overflowY: 'auto', scrollbarGutter: scrolls ? 'stable' : 'auto',
+              // The tracks are fractions of this box, so only transforms pass its sides (the tiles' projection mid-resize,
+              // a hovered row's plate); `auto` clipped them just the same but drew a horizontal scrollbar for them.
+              minHeight: 0, overflowX: 'hidden', overflowY: 'auto', scrollbarGutter: scrolls ? 'stable' : 'auto',
               display: 'grid', gridTemplateColumns: `repeat(${cols}, 1fr)`, gap: tileOf(mode).gap, alignContent: 'start',
               ...floorsFade,
             }}

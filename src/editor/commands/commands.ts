@@ -11,13 +11,14 @@
 import { useEditorStore } from '../../state/store';
 import { singleSelection, selectedObjectIds } from '../../state/selection';
 import { getActiveToolManager } from '../../view/active-view';
+import { cancelCarry } from '../../view/interaction/pointer/carry';
 import { getCatalogItem } from '../../state/catalog';
-import { activeToolOf, armedItemOf, armedMacroOf, brushSizeOf, buildShapeOf, buildToolOf, designModeOf, BUILD_SHAPES, toggleBuildTool, type ContentType, type BuildShape, clampBrushSize, holdsSelection } from '../../state/editing/edit-mode';
+import { activeToolOf, armedItemOf, armedMacroOf, brushSizeOf, buildShapeOf, buildToolOf, designModeOf, isAnnotating, BUILD_SHAPES, toggleBuildTool, type ContentType, type BuildShape, clampBrushSize, holdsSelection } from '../../state/editing/edit-mode';
 import { pressSmartBuild } from './smart-build';
 import { editorCurves } from '../session/tool-wiring';
 import { cancelPendingRegion, undoPendingRegionStep } from '../../tools/pointer/region';
 import { host } from '../host/host';
-import { ALIASES, COMMAND_META, PLANET_SESSION_COMMANDS, type CommandMeta, type RunCommandId } from '../../state/keymap/registry';
+import { ALIASES, COMMAND_META, PLANET_SESSION_COMMANDS, REPAIR_SESSION_COMMANDS, type CommandMeta, type RunCommandId } from '../../state/keymap/registry';
 import { effectiveCombo, type Overrides } from '../../state/keymap/resolve';
 import { deleteSelection, rotateSelection } from '../editing/group-edit';
 import { translate } from '../../i18n/context';
@@ -171,7 +172,7 @@ function deleteSelected(): void {
   if (pendingGesture().undoStep()) return;
   // In annotate mode the key means the selected note; the layer's lock answers here as it does at
   // the tool, and there is no confirm step — a note is planning ink, one ⌘Z from back.
-  if (s.editMode.mode === 'annotate') {
+  if (isAnnotating(s)) {
     if (s.annotationSelection.length === 0) return;
     if (s.gridState?.annotations?.locked) { showToast(translate('annot.locked'), 'warning'); return; }
     editorCurves.end();
@@ -195,7 +196,9 @@ function deleteSelected(): void {
 function deselect(): void {
   const s = store();
   if (s.contextMenu || s.deletePopover) return; // those own their own dismiss
-  if (s.editMode.mode === 'annotate') {
+  // A card carried to the map goes back to the shelf, with the arming it borrowed.
+  if (cancelCarry()) return;
+  if (isAnnotating(s)) {
     s.requestAnnotationDiscard(() => {
       pendingGesture().cancel();
       s.setAnnotationTool('none');
@@ -218,7 +221,7 @@ function selectAllObjects(): void {
   // In annotate mode the key means the notes. The drawing tool goes away first — grabbing lives
   // in the bare state, and putting a tool down clears the selection, so the set is made after.
   // A hidden layer offers nothing to select, the same answer it gives the pointer.
-  if (s.editMode.mode === 'annotate') {
+  if (isAnnotating(s)) {
     const notes = s.gridState.annotations;
     if (!notes?.visible || notes.items.length === 0) return;
     s.requestAnnotationDiscard(() => {
@@ -298,13 +301,13 @@ export const RUN: Record<RunCommandId, (ctx: CommandContext) => void> = {
   'history.undo': () => {
     const s = store();
     if (s.selectingRegion) { s.undoRegion(); return; }
-    if (s.editMode.mode === 'annotate') { editorCurves.end(); s.undoAnnotation(); return; }
+    if (isAnnotating(s)) { editorCurves.end(); s.undoAnnotation(); return; }
     s.commandExecutor?.undo();
   },
   'history.redo': () => {
     const s = store();
     if (s.selectingRegion) { s.redoRegion(); return; }
-    if (s.editMode.mode === 'annotate') { editorCurves.end(); s.redoAnnotation(); return; }
+    if (isAnnotating(s)) { editorCurves.end(); s.redoAnnotation(); return; }
     s.commandExecutor?.redo();
   },
 
@@ -316,7 +319,7 @@ export const RUN: Record<RunCommandId, (ctx: CommandContext) => void> = {
   'app.help': () => store().setModal('help', true),
   'app.menu': (c) => c.toggleMenu(),
 
-  'overlay.grid':    () => { const s = store(); s.setShowGrid(!s.showGrid); },
+  'overlay.grid':    () => { store().toggleGrid(); },
   'overlay.numbers': () => { const s = store(); s.setShowLayerNumbers(!s.showLayerNumbers); },
   'overlay.chunks':  () => { const s = store(); s.setShowChunkBounds(!s.showChunkBounds); },
 };
@@ -341,8 +344,13 @@ export interface KeyBinding {
   run: () => void;
 }
 
-/** Runs `id` unless a planet session is open and does not answer it (`PLANET_SESSION_COMMANDS`). */
-const answers = (id: string): boolean => !store().planetSession || PLANET_SESSION_COMMANDS.has(id);
+/** Runs `id` unless a planet session or a hand repair is open and does not answer it
+ *  (`PLANET_SESSION_COMMANDS`, `REPAIR_SESSION_COMMANDS`). */
+const answers = (id: string): boolean => {
+  const s = store();
+  if (s.repairSession?.phase === 'hand') return REPAIR_SESSION_COMMANDS.has(id);
+  return !s.planetSession || PLANET_SESSION_COMMANDS.has(id);
+};
 
 /**
  * The discrete engine's bindings under `overrides` in `toolbar`: every command with a run body on

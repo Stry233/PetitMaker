@@ -5,6 +5,7 @@ import { clampName, parseTemplate, PLANET_NAME_MAX, readPlanetFile, serializeTem
 import { NO_PLAZA, planetFixture as planet, pondMask, landmarkAt } from '../../_support/planet';
 import { rleDecode, rleEncode } from '../../../io/save/rle';
 import { templateAnchor } from '../../../core/model/landmarks';
+import { ELEVATION_MAX } from '../../../core/game/profile';
 
 const roundTrip = (t: MapTemplate) => parseTemplate(JSON.parse(JSON.stringify(serializeTemplate(t))));
 
@@ -21,6 +22,11 @@ describe('planet codec', () => {
     const t = planet({ plaza: landmarkAt(12.5, 3.5, 90) });
     expect(roundTrip(t)).toEqual(t);
     expect(serializeTemplate(planet()).landmarks![0]).not.toHaveProperty('rotation');
+  });
+  it('round-trips terrain at the highest layer', () => {
+    const terrain = new Uint8Array(48 * 32); terrain[10 * 48 + 10] = ELEVATION_MAX;
+    const t = planet({ terrain });
+    expect(roundTrip(t)).toEqual(t);
   });
   it('round-trips a template with no terrain', () => {
     const t = planet({ terrain: null });
@@ -88,7 +94,7 @@ describe('planet codec', () => {
     expect(templateAnchor(parsed)!).toEqual(templateAnchor(t)!);
     expect(Object.keys(templateAnchor(parsed)!).sort()).toEqual(['height', 'id', 'width', 'x', 'y']);
   });
-  it.each([['259'], ['9'], ['-1'], ['abc'], ['3.0'], ['']])('rejects the terrain token %j', (token) => {
+  it.each([['259'], [String(ELEVATION_MAX + 1)], ['-1'], ['abc'], ['3.0'], ['']])('rejects the terrain token %j', (token) => {
     const raw = serializeTemplate(planet());
     const tokens = rleDecode(raw.terrain!);
     tokens[10 * 48 + 10] = token;

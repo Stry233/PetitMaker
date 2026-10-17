@@ -9,8 +9,8 @@ import { cursors, radii, shadows } from '../../../../design/styles';
 import { skin } from '../../../../design/window-skin';
 import { roleFont } from '../../../../design/text-weight';
 import { useT } from '../../../../../i18n/context';
-import { usePanZoom } from '../use-pan-zoom';
-import { PanZoomResetHint } from '../pan-zoom-stage';
+import { usePanZoom } from '../../../../primitives/use-pan-zoom';
+import { PanZoomResetHint } from '../../../../primitives/pan-zoom-stage';
 import { MAP_ASPECT } from './sample-art';
 import { entering } from './stylize-parts';
 import { amplitude, framerMotion } from '../../../../design/motion';
@@ -64,7 +64,7 @@ export function StudioCanvas({ main, corner, onSwap, enterIndex = 0 }: {
             />
           </AnimatePresence>
         </div>
-        <PanZoomResetHint show={pz.showResetHint} />
+        <PanZoomResetHint show={pz.showResetHint} label={t('export.preview_reset_hint')} />
         <span aria-hidden style={{ position: 'absolute', inset: 0, borderRadius: radii.field, boxShadow: `inset 0 0 0 1.5px ${rgbaOf(INK, 0.22)}`, pointerEvents: 'none' }} />
       </div>
 

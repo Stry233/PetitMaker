@@ -3,7 +3,7 @@
  * material and finish, plus the per-cell surface prints. No three.js; the scene wraps the arrays.
  */
 import earcut from 'earcut';
-import type { GridState } from '../../../core/model/types';
+import type { GridState, PlacedObject } from '../../../core/model/types';
 import { PLACEMENT_GRID } from '../../../core/game/profile';
 import type { RoadMaterialPattern } from '../../../config/catalog/road-material';
 import { roadPatternKey } from '../../shared/road/pattern';
@@ -138,6 +138,16 @@ export class RoadTrimCache {
 }
 
 /**
+ * The height of the one flat face a coating draws as: a hair above the surface it coats, and a
+ * surface print a hair above the paving under it. Its marks (a flag, a selection shadow, an outline)
+ * lie on this face.
+ */
+export function coatingSurfaceY(state: GridState, obj: PlacedObject): number {
+  const lifts = getCatalogItem(obj.catalogId)?.surfacePrint ? 2 : 1;
+  return surfaceY(objectElevation(state, obj)) + ROAD_DECAL_LIFT * lifts;
+}
+
+/**
  * Every road surface as flat meshes, feather included: connected same-material tiles trace one
  * region outline (`view/shared/road/region`, as the 2D painter does) and fade in over the
  * authored feather across the whole surface, never per tile. Roads use the object grid. Icon
@@ -216,7 +226,7 @@ export function buildRoadTrimMeshes(
     if (hiddenLayers?.has(elev)) continue; // hides with its layer
     // A road is a flat decal: one face a hair above the surface it coats, no walls and no
     // thickness of its own.
-    const y = surfaceY(elev) + ROAD_DECAL_LIFT;
+    const y = coatingSurfaceY(state, region.members[0]!);
     const flying = region.members.filter((o) => carried(o.id));
     if (flying.length === 0) { drawSurface(region, y); continue; }
     const off = offsets!.get(flying[0]!.id)!;
@@ -249,7 +259,7 @@ export function buildRoadTrimMeshes(
     const m = part.mesh, base = m.positions.length / 3;
     const offset = offsets?.get(obj.id);
     const x = origin.x + obj.position.x + (offset?.dx ?? 0), z = origin.z + obj.position.y + (offset?.dz ?? 0);
-    const y = surfaceY(elevation) + ROAD_DECAL_LIFT * 2;
+    const y = coatingSurfaceY(state, obj);
     const angle = -obj.rotation * Math.PI / 180, c = Math.cos(angle), s = Math.sin(angle);
     for (const [u, v] of [[0, 0], [0, 1], [1, 1], [1, 0]]) {
       m.positions.push(x + u!, y, z + v!); m.colors.push(1, 1, 1); m.alpha!.push(1);

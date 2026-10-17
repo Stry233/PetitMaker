@@ -34,7 +34,7 @@ interface TimedButtonProps {
   /** Seconds until the button presses itself. */
   after: number;
   /** What a screen reader hears about the self-press while the clock runs, and once focus has
-   *  stopped it (`i18n/timed-hint.ts:timedHint`). */
+   *  stopped it (`ui/chrome/timed-hint.ts:timedHint`). */
   hint: { running: string; stopped: string };
   /** What the press does. Reached through a real click, never called directly. `byClock` is true
    *  for the press this button makes when its time runs out, false for one a hand or a keyboard

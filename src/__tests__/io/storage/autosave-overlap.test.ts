@@ -5,10 +5,8 @@ import { autosave } from '../../../editor/session/autosave';
 import { COMPRESS_RECORD_AT } from '../../../io/storage/record-codec';
 import { serialize } from '../../../io/save/json-codec';
 import { DEFAULT_MAP } from '../../../config/maps';
-import { createGrid } from '../../../core/model/grid-model';
-import { createGridState } from '../../../core/model/template';
-import { TerrainType, type GridState } from '../../../core/model/types';
-import { CellZone } from '../../../core/game/zones';
+import type { GridState } from '../../../core/model/types';
+import { latticeMap } from '../../_support/legal-maps';
 
 class MemStorage {
   private m = new Map<string, string>();
@@ -36,17 +34,7 @@ class HeldWorker {
 }
 
 /** A map whose save exceeds the compression threshold, painted at one elevation so two maps differ. */
-function largeMap(elevation: number): GridState {
-  const state = createGridState(DEFAULT_MAP);
-  state.cells = createGrid(DEFAULT_MAP);
-  let painted = 0;
-  for (let y = 0; y < DEFAULT_MAP.height; y++) for (let x = 0; x < DEFAULT_MAP.width; x++) {
-    if (DEFAULT_MAP.zones[y]?.[x] !== CellZone.Grass) continue;
-    if (painted++ % 2) state.objects.set(`road-${x}-${y}`, { id: `road-${x}-${y}`, catalogId: 'path-garden-stone', position: { x, y }, rotation: 0, elevation: 0 });
-    else state.cells[y]![x] = { zone: CellZone.Grass, terrain: { type: TerrainType.Mountain, elevation } };
-  }
-  return state;
-}
+const largeMap = (elevation: number): GridState => latticeMap(DEFAULT_MAP, elevation);
 
 function restoredElevation(): number | undefined {
   const restored = readAutosave();

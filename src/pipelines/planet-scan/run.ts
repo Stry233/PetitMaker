@@ -1,10 +1,11 @@
 import type { MapTemplate } from '../../core/model/types';
-import { fitPalette, paletteLookup, readGround } from './ground/classify';
-import { PaletteSampler } from './ground/color';
+import { fitPalette, readGround } from './ground/classify';
+import { localPalette, PaletteSampler } from './ground/color';
 import { ScanError, type ScanFailure } from './errors';
 import { EvidenceAccumulator, evidenceGrid, reduceDeviation, type ReducedDeviation } from './ground/evidence';
-import { hudLayout, readHud, zoomDiffers, type HudLayout, type HudReading } from './frame/hud';
-import { latticePins, lineProfiles, periodScale, type FrameLines, type RunProfiles } from './track/lattice';
+import { hudLayout, readHud, type HudLayout, type HudReading } from './frame/hud';
+import { ScanGate } from './frame/scan-gate';
+import { bridgeLostSteps, latticePins, lineProfiles, periodScale, resolveChunkSlips, type ChunkSlips, type FrameLines, type RunProfiles } from './track/lattice';
 import { detectLandmarks } from './ground/landmark';
 import { coveragePreview, type ScanPreview } from './ground/preview';
 import { MAP_VIEW_RECTIFICATION, SCAN_PROFILE } from './profile';
@@ -15,7 +16,8 @@ import { solveScan, type FramePosition, type ScanSolution } from './track/scan-s
 import { StillRunGrouper, type StillRun } from './track/still-runs';
 import { scannedPlanet } from './to-template';
 import { KeptFrames } from './track/thin';
-import { Tracker } from './track/track';
+import { Tracker, type ClosureStats } from './track/track';
+import type { PathSolveOptions } from './track/path-solve';
 import type { RgbaImage } from './types';
 
 // One scan from decoded frames to a planet, in the two passes the pipeline needs. Pass 1 reads
@@ -25,13 +27,13 @@ import type { RgbaImage } from './types';
 // store is let go. Pass 2 reads the kept frames again, and only those, into the ground evidence.
 // Frames are never kept; the thinning holds the tiles of the one frame it has not decided yet.
 //
-// Memory on a 60 s, 60 fps scan (3600 frames, 600 to 900 kept, 150 to 250 still runs on the
-// 680 x 300 tile): pass 1 holds the grouper's three float tiles (2.4 MB), the thinning's two frame
-// slots (2.4 MB), the tracking tile store (51 KB a kept frame, 31 to 46 MB, 122 MB at
-// `import.maxDistinct`) and its correlators (about 10 MB), each still run's line profiles (4 KB) and
-// reduced deviation (51 KB, about 13 MB for 250 runs), and the palette mosaic (about 2 MB). Pass 2
-// holds the evidence planes (about 25 MB for a 12 x 12-chunk scan, 83 MB at the grid cap) and the
-// reduced deviations until they are placed.
+// Memory on a scan of about a minute (1,600 to 2,000 frames, 1,000 to 1,400 kept, 50 to 60 still
+// runs on the 466 x 200 tile): pass 1 holds the grouper's three float tiles (1.1 MB), the thinning's
+// two frame slots (1.1 MB), the tracking tile store (23 KB a kept frame, 23 to 33 MB, 121 MB at
+// `import.maxDistinct`) and its correlators (about 3 MB), each still run's line profiles (3 KB) and
+// reduced deviation (23 KB), and the palette mosaic (about 2 MB). Pass 2 holds the evidence planes
+// (about 32 MB for a 12 x 12-chunk scan, 110 MB at the grid cap; `ground/evidence.ts`), the colours
+// pixels are classed by (3 MB) and the reduced deviations until they are placed.
 
 const IMPORT = SCAN_PROFILE.import;
 
@@ -61,10 +63,12 @@ export interface ScanOutcome {
 
 /** What pass 1 read, for `firstPassFailure`. */
 export interface FirstPassReading {
-  /** Frames that show the map view. */
+  /** Frames the scan read: the map view at the calibrated zoom (`frame/scan-gate.ts`). */
   readonly mapFrames: number;
-  /** The zoom knob's centre row in each map-view frame where it was read. */
-  readonly knobRows: readonly number[];
+  /** Frames before the scan's start that showed the map view at another zoom. */
+  readonly otherZoomFrames: number;
+  /** The zoom changed after the scan started. */
+  readonly zoomChanged: boolean;
   readonly distinct: number;
   readonly runs: readonly RunProfiles[];
   /** The survey found no game window large enough to read; false by default. */
@@ -85,17 +89,19 @@ export interface ScanSessionOptions {
 /** Why pass 1's reading cannot make a planet, or null. The checks run in `SCAN_FAILURES` order. */
 export function firstPassFailure(read: FirstPassReading): ScanFailure | null {
   if (read.unframed) return 'framing';
-  if (read.mapFrames < SCAN_PROFILE.hud.minFrames) return 'not-map-view';
-  if (zoomDiffers(read.knobRows)) return 'different-zoom';
+  if (read.zoomChanged) return 'zoom-changed';
+  if (read.mapFrames < SCAN_PROFILE.hud.minFrames) return read.otherZoomFrames >= SCAN_PROFILE.hud.minFrames ? 'not-max-zoom' : 'not-map-view';
   if (read.distinct < IMPORT.minDistinct) return 'too-little';
-  const pins = latticePins(read.runs);
-  if (pins.x.frame.length < IMPORT.minPins || pins.y.frame.length < IMPORT.minPins) {
-    const seen = periodScale(read.runs);
-    if (seen.fitted < IMPORT.minPins || Math.abs(seen.scale - 1) <= IMPORT.scaleTolerance) return 'region-load-off';
-    // The lines fit another period. With the knob at the calibrated zoom in a window whose world
-    // scale only the fitted rule gives, the rule is what failed.
-    return read.worldMeasured === false && read.knobRows.length > 0 ? 'framing' : 'different-zoom';
+  // A tile under two periods tall shows a run one or two lines an axis, which a comb of the wrong
+  // period can match, so the period the lines fit best is checked before they pin the lattice.
+  const seen = periodScale(read.runs);
+  if (seen.fitted >= IMPORT.minPins && Math.abs(seen.scale - 1) > IMPORT.scaleTolerance) {
+    // The lines fit another period though the knob stood at the calibrated zoom. In a window whose
+    // world scale only the fitted rule gives, the rule is what failed.
+    return read.worldMeasured === false ? 'framing' : 'not-max-zoom';
   }
+  const pins = latticePins(read.runs);
+  if (pins.x.frame.length < IMPORT.minPins || pins.y.frame.length < IMPORT.minPins) return 'region-load-off';
   return null;
 }
 
@@ -131,22 +137,37 @@ export class FramePrep {
   }
 }
 
+/** What `solveTracked` solved, and what its revisit passes found. */
+export interface TrackedSolve {
+  readonly solution: ScanSolution;
+  readonly slips: ChunkSlips;
+  /** The lost steps the frames' own lines placed (`lattice.ts:bridgeLostSteps`), as edge indices. */
+  readonly bridged: Int32Array;
+  /** The last revisit pass's stats. */
+  readonly closures: ClosureStats;
+}
+
 /**
- * Adds the revisits to the tracked edges and solves the path and the lattice. Revisits are gated
- * against the chain path, which drifts from the solved path by as much as the gate, so revisits
- * that agree on one offset from it may only show that drift:
- * they are tried again on the solved path, and the camera moved too fast only if they still gate
- * there, or a jump no revisit joined remains. Throws `ScanError('too-fast')` then.
+ * Moves the consecutive steps that slipped a whole chunk back onto the chunk the motion continues
+ * (`lattice.ts:resolveChunkSlips`), places the lost steps whose frames read their lines
+ * (`lattice.ts:bridgeLostSteps`), then adds the revisits to the tracked edges and solves the path
+ * and the lattice. Revisits are gated against the chain path, which drifts from the solved path by
+ * as much as the gate, so revisits that agree on one offset from it may only show that drift: they
+ * are tried again on the solved path, and the camera moved too fast only if they still gate there,
+ * or a jump no revisit joined remains. Throws `ScanError('too-fast')` then. The import solves the
+ * scan's own pin mode; the eval may name another in `options`, through this same path.
  */
-export function solveTracked(tracker: Tracker, runs: readonly RunProfiles[], lines?: FrameLines): ScanSolution {
+export function solveTracked(tracker: Tracker, runs: readonly RunProfiles[], lines?: FrameLines, options: PathSolveOptions = {}): TrackedSolve {
   const solve = () => {
     try {
-      return solveScan(tracker.frames, tracker.edges, runs, {}, lines);
+      return solveScan(tracker.frames, tracker.edges, runs, options, lines);
     } catch {
       // The tracked graph falls apart where the camera jumped and no revisit joined the parts.
       throw new ScanError('too-fast');
     }
   };
+  const slips = resolveChunkSlips(tracker.edges, lines);
+  const bridged = lines ? bridgeLostSteps(tracker.edges, lines, slips.scale) : new Int32Array(0);
   let closures = tracker.addClosures();
   let solution = solve();
   if (closures.failed) {
@@ -154,7 +175,7 @@ export function solveTracked(tracker: Tracker, runs: readonly RunProfiles[], lin
     solution = solve();
   }
   if (closures.failed || solution.path.unbridged.length > 0) throw new ScanError('too-fast');
-  return solution;
+  return { solution, slips, bridged, closures };
 }
 
 /** `blurry` when the solve kept too few of an axis's lattice pins (`SCAN_PROFILE.import.minPinShare`):
@@ -183,10 +204,7 @@ export class ScanSession {
   private kept: KeptFrames | null;
   private readonly runs: RunProfiles[] = [];
   private deviations: { distinct: number; frames: number; dev: ReducedDeviation }[] = [];
-  private readonly knobRows: number[] = [];
-  private mapFrames = 0;
-  private miss = 0;
-  private frames = 0;
+  private readonly gate = new ScanGate();
   private ended = false;
   private positions: FramePosition[] = [];
   private evidence: EvidenceAccumulator | null = null;
@@ -210,7 +228,7 @@ export class ScanSession {
 
   /** Whether pass 1 still takes frames: false once the recording has left the map view. */
   get accepting(): boolean {
-    return this.phase === 'first' && !this.ended;
+    return this.phase === 'first' && !this.ended && !this.gate.ended;
   }
 
   /** Distinct frames kept so far for tracking, the frames pass 2 reads. */
@@ -240,26 +258,17 @@ export class ScanSession {
   pushPrepared(frame: RgbaImage, prepared: PreparedFrame, time: number): void {
     if (this.phase !== 'first') throw new Error('pass 1 is over');
     if (this.ended) return;
-    this.frames++;
     const { hud, tile } = prepared;
-    if (!(this.mapFrames > 0 ? hud.mapView : hud.whole) || !tile) {
-      // Frames before the map view are skipped; leaving it ends the scan, and so does a
-      // recording that does not reach it soon.
-      if (this.mapFrames > 0 ? ++this.miss >= SCAN_PROFILE.hud.endAfter : this.frames >= SCAN_PROFILE.hud.startWithin) this.ended = true;
-      return;
-    }
-    this.miss = 0;
-    this.mapFrames++;
-    if (hud.knob !== null) this.knobRows.push(hud.knob);
+    if (!this.gate.admit(hud, time) || !tile) return;
     const grey = { width: this.W, height: this.H, data: tile };
-    const verdict = this.grouper!.push(grey);
+    const verdict = this.grouper!.push(grey, time);
     // Each kept distinct frame holds a tracking tile until the path is solved.
     this.closeRun(this.kept!.push(verdict, grey, (out) => rectifyRgba(this.map, frame, out), time));
   }
 
   private closeRun(run: StillRun | null): void {
     if (!run) return;
-    this.runs.push({ distinct: run.distinct, frames: run.frames, profiles: lineProfiles(run.deviation) });
+    this.runs.push({ distinct: run.distinct, frames: run.frames, seconds: run.seconds, profiles: lineProfiles(run.deviation) });
     this.deviations.push({ distinct: run.distinct, frames: run.frames, dev: reduceDeviation(run.deviation) });
   }
 
@@ -274,24 +283,25 @@ export class ScanSession {
     this.closeRun(this.kept!.finish(this.grouper!.finish()));
     this.grouper = null;
     const failure = firstPassFailure({
-      mapFrames: this.mapFrames, knobRows: this.knobRows, distinct, runs: this.runs,
+      mapFrames: this.gate.read, otherZoomFrames: this.gate.otherZoom, zoomChanged: this.gate.zoomChanged, distinct, runs: this.runs,
       unframed: this.framing === null, worldMeasured: this.framing !== null && worldMeasured(this.framing),
     });
     if (failure) throw new ScanError(failure);
     const tracker = this.tracker!;
-    const solution = solveTracked(tracker, this.runs, this.kept!.lines);
+    const { solution } = solveTracked(tracker, this.runs, this.kept!.lines);
     if (!solution.lattice.x || !solution.lattice.y) throw new ScanError('region-load-off');
     const blurred = latticeFailure(solution);
     if (blurred) throw new ScanError(blurred);
     const n = tracker.frames;
     this.positions = Array.from({ length: n }, (_, k) => ({ x: solution.path.x[k]!, y: solution.path.y[k]! }));
-    const lut = paletteLookup(fitPalette(this.sampler!.samples()));
+    const palette = fitPalette(this.sampler!);
+    const local = localPalette(palette.centres, palette.classes, this.sampler!);
     const times = this.kept!.times;
     this.tracker = null;
     this.sampler = null;
     this.kept = null;
     const grid = evidenceGrid(solution.lattice, this.positions, this.W, this.H);
-    this.evidence = new EvidenceAccumulator(grid, solution.lattice, lut, this.W, this.H);
+    this.evidence = new EvidenceAccumulator(grid, solution.lattice, local, this.W, this.H);
     this.phase = 'second';
     return times;
   }

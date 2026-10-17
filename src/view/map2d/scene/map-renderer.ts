@@ -31,6 +31,7 @@ import { animateCamera, type CameraTweenHandle } from '../camera/tween';
 import { MISSED_RENDER_CHECK, MissedRenderCheck, viewFrameReader } from './missed-render-check';
 import { watchContextLoss } from '../../shared/gl/context-loss';
 import { TERRAIN_GRID } from '../../../core/game/profile';
+import type { GridId } from '../../../core/grid/grids';
 import { cellsOn } from '../../../core/grid/grid-convert';
 
 // Sprites snap to whole device pixels: at fractional zooms an icon otherwise samples between
@@ -57,7 +58,7 @@ export class MapRenderer implements ViewSettingsTarget {
   private readonly frames = new FrameLoop(() => {
     this.restCheck?.cancel();
     if (this.presenting || this.frames.awaitingPaint) this.app.ticker.start();
-  });
+  }, [() => this.currentState !== null && this.gridLayer.step(this.viewport.getZoom())]);
   private destroyed = false;
   /** The camera glide in flight (a zoom button, the fit), cancelled by the next and by `destroy`. */
   private readonly glide: CameraTweenHandle = { cancel: null };
@@ -231,9 +232,10 @@ export class MapRenderer implements ViewSettingsTarget {
     this.requestRender();
   }
 
-  initMap(state: GridState, showGrid: boolean, showChunks?: boolean, opts?: { labels?: boolean }): void {
+  /** `grid` is the grid the cell lines draw on, or null for none. */
+  initMap(state: GridState, grid: GridId | null, showChunks?: boolean, opts?: { labels?: boolean }): void {
     this.currentState = state;
-    this.gridLayer.setMap(state.template, showGrid, showChunks ?? false);
+    this.gridLayer.setMap(state.template, grid, showChunks ?? false);
     this.requestRender();
     this.baseLayer.drawFull(state);
     this.terrainLayer.drawFull(state);
@@ -271,7 +273,7 @@ export class MapRenderer implements ViewSettingsTarget {
   /** The passive overlays last given, so a toggle repaints only what it changed. */
   private passive: PassiveOverlays | null = null;
 
-  /** The Settings toggles: the grid and chunk bounds, and the layer numbers. */
+  /** The Settings choices: the grid and chunk bounds, and the layer numbers. */
   setPassiveOverlays(flags: PassiveOverlays): void {
     const prev = this.passive;
     this.passive = { ...flags };
@@ -327,6 +329,7 @@ export class MapRenderer implements ViewSettingsTarget {
 
   /** The plan-notes layer, drawn whole. */
   drawAnnotations(...args: Parameters<AnnotationLayer['draw']>): void {
+    this.overlayLayer.noteInkScale = args[1].inkScale;
     this.annotationLayer.draw(...args);
   }
 

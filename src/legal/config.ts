@@ -1,4 +1,4 @@
-import { APP_NAME } from '../i18n/brand';
+import { APP_NAME } from '../i18n/terms/brand';
 import { activeTarget, type DeployTargetId } from '../platform/build/deploy-targets';
 
 /** Shared facts for legal documents, About, filing rows and generated site metadata. */

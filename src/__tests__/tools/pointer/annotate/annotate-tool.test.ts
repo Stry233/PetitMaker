@@ -2,7 +2,9 @@
  * The plan-notes tool, driven through a scripted HostedToolContext over the live store — the same
  * refresh-per-event shape ToolManager gives it. Cell coordinates only, so what passes here holds
  * in both views by construction. `point` is the pointer's map point, as the views
- * supply it; a zone cell (x, y) is drawn over [x - 0.5, x + 0.5), so a press at (x, y) lands in it.
+ * supply it. Zones and measurements step in half cells, centred on the half-cell point nearest the
+ * pointer, so a press at a cell's centre (`mid`) lands on that whole cell and a press at its corner
+ * lands half a cell up and left of it.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 
@@ -14,7 +16,8 @@ import { makeTemplate, makeExecutor } from '../../../_support/map-state';
 import type { MacroCoord } from '../../../../core/model/types';
 import { makeToolCtx, type ToolCtxOver } from '../../../_support/tool-ctx';
 import type { HostedToolContext } from '../../../../tools/pointer/runtime/host';
-import type { ChipNote, RouteNote, ZoneNote } from '../../../../core/model/annotations';
+import type { ChipNote, MapAnnotation, MeasureNote, RouteNote, ZoneNote } from '../../../../core/model/annotations';
+import { cellEdges, measureDrawing } from '../../../../core/model/annotation/dimensions';
 import { __resetCurveSession, isCurveSessionOpen, moveCurveAnchor } from '../../../_support/curve-session';
 import { brushCells, dragShapeCells, line4, splineCells } from '../../../../core/grid/shapes';
 import { annotationInkScale } from '../../../../core/model/annotation/text-metrics';
@@ -54,6 +57,8 @@ function liveCtx(over: ToolCtxOver = {}): HostedToolContext {
 }
 
 const at = (x: number, y: number): MacroCoord => ({ x, y });
+/** The centre of cell (x, y). */
+const mid = (x: number, y: number): [number, number] => [x + 0.5, y + 0.5];
 /** The press at an exact point: the view's half-cell reading. */
 const press = (x: number, y: number) => liveCtx({ point: point(at(x, y)) });
 const items = () => s().gridState?.annotations?.items ?? [];
@@ -91,7 +96,7 @@ describe('annotation brush previews', () => {
     s().addAnnotation(zone('test-zone', rect(0, 0, 30, 30)));
     s().setAnnotationTool('erase');
     const tool = new AnnotateTool();
-    const ctx = press(12, 12);
+    const ctx = press(...mid(12, 12));
     const show = vi.spyOn(ctx.overlay, 'showGhost');
     tool.onPointerMove(cell(at(12, 12)), point(at(0, 0)), ctx);
     const cells = show.mock.calls[show.mock.calls.length - 1]![0].cells;
@@ -220,7 +225,7 @@ describe('the zone figures', () => {
   it('a rectangle drags out into the draft, filled', () => {
     const tool = new AnnotateTool();
     s().setAnnotationZoneShape('rect');
-    drag(tool, [2, 2], [5, 4]);
+    drag(tool, mid(2, 2), mid(5, 4));
     expect((s().annotationDraft as ZoneNote).cells).toHaveLength(4 * 3);
   });
 
@@ -228,7 +233,7 @@ describe('the zone figures', () => {
     const tool = new AnnotateTool();
     s().addAnnotation(zone('z1', rect(2, 2, 3, 3)));
     s().setAnnotationZoneShape('rect');
-    drag(tool, [3, 3], [8, 6]);
+    drag(tool, mid(3, 3), mid(8, 6));
     expect(zoneById('z1').cells.length).toBe(4 + 6 * 4 - 1);
     expect(s().annotationDraft).toBeNull();
   });
@@ -236,7 +241,7 @@ describe('the zone figures', () => {
   it('a line lays a band along the drag', () => {
     const tool = new AnnotateTool();
     s().setAnnotationZoneShape('line');
-    drag(tool, [2, 2], [8, 2]);
+    drag(tool, mid(2, 2), mid(8, 2));
     const cells = (s().annotationDraft as ZoneNote).cells;
     expect(cells.length).toBeGreaterThan(6);
     expect(cells.some((c) => c.x === 2 && c.y === 2)).toBe(true);
@@ -284,7 +289,7 @@ describe('the eraser', () => {
   it('subtracts cells from every zone it crosses, as one lane entry per stroke', () => {
     s().addAnnotation(zone('z1', rect(2, 2, 12, 4)));
     const lanes = s().annotationUndoLane.length;
-    drag(tool, [7, 3], [9, 3]);
+    drag(tool, mid(7, 3), mid(9, 3));
     const left = zoneById('z1').cells;
     expect(left.length).toBeLessThan(33);
     expect(left.some((c) => c.x === 8 && c.y === 3)).toBe(false);
@@ -606,12 +611,12 @@ describe('measurements', () => {
     s().setAnnotationTool('measure');
   });
   it('previews between clicks and commits one measurement with two snapped endpoints', () => {
-    click(tool, 1, 4);
+    click(tool, ...mid(1, 4));
     expect(tool.hasPending(liveCtx())).toBe(true);
-    tool.onPointerMove(cell(at(84, 4)), point(at(0, 0)), press(84.1, 4.1));
+    tool.onPointerMove(cell(at(84, 4)), point(at(0, 0)), press(...mid(84.1, 4.1)));
     expect(items()).toHaveLength(0);
     expect(s().annotationDraft).toMatchObject({ kind: 'measure', points: [at(1, 4), at(84, 4)] });
-    click(tool, 84, 4);
+    click(tool, ...mid(84, 4));
     expect(items()).toHaveLength(1);
     expect(s().annotationDraft).toBeNull();
     expect(s().annotationSelection).toEqual([items()[0]!.id]);
@@ -619,58 +624,58 @@ describe('measurements', () => {
     expect(s().redoAnnotation()).toBe(true); expect(items()).toHaveLength(1);
   });
   it('supports dragging and counting a single cell with two taps', () => {
-    drag(tool, [3, 5], [12, 17]);
+    drag(tool, mid(3, 5), mid(12, 17));
     expect(items()[0]).toMatchObject({ kind: 'measure', points: [at(3, 5), at(3, 17)] });
-    click(tool, 20, 20); click(tool, 20, 20);
+    click(tool, ...mid(20, 20)); click(tool, ...mid(20, 20));
     expect(items()[1]).toMatchObject({ points: [at(20, 20), at(20, 20)] });
   });
   it.each([
     [[24, 13], [24, 10]], [[12, 26], [10, 26]],
     [[24, 19], [24, 10]], [[1, 3], [1, 10]], [[3, 19], [10, 19]], [[20, 20], [20, 10]],
   ])('snaps a drag toward %j to its nearest row or column', (end, expected) => {
-    drag(tool, [10, 10], end as [number, number]);
+    drag(tool, mid(10, 10), mid(...(end as [number, number])));
     expect(items()[0]).toMatchObject({ points: [at(10, 10), at(expected[0]!, expected[1]!)] });
   });
   it('previews direction changes between taps and snaps the final release', () => {
-    click(tool, 10, 10);
-    tool.onPointerMove(cell(at(24, 13)), point(at(0, 0)), press(24, 13));
+    click(tool, ...mid(10, 10));
+    tool.onPointerMove(cell(at(24, 13)), point(at(0, 0)), press(...mid(24, 13)));
     expect(s().annotationDraft).toMatchObject({ points: [at(10, 10), at(24, 10)] });
-    tool.onPointerMove(cell(at(13, 24)), point(at(0, 0)), press(13, 24));
+    tool.onPointerMove(cell(at(13, 24)), point(at(0, 0)), press(...mid(13, 24)));
     expect(s().annotationDraft).toMatchObject({ points: [at(10, 10), at(10, 24)] });
-    click(tool, 13, 24);
+    click(tool, ...mid(13, 24));
     expect(items()[0]).toMatchObject({ points: [at(10, 10), at(10, 24)] });
-    tool.onPointerDown(cell(at(40, 40)), point(at(0, 0)), press(40, 40));
-    tool.onPointerMove(cell(at(54, 43)), point(at(0, 0)), press(54, 43));
-    tool.onPointerUp(cell(at(43, 54)), point(at(0, 0)), press(43, 54));
+    tool.onPointerDown(cell(at(40, 40)), point(at(0, 0)), press(...mid(40, 40)));
+    tool.onPointerMove(cell(at(54, 43)), point(at(0, 0)), press(...mid(54, 43)));
+    tool.onPointerUp(cell(at(43, 54)), point(at(0, 0)), press(...mid(43, 54)));
     expect(items()[1]).toMatchObject({ points: [at(40, 40), at(40, 54)] });
   });
   it('cancels a pending measurement and cancels touch navigation without committing', () => {
-    click(tool, 1, 1); expect(tool.undoPendingStep(liveCtx())).toBe(true);
+    click(tool, ...mid(1, 1)); expect(tool.undoPendingStep(liveCtx())).toBe(true);
     expect(s().annotationDraft).toBeNull();
-    tool.onPointerDown(cell(at(2, 2)), point(at(0, 0)), press(2, 2));
-    tool.onPointerMove(cell(at(20, 20)), point(at(0, 0)), press(20, 20));
+    tool.onPointerDown(cell(at(2, 2)), point(at(0, 0)), press(...mid(2, 2)));
+    tool.onPointerMove(cell(at(20, 20)), point(at(0, 0)), press(...mid(20, 20)));
     tool.onPointerCancel(liveCtx());
     expect(s().annotationDraft).toBeNull(); expect(items()).toHaveLength(0);
   });
-  it('selects and moves a measurement by whole cells, and erases its dimension line', () => {
-    drag(tool, [3, 5], [12, 5]);
+  it('selects and moves a measurement in half-cell steps, and erases its dimension line', () => {
+    drag(tool, mid(3, 5), mid(12, 5));
     s().setAnnotationTool('none');
     // The span's box runs along the top edge of row 5, on the road grid.
     click(tool, 6, 5);
     expect(s().annotationSelection).toHaveLength(1);
     drag(tool, [6, 5], [8.3, 7.6]);
-    expect(items()[0]).toMatchObject({ points: [at(5, 8), at(14, 8)] });
-    s().setAnnotationTool('erase'); click(tool, 8, 8);
+    expect(items()[0]).toMatchObject({ points: [at(5.5, 7.5), at(14.5, 7.5)] });
+    s().setAnnotationTool('erase'); click(tool, 8, 7.5);
     expect(items()).toHaveLength(0);
   });
   it('respects layer visibility and locks and does not apply tag or text size to dimensions', () => {
-    drag(tool, [3, 5], [12, 5]);
+    drag(tool, mid(3, 5), mid(12, 5));
     const before = items()[0];
     s().setAnnotationTag('forest'); s().setAnnotationSize('l');
     expect(items()[0]).toBe(before);
-    s().setAnnotationsLocked(true); click(tool, 2, 2);
+    s().setAnnotationsLocked(true); click(tool, ...mid(2, 2));
     expect(s().annotationDraft).toBeNull();
-    s().setAnnotationsLocked(false); s().setAnnotationsVisible(false); click(tool, 2, 2);
+    s().setAnnotationsLocked(false); s().setAnnotationsVisible(false); click(tool, ...mid(2, 2));
     expect(s().annotationDraft).toBeNull();
   });
 });
@@ -743,7 +748,8 @@ describe('draft gesture history', () => {
 describe('the road brush unit', () => {
   /** A template large enough that its ink scale is well above 1, so no size reads it. */
   const BIG = 160;
-  const sized = (x: number, y: number, brushSize: number) => liveCtx({ point: point(at(x, y)), brushSize });
+  /** A press at the centre of cell (x, y). */
+  const sized = (x: number, y: number, brushSize: number) => liveCtx({ point: point(at(...mid(x, y))), brushSize });
   const keys = (cells: readonly MacroCoord[]) => [...new Set(cells.map((c) => `${c.x},${c.y}`))].sort();
   const draftCells = () => (s().annotationDraft as ZoneNote).cells;
   const dragAt = (tool: AnnotateTool, size: number, ...pts: Array<[number, number]>) => {
@@ -765,9 +771,11 @@ describe('the road brush unit', () => {
     expect(keys(draftCells())).toEqual(keys(brushCells(40, 40, size)));
   });
 
-  it('a size-1 tap covers exactly the road cell under the pointer', () => {
-    new AnnotateTool().onPointerDown(cell(at(40, 39)), point(at(0, 0)), sized(40.2, 39.8, 1));
-    expect(draftCells()).toEqual([{ x: 40, y: 39 }]);
+  it('a size-1 tap covers the whole cell centred on the half-cell point nearest the pointer', () => {
+    new AnnotateTool().onPointerDown(cell(at(40, 39)), point(at(0, 0)), liveCtx({ point: point(at(40.2, 39.8)), brushSize: 1 }));
+    // (40, 40) is the nearest half-cell point, so the dab covers [39.5, 40.5) on both axes.
+    expect(s().annotationDraft).toMatchObject({ grid: 'half' });
+    expect(keys(draftCells())).toEqual(keys(rect(79, 79, 80, 80)));
   });
 
   it('the free brush lays one continuous road-width run, however far a pointer sample jumps', () => {
@@ -791,7 +799,8 @@ describe('the road brush unit', () => {
 });
 
 describe('the eraser shapes', () => {
-  const sized = (x: number, y: number) => liveCtx({ point: point(at(x, y)), brushSize: 1 });
+  /** A press at the centre of cell (x, y). */
+  const sized = (x: number, y: number) => liveCtx({ point: point(at(...mid(x, y))), brushSize: 1 });
   const left = () => new Set(zoneById('z1').cells.map((c) => `${c.x},${c.y}`));
   const gone = (cells: readonly MacroCoord[]) => {
     const kept = left();
@@ -872,9 +881,9 @@ describe('a zone with no text', () => {
     tool.onPointerDown(cell(at(6, 6)), point(at(0, 0)), press(6.2, 6.2));
     tool.onPointerUp(cell(at(6, 6)), point(at(0, 0)), press(6.2, 6.2));
     expect(s().annotationSelection).toEqual(['z1']);
-    tool.onPointerDown(cell(at(9, 6)), point(at(0, 0)), press(9, 6));
-    tool.onPointerMove(cell(at(13, 6)), point(at(0, 0)), press(13, 6));
-    tool.onPointerUp(cell(at(13, 6)), point(at(0, 0)), press(13, 6));
+    tool.onPointerDown(cell(at(9, 6)), point(at(0, 0)), press(...mid(9, 6)));
+    tool.onPointerMove(cell(at(13, 6)), point(at(0, 0)), press(...mid(13, 6)));
+    tool.onPointerUp(cell(at(13, 6)), point(at(0, 0)), press(...mid(13, 6)));
     expect(zoneById('z1').cells.some((c) => c.x === 13 && c.y === 6)).toBe(true);
     expect(zoneById('z1').size).toBe('none');
   });
@@ -955,5 +964,281 @@ describe('route width', () => {
     s().setAnnotationRouteWidth(5);
     expect((items()[0] as RouteNote).width).toBe(5);
     expect(brushSizeOf(s())).toBe(brush);
+  });
+});
+
+describe('half-cell steps', () => {
+  let tool: AnnotateTool;
+  const draft = () => s().annotationDraft as ZoneNote;
+  const area = (z: ZoneNote) => z.cells.length * (z.grid ? 0.25 : 1);
+  /** A size-1 brush press at map point (x, y). */
+  const one = (x: number, y: number) => liveCtx({ point: point(at(x, y)), brushSize: 1 });
+  const click = (_tool: AnnotateTool, x: number, y: number): void => {
+    tool.onPointerDown(cell(at(Math.floor(x), Math.floor(y))), point(at(0, 0)), one(x, y));
+    tool.onPointerUp(cell(at(Math.floor(x), Math.floor(y))), point(at(0, 0)), one(x, y));
+  };
+  const drag = (_tool: AnnotateTool, from: [number, number], to: [number, number]): void => {
+    tool.onPointerDown(cell(at(Math.floor(from[0]), Math.floor(from[1]))), point(at(0, 0)), one(...from));
+    tool.onPointerMove(cell(at(Math.floor(to[0]), Math.floor(to[1]))), point(at(0, 0)), one(...to));
+    tool.onPointerUp(cell(at(Math.floor(to[0]), Math.floor(to[1]))), point(at(0, 0)), one(...to));
+  };
+
+  beforeEach(() => {
+    tool = new AnnotateTool();
+    multiHeld = false;
+    __resetCurveSession();
+    s().initMap(makeTemplate(24, 24), createDefaultRegistry());
+    useEditorStore.setState({ annotationZoneShape: 'free', eraserShape: 'free', annotationDraft: null, annotationSelection: [] });
+  });
+
+  it('a zone tap at a cell corner lays a whole-cell dab centred there, on the half grid', () => {
+    s().setAnnotationTool('zone');
+    click(tool, 5, 5);
+    expect(draft().grid).toBe('half');
+    expect(cellEdges(draft().cells, 'half')).toEqual({ left: 4.5, top: 4.5, right: 5.5, bottom: 5.5 });
+    expect(area(draft())).toBe(1);
+  });
+
+  it('a zone tap at a cell centre lays that whole cell, stored without a grid', () => {
+    s().setAnnotationTool('zone');
+    click(tool, ...mid(5, 5));
+    expect(draft()).not.toHaveProperty('grid');
+    expect(draft().cells).toEqual([at(5, 5)]);
+  });
+
+  it('a free zone stroke runs in half-cell steps between its samples', () => {
+    s().setAnnotationTool('zone');
+    drag(tool, [5, 5], [9, 5]);
+    expect(draft().grid).toBe('half');
+    expect(cellEdges(draft().cells, 'half')).toEqual({ left: 4.5, top: 4.5, right: 9.5, bottom: 5.5 });
+    expect(area(draft())).toBe(5);
+  });
+
+  it('a move that stays on the step already laid writes nothing, so the re-sample it causes settles', () => {
+    s().setAnnotationTool('zone');
+    tool.onPointerDown(cell(at(5, 5)), point(at(0, 0)), one(5, 5));
+    tool.onPointerMove(cell(at(7, 5)), point(at(0, 0)), one(7, 5));
+    const written = s().annotationDraft;
+    tool.onPointerMove(cell(at(7, 5)), point(at(0, 0)), one(7.1, 5.1));
+    expect(s().annotationDraft).toBe(written);
+    tool.onPointerMove(cell(at(7, 5)), point(at(0, 0)), one(7.4, 5));
+    expect(s().annotationDraft).not.toBe(written);
+  });
+
+  it('a zone rectangle reaches from half-cell corner to half-cell corner', () => {
+    s().setAnnotationTool('zone');
+    s().setAnnotationZoneShape('rect');
+    drag(tool, [2, 2], [5, 4]);
+    expect(cellEdges(draft().cells, 'half')).toEqual({ left: 1.5, top: 1.5, right: 5.5, bottom: 4.5 });
+    expect(area(draft())).toBe(4 * 3);
+  });
+
+  it('a zone line at a half-cell row lays a band half a cell off the whole-cell rows', () => {
+    s().setAnnotationTool('zone');
+    s().setAnnotationZoneShape('line');
+    drag(tool, [2.5, 3], [8.5, 3]);
+    expect(cellEdges(draft().cells, 'half')).toEqual({ left: 2, top: 2.5, right: 9, bottom: 3.5 });
+  });
+
+  it('a stroke grows a whole-cell zone in half-cell steps, and the eraser takes half-cell bites', () => {
+    s().addAnnotation(zone('z1', rect(4, 4, 6, 6)));
+    s().setAnnotationTool('zone');
+    drag(tool, [5.5, 5.5], [7.9, 5.5]);
+    expect(zoneById('z1').grid).toBe('half');
+    expect(cellEdges(zoneById('z1').cells, 'half')!.right).toBe(8.5);
+    s().setAnnotationTool('erase');
+    click(tool, 4, 4);
+    // The bite is the whole cell centred on the corner (4, 4): a quarter of it lay on the zone.
+    expect(area(zoneById('z1'))).toBe(9 + 1.5 - 0.25);
+    expect(zoneHit(4.2, 4.2)).toBeNull();
+    expect(zoneHit(4.7, 4.2)?.id).toBe('z1');
+  });
+
+  it('moving a zone takes half-cell steps, and a whole-cell move back restores its stored form', () => {
+    s().addAnnotation(zone('z1', [at(4, 8), at(5, 8)]));
+    s().setAnnotationTool('none');
+    s().setAnnotationSelection(['z1']);
+    drag(tool, [4.5, 8.5], [5.1, 8.4]);
+    expect(zoneById('z1').grid).toBe('half');
+    expect(cellEdges(zoneById('z1').cells, 'half')).toEqual({ left: 4.5, top: 8, right: 6.5, bottom: 9 });
+    drag(tool, [5.1, 8.4], [4.5, 8.5]);
+    expect(zoneById('z1')).toEqual(zone('z1', [at(4, 8), at(5, 8)]));
+  });
+
+  it('a press on a half-grid zone hits only its own half cells, in the select state', () => {
+    // One half cell, [4.5, 5) on both axes, with no caption to hit.
+    s().addAnnotation({ ...zone('z1', [at(9, 9)]), grid: 'half', size: 'none' });
+    s().setAnnotationTool('none');
+    click(tool, 5.2, 5.2);
+    expect(s().annotationSelection).toEqual([]);
+    click(tool, 4.7, 4.7);
+    expect(s().annotationSelection).toEqual(['z1']);
+  });
+
+  it('route waypoints land on the half-cell lattice', () => {
+    s().setAnnotationTool('route');
+    click(tool, 3.3, 4.2);
+    click(tool, 8.6, 4.9);
+    click(tool, 8.6, 4.9);
+    expect((items()[0] as RouteNote).points).toEqual([at(3.5, 4), at(8.5, 5)]);
+  });
+
+  it('a dragged route keeps every anchor on the half-cell lattice', () => {
+    s().setAnnotationTool('route');
+    tool.onPointerDown(cell(at(2, 2)), point(at(0, 0)), one(2.3, 2.1));
+    for (let x = 3; x <= 10; x++) tool.onPointerMove(cell(at(x, 2)), point(at(0, 0)), one(x + 0.3, 2.1));
+    for (let y = 3; y <= 8; y++) tool.onPointerMove(cell(at(10, y)), point(at(0, 0)), one(10.3, y + 0.1));
+    tool.onPointerUp(cell(at(10, 8)), point(at(0, 0)), one(10.3, 8.1));
+    const route = items()[0] as RouteNote;
+    expect(route.points[0]).toEqual(at(2.5, 2));
+    expect(route.points[route.points.length - 1]).toEqual(at(10.5, 8));
+    for (const p of route.points) expect([p.x * 2, p.y * 2].every(Number.isInteger)).toBe(true);
+  });
+
+  it('a route moves in half-cell steps', () => {
+    s().addAnnotation({ kind: 'route', id: 'r1', points: [at(2, 10), at(12, 10)], color: '#38BDF8', dashed: true });
+    s().setAnnotationTool('none');
+    s().setAnnotationSelection(['r1']);
+    drag(tool, [7, 10], [8.3, 10.2]);
+    expect((items()[0] as RouteNote).points).toEqual([at(3.5, 10), at(13.5, 10)]);
+  });
+
+  it('measurement ends land on cells cornered on the half-cell lattice and count half cells', () => {
+    s().setAnnotationTool('measure');
+    click(tool, 3, 5.2);
+    click(tool, 9.6, 5.2);
+    const m = items()[0] as MeasureNote;
+    expect(m.points).toEqual([at(2.5, 4.5), at(9, 4.5)]);
+    expect(measureDrawing(m.points, 1).labels[0]!.value).toBe(7.5);
+  });
+
+  it('a dragged measurement ends half a cell over, and moves in half-cell steps', () => {
+    s().setAnnotationTool('measure');
+    drag(tool, mid(3, 5), [12.1, 5.5]);
+    const m = items()[0] as MeasureNote;
+    expect(m.points).toEqual([at(3, 5), at(11.5, 5)]);
+    s().setAnnotationTool('none');
+    click(tool, 6, 5);
+    drag(tool, [6, 5], [6.6, 5]);
+    expect((items()[0] as MeasureNote).points).toEqual([at(3.5, 5), at(12, 5)]);
+  });
+});
+
+/** The zone a select-state press at (x, y) lands on. */
+function zoneHit(x: number, y: number): ZoneNote | null {
+  const hit = new AnnotateTool().selectHit(at(Math.floor(x), Math.floor(y)), liveCtx({ point: point(at(x, y)), annotationTool: 'none' }));
+  return hit ? zoneById(hit.id) : null;
+}
+
+describe('note ghosts', () => {
+  let tool: AnnotateTool;
+
+  beforeEach(() => {
+    multiHeld = false;
+    tool = new AnnotateTool();
+    __resetCurveSession();
+    s().initMap(makeTemplate(24, 24), createDefaultRegistry());
+    useEditorStore.setState({ annotationDraft: null, annotationDiscardAction: null, annotationSelection: [] });
+  });
+
+  /** A hover at the exact map point (x, y): the note ghost it shows, else null; asserts it laid nothing. */
+  function hover(x: number, y: number): { note: MapAnnotation; label: string } | null {
+    const ctx = press(x, y);
+    const show = vi.spyOn(ctx.overlay, 'showNoteGhost');
+    const draft = s().annotationDraft;
+    const count = items().length;
+    tool.onPointerMove(cell(at(Math.floor(x), Math.floor(y))), point(at(x, y)), ctx);
+    expect(s().annotationDraft).toBe(draft);
+    expect(items()).toHaveLength(count);
+    const last = show.mock.calls[show.mock.calls.length - 1];
+    return last ? { note: last[0], label: last[1] } : null;
+  }
+
+  it('measure shows the first end on its half-cell step, the cell the press then lays', () => {
+    s().setAnnotationTool('measure');
+    const ghost = hover(3.3, 5.2)!.note as MeasureNote;
+    expect(ghost.kind).toBe('measure');
+    expect(ghost.points).toEqual([at(3, 4.5), at(3, 4.5)]);
+    expect(ghost.color).toBe(s().annotationColor);
+    tool.onPointerDown(cell(at(3, 5)), point(at(3.3, 5.2)), press(3.3, 5.2));
+    tool.onPointerUp(cell(at(3, 5)), point(at(3.3, 5.2)), press(3.3, 5.2));
+    expect((s().annotationDraft as MeasureNote).points).toEqual(ghost.points);
+  });
+
+  it('measure gives way to the open draft, whose far end follows the pointer', () => {
+    s().setAnnotationTool('measure');
+    click(tool, 3.3, 5.2);
+    const ctx = press(9.6, 5.4);
+    const show = vi.spyOn(ctx.overlay, 'showNoteGhost');
+    tool.onPointerMove(cell(at(9, 5)), point(at(9.6, 5.4)), ctx);
+    expect(show).not.toHaveBeenCalled();
+    expect((s().annotationDraft as MeasureNote).points).toEqual([at(3, 4.5), at(9, 4.5)]);
+  });
+
+  it('route shows its first point on the half-cell lattice, then the waypoint route with the next point', () => {
+    s().setAnnotationTool('route');
+    s().setAnnotationRouteDashed(true);
+    const first = hover(3.3, 4.2)!.note as RouteNote;
+    expect(first).toMatchObject({ kind: 'route', points: [at(3.5, 4)], dashed: true, color: s().annotationColor });
+    click(tool, 3.3, 4.2);
+    expect((s().annotationDraft as RouteNote).points).toEqual(first.points);
+    const next = hover(8.6, 4.9)!.note as RouteNote;
+    expect(next.points).toEqual([at(3.5, 4), at(8.5, 5)]);
+    click(tool, 8.6, 4.9);
+    expect((s().annotationDraft as RouteNote).points).toEqual(next.points);
+  });
+
+  it('route shows nothing where the press would end the route or select one', () => {
+    s().setAnnotationTool('route');
+    click(tool, 3.3, 4.2);
+    expect(hover(3.5, 4)).toBeNull();
+    s().setAnnotationDraft(null);
+    s().addAnnotation({ kind: 'route', id: 'r1', points: [at(2, 10), at(12, 10)], color: '#38BDF8', dashed: false });
+    expect(hover(7, 10)).toBeNull();
+  });
+
+  it('route shows nothing while a drag draws', () => {
+    s().setAnnotationTool('route');
+    tool.onPointerDown(cell(at(2, 2)), point(at(2.3, 2.1)), press(2.3, 2.1));
+    const ctx = press(6.3, 2.1);
+    const show = vi.spyOn(ctx.overlay, 'showNoteGhost');
+    tool.onPointerMove(cell(at(6, 2)), point(at(6.3, 2.1)), ctx);
+    expect(show).not.toHaveBeenCalled();
+  });
+
+  it('chip shows the armed plate where the press drops it, with its label', () => {
+    s().setAnnotationTool('chip');
+    s().setAnnotationTag('landmark');
+    s().setAnnotationSize('l');
+    const ghost = hover(5.3, 6.7)!;
+    expect(ghost.note).toMatchObject({ kind: 'chip', tag: 'landmark', size: 'l', x: 5.3, y: 6.7 });
+    expect(ghost.label).toBe('landmark');
+    click(tool, 5.3, 6.7);
+    const { id: _ghostId, ...plate } = ghost.note as ChipNote;
+    const { id: _id, ...dropped } = items()[0] as ChipNote;
+    expect(dropped).toEqual(plate);
+  });
+
+  it('chip shows nothing over a plate the press would select, or with no tag armed', () => {
+    s().setAnnotationTool('chip');
+    s().addAnnotation({ kind: 'chip', id: 'tag', x: 6, y: 6, tag: 'plaza', size: 'm', color: '#FFB347' });
+    expect(hover(6, 6.2)).toBeNull();
+    s().setAnnotationTag(null);
+    expect(hover(15, 15)).toBeNull();
+  });
+
+  it('takes the ghost down on a hidden or locked layer, and on a press', () => {
+    s().setAnnotationTool('measure');
+    s().setAnnotationsLocked(true);
+    const ctx = press(4, 4);
+    const clear = vi.spyOn(ctx.overlay, 'clearGhost');
+    expect(hover(4, 4)).toBeNull();
+    s().setAnnotationsLocked(false);
+    s().setAnnotationsVisible(false);
+    expect(hover(4, 4)).toBeNull();
+    s().setAnnotationsVisible(true);
+    expect(hover(4, 4)).not.toBeNull();
+    tool.onPointerDown(cell(at(4, 4)), point(at(4, 4)), ctx);
+    expect(clear).toHaveBeenCalled();
   });
 });

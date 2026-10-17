@@ -39,7 +39,7 @@ it('fits the default 2D view to the saved island', () => {
   state.template = { ...state.template, chunkGrid: { origin: { x: -15, y: -23 }, columns: 13, rows: 12 } };
   const renderer = new MapRenderer(new EventBus<EditorEvents>(), document.createElement('div'), 1040, 960);
   try {
-    renderer.initMap(state, false, false);
+    renderer.initMap(state, null, false);
     expect(renderer.viewport.getZoom()).toBeCloseTo(1040 / (169 * TILE_SIZE));
     expect(renderer.viewport.worldAtCentre()).toEqual({ x: 84.5 * TILE_SIZE, y: 70 * TILE_SIZE });
   } finally {

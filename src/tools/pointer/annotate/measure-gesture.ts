@@ -1,12 +1,19 @@
 /**
  * The measure verb of the notes tool: inclusive cell extents between two taps or a drag's endpoints.
- * The first press opens a measurement draft; a second press, or a release away from the press, ends
- * it as a note.
+ * Each end is the whole cell centred on the half-cell lattice point nearest the pointer, so the ends
+ * move in half-cell steps. The first press opens a measurement draft; a second press, or a release
+ * away from the press, ends it as a note.
  */
 import type { MacroCoord } from '../../../core/model/types';
-import { generateAnnotationId, zoneCellAt, type MeasureNote } from '../../../core/model/annotations';
+import { generateAnnotationId, noteStepCell, type MeasureNote } from '../../../core/model/annotations';
 import type { AnnotateContext } from './channel';
-import { layerEditable, measureEnd } from './note-edits';
+import { layerEditable, measureEnd, NOTE_GHOST_ID } from './note-edits';
+
+/** A measurement's opening draft at `p`: both ends on the one step cell. */
+function firstEnd(p: MacroCoord, id: string, ctx: AnnotateContext): MeasureNote {
+  const cell = noteStepCell(p);
+  return { kind: 'measure', id, points: [cell, { ...cell }], color: ctx.arming.annotationColor };
+}
 
 export class MeasureGesture {
   /** The cell the open draft's press landed on, until its release. */
@@ -14,7 +21,7 @@ export class MeasureGesture {
 
   down(p: MacroCoord, ctx: AnnotateContext): void {
     if (!layerEditable(ctx)) return;
-    const cell = zoneCellAt(p);
+    const cell = noteStepCell(p);
     const draft = ctx.arming.notes.draft;
     if (draft?.kind === 'measure') {
       this.finish({ ...draft, points: [draft.points[0], measureEnd(draft.points[0], p)] }, ctx);
@@ -23,7 +30,14 @@ export class MeasureGesture {
     ctx.annotationEdit.select([]);
     ctx.annotationEdit.begin();
     this.press = cell;
-    ctx.annotationEdit.setDraft({ kind: 'measure', id: generateAnnotationId(), points: [cell, cell], color: ctx.arming.annotationColor });
+    ctx.annotationEdit.setDraft(firstEnd(p, generateAnnotationId(), ctx));
+  }
+
+  /** The first end a press at `p` would lay; null once a draft stands, whose far end already
+   *  follows the pointer with its line and length. */
+  ghost(p: MacroCoord, ctx: AnnotateContext): MeasureNote | null {
+    if (ctx.arming.notes.draft?.kind === 'measure') return null;
+    return firstEnd(p, NOTE_GHOST_ID, ctx);
   }
 
   /** Follows the pointer with the draft's far end. */

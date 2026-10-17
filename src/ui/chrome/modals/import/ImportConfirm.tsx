@@ -5,16 +5,16 @@ import { windowFooterPrimary, windowFooterGhost, skin, windowTitle } from '../..
  * window or was dropped on the page, so a map is never replaced on a drop alone.
  */
 import { ActionButton } from '../../../primitives/ActionButton';
-import { useEffect, useState, type CSSProperties } from 'react';
+import type { CSSProperties } from 'react';
 import { useT } from '../../../../i18n/context';
 import type { ImportPreview } from '../../../../io/import/file';
-import { renderThumbnail } from '../../../../view/map2d/capture/thumbnail';
+import { PlanetPreview } from '../planet/PlanetPreview';
 import { radii } from '../../../design/styles';
 import { DANGER_SURFACE, ERROR, ON_DARK } from '../../../design/tokens';
 import { roleFont } from '../../../design/text-weight';
 
-/** Long side of the preview picture, in css px; the card is 520 wide. */
-const THUMBNAIL_PX = 440;
+/** The picture's height, in css px; the card is 520 wide. */
+const PICTURE_HEIGHT = 300;
 
 const confirmPanel: CSSProperties = {
   background: DANGER_SURFACE,
@@ -30,22 +30,8 @@ const dangerReplaceButton: CSSProperties = {
   color: ON_DARK,
 };
 
-const picture: CSSProperties = {
-  display: 'block', width: '100%', maxHeight: 300, objectFit: 'contain',
-  borderRadius: radii.md, background: skin.plate, border: `1px solid ${skin.line}`,
-};
-
-/** The decoded map as a picture; null until the renderer has drawn it, or where no renderer stands. */
-function useThumbnail(preview: ImportPreview): string | null {
-  const [src, setSrc] = useState<string | null>(null);
-  useEffect(() => {
-    let alive = true;
-    setSrc(null);
-    void renderThumbnail(preview.state, THUMBNAIL_PX).then((png) => { if (alive) setSrc(png); }).catch(() => {});
-    return () => { alive = false; };
-  }, [preview]);
-  return src;
-}
+/** The decoded map's stage: it pans and zooms like every planet picture, sharp at any zoom. */
+const pictureStage: CSSProperties = { position: 'relative', display: 'flex', height: PICTURE_HEIGHT };
 
 export function ImportConfirm({ preview, name, replacing, busy, onConfirm, onCancel }: {
   preview: ImportPreview;
@@ -59,14 +45,13 @@ export function ImportConfirm({ preview, name, replacing, busy, onConfirm, onCan
   onCancel: () => void;
 }) {
   const t = useT();
-  const thumbnail = useThumbnail(preview);
   const title = preview.notes?.title ?? name;
   return (
     <div data-testid="import-confirm" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
       <div style={windowTitle}>{t('import.confirm_title')}</div>
-      {thumbnail
-        ? <img src={thumbnail} alt="" style={picture} />
-        : <div aria-hidden style={{ ...picture, height: 160 }} />}
+      <div data-testid="import-picture" style={pictureStage}>
+        <PlanetPreview template={preview.state.template} state={preview.state} />
+      </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
         <div style={{ ...roleFont('lead'), color: skin.ink, overflowWrap: 'anywhere' }}>{title}</div>
         {preview.notes?.description && (

@@ -169,10 +169,9 @@ export function readHud(frame: RgbaImage, layout: HudLayout): HudReading {
   return { mapView: matched >= HUD.required, whole: matched === 3, knob };
 }
 
-/** Whether the scan's median knob row says the recording used another zoom than the calibration's. */
-export function zoomDiffers(knobRows: readonly number[]): boolean {
-  if (knobRows.length === 0) return false;
-  return Math.abs(median(knobRows, 'upper') - HUD.zoom.knobCentre) > HUD.zoom.knobDrift;
+/** Whether a knob read at row `knob` stands at the zoom the scan reads, the calibration's. */
+export function atScanZoom(knob: number): boolean {
+  return Math.abs(knob - HUD.zoom.knobCentre) <= HUD.zoom.knobDrift;
 }
 
 /**

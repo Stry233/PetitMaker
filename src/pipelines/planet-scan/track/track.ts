@@ -1,5 +1,5 @@
 import { EDGE_CLOSURE, EDGE_CONSECUTIVE, EDGE_GATED, EdgeList, SOURCE_ASSUMED, SOURCE_RECOVERED, SOURCE_VERIFIED } from './path-solve';
-import { type HighPassScratch, PhaseCorrelator, highPass, highPassScratch } from './phase-correlate';
+import { type HighPassScratch, PhaseCorrelator, highPass, highPassScratch, overlapNcc } from './phase-correlate';
 import { SCAN_PROFILE } from '../profile';
 import type { GreyImage, ShiftEstimate } from '../types';
 
@@ -14,6 +14,7 @@ import type { GreyImage, ShiftEstimate } from '../types';
 // the predicted shift, so the correlation only has to find the small residual.
 
 const T = SCAN_PROFILE.tracking;
+const CHUNK = SCAN_PROFILE.chunk;
 /** Above any frame count a recording yields. */
 const PAIR_KEY = 1 << 24;
 
@@ -80,6 +81,22 @@ export class TileStore {
   }
 }
 
+/** The correlation of two equal-sized images pixel for pixel over [x0, x1) x [y0, y1); -1 when empty. */
+function regionNcc(a: GreyImage, b: GreyImage, { x0, y0, x1, y1 }: { x0: number; y0: number; x1: number; y1: number }): number {
+  if (x1 <= x0 || y1 <= y0) return -1;
+  const w = a.width;
+  let sa = 0, sb = 0, saa = 0, sbb = 0, sab = 0;
+  for (let y = y0; y < y1; y++) {
+    for (let x = x0, i = y * w + x0; x < x1; x++, i++) {
+      const va = a.data[i]!, vb = b.data[i]!;
+      sa += va; sb += vb; saa += va * va; sbb += vb * vb; sab += va * vb;
+    }
+  }
+  const n = (x1 - x0) * (y1 - y0);
+  const den = Math.sqrt((saa - (sa * sa) / n) * (sbb - (sb * sb) / n));
+  return den > 0 ? (sab - (sa * sb) / n) / den : 0;
+}
+
 function floorPowerOfTwo(n: number): number {
   let p = 1;
   while (p * 2 <= n) p *= 2;
@@ -92,13 +109,9 @@ export class CropMatcher {
 
   constructor(private readonly store: TileStore) {}
 
-  /**
-   * The verified shift of tile `b` against tile `a` near the integer prediction (px, py), in tile
-   * pixels: both are cropped to the largest power-of-two window centred in their predicted
-   * overlap. Null when the overlap is below the minimum crop or the match does not correlate
-   * above `minNcc`.
-   */
-  match(a: number, b: number, px: number, py: number, minNcc: number): ShiftEstimate | null {
+  /** Both tiles cropped to the largest power-of-two window centred in their overlap at the integer
+   *  prediction (px, py), and the correlator of that size; null below the minimum crop. */
+  private crops(a: number, b: number, px: number, py: number): { correlator: PhaseCorrelator; ia: GreyImage; ib: GreyImage } | null {
     const { width: w, height: h } = this.store;
     const ox0 = Math.max(0, px);
     const ox1 = Math.min(w, w + px);
@@ -118,8 +131,49 @@ export class CropMatcher {
     const by = (oy0 + oy1 - ch) >> 1;
     const ia = this.store.crop(a, { x0: bx - px, y0: by - py, width: cw, height: ch }, slot.a);
     const ib = this.store.crop(b, { x0: bx, y0: by, width: cw, height: ch }, slot.b);
-    const est = slot.correlator.estimate(ia, ib);
+    return { correlator: slot.correlator, ia, ib };
+  }
+
+  /**
+   * The verified shift of tile `b` against tile `a` near the integer prediction (px, py), in tile
+   * pixels: both are cropped to the largest power-of-two window centred in their predicted
+   * overlap. Null when the overlap is below the minimum crop or the match does not correlate
+   * above `minNcc`.
+   */
+  match(a: number, b: number, px: number, py: number, minNcc: number): ShiftEstimate | null {
+    const c = this.crops(a, b, px, py);
+    if (!c) return null;
+    const est = c.correlator.estimate(c.ia, c.ib);
     return est && est.ncc > minNcc ? { ...est, dx: est.dx + px, dy: est.dy + py } : null;
+  }
+
+  /** The overlap correlation of the two tiles at the integer prediction itself, over the crops
+   *  `match` reads; -1 below the minimum crop. With `residual`, a match's integer shift from the
+   *  prediction in tile pixels, it is taken only over the part of the crops that match compared,
+   *  in either crop's place, the better of the two: a match a period off compares a smaller
+   *  overlap, which repeating ground correlates better than the whole crop. */
+  nccAtPrediction(a: number, b: number, px: number, py: number, residual?: { readonly dx: number; readonly dy: number }): number {
+    const c = this.crops(a, b, px, py);
+    if (!c) return -1;
+    if (!residual) return overlapNcc(c.ia, c.ib, { dx: 0, dy: 0 }).ncc;
+    const { width: w, height: h } = c.ia;
+    const { dx, dy } = residual;
+    const inB = regionNcc(c.ia, c.ib, { x0: Math.max(0, dx), y0: Math.max(0, dy), x1: Math.min(w, w + dx), y1: Math.min(h, h + dy) });
+    const inA = regionNcc(c.ia, c.ib, { x0: Math.max(0, -dx), y0: Math.max(0, -dy), x1: Math.min(w, w - dx), y1: Math.min(h, h - dy) });
+    return Math.max(inB, inA);
+  }
+
+  /** `nccAtPrediction` at a fractional prediction (px, py) in tile pixels, against a match at the
+   *  integer shift `shift`: the best over the whole shifts around the prediction, since the one
+   *  nearest it may lie a pixel off the overlap's peak on fine ground while the match sits on its own. */
+  nccNearPrediction(a: number, b: number, px: number, py: number, shift: { readonly dx: number; readonly dy: number }): number {
+    let best = -1;
+    for (const qy of new Set([Math.floor(py), Math.ceil(py)])) {
+      for (const qx of new Set([Math.floor(px), Math.ceil(px)])) {
+        best = Math.max(best, this.nccAtPrediction(a, b, qx, qy, { dx: shift.dx - qx, dy: shift.dy - qy }));
+      }
+    }
+    return best;
   }
 }
 
@@ -128,6 +182,9 @@ export interface ClosureStats {
   readonly tried: number;
   readonly added: number;
   readonly gated: number;
+  /** Gated matches whose tiles correlate at the prediction within `recoveryMargin` of the match,
+   *  which say nothing about the path and are left out of `agreeing`. */
+  readonly ambiguous: number;
   /** The most gated matches agreeing on one offset from the predicted path that none agrees on
    *  the opposite of (`agreeingOffsets`). */
   readonly agreeing: number;
@@ -178,7 +235,8 @@ export interface TrackerOptions {
  * first. A pair that does not verify on the whole tiles, usually a hitch that jumped the camera
  * by half a view, is retried on the overlap predicted by the last step and by each recovery
  * shift; the best match is kept when it beats every match at a different shift by
- * `recoveryMargin`, or, when no other shift matched, verifies above `minNcc`. Otherwise the edge assumes the last step at the outlier weight and the step
+ * `recoveryMargin`, or, when no other shift matched, verifies above `minNcc`. A match of a chunk or
+ * more on an axis is never taken. Otherwise the edge assumes the last step at the outlier weight and the step
  * counts as lost, for closures to correct.
  */
 export class Tracker {
@@ -259,9 +317,12 @@ export class Tracker {
     const k = this.store.size - 1;
     if (k > 0) {
       const prev = { width: this.width, height: this.height, data: this.previous };
-      const direct = probe ? probe.direct : this.correlator.estimate(prev, hp);
-      const est = direct ?? this.recover(k);
       const s = this.step;
+      // The camera pans continuously, so a kept step of a chunk or more on an axis is impossible:
+      // such a match is an alias of ground or lines that repeat every chunk.
+      const possible = (e: ShiftEstimate | null) => (e && Math.abs(e.dx * s) < CHUNK.width && Math.abs(e.dy * s) < CHUNK.height ? e : null);
+      const direct = possible(probe ? probe.direct : this.correlator.estimate(prev, hp));
+      const est = direct ?? possible(this.recover(k));
       const step = est ?? this.lastStep;
       this.chainX -= step.dx * s;
       this.chainY -= step.dy * s;
@@ -328,7 +389,7 @@ export class Tracker {
    * predicted footprint overlaps its own most, from `minOverlap` of the tile area. A match farther
    * than `gate` rectified pixels from the prediction is kept as a gated edge with no weight: alone
    * it is a periodic alias, but `agreeingFailure` gated matches whose offsets from the prediction
-   * agree within `agreement` pixels, with none on the opposite offset (`agreeingOffsets`), say
+   * agree within `agreement` pixels, leaving out those whose tiles correlate about as well at the prediction, with none on the opposite offset (`agreeingOffsets`), say
    * the predicted path is wrong (`failed`). A second pass on
    * the solved path skips the pairs that already produced a closure and retries the rest; a
    * gated pair keeps one edge, which becomes its closure when it verifies.
@@ -342,6 +403,7 @@ export class Tracker {
     let tried = 0;
     let added = 0;
     let gated = 0;
+    let ambiguous = 0;
     const offsets: [number, number][] = [];
     const overlap = new Float64Array(n);
     const { edges } = this;
@@ -367,7 +429,12 @@ export class Tracker {
         const dy = est.dy * s;
         if (Math.hypot(dx - predX, dy - predY) > C.gate) {
           gated++;
-          offsets.push([dx - predX, dy - predY]);
+          // Ground that repeats across the offset matches at the prediction about as well, within
+          // the margin by which a true shift and its alias correlate alike: such a revisit cannot
+          // tell the path from its alias, so it is no evidence that the path is wrong.
+          const shift = { dx: Math.round(est.dx), dy: Math.round(est.dy) };
+          if (this.matcher.nccNearPrediction(a, b, predX / s, predY / s, shift) >= est.ncc - T.recoveryMargin) ambiguous++;
+          else offsets.push([dx - predX, dy - predY]);
           const at = this.gatedAt.get(key);
           if (at === undefined) {
             this.gatedAt.set(key, edges.count);
@@ -396,6 +463,6 @@ export class Tracker {
       }
     }
     const agreeing = agreeingOffsets(offsets, C.agreement);
-    return { tried, added, gated, agreeing, failed: agreeing >= C.agreeingFailure };
+    return { tried, added, gated, ambiguous, agreeing, failed: agreeing >= C.agreeingFailure };
   }
 }

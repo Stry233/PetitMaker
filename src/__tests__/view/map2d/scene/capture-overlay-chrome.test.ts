@@ -20,7 +20,7 @@ interface Bake { overlayVisible: boolean; regionVisible: boolean; gridVisible: b
 function captureReading(includeGrid: boolean, prepare: (r: MapRenderer) => void): { bake: Bake | null; renderer: MapRenderer } {
   const renderer = new MapRenderer(new EventBus<EditorEvents>(), document.createElement('div'), 64, 64);
   renderers.push(renderer);
-  renderer.initMap(makeState(20, 20), false, false);
+  renderer.initMap(makeState(20, 20), null, false);
   prepare(renderer);
   const overlay = {
     container: rendererLayers(renderer).overlayLayer.container,

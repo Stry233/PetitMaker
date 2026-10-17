@@ -14,8 +14,21 @@ function load(): Overrides {
   try {
     const raw = readPref('keybinds');
     const o = raw ? JSON.parse(raw) : {};
-    return o && typeof o === 'object' ? withCurrentIds(o as Overrides) : {};
+    if (!o || typeof o !== 'object') return {};
+    const loaded = withCurrentIds(o as Overrides);
+    const migrated = withFrozenDelete(loaded);
+    if (migrated !== loaded) persist(migrated);
+    return migrated;
   } catch { return {}; }
+}
+
+/** Delete was the shipped key of `selection.delete` before R took it. A keymap that puts the
+ *  rectangle tool on R and says nothing of delete (the Pro preset as applied then) gets Delete
+ *  written out, so R keeps meaning the rectangle and the keymap reads as Pro. Idempotent: once
+ *  `selection.delete` has an entry, nothing changes. */
+function withFrozenDelete(o: Overrides): Overrides {
+  if (o['tool.rect'] !== 'r' || 'selection.delete' in o) return o;
+  return { ...o, 'selection.delete': 'delete' };
 }
 function persist(o: Overrides): void {
   writePref('keybinds', JSON.stringify(o));

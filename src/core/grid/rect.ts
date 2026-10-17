@@ -1,6 +1,6 @@
 /* Boxes, cell keys and half-grid tests on the map's lattice, in cells. */
 import { GRIDS } from '../game/profile';
-import type { GridId } from './grids';
+import { gridCellRect, type GridId } from './grids';
 import type { MacroCoord } from '../base/coords';
 
 /** A macro-unit box [x, x+w) × [y, y+h). Origin and size may be fractional: an object's footprint
@@ -10,9 +10,8 @@ export interface Rect { x: number; y: number; w: number; h: number; }
 /** Whether cell (x, y) of `grid` overlaps `rect`. This one test lets a fractional-edge footprint
  *  (a landmark) and a whole-cell footprint share the same overlap logic. */
 export function cellOverlapsRect(rect: Rect, x: number, y: number, grid: GridId): boolean {
-  const o = GRIDS[grid].offset;
-  const cl = x + o.x, ct = y + o.y;
-  return cl < rect.x + rect.w && cl + 1 > rect.x && ct < rect.y + rect.h && ct + 1 > rect.y;
+  const c = gridCellRect(GRIDS[grid], { x, y });
+  return c.x < rect.x + rect.w && c.x + c.w > rect.x && c.y < rect.y + rect.h && c.y + c.h > rect.y;
 }
 
 /** `v` rounded to the nearest half cell. */

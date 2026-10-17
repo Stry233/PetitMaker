@@ -87,8 +87,11 @@ export function shotFrameFor(region: readonly MacroCoord[], grid: GridState | nu
   return focusFrame(regionBox(region), grid?.template ?? null, aspect);
 }
 
+/** A card's picture carries the open map's notes: a candidate holds none, and landing it leaves them. */
 const photo = (candidate: Candidate | null, frame: ShotFrame, size: ShotSize): Promise<Shot> =>
-  candidate ? renderThumbnail(candidate.state, size.px, size.aspect, frame) : Promise.resolve(null);
+  candidate
+    ? renderThumbnail(candidate.state, size.px, { aspect: size.aspect, frame, notes: currentEditor()?.state.annotations ?? null })
+    : Promise.resolve(null);
 const seedOf = (pass: Pass, i: number): number => (pass.stencil ? pass.base + i : (pass.dealt[i] as number));
 
 /**

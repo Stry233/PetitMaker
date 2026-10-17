@@ -14,7 +14,8 @@ import type { PlacementTrait } from '../../../core/model/types';
 import type { CatalogEntry } from '../../../config/catalog/catalog-entry';
 import { LOCALES } from '../../../core/model/locale';
 
-/** The numeric fields each trait carries beside `type`; `?` marks an optional one. */
+/** The fields each trait carries beside `type`, numbers unless typed `:boolean`; `?` marks an
+ *  optional one. */
 const TRAIT_FIELDS: Record<PlacementTrait['type'], readonly string[]> = {
   flat: [], noFloat: [], coatingSupport: [], plantable: [], growsOnPlantable: [], terrainBase: [],
   halfStep: [], footprintTurn: [],
@@ -22,6 +23,13 @@ const TRAIT_FIELDS: Record<PlacementTrait['type'], readonly string[]> = {
   heightDrop: ['layers'],
   surfaceCoating: ['layer?'],
   exclusionRadius: ['radius'],
+  groundZones: ['onGrass:boolean', 'onSand:boolean', 'acrossBoundary:boolean'],
+};
+
+/** A `TRAIT_FIELDS` entry's key and the type its value has. */
+const fieldOf = (field: string): { name: string; type: string; optional: boolean } => {
+  const [key, type = 'number'] = field.replace('?', '').split(':');
+  return { name: key!, type, optional: field.endsWith('?') };
 };
 
 /** Every key a catalog entry may carry. `satisfies` holds it to the type both ways: a key the type
@@ -55,10 +63,10 @@ describe('catalog data', () => {
     expect(Array.isArray(item.traits)).toBe(true);
     for (const trait of item.traits) {
       for (const field of TRAIT_FIELDS[trait.type] ?? []) {
-        const name = field.replace('?', '');
+        const { name, type, optional } = fieldOf(field);
         const value = (trait as unknown as Record<string, unknown>)[name];
-        if (field.endsWith('?') && value === undefined) continue;
-        expect(typeof value, `${trait.type}.${name}`).toBe('number');
+        if (optional && value === undefined) continue;
+        expect(typeof value, `${trait.type}.${name}`).toBe(type);
       }
     }
   });
@@ -70,7 +78,7 @@ describe('catalog data', () => {
     for (const trait of item.traits) {
       const fields = TRAIT_FIELDS[trait.type];
       expect(fields, trait.type).toBeDefined();
-      expect(strayKeys(trait, ['type', ...(fields ?? []).map((f) => f.replace('?', ''))])).toEqual([]);
+      expect(strayKeys(trait, ['type', ...(fields ?? []).map((f) => fieldOf(f).name)])).toEqual([]);
     }
   });
 

@@ -22,9 +22,9 @@ import { makeToolCtx, objectsByCatalog } from '../../../_support/tool-ctx';
 import { cell } from '../../../_support/grid';
 import { ItemCategory } from '../../../../config/catalog/categories';
 
-/** A large body with no flatness rule, so it may stand across a step. */
+/** A large body with no flatness rule and no door, so it may stand across a step. */
 __setCatalogItem({
-  id: 'preview-height-pad', category: ItemCategory.Building, name: { en: 'Preview Height Pad' },
+  id: 'preview-height-pad', category: ItemCategory.Facility, name: { en: 'Preview Height Pad' },
   width: 4, height: 4, loadValue: 0, rotatable: false, placementMode: 'point', traits: [],
 });
 

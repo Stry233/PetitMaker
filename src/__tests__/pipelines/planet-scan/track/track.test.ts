@@ -54,6 +54,30 @@ describe('tracking', () => {
     expect(maxError(sol.x, sol.y)).toBeLessThan(1);
   });
 
+  it('takes no revisit as evidence against a right path where the ground repeats across its offset', () => {
+    // Ground repeating every 64 pixels on x: revisits on the true path verify a period off as often
+    // as not, all on one side, and match as well at the prediction itself.
+    const periodic = broadbandField(11, 64, 512)(0, 0, { width: FIELD_W, height: FIELD_H });
+    const sweep = rasterPath(1, { x0: 4, x1: FIELD_W - TW - 6, y0: 4, y1: FIELD_H - TH - 6 }, { x: 12.85, y: 11 }, 50);
+    const t = new Tracker(TW, TH);
+    for (let k = 0; k < sweep.x.length; k++) t.push(cropAt(periodic, { x: sweep.x[k]!, y: sweep.y[k]! }, { width: TW, height: TH }, 3, 100 + k));
+    const right = { x: Float64Array.from(sweep.x, (v) => v - sweep.x[0]!), y: Float64Array.from(sweep.y, (v) => v - sweep.y[0]!) };
+    const stats = t.addClosures(right);
+    const offsets: [number, number][] = [];
+    for (let e = 0; e < t.edges.count; e++) {
+      if (t.edges.kind[e] !== EDGE_GATED) continue;
+      const a = t.edges.a[e]!, b = t.edges.b[e]!;
+      offsets.push([t.edges.dx[e]! - (right.x[a]! - right.x[b]!), t.edges.dy[e]! - (right.y[a]! - right.y[b]!)]);
+    }
+    expect(stats.gated).toBeGreaterThanOrEqual(2);
+    // Taken as evidence, they would agree on one offset and call the path wrong.
+    expect(agreeingOffsets(offsets, SCAN_PROFILE.tracking.closures.agreement)).toBe(stats.gated);
+    expect(offsets.every(([dx, dy]) => Math.abs(Math.abs(dx) - 64) < 1.5 && Math.abs(dy) < 1.5)).toBe(true);
+    expect(stats.ambiguous).toBe(stats.gated);
+    expect(stats.agreeing).toBe(0);
+    expect(stats.failed).toBe(false);
+  });
+
   it('drops a revisit that verifies far from the tracked path as an alias', () => {
     const fresh = new Tracker(TW, TH);
     for (let k = 0; k < 40; k++) fresh.push(cropAt(field, { x: path.x[k]!, y: path.y[k]! }, { width: TW, height: TH }, 3, 100 + k));
@@ -83,13 +107,21 @@ describe('tracking', () => {
 
   it('recovers a hitch that jumps the camera by most of a view', () => {
     const hitch = new Tracker(TW, TH);
-    // 0.62 of the tile across: too little overlap for the whole-tile correlation.
-    const jumps = [[300, 200], [300 + 124.3, 203.2], [300 + 124.3 - 12.8, 203.2]] as const;
+    // 0.61 of the tile across, just under a chunk: too little overlap for the whole-tile correlation.
+    const jumps = [[300, 200], [300 + 121.5, 203.2], [300 + 121.5 - 12.8, 203.2]] as const;
     for (const [k, [x, y]] of jumps.entries()) hitch.push(cropAt(field, { x, y }, { width: TW, height: TH }, 3, 500 + k));
     expect(hitch.lost).toBe(0);
     expect(hitch.edges.source[0]).toBe(SOURCE_RECOVERED);
-    expect(hitch.edges.dx[0]).toBeCloseTo(-124.3, 0);
+    expect(hitch.edges.dx[0]).toBeCloseTo(-121.5, 0);
     expect(hitch.edges.dy[0]).toBeCloseTo(-3.2, 0);
+  });
+
+  it('never takes a step of a chunk or more, which the camera cannot make', () => {
+    const far = new Tracker(TW, TH);
+    far.push(cropAt(field, { x: 300, y: 200 }, { width: TW, height: TH }, 3, 520));
+    far.push(cropAt(field, { x: 300 + SCAN_PROFILE.chunk.width + 2, y: 203.2 }, { width: TW, height: TH }, 3, 521));
+    expect(far.lost).toBe(1);
+    expect(far.edges.source[0]).toBe(SOURCE_ASSUMED);
   });
 
   it('leaves a hitch on periodic ground unknown rather than taking an alias', () => {
@@ -98,16 +130,16 @@ describe('tracking', () => {
     const periodic = broadbandField(5, 128, 512)(0, 0, { width: 1024, height: 512 });
     const hitch = new Tracker(TW, TH);
     hitch.push(cropAt(periodic, { x: 300, y: 200 }, { width: TW, height: TH }, 3, 600));
-    hitch.push(cropAt(periodic, { x: 424.3, y: 262 }, { width: TW, height: TH }, 3, 601));
+    hitch.push(cropAt(periodic, { x: 421.5, y: 262 }, { width: TW, height: TH }, 3, 601));
     expect(hitch.lost).toBe(1);
     expect(hitch.edges.source[0]).toBe(SOURCE_ASSUMED);
     expect(hitch.edges.weight[0]).toBe(SCAN_PROFILE.tracking.solve.outlierWeight);
     // The same jump over non-repeating ground is recovered.
     const plain = new Tracker(TW, TH);
     plain.push(cropAt(field, { x: 300, y: 200 }, { width: TW, height: TH }, 3, 600));
-    plain.push(cropAt(field, { x: 424.3, y: 262 }, { width: TW, height: TH }, 3, 601));
+    plain.push(cropAt(field, { x: 421.5, y: 262 }, { width: TW, height: TH }, 3, 601));
     expect(plain.edges.source[0]).toBe(SOURCE_RECOVERED);
-    expect(plain.edges.dx[0]).toBeCloseTo(-124.3, 0);
+    expect(plain.edges.dx[0]).toBeCloseTo(-121.5, 0);
     expect(plain.edges.dy[0]).toBeCloseTo(-62, 0);
   });
 
@@ -140,6 +172,43 @@ describe('tracking', () => {
     expect(matcher.match(0, 1, TW - minCropWidth + 1, 0, 0.5)).toBeNull();
     expect(matcher.match(0, 1, 0, TH - minCropHeight + 1, 0.5)).toBeNull();
     expect(matcher.match(0, 1, 0, 0, 0.5)).not.toBeNull();
+  });
+
+  it('judges a revisit\'s prediction over the overlap its match compared', () => {
+    // Ground repeating every 64 px, and half the second crop changed (animated sea, parallax): a
+    // match one period off compares only the unchanged half, which the prediction must be judged on.
+    const periodic = broadbandField(5, 64, 512)(0, 0, { width: 1024, height: 512 });
+    const store = new TileStore(TW, TH);
+    const a = cropAt(periodic, { x: 300, y: 200 }, { width: TW, height: TH }, 0, 1);
+    const b = cropAt(periodic, { x: 300, y: 200 }, { width: TW, height: TH }, 0, 1);
+    const r = rng(9);
+    // The matcher's 128 px crop at the prediction starts at tile column 36; its east half changes.
+    for (let y = 0; y < TH; y++) for (let x = 100; x < 164; x++) b.data[y * TW + x] = 60 * (r() - 0.5);
+    store.add(a);
+    store.add(b);
+    const matcher = new CropMatcher(store);
+    expect(matcher.nccAtPrediction(0, 1, 0, 0)).toBeLessThan(0.8);
+    expect(matcher.nccAtPrediction(0, 1, 0, 0, { dx: -64, dy: 0 })).toBeGreaterThan(0.95);
+  });
+
+  it('judges a fractional prediction at the whole shifts around it', () => {
+    // Noise correlates only at its own shift: 10 px, a prediction of 10.5 px rounds to 11.
+    const r = rng(17);
+    const noise = Float32Array.from({ length: (TW + 32) * TH }, () => r() * 255);
+    const crop = (x0: number) => {
+      const data = new Float32Array(TW * TH);
+      for (let y = 0; y < TH; y++) for (let x = 0; x < TW; x++) data[y * TW + x] = noise[y * (TW + 32) + x0 + x]!;
+      return { width: TW, height: TH, data };
+    };
+    const store = new TileStore(TW, TH);
+    store.add(crop(20));
+    store.add(crop(10));
+    const matcher = new CropMatcher(store);
+    const shift = { dx: 10, dy: 0 };
+    expect(matcher.nccAtPrediction(0, 1, 11, 0, { dx: -1, dy: 0 })).toBeLessThan(0.3);
+    expect(matcher.nccNearPrediction(0, 1, 10.5, 0, shift)).toBeGreaterThan(0.95);
+    // A whole prediction is judged at itself alone.
+    expect(matcher.nccNearPrediction(0, 1, 11, 0, shift)).toBeLessThan(0.3);
   });
 
   it('retries on a second pass only the revisits that produced no closure', () => {

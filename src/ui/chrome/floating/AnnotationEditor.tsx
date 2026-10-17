@@ -16,7 +16,7 @@ import { viewportSize } from '../../../platform/device/viewport-space';
 import { useEffect, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { getActiveView, onProjectionChange } from '../../../view/active-view';
-import { zoneCellCentre, type MapAnnotation } from '../../../core/model/annotations';
+import { zoneCellCentre, zoneGrid, type MapAnnotation } from '../../../core/model/annotations';
 import { zoneLabelAnchor } from '../../../core/model/annotation/geometry';
 import { useT } from '../../../i18n/context';
 import { useEditorStore } from '../../../state/store';
@@ -29,7 +29,7 @@ import { framerMotion } from '../../design/motion';
 
 /** Where a note's chrome stands: the note's own anchor, projected. */
 function anchorOf(note: MapAnnotation): { x: number; y: number } {
-  if (note.kind === 'zone') return zoneLabelAnchor(note.cells);
+  if (note.kind === 'zone') return zoneLabelAnchor(note.cells, zoneGrid(note));
   if (note.kind === 'chip') return { x: note.x, y: note.y };
   return note.kind === 'measure' ? zoneCellCentre(note.points[0]) : { x: note.points[0]!.x, y: note.points[0]!.y };
 }

@@ -13,15 +13,16 @@
  * - measure counts inclusive cell extents between two taps or a drag's endpoints (`measure-gesture.ts`).
  *
  * Everything speaks cell coordinates, so the tool is view-agnostic exactly as the map tools are.
- * Brush and eraser lay the road brush's footprint (`brushCells`, `dragShapeCells`, `splineCells`),
- * so size N is an N-cell band on every template.
+ * Zones, routes and measurements move in half-cell steps. Brush and eraser lay the road brush's
+ * footprint at each step (`note-edits.ts`), so size N is an N-cell band on every template, and a
+ * zone is stored on the coarsest grid that holds it (`zoneCellsOnGrid`).
  * A hidden or locked layer refuses every edit with a toast; selection still works under a lock.
  */
 import type { MacroCoord } from '../../../core/model/types';
 import { ToolType } from '../../../state/editing/vocabulary';
-import { addZoneCells, generateAnnotationId, nextZoneNumber, zoneCellAt, type MapAnnotation, type ZoneNote } from '../../../core/model/annotations';
+import { addZoneCells, generateAnnotationId, movedNote, nextZoneNumber, zoneCellsOnGrid, zoneHalfCells, zoneWithHalfCells, type MapAnnotation, type ZoneNote } from '../../../core/model/annotations';
 import { annotationInkScale, routeHitDistCells } from '../../../core/model/annotation/text-metrics';
-import { splineCells, type DragShapeKind } from '../../../core/grid/shapes';
+import type { DragShapeKind } from '../../../core/grid/shapes';
 import type { Rect } from '../../../core/grid/rect';
 import { annotationsInRect } from '../../../core/model/annotation/geometry';
 import type { CursorId } from '../../../assets/cursors/cursor-spec';
@@ -30,23 +31,31 @@ import type { AnnotateContext } from './channel';
 import { PLACEMENT_GRID } from '../../../core/game/profile';
 import { gridCell, mapPoint, type GridCell, type MapPoint, cellSet } from '../../../core/grid/grids';
 import { chipAt, hitAt, zoneBodyAt } from './note-hits';
-import { CLICK_SLOP, copyNote, figureCells, finePoint, footprint, layerEditable, movedBy, run } from './note-edits';
+import { CLICK_SLOP, copyNote, curveCells, figureCells, finePoint, footprint, layerEditable, run, stepAt, stepDistance } from './note-edits';
 import { RouteGesture } from './route-gesture';
 import { EraseGesture } from './erase-gesture';
 import { MeasureGesture } from './measure-gesture';
 import { ChipGesture } from './chip-gesture';
 
-/** One zone stroke: which note it writes into, and the cells that stood before it began. */
+/** One zone stroke: which note it writes into, and the half-grid cells that stood before it began. */
 interface ZoneStroke {
   /** The existing zone the press landed on, or null for the draft. */
   zoneId: string | null;
   base: MacroCoord[];
-  /** Cells the free brush has laid so far, growing per move. */
+  /** Half-grid cells the free brush has laid so far, growing per move. */
   painted: MacroCoord[];
-  /** The cell the free brush last reached, so a fast move lays the whole run between samples. */
+  /** The step the free brush last reached, so a fast move lays the whole run between samples. */
   last: MacroCoord;
+  /** The step and constrain key the stroke last wrote with; a move that changes neither writes
+   *  nothing, so the re-sample a write triggers costs no second write. */
+  written: string | null;
   moved: boolean;
   start: MacroCoord;
+}
+
+/** What a zone stroke's write depends on beyond its base: the step and the constrain key. */
+function writeKey(step: MacroCoord, ctx: AnnotateContext): string {
+  return `${step.x},${step.y},${ctx.modifiers.constrain}`;
 }
 
 export class AnnotateTool implements Tool<typeof PLACEMENT_GRID, AnnotateContext> {
@@ -55,10 +64,10 @@ export class AnnotateTool implements Tool<typeof PLACEMENT_GRID, AnnotateContext
 
   private stroke: ZoneStroke | null = null;
   private historyEpoch: number | undefined;
-  /** A drag figure in progress (line/rect/circle): where the drag began. */
+  /** A drag figure in progress (line/rect/circle): the step the drag began on. */
   private zoneAnchor: MacroCoord | null = null;
-  /** The curve figure's anchors so far, the draft they belong to, and the draft cells that stood
-   *  before the band began so each new anchor re-lays the whole band. */
+  /** The curve figure's anchor steps so far, the draft they belong to, and the draft's half-grid
+   *  cells that stood before the band began so each new anchor re-lays the whole band. */
   private curveAnchors: MacroCoord[] = [];
   private curveDraftId: string | null = null;
   private curveBase: MacroCoord[] = [];
@@ -234,22 +243,35 @@ export class AnnotateTool implements Tool<typeof PLACEMENT_GRID, AnnotateContext
       return;
     }
     if (ctx.arming.annotationTool !== 'zone' && ctx.arming.annotationTool !== 'erase') {
-      ctx.overlay.clearGhost();
+      const note = this.noteGhost(p, ctx);
+      if (note) ctx.overlay.showNoteGhost(note, note.kind === 'chip' ? ctx.tagLabel(note.tag) : '');
+      else ctx.overlay.clearGhost();
       return;
     }
     const erase = ctx.arming.annotationTool === 'erase';
     const shape = erase ? ctx.arming.eraserShape : ctx.arming.annotationZoneShape;
-    const cell = zoneCellAt(p);
+    const step = stepAt(p);
     let cells: MacroCoord[];
     if (shape === 'curve') {
       const anchors = erase ? this.erase.curveAnchors : ctx.arming.notes.draft?.id === this.curveDraftId ? this.curveAnchors : [];
-      cells = anchors.length ? splineCells([...anchors, cell], ctx.arming.brushSize) : footprint(cell, ctx);
-    } else if (shape === 'free') cells = footprint(cell, ctx);
+      cells = anchors.length ? curveCells([...anchors, step], ctx) : footprint(step, ctx);
+    } else if (shape === 'free') cells = footprint(step, ctx);
     else if (erase) {
       const anchor = this.erase.figureAnchor;
-      cells = anchor ? figureCells(shape, anchor, cell, ctx) : shape === 'line' ? footprint(cell, ctx) : [cell];
-    } else cells = figureCells(shape, this.zoneAnchor ?? cell, cell, ctx);
-    ctx.overlay.showGhost(cellSet(this.grid(), cells), { icon: erase ? 'eraser' : null, valid: true });
+      cells = anchor ? figureCells(shape, anchor, step, ctx) : shape === 'line' ? footprint(step, ctx) : figureCells(shape, step, step, ctx);
+    } else cells = figureCells(shape, this.zoneAnchor ?? step, step, ctx);
+    const shown = zoneCellsOnGrid(cells);
+    ctx.overlay.showGhost(cellSet(shown.grid, shown.cells), { icon: erase ? 'eraser' : null, valid: true });
+  }
+
+  /** The note the next press of the measure, route or chip verb would lay at `p`, if any. */
+  private noteGhost(p: MacroCoord, ctx: AnnotateContext): MapAnnotation | null {
+    switch (ctx.arming.annotationTool) {
+      case 'measure': return this.measure.ghost(p, ctx);
+      case 'route': return this.route.ghost(p, ctx);
+      case 'chip': return this.chip.ghost(p, ctx);
+      default: return null;
+    }
   }
 
   /* ── zone ─────────────────────────────────────────────────────────────── */
@@ -258,21 +280,22 @@ export class AnnotateTool implements Tool<typeof PLACEMENT_GRID, AnnotateContext
     if (!layerEditable(ctx)) return;
     const shape = ctx.arming.annotationZoneShape;
     if (shape === 'curve') { this.curvePress(p, ctx); return; }
-    const target = zoneBodyAt(zoneCellAt(p), ctx);
+    const target = zoneBodyAt(p, ctx);
     // A press elsewhere while notes stand selected clears the selection; the stroke still lands.
     if (ctx.arming.notes.selection.length > 0 && !(target && ctx.arming.notes.selection.includes(target.id))) {
       ctx.annotationEdit.select([]);
     }
-    const base = target ? target.cells : this.draftZone(ctx).cells;
-    const cell = zoneCellAt(p);
-    this.stroke = { zoneId: target?.id ?? null, base, painted: [], last: cell, moved: false, start: p };
-    if (shape !== 'free') this.zoneAnchor = cell;
+    const base = zoneHalfCells(target ?? this.draftZone(ctx));
+    const step = stepAt(p);
+    this.stroke = { zoneId: target?.id ?? null, base, painted: [], last: step, written: null, moved: false, start: p };
+    if (shape !== 'free') this.zoneAnchor = step;
     // On open ground a press paints at once, so a tap leaves a dab; on a zone it waits to learn
     // whether it is a click (select) or a drag (extend).
     if (!target) {
       ctx.annotationEdit.begin();
-      if (shape === 'free') this.stroke.painted = footprint(cell, ctx);
+      if (shape === 'free') this.stroke.painted = footprint(step, ctx);
       this.writeStroke(shape === 'free' ? this.stroke.painted : this.zoneFigure(p, ctx), ctx);
+      this.stroke.written = writeKey(step, ctx);
     }
   }
 
@@ -285,10 +308,13 @@ export class AnnotateTool implements Tool<typeof PLACEMENT_GRID, AnnotateContext
       if (s.zoneId) ctx.annotationEdit.begin();
       if (ctx.arming.annotationZoneShape === 'free') s.painted = footprint(s.last, ctx);
     }
+    const step = stepAt(p);
+    const key = writeKey(step, ctx);
+    if (s.written === key) return;
+    s.written = key;
     if (ctx.arming.annotationZoneShape === 'free') {
-      const cell = zoneCellAt(p);
-      s.painted = addZoneCells(s.painted, run(s.last, cell, ctx));
-      s.last = cell;
+      s.painted = addZoneCells(s.painted, run(s.last, step, ctx));
+      s.last = step;
       this.writeStroke(s.painted, ctx);
     } else {
       this.writeStroke(this.zoneFigure(p, ctx), ctx);
@@ -303,7 +329,7 @@ export class AnnotateTool implements Tool<typeof PLACEMENT_GRID, AnnotateContext
     if (s.zoneId && !s.moved) ctx.annotationEdit.select([s.zoneId]);
   }
 
-  /** Lay `cells` over the stroke's base into its target: the zone in place, or the draft. */
+  /** Lay half-grid `cells` over the stroke's base into its target: the zone in place, or the draft. */
   private writeStroke(cells: MacroCoord[], ctx: AnnotateContext): void {
     const s = this.stroke!;
     const merged = addZoneCells(s.base, cells);
@@ -311,11 +337,11 @@ export class AnnotateTool implements Tool<typeof PLACEMENT_GRID, AnnotateContext
       const id = s.zoneId;
       ctx.annotationEdit.apply((data) => {
         const i = data.items.findIndex((n) => n.id === id);
-        if (i >= 0 && data.items[i]!.kind === 'zone') data.items[i] = { ...(data.items[i] as ZoneNote), cells: merged };
+        if (i >= 0 && data.items[i]!.kind === 'zone') data.items[i] = zoneWithHalfCells(data.items[i] as ZoneNote, merged);
       });
       return;
     }
-    ctx.annotationEdit.setDraft({ ...this.draftZone(ctx), cells: merged });
+    ctx.annotationEdit.setDraft(zoneWithHalfCells(this.draftZone(ctx), merged));
   }
 
   /** The standing zone draft, or a fresh one wearing the armed tag, color and size. */
@@ -329,11 +355,10 @@ export class AnnotateTool implements Tool<typeof PLACEMENT_GRID, AnnotateContext
     };
   }
 
-  /** The zone drag figure's cells, from the anchor to the pointer. Cells are captured on the
-   *  zone's drawn grid so the figure lands under the cursor. */
+  /** The zone drag figure's half-grid cells, from the anchor step to the pointer's. */
   private zoneFigure(p: MacroCoord, ctx: AnnotateContext): MacroCoord[] {
-    const cell = zoneCellAt(p);
-    return figureCells(ctx.arming.annotationZoneShape as DragShapeKind, this.zoneAnchor ?? cell, cell, ctx);
+    const step = stepAt(p);
+    return figureCells(ctx.arming.annotationZoneShape as DragShapeKind, this.zoneAnchor ?? step, step, ctx);
   }
 
   /** The curve figure: presses lay anchors into the draft; a press back on the last one closes the
@@ -341,19 +366,19 @@ export class AnnotateTool implements Tool<typeof PLACEMENT_GRID, AnnotateContext
   private curvePress(p: MacroCoord, ctx: AnnotateContext): void {
     const draft = this.draftZone(ctx);
     if (this.curveDraftId !== draft.id) { this.curveAnchors = []; this.curveDraftId = draft.id; }
-    const cell = zoneCellAt(p);
+    const step = stepAt(p);
     const last = this.curveAnchors[this.curveAnchors.length - 1];
-    if (last && Math.hypot(cell.x - last.x, cell.y - last.y) <= routeHitDistCells(annotationInkScale(ctx.state.template))) {
+    if (last && stepDistance(step, last) <= routeHitDistCells(annotationInkScale(ctx.state.template))) {
       this.curveAnchors = [];
       return;
     }
     ctx.annotationEdit.begin();
-    if (this.curveAnchors.length === 0) this.curveBase = draft.cells;
-    this.curveAnchors = [...this.curveAnchors, cell];
+    if (this.curveAnchors.length === 0) this.curveBase = zoneHalfCells(draft);
+    this.curveAnchors = [...this.curveAnchors, step];
     const band = this.curveAnchors.length === 1
       ? footprint(this.curveAnchors[0]!, ctx)
-      : splineCells(this.curveAnchors, ctx.arming.brushSize);
-    ctx.annotationEdit.setDraft({ ...draft, cells: addZoneCells(this.curveBase, band) });
+      : curveCells(this.curveAnchors, ctx);
+    ctx.annotationEdit.setDraft(zoneWithHalfCells(draft, addZoneCells(this.curveBase, band)));
   }
 
   /* ── select ───────────────────────────────────────────────────────────── */
@@ -393,7 +418,7 @@ export class AnnotateTool implements Tool<typeof PLACEMENT_GRID, AnnotateContext
     ctx.annotationEdit.apply((data) => {
       for (const orig of drag.origs) {
         const i = data.items.findIndex((n) => n.id === orig.id);
-        if (i >= 0) data.items[i] = movedBy(orig, dx, dy);
+        if (i >= 0) data.items[i] = movedNote(orig, dx, dy);
       }
     });
   }

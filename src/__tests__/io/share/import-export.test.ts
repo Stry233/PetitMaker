@@ -6,7 +6,7 @@ import { importFromRaster } from '../../../io/share/import';
 import { canonicalize, canonicalBytes } from '../../../io/save/canonical';
 import { CURRENT_GRID_ROWS, CURRENT_TOP_ROWS } from '../../../io/share/glyph/geometry';
 import type { ShareCodeMeta } from '../../../io/share/codec/payload';
-import { corpusCases } from './corpus';
+import { handEditedCase } from './corpus';
 import { exportable } from '../../_support/exportable';
 
 const META: ShareCodeMeta = { appVersion: '1.0-test', saveVersion: 3 };
@@ -37,8 +37,7 @@ function tamperDataRegion(code: ShareCode, count: number, seed: number): Uint8Ar
 
 describe('PetitGlyph raster-first import/export', () => {
   it('buildShareCode → importFromRaster round-trips a hand-edited corpus map exactly', { timeout: 20_000 }, async () => {
-    const cases = await corpusCases();
-    const { state } = cases.find((c) => c.name === 'hand-edit-small')!;
+    const state = handEditedCase();
 
     const code = await buildShareCode(exportable(state), null, META, 1600);
     expect(code).not.toBeNull();
@@ -51,8 +50,7 @@ describe('PetitGlyph raster-first import/export', () => {
   });
 
   it('drops a decoded generation note that is not a generation config', async () => {
-    const cases = await corpusCases();
-    const { state } = cases.find((c) => c.name === 'hand-edit-small')!;
+    const state = handEditedCase();
     const forged = { ...state, generation: { algorithm: 'island', seed: 'not-a-number' } as never };
 
     const code = await buildShareCode(exportable(forged), null, META, 1600);
@@ -77,8 +75,7 @@ describe('PetitGlyph raster-first import/export', () => {
   });
 
   it('tampering ~40 scattered data-region pixels never yields a wrong canonical', async () => {
-    const cases = await corpusCases();
-    const { state } = cases.find((c) => c.name === 'hand-edit-small')!;
+    const state = handEditedCase();
     const code = await buildShareCode(exportable(state), null, META, 1600);
     expect(code).not.toBeNull();
 

@@ -5,7 +5,7 @@ import { TILE_SIZE } from '../geometry/world';
 import type { GridState, PlacedObject } from '../../../core/model/types';
 import { getCatalogItem } from '../../../state/catalog';
 import type { CatalogEntry } from '../../../config/catalog/catalog-entry';
-import { hasTrait, isCoatingItem, isRamp, isSurfacePrint } from '../../../core/model/traits';
+import { coatingLayer, hasTrait, isCoatingItem, isRamp, isSurfacePrint } from '../../../core/model/traits';
 import { roadLookup } from '../../../state/object-index';
 import { isMotionReduced } from '../../../platform/channels/motion-state';
 import { objectElevation, getPlacedObjectSize } from '../../../state/object-geometry';
@@ -27,6 +27,7 @@ import { MIN_NUMBER_ZOOM } from './number-overlay';
 import { animateSquash, animateRotation, animateGroupRotation, animateRemove, fadeLayer } from './object-animations';
 import type { GroupRotation } from '../../../tools/objects';
 import { OBJECT_CHILD } from '../draw/object-children';
+import { layerNumeral } from '../../../i18n/terms/layer-name';
 
 // Backing tint for an object with no sprite/color of its own — the shared fallback from
 // anim-config (single source; the 3D poof tint reads the same table).
@@ -90,11 +91,15 @@ export class ObjectLayer {
   // show-layer-numbers toggle.
   private numberZoomOk = true;
   private pendingPlop = new Set<string>();
+  /** Print buckets keyed `elevation:coating layer`. */
+  private printChunks = new Map<string, ChunkGrid>();
   /** One sub-container per elevation, so a layer can fade as a unit. Inside each,
    *  wrappers live in culled chunk buckets (ChunkGrid) so an off-screen chunk's whole subtree
    *  is skipped per frame — pan/zoom cost tracks the objects on screen, not the map total. */
-  private printChunks = new Map<number, ChunkGrid>();
   private layerContainers = new Map<number, PIXI.Container>();
+  /** Per elevation, the coatings (road surfaces and prints) under every solid object, ordered by
+   *  zIndex = `coatingLayer`, the key 3D's `renderOrder` reads, whatever order they were drawn in. */
+  private surfaceContainers = new Map<number, PIXI.Container>();
   private layerChunks = new Map<number, ChunkGrid>();
   private layerFadeAnim = new Map<number, number>();
   private lastCullRect: CullRect | null = null;
@@ -107,7 +112,7 @@ export class ObjectLayer {
   private readonly roads = new RoadSurfaces({
     container: () => this.container,
     requestRender: () => this.requestRender(),
-    layerContainerFor: (elev) => this.layerContainerFor(elev),
+    surfaceContainerFor: (elev) => this.surfaceContainerFor(elev),
     state: () => this.deps.state(),
   });
 
@@ -131,10 +136,21 @@ export class ObjectLayer {
       lc = new PIXI.Container();
       lc.zIndex = elev; // higher elevations render on top
       if (this.hiddenLayers.has(elev)) { lc.visible = false; lc.alpha = 0; }
+      const surfaces = new PIXI.Container();
+      surfaces.sortableChildren = true;
+      lc.addChild(surfaces);
+      this.surfaceContainers.set(elev, surfaces);
       this.layerContainers.set(elev, lc);
       this.container.addChild(lc);
     }
     return lc;
+  }
+
+  /** The coatings container at the bottom of `elev`'s container; a child sets its `zIndex` to its
+   *  coating layer. */
+  private surfaceContainerFor(elev: number): PIXI.Container {
+    this.layerContainerFor(elev);
+    return this.surfaceContainers.get(elev)!;
   }
 
   /** The chunk bucket for an object at (worldX, worldY) on `elev`. */
@@ -362,7 +378,7 @@ export class ObjectLayer {
 
       this.objectMap.set(obj.id, wrapper);
       this.drawnFrom.set(obj.id, drawnAs(obj));
-      this.mount(wrapper, elev, size, !!print);
+      this.mount(wrapper, elev, size, print ? coatingLayer(item) : undefined);
       // A deliberately point-placed object plops (squash + dust puff) the instant its wrapper
       // exists. Bulk adds never request a plop.
       if (this.pendingPlop.delete(obj.id)) this.playPlop(obj, item, size);
@@ -450,9 +466,10 @@ export class ObjectLayer {
   /** The elevation label: geometry recorded now, the Text built only while numbers are shown (see
    *  labelMeta: a Text per object is a rasterized texture each). */
   private drawElevationLabel(wrapper: PIXI.Container, id: string, elev: number, size: Size): void {
-    this.labelMeta.set(id, { text: String(elev), y: size.h * TILE_SIZE - 3 });
+    const text = layerNumeral(elev);
+    this.labelMeta.set(id, { text, y: size.h * TILE_SIZE - 3 });
     if (!this.labelsVisible()) return;
-    wrapper.addChild(this.makeElevLabel(String(elev), size.h * TILE_SIZE - 3));
+    wrapper.addChild(this.makeElevLabel(text, size.h * TILE_SIZE - 3));
     this.labelBuilt.add(id);
   }
 
@@ -462,17 +479,20 @@ export class ObjectLayer {
    * bucketed by the anchor cell with a CULL_MARGIN_PX overscan for spill; an object that spills
    * further (a landmark's footprint) can be on screen while its anchor chunk is culled, so it skips
    * the buckets and never culls (it still fades with its elevation container; a map holds at most a
-   * handful of such giants). Prints keep their own buckets, under the solid objects.
+   * handful of such giants). A print (`printLayer`, its coating layer) keeps its own buckets among
+   * the coatings, under the solid objects and over the pavement of a lower coating layer.
    */
-  private mount(wrapper: PIXI.Container, elev: number, size: Size, print: boolean): void {
-    if (print) {
-      let grid = this.printChunks.get(elev);
+  private mount(wrapper: PIXI.Container, elev: number, size: Size, printLayer?: number): void {
+    if (printLayer !== undefined) {
+      const key = `${elev}:${printLayer}`;
+      let grid = this.printChunks.get(key);
       if (!grid) {
         const prints = new PIXI.Container();
-        this.layerContainerFor(elev).addChildAt(prints, 0);
+        prints.zIndex = printLayer;
+        this.surfaceContainerFor(elev).addChild(prints);
         grid = new ChunkGrid(prints);
         if (this.lastCullRect) grid.cull(this.lastCullRect);
-        this.printChunks.set(elev, grid);
+        this.printChunks.set(key, grid);
       }
       grid.bucketFor(wrapper.x, wrapper.y).addChild(wrapper);
     } else if (Math.max(size.w, size.h) * TILE_SIZE > CULL_MARGIN_PX) {

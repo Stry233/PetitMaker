@@ -7,7 +7,7 @@ import { clientPoint } from '../../platform/device/viewport-space';
  * selection (the shot editor) drives the same gestures as the full editor without borrowing the
  * rest of the pointer machine. What it deliberately does not own is the decision to arm a left
  * pan: in the editor that decision is entangled with selection and the active tool, so the caller
- * makes it and calls `panFrom`. Everything downstream of the decision — delta signs, the drag
+ * makes it and calls `panFrom`. Everything downstream of the decision — delta signs, applying the drag
  * threshold, verb dispatch, the reported drag state — lives here, so both callers answer a drag the
  * same way.
  *
@@ -18,10 +18,8 @@ import type { ViewCamera } from '../../tools/pointer/runtime';
 import type { DragKind } from './cursor-controller';
 import { pinchWheelFactor, WheelClassifier, type PinchDelta } from './gestures';
 import { isNavButton } from './press/pointer-buttons';
+import { travelledPast, DRAG_THRESHOLD } from './press/travel';
 import { navDragVerb, wheelVerb, type CameraCaps } from './press/camera-verbs';
-
-/** Screen px of travel before a nav press counts as a drag rather than a tap. */
-export const DRAG_THRESHOLD = 3;
 
 /** The verbs a gesture drives: a camera-only surface (the export shot editor) offers these and
  *  no button glide or fit, which belong to the chrome. */
@@ -117,7 +115,7 @@ export function createCameraGestures(host: CameraGestureHost): CameraGestures {
       if (!navigating) return false;
       const cam = host.camera();
       if (!cam) return true;
-      if (Math.abs(clientPoint(e).x - downX) > DRAG_THRESHOLD || Math.abs(clientPoint(e).y - downY) > DRAG_THRESHOLD) {
+      if (travelledPast(clientPoint(e).x - downX, clientPoint(e).y - downY, DRAG_THRESHOLD)) {
         moved = true;
       }
       if (navDragVerb(capsOf(cam)) === 'orbit') cam.orbit!(clientPoint(e).x - lastX, clientPoint(e).y - lastY);

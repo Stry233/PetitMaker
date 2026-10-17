@@ -19,14 +19,16 @@ import {
 import { getCell } from '../core/model/grid-model';
 import { coveredCells, footprintCells } from '../core/grid/footprint';
 import { realSurface, surfaceElevation } from '../core/domain/terrain/terrain-surface';
-import { getCatalogItem } from '../state/catalog';
-import { getPlacedObjectSize, onItemGrid, placedFootprint } from '../state/object-geometry';
+import { getAllItems, getCatalogItem, itemRole } from '../state/catalog';
+import { getPlacedObjectSize, objectRect, onItemGrid, placedFootprint } from '../state/object-geometry';
 import { entriesNear, getObjectIndex } from '../state/object-index';
 import { bridgeSpanHolds, detectBridgeSpan } from '../core/domain/terrain/bridge-span';
 import { detectRampSpan, rampSpanHolds } from '../core/domain/terrain/ramp-span';
 import { PLACEMENT_GRID, TERRAIN_GRID } from '../core/game/profile';
 import { evidenceOn } from '../core/grid/grids';
-import { isSelfSnappingTrait, type SelfSnappingTrait } from '../core/model/traits';
+import { findTrait, isSelfSnappingTrait, type SelfSnappingTrait } from '../core/model/traits';
+import type { Rect } from '../core/grid/rect';
+import type { RuleMessageKey } from './messages';
 import { definePreRule, type Fail } from './define';
 
 /** What every trait validator reads: the placement being judged and the cells it covers. */
@@ -91,6 +93,55 @@ export function flatSweepOffenders(state: GridState, pos: MacroCoord, w: number,
   return offenders;
 }
 
+/** Open cells between two footprints, the larger of the two axes' gaps (0 where they touch or
+ *  overlap): a diagonal neighbour is as close as a side neighbour. */
+function footprintGap(a: Rect, b: Rect): number {
+  const gx = Math.max(b.x - (a.x + a.w), a.x - (b.x + b.w), 0);
+  const gy = Math.max(b.y - (a.y + a.h), a.y - (b.y + b.h), 0);
+  return Math.max(gx, gy);
+}
+
+/** The largest `exclusionRadius` the catalog holds: how far a neighbour's own spacing reaches. */
+function widestExclusion(): number {
+  let widest = 0;
+  for (const i of getAllItems()) widest = Math.max(widest, findTrait(i, 'exclusionRadius')?.radius ?? 0);
+  return widest;
+}
+
+/**
+ * The `exclusionRadius` test: the standing objects (other than `selfId`) that also carry the trait
+ * and stand nearer `rect` than the larger radius of the pair, their footprints, and the first pair's
+ * message and spacing; null when `item` carries no radius or nothing is too close. A generator that
+ * must foresee the refusal asks this.
+ */
+export function spacingClash(
+  state: GridState, item: CatalogItem, rect: Rect, selfId?: string,
+): { offenders: MacroCoord[]; message: RuleMessageKey; n: number } | null {
+  const own = findTrait(item, 'exclusionRadius');
+  if (!own) return null;
+  const reach = Math.max(own.radius, widestExclusion());
+  const near = entriesNear(getObjectIndex(state), { x: rect.x - reach, y: rect.y - reach, w: rect.w + 2 * reach, h: rect.h + 2 * reach });
+  const offenders: MacroCoord[] = [];
+  let first: { message: RuleMessageKey; n: number } | null = null;
+  for (const e of near) {
+    if (!e.item || e.obj.id === selfId) continue;
+    const theirs = findTrait(e.item, 'exclusionRadius');
+    const need = Math.max(own.radius, theirs?.radius ?? 0);
+    if (!theirs || footprintGap(rect, e.rect) >= need) continue;
+    offenders.push(...placedFootprint(e.obj));
+    first ??= { message: spacingMessage(item, e.item), n: need };
+  }
+  return first && { offenders, ...first };
+}
+
+/** The refusal two spaced items too close give: two homes, a home and a tree, or two of one kind. */
+function spacingMessage(a: CatalogItem, b: CatalogItem): RuleMessageKey {
+  const roles = new Set([itemRole(a), itemRole(b)]);
+  if (roles.size === 1 && roles.has('home')) return 'error.house_too_close';
+  if (roles.has('home') && roles.has('canopy')) return 'error.house_tree_too_close';
+  return 'error.too_close_same_kind';
+}
+
 /** A marker trait read elsewhere, with no placement constraint of its own. */
 const passive = (): ValidationError[] => [];
 
@@ -141,22 +192,12 @@ const TRAIT_VALIDATORS: { [K in PlacementTrait['type']]: TraitValidator<K> } = {
     return [];
   },
 
-  exclusionRadius(trait, { item, state, pos, fail }) {
-    // Evidence = the footprints of every conflicting same-category object — the
-    // things that are too close — not the attempted spot. Candidates come from
-    // the spatial index over the radius square (anchor distance is Chebyshev,
-    // so any conflicting anchor lies inside it).
-    const offenders: MacroCoord[] = [];
-    const r = trait.radius;
-    const near = entriesNear(getObjectIndex(state), { x: pos.x - r, y: pos.y - r, w: 2 * r + 1, h: 2 * r + 1 });
-    for (const e of near) {
-      if (!e.item || e.item.category !== item.category) continue;
-      const dx = Math.abs(pos.x - e.obj.position.x);
-      const dy = Math.abs(pos.y - e.obj.position.y);
-      if (dx <= r && dy <= r) offenders.push(...placedFootprint(e.obj));
-    }
-    if (offenders.length > 0) return [fail('error.too_close_same_kind', evidenceOn(PLACEMENT_GRID, offenders))];
-    return [];
+  // Two items that both carry the trait keep the larger of their radii as open ground between
+  // their footprints, diagonals included. Evidence = the footprints of the objects too close.
+  exclusionRadius(_trait, { item, cmd, state, fail }) {
+    const clash = spacingClash(state, item, objectRect(cmd.object, item), cmd.object.id);
+    if (!clash) return [];
+    return [fail(clash.message, evidenceOn(PLACEMENT_GRID, clash.offenders), { messageParams: { n: clash.n } })];
   },
 
   // Terrain may use this footprint as a base (base-support).
@@ -165,6 +206,8 @@ const TRAIT_VALIDATORS: { [K in PlacementTrait['type']]: TraitValidator<K> } = {
   coatingSupport: passive,
   plantable: passive,
   growsOnPlantable: passive,
+  // The ground zones V-ZONE-01 reads (`core/model/traits.ts:groundZonesOf`).
+  groundZones: passive,
   // How the item turns in the planet session (editor/operations/planet-session).
   footprintTurn: passive,
   // Grants the item a half-cell anchor on both axes (state/object-geometry:hasHalfStep); an item

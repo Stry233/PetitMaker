@@ -44,8 +44,11 @@ export function MenuBubbles({ splashActive }: { splashActive: boolean }) {
   // A scanned planet's review chip stands under the session's nameplate, where a bubble from the
   // menu can reach in a narrow window; the bubbles wait until that session ends.
   const reviewing = useEditorStore((s) => !!s.planetSession?.review);
+  const repairOpen = useEditorStore((s) => s.repairSession !== null);
   const released = !windowOpen && !reviewing
-    && arrivalOpens({ splashActive, blocked, tourRunning, tourSettled: hasSeenTour(), tourDoneOpen: modals.tourDone, whatsNewOpen: modals.whatsNew });
+    && arrivalOpens({
+      splashActive, blocked, tourRunning, tourSettled: hasSeenTour(), tourDoneOpen: modals.tourDone, whatsNewOpen: modals.whatsNew, repairOpen,
+    });
   // The bubbles look one task after the release, as the arrival notice does: a window that opens
   // in the same commit's effects is up before they do.
   const [settled, setSettled] = useState(false);

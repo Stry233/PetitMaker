@@ -71,11 +71,12 @@ export function cellDecals(
   const trimmed = new Set(trim.map((t) => cellKey(t.x, t.y)));
   const onTerrain = grid === TERRAIN_GRID;
   for (const { x, y } of cells) {
-    if (!drawable(x, y) || trimmed.has(cellKey(x, y))) continue;   // a trimmed cell draws its own shape below
     if (!onTerrain) {
-      drapeArea(state, gridCellRect(GRIDS[grid], { x, y }), push);
+      const area = gridCellRect(GRIDS[grid], { x, y });
+      if (drawable(area.x, area.y) && !trimmed.has(cellKey(x, y))) drapeArea(state, area, push);
       continue;
     }
+    if (!drawable(x, y) || trimmed.has(cellKey(x, y))) continue;   // a trimmed cell draws its own shape below
     const [x0, z0] = cellOrigin(x, y);
     // Off the map there is no cell to read, so the world-space sample answers for the ring of cells
     // a brush is allowed to hang over the border.

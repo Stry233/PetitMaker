@@ -63,7 +63,7 @@ describe('the 2D camera buttons', () => {
     setReducedMotion(true);
     const r = renderer();
     const state = makeState(24, 16);
-    r.initMap(state, false);
+    r.initMap(state, null);
     const fitted = renderer();
     fitted.viewport.fitToMap(24, 16);
     r.viewport.setZoom(3, 0, 0);

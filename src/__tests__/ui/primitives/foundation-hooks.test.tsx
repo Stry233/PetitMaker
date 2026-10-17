@@ -4,6 +4,7 @@ import { act, cleanup, render, renderHook } from '@testing-library/react';
 import { useRef } from 'react';
 import { useObservedSize } from '../../../ui/primitives/use-observed-size';
 import { useLatch } from '../../../ui/primitives/use-latch';
+import { useTransient } from '../../../ui/primitives/use-transient';
 import { useNaturalWidth } from '../../../ui/shell/controls/use-natural-width';
 import { useRootCssVars } from '../../../ui/primitives/use-root-css-vars';
 import { afterPaint, onAfterPaint } from '../../../platform/async/after-paint';
@@ -66,6 +67,24 @@ describe('useLatch', () => {
     rerender({ on: true });
     rerender({ on: false });
     expect(result.current).toBe(true);
+  });
+});
+
+describe('useTransient', () => {
+  it('stands for its hold, restarts on a further show and clears on unmount', () => {
+    vi.useFakeTimers();
+    const { result, unmount } = renderHook(() => useTransient<string>(100));
+    expect(result.current.value).toBeNull();
+    act(() => { result.current.show('a'); });
+    act(() => { vi.advanceTimersByTime(60); });
+    act(() => { result.current.show('b'); });
+    act(() => { vi.advanceTimersByTime(99); });
+    expect(result.current.value).toBe('b');
+    act(() => { vi.advanceTimersByTime(1); });
+    expect(result.current.value).toBeNull();
+    act(() => { result.current.show('c'); });
+    unmount();
+    expect(vi.getTimerCount()).toBe(0);
   });
 });
 

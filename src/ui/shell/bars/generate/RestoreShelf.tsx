@@ -8,7 +8,7 @@ import { useEffect, useState } from 'react';
 import { motion, useIsPresent } from 'framer-motion';
 import { renderThumbnail } from '../../../../view/map2d/capture/thumbnail';
 import { useT } from '../../../../i18n/context';
-import { timedHint } from '../../../../i18n/timed-hint';
+import { timedHint } from '../../../chrome/timed-hint';
 import type { GridState } from '../../../../core/model/types';
 import { helpTargetAttr } from '../../../session/help-targets';
 import { TimedButton } from '../../../primitives/TimedButton';
@@ -86,7 +86,7 @@ function RestoreShelfBody({ state, splashActive = false, onRestore, onDismiss }:
     let dropped = false;
     void (async () => {
       // Render at the inner picture rect's aspect so CardFace can fill it without letterboxing.
-      const png = await renderThumbnail(state, SHOT_PX, CARD.pic.w / CARD.pic.h);
+      const png = await renderThumbnail(state, SHOT_PX, { aspect: CARD.pic.w / CARD.pic.h });
       if (!dropped) setShot(png);
     })();
     return () => { dropped = true; };

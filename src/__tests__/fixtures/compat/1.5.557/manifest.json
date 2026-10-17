@@ -82,7 +82,7 @@
       ],
       "digest": {
        "cells": "44772e5c4311fbfa",
-       "objects": "75a12243d1b2f45a"
+       "objects": "5372fb3ada87b782"
       },
       "undoDepth": 0,
       "warnings": [
@@ -115,7 +115,7 @@
       ],
       "digest": {
        "cells": "44772e5c4311fbfa",
-       "objects": "75a12243d1b2f45a"
+       "objects": "5372fb3ada87b782"
       },
       "warnings": [
        "landmark-cleared"
@@ -147,7 +147,7 @@
       ],
       "digest": {
        "cells": "44772e5c4311fbfa",
-       "objects": "75a12243d1b2f45a"
+       "objects": "5372fb3ada87b782"
       },
       "warnings": [
        "template-drift",
@@ -182,7 +182,7 @@
       ],
       "digest": {
        "cells": "44772e5c4311fbfa",
-       "objects": "75a12243d1b2f45a"
+       "objects": "5372fb3ada87b782"
       },
       "warnings": [
        "template-drift",
@@ -243,11 +243,12 @@
       "migrations": [
        "history-before-v3",
        "landmark-ground",
-       "landmark-layout-v3"
+       "landmark-layout-v3",
+       "current-rules"
       ],
       "digest": {
-       "cells": "8958977730cd9eed",
-       "objects": "e5d0bf5c68a43846"
+       "cells": "24a569f072ed3299",
+       "objects": "30c3a8d99deba12c"
       },
       "undoDepth": 0,
       "warnings": [
@@ -276,11 +277,12 @@
      "current": {
       "migrations": [
        "landmark-ground",
-       "landmark-layout-v3"
+       "landmark-layout-v3",
+       "current-rules"
       ],
       "digest": {
-       "cells": "8958977730cd9eed",
-       "objects": "e5d0bf5c68a43846"
+       "cells": "24a569f072ed3299",
+       "objects": "30c3a8d99deba12c"
       },
       "warnings": [
        "landmark-cleared"
@@ -308,11 +310,12 @@
       "migrations": [
        "landmark-ground",
        "landmark-layout-v3",
-       "share-identity-drift"
+       "share-identity-drift",
+       "current-rules"
       ],
       "digest": {
-       "cells": "8958977730cd9eed",
-       "objects": "e5d0bf5c68a43846"
+       "cells": "24a569f072ed3299",
+       "objects": "30c3a8d99deba12c"
       },
       "warnings": [
        "template-drift",
@@ -342,11 +345,12 @@
       "migrations": [
        "history-before-v3",
        "landmark-ground",
-       "landmark-layout-v3"
+       "landmark-layout-v3",
+       "current-rules"
       ],
       "digest": {
-       "cells": "8958977730cd9eed",
-       "objects": "e5d0bf5c68a43846"
+       "cells": "24a569f072ed3299",
+       "objects": "30c3a8d99deba12c"
       },
       "history": 0,
       "warnings": [
@@ -898,9 +902,16 @@
      },
      "current": {
       "migrations": [
-       "history-before-v3"
+       "history-before-v3",
+       "current-rules"
       ],
-      "undoDepth": 0
+      "undoDepth": 0,
+      "digest": {
+       "objects": "e9f600330984b508"
+      },
+      "warnings": [
+       "landmark-cleared"
+      ]
      }
     },
     "json-min": {
@@ -920,6 +931,17 @@
        }
       },
       "undoDepth": 0
+     },
+     "current": {
+      "migrations": [
+       "current-rules"
+      ],
+      "digest": {
+       "objects": "e9f600330984b508"
+      },
+      "warnings": [
+       "landmark-cleared"
+      ]
      }
     },
     "share": {
@@ -941,11 +963,16 @@
      },
      "current": {
       "migrations": [
-       "share-identity-drift"
+       "share-identity-drift",
+       "current-rules"
       ],
       "warnings": [
-       "catalog-drift"
-      ]
+       "catalog-drift",
+       "landmark-cleared"
+      ],
+      "digest": {
+       "objects": "e9f600330984b508"
+      }
      }
     },
     "autosave": {
@@ -967,9 +994,16 @@
      },
      "current": {
       "migrations": [
-       "history-before-v3"
+       "history-before-v3",
+       "current-rules"
       ],
-      "history": 0
+      "history": 0,
+      "digest": {
+       "objects": "e9f600330984b508"
+      },
+      "warnings": [
+       "landmark-cleared"
+      ]
      }
     },
     "planet": {
@@ -1211,11 +1245,12 @@
      "current": {
       "migrations": [
        "landmark-ground",
-       "landmark-layout-v3"
+       "landmark-layout-v3",
+       "current-rules"
       ],
       "digest": {
-       "cells": "66bdecfd1af7327b",
-       "objects": "8df9cb30e502bc14"
+       "cells": "e0c616ea966a8e1a",
+       "objects": "d521be812901c2bd"
       },
       "warnings": [
        "landmark-cleared"
@@ -1243,11 +1278,12 @@
       "migrations": [
        "landmark-ground",
        "landmark-layout-v3",
-       "share-identity-drift"
+       "share-identity-drift",
+       "current-rules"
       ],
       "digest": {
-       "cells": "66bdecfd1af7327b",
-       "objects": "8df9cb30e502bc14"
+       "cells": "e0c616ea966a8e1a",
+       "objects": "d521be812901c2bd"
       },
       "warnings": [
        "template-drift",
@@ -1277,11 +1313,12 @@
       "migrations": [
        "history-before-v3",
        "landmark-ground",
-       "landmark-layout-v3"
+       "landmark-layout-v3",
+       "current-rules"
       ],
       "digest": {
-       "cells": "66bdecfd1af7327b",
-       "objects": "8df9cb30e502bc14"
+       "cells": "e0c616ea966a8e1a",
+       "objects": "d521be812901c2bd"
       },
       "history": 0,
       "warnings": [
@@ -1339,11 +1376,12 @@
      "current": {
       "migrations": [
        "landmark-ground",
-       "landmark-layout-v3"
+       "landmark-layout-v3",
+       "current-rules"
       ],
       "digest": {
        "cells": "3ed694d0e0034999",
-       "objects": "096dd35a864ff594"
+       "objects": "4e193bb7eb65a14c"
       },
       "warnings": [
        "landmark-cleared"
@@ -1371,11 +1409,12 @@
       "migrations": [
        "landmark-ground",
        "landmark-layout-v3",
-       "share-identity-drift"
+       "share-identity-drift",
+       "current-rules"
       ],
       "digest": {
        "cells": "3ed694d0e0034999",
-       "objects": "096dd35a864ff594"
+       "objects": "4e193bb7eb65a14c"
       },
       "warnings": [
        "template-drift",
@@ -1436,11 +1475,12 @@
      "current": {
       "migrations": [
        "landmark-ground",
-       "landmark-layout-v3"
+       "landmark-layout-v3",
+       "current-rules"
       ],
       "digest": {
        "cells": "6ef7524fd257d810",
-       "objects": "e939f93077647e28"
+       "objects": "cb4e3bf0363eeae2"
       },
       "warnings": [
        "landmark-cleared"
@@ -1468,11 +1508,12 @@
       "migrations": [
        "landmark-ground",
        "landmark-layout-v3",
-       "share-identity-drift"
+       "share-identity-drift",
+       "current-rules"
       ],
       "digest": {
        "cells": "6ef7524fd257d810",
-       "objects": "e939f93077647e28"
+       "objects": "cb4e3bf0363eeae2"
       },
       "warnings": [
        "template-drift",
@@ -1533,11 +1574,12 @@
      "current": {
       "migrations": [
        "landmark-ground",
-       "landmark-layout-v3"
+       "landmark-layout-v3",
+       "current-rules"
       ],
       "digest": {
        "cells": "f203243a18583567",
-       "objects": "5807401b18807281"
+       "objects": "5bf356466e4a59b9"
       },
       "warnings": [
        "landmark-cleared"
@@ -1565,11 +1607,12 @@
       "migrations": [
        "landmark-ground",
        "landmark-layout-v3",
-       "share-identity-drift"
+       "share-identity-drift",
+       "current-rules"
       ],
       "digest": {
        "cells": "f203243a18583567",
-       "objects": "5807401b18807281"
+       "objects": "5bf356466e4a59b9"
       },
       "warnings": [
        "template-drift",
@@ -1630,11 +1673,12 @@
      "current": {
       "migrations": [
        "landmark-ground",
-       "landmark-layout-v3"
+       "landmark-layout-v3",
+       "current-rules"
       ],
       "digest": {
        "cells": "54da059e7860db49",
-       "objects": "1c7edb3b20984071"
+       "objects": "e2184263e1a99982"
       },
       "warnings": [
        "landmark-cleared"
@@ -1662,11 +1706,12 @@
       "migrations": [
        "landmark-ground",
        "landmark-layout-v3",
-       "share-identity-drift"
+       "share-identity-drift",
+       "current-rules"
       ],
       "digest": {
        "cells": "54da059e7860db49",
-       "objects": "1c7edb3b20984071"
+       "objects": "e2184263e1a99982"
       },
       "warnings": [
        "template-drift",
@@ -1697,11 +1742,12 @@
       "migrations": [
        "landmark-ground",
        "landmark-layout-v3",
-       "share-identity-drift"
+       "share-identity-drift",
+       "current-rules"
       ],
       "digest": {
        "cells": "54da059e7860db49",
-       "objects": "1c7edb3b20984071"
+       "objects": "e2184263e1a99982"
       },
       "warnings": [
        "template-drift",
@@ -1762,11 +1808,12 @@
      "current": {
       "migrations": [
        "landmark-ground",
-       "landmark-layout-v3"
+       "landmark-layout-v3",
+       "current-rules"
       ],
       "digest": {
        "cells": "39b8d4bab2f48d74",
-       "objects": "3c3ee8a142c6d4de"
+       "objects": "9ab9d77607b7b52e"
       },
       "warnings": [
        "landmark-cleared"
@@ -1794,11 +1841,12 @@
       "migrations": [
        "landmark-ground",
        "landmark-layout-v3",
-       "share-identity-drift"
+       "share-identity-drift",
+       "current-rules"
       ],
       "digest": {
        "cells": "39b8d4bab2f48d74",
-       "objects": "3c3ee8a142c6d4de"
+       "objects": "9ab9d77607b7b52e"
       },
       "warnings": [
        "template-drift",
@@ -1973,7 +2021,7 @@
       ],
       "digest": {
        "cells": "3ed694d0e0034999",
-       "objects": "46255b2066fe38db"
+       "objects": "8555f7e496ea9d67"
       },
       "warnings": [
        "landmark-cleared"
@@ -2005,7 +2053,7 @@
       ],
       "digest": {
        "cells": "3ed694d0e0034999",
-       "objects": "46255b2066fe38db"
+       "objects": "8555f7e496ea9d67"
       },
       "warnings": [
        "template-drift",
@@ -2070,7 +2118,7 @@
       ],
       "digest": {
        "cells": "3ed694d0e0034999",
-       "objects": "011d30da0f58de4e"
+       "objects": "396b115f8d4ec638"
       },
       "warnings": [
        "landmark-cleared"
@@ -2102,7 +2150,7 @@
       ],
       "digest": {
        "cells": "3ed694d0e0034999",
-       "objects": "011d30da0f58de4e"
+       "objects": "396b115f8d4ec638"
       },
       "warnings": [
        "template-drift",
@@ -2673,11 +2721,12 @@
      "current": {
       "migrations": [
        "landmark-ground",
-       "landmark-layout-v3"
+       "landmark-layout-v3",
+       "current-rules"
       ],
       "digest": {
        "cells": "cee0b7099a1babd8",
-       "objects": "146ea6031a32bb27"
+       "objects": "ffb6a088654ab28e"
       },
       "warnings": [
        "landmark-cleared"
@@ -2705,11 +2754,12 @@
       "migrations": [
        "landmark-ground",
        "landmark-layout-v3",
-       "share-identity-drift"
+       "share-identity-drift",
+       "current-rules"
       ],
       "digest": {
        "cells": "cee0b7099a1babd8",
-       "objects": "146ea6031a32bb27"
+       "objects": "ffb6a088654ab28e"
       },
       "warnings": [
        "template-drift",
@@ -2773,10 +2823,11 @@
       "migrations": [
        "history-before-v3",
        "landmark-ground",
-       "landmark-layout-v3"
+       "landmark-layout-v3",
+       "current-rules"
       ],
       "digest": {
-       "cells": "4b6f65e72299e75b"
+       "cells": "1e576a9ce9b20b7e"
       },
       "undoDepth": 0,
       "warnings": [
@@ -2805,10 +2856,11 @@
      "current": {
       "migrations": [
        "landmark-ground",
-       "landmark-layout-v3"
+       "landmark-layout-v3",
+       "current-rules"
       ],
       "digest": {
-       "cells": "4b6f65e72299e75b"
+       "cells": "1e576a9ce9b20b7e"
       },
       "warnings": [
        "landmark-cleared"
@@ -2836,10 +2888,11 @@
       "migrations": [
        "landmark-ground",
        "landmark-layout-v3",
-       "share-identity-drift"
+       "share-identity-drift",
+       "current-rules"
       ],
       "digest": {
-       "cells": "4b6f65e72299e75b"
+       "cells": "1e576a9ce9b20b7e"
       },
       "warnings": [
        "template-drift",
@@ -2869,10 +2922,11 @@
       "migrations": [
        "history-before-v3",
        "landmark-ground",
-       "landmark-layout-v3"
+       "landmark-layout-v3",
+       "current-rules"
       ],
       "digest": {
-       "cells": "4b6f65e72299e75b"
+       "cells": "1e576a9ce9b20b7e"
       },
       "history": 0,
       "warnings": [
@@ -3086,10 +3140,11 @@
       "migrations": [
        "history-before-v3",
        "landmark-ground",
-       "landmark-layout-v3"
+       "landmark-layout-v3",
+       "current-rules"
       ],
       "digest": {
-       "cells": "c571a8f46bfb0a25"
+       "cells": "6cfc9f4fdb53e1e2"
       },
       "undoDepth": 0,
       "warnings": [
@@ -3118,10 +3173,11 @@
      "current": {
       "migrations": [
        "landmark-ground",
-       "landmark-layout-v3"
+       "landmark-layout-v3",
+       "current-rules"
       ],
       "digest": {
-       "cells": "c571a8f46bfb0a25"
+       "cells": "6cfc9f4fdb53e1e2"
       },
       "warnings": [
        "landmark-cleared"
@@ -3149,10 +3205,11 @@
       "migrations": [
        "landmark-ground",
        "landmark-layout-v3",
-       "share-identity-drift"
+       "share-identity-drift",
+       "current-rules"
       ],
       "digest": {
-       "cells": "c571a8f46bfb0a25"
+       "cells": "6cfc9f4fdb53e1e2"
       },
       "warnings": [
        "template-drift",
@@ -3183,10 +3240,11 @@
       "migrations": [
        "landmark-ground",
        "landmark-layout-v3",
-       "share-identity-drift"
+       "share-identity-drift",
+       "current-rules"
       ],
       "digest": {
-       "cells": "c571a8f46bfb0a25"
+       "cells": "6cfc9f4fdb53e1e2"
       },
       "warnings": [
        "template-drift",
@@ -3216,10 +3274,11 @@
       "migrations": [
        "history-before-v3",
        "landmark-ground",
-       "landmark-layout-v3"
+       "landmark-layout-v3",
+       "current-rules"
       ],
       "digest": {
-       "cells": "c571a8f46bfb0a25"
+       "cells": "6cfc9f4fdb53e1e2"
       },
       "history": 0,
       "warnings": [
@@ -3300,11 +3359,12 @@
       "migrations": [
        "history-before-v3",
        "landmark-ground",
-       "landmark-layout-v3"
+       "landmark-layout-v3",
+       "current-rules"
       ],
       "digest": {
-       "cells": "f1b58b3012ef34b7",
-       "objects": "bb8c4d164d5aefd0"
+       "cells": "e52100c8eac41544",
+       "objects": "dfc8c133de42d69d"
       },
       "undoDepth": 0,
       "warnings": [
@@ -3333,11 +3393,12 @@
      "current": {
       "migrations": [
        "landmark-ground",
-       "landmark-layout-v3"
+       "landmark-layout-v3",
+       "current-rules"
       ],
       "digest": {
-       "cells": "f1b58b3012ef34b7",
-       "objects": "bb8c4d164d5aefd0"
+       "cells": "e52100c8eac41544",
+       "objects": "dfc8c133de42d69d"
       },
       "warnings": [
        "landmark-cleared"
@@ -3365,11 +3426,12 @@
       "migrations": [
        "landmark-ground",
        "landmark-layout-v3",
-       "share-identity-drift"
+       "share-identity-drift",
+       "current-rules"
       ],
       "digest": {
-       "cells": "f1b58b3012ef34b7",
-       "objects": "bb8c4d164d5aefd0"
+       "cells": "e52100c8eac41544",
+       "objects": "dfc8c133de42d69d"
       },
       "warnings": [
        "template-drift",
@@ -3430,11 +3492,12 @@
      "current": {
       "migrations": [
        "landmark-ground",
-       "landmark-layout-v3"
+       "landmark-layout-v3",
+       "current-rules"
       ],
       "digest": {
-       "cells": "c7e5a6b2d6f9cdf6",
-       "objects": "244bdadfb7e2684f"
+       "cells": "27066db158841764",
+       "objects": "1ea566d43fec6443"
       },
       "warnings": [
        "landmark-cleared"
@@ -3462,11 +3525,12 @@
       "migrations": [
        "landmark-ground",
        "landmark-layout-v3",
-       "share-identity-drift"
+       "share-identity-drift",
+       "current-rules"
       ],
       "digest": {
-       "cells": "c7e5a6b2d6f9cdf6",
-       "objects": "244bdadfb7e2684f"
+       "cells": "27066db158841764",
+       "objects": "1ea566d43fec6443"
       },
       "warnings": [
        "template-drift",
@@ -3527,11 +3591,12 @@
      "current": {
       "migrations": [
        "landmark-ground",
-       "landmark-layout-v3"
+       "landmark-layout-v3",
+       "current-rules"
       ],
       "digest": {
        "cells": "58daa8cc082b943c",
-       "objects": "4fb096310441a495"
+       "objects": "803f8704062f6ffc"
       },
       "warnings": [
        "landmark-cleared"
@@ -3559,11 +3624,12 @@
       "migrations": [
        "landmark-ground",
        "landmark-layout-v3",
-       "share-identity-drift"
+       "share-identity-drift",
+       "current-rules"
       ],
       "digest": {
        "cells": "58daa8cc082b943c",
-       "objects": "4fb096310441a495"
+       "objects": "803f8704062f6ffc"
       },
       "warnings": [
        "template-drift",
@@ -3624,11 +3690,12 @@
      "current": {
       "migrations": [
        "landmark-ground",
-       "landmark-layout-v3"
+       "landmark-layout-v3",
+       "current-rules"
       ],
       "digest": {
-       "cells": "59b1436f6368d49f",
-       "objects": "2fd85af131cf8d71"
+       "cells": "dcc07fb598df8481",
+       "objects": "d87dbdb93b75c4cf"
       },
       "warnings": [
        "landmark-cleared"
@@ -3656,11 +3723,12 @@
       "migrations": [
        "landmark-ground",
        "landmark-layout-v3",
-       "share-identity-drift"
+       "share-identity-drift",
+       "current-rules"
       ],
       "digest": {
-       "cells": "59b1436f6368d49f",
-       "objects": "2fd85af131cf8d71"
+       "cells": "dcc07fb598df8481",
+       "objects": "d87dbdb93b75c4cf"
       },
       "warnings": [
        "template-drift",
@@ -3721,11 +3789,12 @@
      "current": {
       "migrations": [
        "landmark-ground",
-       "landmark-layout-v3"
+       "landmark-layout-v3",
+       "current-rules"
       ],
       "digest": {
-       "cells": "944c5d11e18939a2",
-       "objects": "2a9dbe4357135737"
+       "cells": "66a223189c3a6859",
+       "objects": "b4b90684bda3b840"
       },
       "warnings": [
        "landmark-cleared"
@@ -3753,11 +3822,12 @@
       "migrations": [
        "landmark-ground",
        "landmark-layout-v3",
-       "share-identity-drift"
+       "share-identity-drift",
+       "current-rules"
       ],
       "digest": {
-       "cells": "944c5d11e18939a2",
-       "objects": "2a9dbe4357135737"
+       "cells": "66a223189c3a6859",
+       "objects": "b4b90684bda3b840"
       },
       "warnings": [
        "template-drift",
@@ -3928,10 +3998,11 @@
      "current": {
       "migrations": [
        "landmark-ground",
-       "landmark-layout-v3"
+       "landmark-layout-v3",
+       "current-rules"
       ],
       "digest": {
-       "cells": "b9a6cbdc7a89aa1e"
+       "cells": "d9ac1fc7bf01159f"
       },
       "warnings": [
        "landmark-cleared"
@@ -3959,10 +4030,11 @@
       "migrations": [
        "landmark-ground",
        "landmark-layout-v3",
-       "share-identity-drift"
+       "share-identity-drift",
+       "current-rules"
       ],
       "digest": {
-       "cells": "b9a6cbdc7a89aa1e"
+       "cells": "d9ac1fc7bf01159f"
       },
       "warnings": [
        "template-drift",
@@ -4024,10 +4096,11 @@
      "current": {
       "migrations": [
        "landmark-ground",
-       "landmark-layout-v3"
+       "landmark-layout-v3",
+       "current-rules"
       ],
       "digest": {
-       "cells": "9b018eceeac86bfc"
+       "cells": "8ea7affc483a7d59"
       },
       "warnings": [
        "landmark-cleared"
@@ -4055,10 +4128,11 @@
       "migrations": [
        "landmark-ground",
        "landmark-layout-v3",
-       "share-identity-drift"
+       "share-identity-drift",
+       "current-rules"
       ],
       "digest": {
-       "cells": "9b018eceeac86bfc"
+       "cells": "8ea7affc483a7d59"
       },
       "warnings": [
        "template-drift",
@@ -4120,10 +4194,11 @@
      "current": {
       "migrations": [
        "landmark-ground",
-       "landmark-layout-v3"
+       "landmark-layout-v3",
+       "current-rules"
       ],
       "digest": {
-       "cells": "cd0c696cc632a44a"
+       "cells": "63965c15c39d80db"
       },
       "warnings": [
        "landmark-cleared"
@@ -4151,10 +4226,11 @@
       "migrations": [
        "landmark-ground",
        "landmark-layout-v3",
-       "share-identity-drift"
+       "share-identity-drift",
+       "current-rules"
       ],
       "digest": {
-       "cells": "cd0c696cc632a44a"
+       "cells": "63965c15c39d80db"
       },
       "warnings": [
        "template-drift",
@@ -4215,11 +4291,15 @@
      "current": {
       "migrations": [
        "landmark-ground",
-       "landmark-layout-v3"
+       "landmark-layout-v3",
+       "current-rules"
       ],
       "digest": {
-       "cells": "c54b9ea8ccd33ca0"
-      }
+       "cells": "657cd98aa2e96ce1"
+      },
+      "warnings": [
+       "landmark-cleared"
+      ]
      }
     },
     "share": {
@@ -4243,14 +4323,16 @@
       "migrations": [
        "landmark-ground",
        "landmark-layout-v3",
-       "share-identity-drift"
+       "share-identity-drift",
+       "current-rules"
       ],
       "digest": {
-       "cells": "c54b9ea8ccd33ca0"
+       "cells": "657cd98aa2e96ce1"
       },
       "warnings": [
        "template-drift",
-       "catalog-drift"
+       "catalog-drift",
+       "landmark-cleared"
       ]
      }
     }
@@ -4307,10 +4389,11 @@
      "current": {
       "migrations": [
        "landmark-ground",
-       "landmark-layout-v3"
+       "landmark-layout-v3",
+       "current-rules"
       ],
       "digest": {
-       "cells": "b4b34483a355756b"
+       "cells": "c890ee813847bb5f"
       },
       "warnings": [
        "landmark-cleared"
@@ -4338,10 +4421,11 @@
       "migrations": [
        "landmark-ground",
        "landmark-layout-v3",
-       "share-identity-drift"
+       "share-identity-drift",
+       "current-rules"
       ],
       "digest": {
-       "cells": "b4b34483a355756b"
+       "cells": "c890ee813847bb5f"
       },
       "warnings": [
        "template-drift",

@@ -177,6 +177,7 @@ export function HelpModal(props: WindowProps) {
                       <ActionButton
                         key={id}
                         interaction="row"
+                        fill={current ? ACTIVE : rgbaOf(PLATE, 0)}
                         hoverFill={current ? undefined : PLATE}
                         aria-current={current || undefined}
                         onClick={() => go(id)}
@@ -187,7 +188,6 @@ export function HelpModal(props: WindowProps) {
                           // weight step, and no row reads thinner than the prose beside it.
                           ...roleFont('head'),
                           color: current ? INK : PLATE_INK,
-                          backgroundColor: current ? ACTIVE : rgbaOf(PLATE, 0),
                           cursor: cursors.clickable,
                         }}
                      >

@@ -1,11 +1,11 @@
 import { placeObjectCommand, removeObjectCommand } from '../../core/model/command-build';
-import type { Command, CategoryId, GridState, MacroCoord, PlaceObjectCommand, PlacedObject, ValidationResult, Rotation } from '../../core/model/types';
+import type { Command, GridState, MacroCoord, PlaceObjectCommand, PlacedObject, ValidationResult, Rotation } from '../../core/model/types';
 import type { RuleDispatcher } from '../../core/model/rule-dispatcher';
 import type { CommandSink } from '../../core/model/command-sink';
 import { NEIGHBORS4 } from '../../core/grid/directions';
 import { rectsOverlap, cellKey, mapGrid } from '../../core/grid/rect';
-import { getCatalogItem, isDecoration, itemRole } from '../../state/catalog';
-import { objectRect } from '../../state/object-geometry';
+import { getCatalogItem, isDecoration } from '../../state/catalog';
+import { doorOf, hasGate, objectRect } from '../../state/object-geometry';
 import { getRotatedSize } from '../../core/grid/footprint';
 import { entriesNear, getObjectIndex } from '../../state/object-index';
 import { surfaceElevation } from '../../core/domain/terrain/terrain-surface';
@@ -114,21 +114,14 @@ export function probePlacement(ctx: Pick<PlaceCtx, 'state' | 'registry'>, catalo
   return ctx.registry.validatePreCommand(landed, ctx.state).length === 0 ? landed.object : null;
 }
 
-/** A house's gate: the centre of the edge that is the footprint's bottom at rotation 0, rotated
- *  with the house (90 → the door faces -x, 180 → -y, 270 → +x, matching the sprite/mesh rotation).
- *  Returns the gate cell (on the footprint edge), the approach cell just outside it, and the gate
- *  strip (`CLEARANCE`) running out from the gate. `r` is the already-ROTATED footprint. */
+/** A house's gate (`state/object-geometry.ts:doorOf`): the door cell on the footprint edge, the
+ *  approach cell just outside it, and the gate strip (`CLEARANCE`) running out from the door. `r` is
+ *  the already-ROTATED footprint. */
 export function buildingGate(
   r: { x: number; y: number; w: number; h: number }, rotation: Rotation = 0,
 ): { gate: MacroCoord; approach: MacroCoord; clear: MacroCoord[] } {
-  const x0 = Math.floor(r.x), y0 = Math.floor(r.y);
-  const x1 = Math.ceil(r.x + r.w) - 1, y1 = Math.ceil(r.y + r.h) - 1;
-  const midX = Math.floor(r.x + r.w / 2), midY = Math.floor(r.y + r.h / 2);
-  let gate: MacroCoord, f: [number, number];
-  if (rotation === 90) { gate = { x: x0, y: midY }; f = [-1, 0]; }
-  else if (rotation === 180) { gate = { x: midX, y: y0 }; f = [0, -1]; }
-  else if (rotation === 270) { gate = { x: x1, y: midY }; f = [1, 0]; }
-  else { gate = { x: midX, y: y1 }; f = [0, 1]; }
+  const { gate, facing } = doorOf(r, rotation);
+  const f: [number, number] = [facing.x, facing.y];
   const approach = { x: gate.x + f[0], y: gate.y + f[1] };
   const perp: [number, number] = [f[1], f[0]];
   const clear: MacroCoord[] = [];
@@ -139,11 +132,6 @@ export function buildingGate(
   }
   return { gate, approach, clear };
 }
-
-/** A home large enough to have a door (smaller ones are street furniture): its gate is a regulation
- *  anchor. */
-export const hasGate = (item: { category: CategoryId; width: number; height: number }): boolean =>
-  itemRole(item) === 'home' && item.width * item.height >= CLEARANCE.gateMinArea;
 
 /** Attempt a placement through the live rules. On success the object is committed; on any rule
  *  rejection nothing changes (reject-and-skip). Returns the placed object (so

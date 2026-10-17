@@ -27,7 +27,7 @@ import { AnchoredConfirm, anchoredCardMotion, anchoredOrigin } from '../../primi
 import { useFloatingPosition } from '../../primitives/use-floating-position';
 import { BackIcon, CheckIcon, EditIcon } from '../../primitives/line-glyphs';
 import { mapEdgeAttr } from '../../primitives/map-edge';
-import { paintPlanet } from '../../../view/map2d/capture/planet-painter';
+import { PlanetStill } from '../../chrome/modals/planet/PlanetStill';
 import { useSurfaceScope } from '../../primitives/surface-scope';
 import { PlanetNameField, usePlanetNameReview } from '../../chrome/modals/planet/PlanetNameField';
 import { sessionModes, TOP_RIGHT_TOP } from '../frame';
@@ -328,15 +328,12 @@ function SavePanel({ style, zoom, anchor, trigger, editing, ground, name, known,
 
 const choice: CSSProperties = { flex: '0 1 auto', minWidth: 88, minHeight: 44, whiteSpace: 'normal', overflowWrap: 'anywhere' };
 
-/** The planet as it stands, fitted to its land, drawn by the same painter as Change Planet. */
+/** The planet as it stands, fitted to its land, drawn as Change Planet draws it. */
 function PlanetShot({ style }: { style: CSSProperties }) {
-  const ref = useRef<HTMLCanvasElement>(null);
-  useLayoutEffect(() => {
-    const state = useEditorStore.getState().gridState;
-    if (ref.current && state) paintPlanet(ref.current, { state, template: state.template }, { tx: 0, ty: 0, scale: 1 }, { margin: SHOT_MARGIN });
-  }, [style.width, style.height]);
+  const state = useEditorStore((s) => s.gridState);
+  if (!state) return null;
   return (
-    <canvas ref={ref} aria-hidden style={{
+    <PlanetStill template={state.template} state={state} margin={SHOT_MARGIN} style={{
       display: 'block', borderRadius: radii.md, background: SEA,
       border: `1.5px solid ${skin.line}`, boxSizing: 'border-box', ...style,
     }} />

@@ -2,7 +2,7 @@
  * The Change Planet window's list: the current planet when neither list holds it, the built-in planets, then My planets with its New planet and
  * Import planet rows ahead of the saved ones. The planet the map stands on carries a dot.
  */
-import { useLayoutEffect, useRef, type CSSProperties, type ReactNode } from 'react';
+import type { CSSProperties, ReactNode } from 'react';
 import { type MapTemplate } from '../../../../core/model/types';
 import { type Locale } from '../../../../core/model/locale';
 import { MAP_LIST } from '../../../../config/maps';
@@ -13,7 +13,7 @@ import type { PlanetEntry } from '../../../../io/storage/planet-library';
 import { shownPlanetName } from '../../../../editor/session/planet-names';
 import { ActionButton } from '../../../primitives/ActionButton';
 import { ImportFileIcon, PlusIcon } from '../../../primitives/line-glyphs';
-import { paintPlanet } from '../../../../view/map2d/capture/planet-painter';
+import { PlanetStill } from './PlanetStill';
 import { ScrollArea } from '../../../primitives/ScrollArea';
 import { CONTROL_CLEARANCE } from '../../../primitives/use-scroll-row';
 import { cssMotion } from '../../../design/motion';
@@ -51,14 +51,10 @@ const actionArt: CSSProperties = { ...artStyle, borderRadius: '50%', background:
  *  inside the disc, since (1 - 1/sqrt 2) / 2 is about 0.146. */
 const THUMB_MARGIN = 0.15;
 
-/** A saved planet's round thumbnail, drawn by the same painter as the preview. */
+/** A saved planet's round thumbnail, drawn as the preview draws it. */
 function PlanetThumb({ template, size = ART }: { template: MapTemplate; size?: number }) {
-  const ref = useRef<HTMLCanvasElement>(null);
-  useLayoutEffect(() => {
-    if (ref.current) paintPlanet(ref.current, { template }, { tx: 0, ty: 0, scale: 1 }, { margin: size * THUMB_MARGIN });
-  }, [template, size]);
   return (
-    <canvas ref={ref} aria-hidden style={{
+    <PlanetStill template={template} margin={size * THUMB_MARGIN} style={{
       ...artStyle, width: size, height: size, borderRadius: '50%', background: SEA,
       boxShadow: `inset 0 0 0 1.5px ${skin.line}`, filter: shadows.thumbDrop,
     }} />

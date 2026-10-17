@@ -1,4 +1,4 @@
-/* The preset planning vocabulary a note's tag names; `i18n/annotation-tags.ts` gives each its label. */
+/* The preset planning vocabulary a note's tag names; `i18n/terms/annotation-tags.ts` gives each its label. */
 import type { I18nKey } from '../i18n/keys';
 
 /** The preset planning ids. A note carries one of these or a map's own custom tag. */

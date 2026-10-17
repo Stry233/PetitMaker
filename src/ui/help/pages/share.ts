@@ -1,5 +1,6 @@
 /* Save-and-share help descriptors. Copy comes from i18n; figures name rendered examples. */
 import type { HelpPage } from '../page-schema';
+import { VIDEO_ADDS, VIDEO_FIXES, VIDEO_GETS, VIDEO_GUIDE_HELP, VIDEO_STEPS } from '../../chrome/modals/planet/video-guide';
 
 export const SHARE_PAGES: readonly HelpPage[] = [
   {
@@ -134,6 +135,13 @@ export const SHARE_PAGES: readonly HelpPage[] = [
       { kind: 'prose', anchor: 'planet-mine', titleKey: 'help.planet.mine_t', bodyKeys: ['help.planet.mine_b1'] },
       { kind: 'prose', anchor: 'planet-draw', titleKey: 'help.planet.draw_t', bodyKeys: ['help.planet.draw_b1', 'help.planet.draw_b2', 'help.planet.draw_b3'] },
       { kind: 'prose', anchor: 'planet-files', titleKey: 'help.planet.files_t', bodyKeys: ['help.planet.files_b1'], lite: false },
+      {
+        kind: 'list', anchor: VIDEO_GUIDE_HELP.anchor, titleKey: 'planet.scan_title', bodyKeys: ['help.planet.video_b1'], ordered: true,
+        items: VIDEO_STEPS.map((key) => ({ key })), lite: false,
+      },
+      { kind: 'list', anchor: 'planet-video-get', titleKey: 'help.planet.video_get_t', items: VIDEO_GETS.map((key) => ({ key })), lite: false },
+      { kind: 'list', anchor: 'planet-video-add', titleKey: 'help.planet.video_add_t', items: VIDEO_ADDS.map((key) => ({ key })), lite: false },
+      { kind: 'list', anchor: 'planet-video-fix', titleKey: 'help.planet.video_fix_t', items: VIDEO_FIXES.map(({ key, anchor }) => ({ key, anchor })), lite: false },
     ],
     qa: [
       { qKey: 'help.planet.q1', aKey: 'help.planet.a1' },

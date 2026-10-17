@@ -10,6 +10,8 @@ import { I18nProvider, translate } from '../../../../../i18n/context';
 import { useEditorStore } from '../../../../../state/store';
 import { PlanetImportWindow } from '../../../../../ui/chrome/modals/planet/PlanetImportWindow';
 import { FAILURE_COPY } from '../../../../../ui/chrome/modals/planet/VideoImportGuide';
+import { VIDEO_FIXES, VIDEO_GUIDE_HELP, VIDEO_STEPS, videoFixAnchor } from '../../../../../ui/chrome/modals/planet/video-guide';
+import { HELP_PAGES } from '../../../../../ui/help/catalog';
 import { acceptsVideo } from '../../../../../io/import/kind';
 import { translations } from '../../../../../i18n/translations';
 import { SCAN_FAILURES } from '../../../../../pipelines/planet-scan/errors';
@@ -87,9 +89,10 @@ describe('Import planet window', () => {
     mount({}, true);
     fireEvent.click(screen.getByTestId('planet-import-video'));
     const steps = await screen.findByTestId('scan-steps');
-    expect(steps.querySelectorAll('li')).toHaveLength(6);
-    expect(steps.textContent).toContain(t('planet.scan_step_region'));
-    expect(steps.querySelector('li')!.textContent).toBe(t('planet.scan_step_window'));
+    expect([...steps.querySelectorAll('li')].map((li) => li.textContent)).toEqual(VIDEO_STEPS.map((key) => t(key)));
+    fireEvent.click(screen.getByTestId('scan-guide-help'));
+    expect(useEditorStore.getState().helpTarget).toEqual({ page: 'planet', anchor: 'planet-video' });
+    expect(useEditorStore.getState().modals.help).toBe(true);
     expect(screen.getByTestId('planet-import-beta').textContent).toBe(t('app.beta'));
     const example = screen.getByTestId('scan-example-video') as HTMLVideoElement;
     expect(example.muted).toBe(true);
@@ -213,8 +216,10 @@ describe('Import planet window', () => {
     await screen.findByTestId('scan-progress');
     await act(async () => { calls[0]!.reject(new VideoImportError(reason)); });
     const shown = await screen.findByTestId('scan-failure');
-    expect(shown.textContent).toBe(t(FAILURE_COPY[reason]));
+    expect(shown.textContent).toBe(t(FAILURE_COPY[reason]) + t('planet.video_fix_link'));
     expect(screen.getByTestId('scan-steps')).toBeTruthy();
+    fireEvent.click(screen.getByTestId('scan-failure-help'));
+    expect(useEditorStore.getState().helpTarget).toEqual({ page: 'planet', anchor: videoFixAnchor(reason) });
     expect(onScanned).not.toHaveBeenCalled();
   });
 
@@ -284,6 +289,33 @@ describe('Change Planet', () => {
     fireEvent.click(await screen.findByTestId('planet-import-file'));
     expect(click).toHaveBeenCalled();
     expect(useEditorStore.getState().modals.planetImport).toBe(false);
+  });
+});
+
+describe('the recording guide', () => {
+  const page = HELP_PAGES.planet;
+  const lists = page.sections.flatMap((s) => (s.kind === 'list' ? [s] : []));
+  const anchors = page.sections.flatMap((s) => (s.kind === 'callout' ? [] : [s.anchor, ...(s.kind === 'list' ? s.items.flatMap((i) => (i.anchor ? [i.anchor] : [])) : [])]));
+
+  it('shows in Help the same steps the window lists, and every fix', () => {
+    const steps = lists.find((s) => s.anchor === VIDEO_GUIDE_HELP.anchor)!;
+    expect(steps.ordered).toBe(true);
+    expect(steps.items.map((i) => i.key)).toEqual([...VIDEO_STEPS]);
+    const fixes = lists.flatMap((s) => s.items).filter((i) => i.anchor?.startsWith('planet-video-fix-'));
+    expect(fixes).toEqual(VIDEO_FIXES.map(({ key, anchor }) => ({ key, anchor })));
+  });
+
+  it('links every refusal to an anchor Help has, each fix answering refusals of its own', () => {
+    for (const reason of Object.keys(FAILURE_COPY) as ImportFailure[]) expect(anchors, reason).toContain(videoFixAnchor(reason));
+    const answered = VIDEO_FIXES.flatMap((f) => f.failures);
+    expect(new Set(answered).size).toBe(answered.length);
+    for (const fix of VIDEO_FIXES) for (const reason of fix.failures) expect(videoFixAnchor(reason)).toBe(fix.anchor);
+  });
+
+  it('reads every line from the interface tables, defined in every locale', () => {
+    const lines = [...lists.flatMap((s) => s.items.map((i) => i.key)), 'planet.video_guide_link', 'planet.video_fix_link'];
+    for (const key of lines) expect(key in translations.en, key).toBe(true);
+    for (const [locale, table] of Object.entries(translations)) for (const key of lines) expect(table[key as keyof typeof table], `${locale} ${key}`).toBeTruthy();
   });
 });
 

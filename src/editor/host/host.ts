@@ -17,7 +17,7 @@ import { paintSpinRing } from '../../view/shared/overlay/selection-paint';
 import { singleSelection } from '../../state/selection';
 import { useEditorStore } from '../../state/store';
 import { layerNumbersShown } from '../../state/layer-utils';
-import type { GridState, MacroCoord } from '../../core/model/types';
+import type { GridState, MacroCoord, PlacedObject } from '../../core/model/types';
 import { captureMapStills } from '../../view/map3d/capture/stills';
 import type { Rect } from '../../core/grid/rect';
 import type { PlanetFrame } from '../../core/model/planet';
@@ -110,6 +110,10 @@ export const host = {
     /** A scanned planet's cells to check and the outline of the landmark's footprint; null cells
      *  take them down. */
     show(cells: CellSet | null, outline: Rect | null = null): void { getActiveView()?.overlay.showCellMarks?.(cells, outline); },
+  },
+  flagged: {
+    /** Objects standing where they may not (a hand repair's problems); null takes them down. */
+    show(objects: readonly PlacedObject[] | null): void { getActiveView()?.overlay.showFlaggedObjects?.(objects); },
   },
   route: {
     show(cells: CellSet): void { showPath(cells); },

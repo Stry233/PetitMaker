@@ -1,6 +1,5 @@
 import { hexStringToNumber } from '../../../../core/base/color';
 import * as THREE from 'three';
-import { getPlacedObjectSize } from '../../../../state/object-geometry';
 import { setHoverTarget } from '../../../hover-target';
 import type { SelectionOpts } from '../../../../tools/pointer/runtime';
 import type { MacroRect } from '../../../interaction/marquee';
@@ -15,6 +14,7 @@ import { MAP_TEXT, MAP_INK } from '../../../../assets/brand-palette';
 import { PLACEMENT_GRID } from '../../../../core/game/profile';
 import type { OverlayHost3D } from './host';
 import { toGeo } from './paint';
+import { footprintMark } from '../../geometry/object-marks';
 
 /** A selected terrain cell's box: the map-label ink. */
 const SELECTION_CREAM = hexStringToNumber(MAP_TEXT);
@@ -128,11 +128,8 @@ export class Boxes3D {
         if (!obj) { if (!this.host.objectBox(id)) this.unresolved.push(id); continue; }
         // A selected item keeps its footprint shadow on the ground, so its placement area stays in view.
         if (this.selectionShadows.length < SHADOW_LIMIT) {
-          const size = getPlacedObjectSize(obj);
-          const shadow = this.makeShadow(
-            rectDecals(state, [{ x: obj.position.x, y: obj.position.y, w: size.w, h: size.h }], PLACEMENT_GRID), GROUND_SHADOW, SHADOW_FILL,
-            SHADOW_EDGE,
-          );
+          // On the object's own ground mark (`footprintMark`), which carries its height already.
+          const shadow = this.makeShadow(footprintMark(state, obj), GROUND_SHADOW, SHADOW_FILL, SHADOW_EDGE, 0);
           shadow.mesh.visible = shadow.edge.visible = !this.host.moving();
           this.selectionShadows.push(shadow);
         }
@@ -178,32 +175,11 @@ export class Boxes3D {
     return { mesh, edge };
   }
 
-  /** A footprint shadow draped on the surface (`rectDecals`), lifted to a box's height over the cell
-   *  washes, with its outline along the footprint's own edge at each piece's height. */
-  private makeShadow(drape: DecalMesh, color: number, fillA: number, edgeA: number) {
-    const p = drape.positions.map((v, i) => (i % 3 === 1 ? v + DECAL_LIFT : v));
-    const geo = toGeo({ positions: p, index: drape.index });
-    let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity;
-    for (let i = 0; i < p.length; i += 3) {
-      x0 = Math.min(x0, p[i]!); x1 = Math.max(x1, p[i]!);
-      z0 = Math.min(z0, p[i + 2]!); z1 = Math.max(z1, p[i + 2]!);
-    }
-    const onEdge = (a: number, b: number): boolean => Math.abs(a - b) < 1e-6;
-    const rim: number[] = [];
-    // Each piece is one axis-aligned quad, four vertices in order; an edge of it on the footprint's
-    // boundary is part of the outline.
-    for (let q = 0; q < p.length; q += 12) {
-      for (let i = 0; i < 4; i++) {
-        const a = q + i * 3, b = q + ((i + 1) % 4) * 3;
-        const ax = p[a]!, az = p[a + 2]!, bx = p[b]!, bz = p[b + 2]!;
-        const along = (ax === bx && (onEdge(ax, x0) || onEdge(ax, x1))) || (az === bz && (onEdge(az, z0) || onEdge(az, z1)));
-        if (along) rim.push(ax, p[a + 1]!, az, bx, p[b + 1]!, bz);
-      }
-    }
-    const edgeGeo = new THREE.BufferGeometry();
-    edgeGeo.setAttribute('position', new THREE.Float32BufferAttribute(rim, 3));
-    const mesh = new THREE.Mesh(geo, this.host.mats.fill(color, fillA));
-    const edge = new THREE.LineSegments(edgeGeo, this.host.mats.edge(color, edgeA));
+  /** A footprint shadow (`footprintShadow`) over `drape`, lifted by `lift`, in the shared box paint. */
+  private makeShadow(drape: DecalMesh, color: number, fillA: number, edgeA: number, lift = DECAL_LIFT) {
+    const { fill, rim } = footprintShadow(drape, lift);
+    const mesh = new THREE.Mesh(fill, this.host.mats.fill(color, fillA));
+    const edge = new THREE.LineSegments(rim, this.host.mats.edge(color, edgeA));
     this.host.group.add(mesh, edge);
     this.host.requestRender();
     return { mesh, edge };
@@ -216,4 +192,33 @@ export class Boxes3D {
     box.edge.geometry.dispose();
     this.host.requestRender();
   }
+}
+
+/** A footprint shadow over `drape` (a surface drape, `rectDecals`, or an object's ground mark,
+ *  `geometry/object-marks.ts:footprintMark`), lifted by `lift` (a box's height over the cell washes
+ *  for a bare drape, none for a mark already seated), with its outline along the footprint's own
+ *  edge at each piece's height: the ground mark of a hovered, selected or flagged object. */
+export function footprintShadow(drape: DecalMesh, lift = DECAL_LIFT): { fill: THREE.BufferGeometry; rim: THREE.BufferGeometry } {
+  const p = drape.positions.map((v, i) => (i % 3 === 1 ? v + lift : v));
+  const fill = toGeo({ positions: p, index: drape.index });
+  let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity;
+  for (let i = 0; i < p.length; i += 3) {
+    x0 = Math.min(x0, p[i]!); x1 = Math.max(x1, p[i]!);
+    z0 = Math.min(z0, p[i + 2]!); z1 = Math.max(z1, p[i + 2]!);
+  }
+  const onEdge = (a: number, b: number): boolean => Math.abs(a - b) < 1e-6;
+  const edges: number[] = [];
+  // Each piece is one axis-aligned quad, four vertices in order; an edge of it on the footprint's
+  // boundary is part of the outline.
+  for (let q = 0; q < p.length; q += 12) {
+    for (let i = 0; i < 4; i++) {
+      const a = q + i * 3, b = q + ((i + 1) % 4) * 3;
+      const ax = p[a]!, az = p[a + 2]!, bx = p[b]!, bz = p[b + 2]!;
+      const along = (ax === bx && (onEdge(ax, x0) || onEdge(ax, x1))) || (az === bz && (onEdge(az, z0) || onEdge(az, z1)));
+      if (along) edges.push(ax, p[a + 1]!, az, bx, p[b + 1]!, bz);
+    }
+  }
+  const rim = new THREE.BufferGeometry();
+  rim.setAttribute('position', new THREE.Float32BufferAttribute(edges, 3));
+  return { fill, rim };
 }

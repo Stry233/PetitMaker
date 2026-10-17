@@ -94,14 +94,18 @@ let base: HTMLElement | null = null;
 interface OverlayClaim { el: HTMLElement; cursor: CursorId | null }
 let overlays: OverlayClaim[] = [];
 let surface: HTMLElement | null = null;
+/** The inline cursor `surface` wore before this module wrote it, given back when it stops being the
+ *  surface: a control claimed for a moment keeps the cursor its own style sets. */
+let surfaceOwn = '';
 let applied = '';
 
 /** The topmost claim wins: an overlay while one is up, otherwise the live view. */
 function retarget(): void {
   const next = overlays[overlays.length - 1]?.el ?? base;
   if (surface === next) return;
-  if (surface) surface.style.cursor = '';
+  if (surface) surface.style.cursor = surfaceOwn;
   surface = next;
+  surfaceOwn = next?.style.cursor ?? '';
   applied = '';
 }
 
@@ -249,6 +253,7 @@ export function __resetCursorController(): void {
   base = null;
   overlays = [];
   surface = null;
+  surfaceOwn = '';
   applied = '';
   driveBusyRing(false);
 }

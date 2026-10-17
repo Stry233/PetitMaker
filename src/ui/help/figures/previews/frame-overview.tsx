@@ -65,7 +65,7 @@ function useMapBackdrop(aspect: number): string | null {
   useEffect(() => {
     let dropped = false;
     const subject: GridState = grid ?? bareGridState(DEFAULT_MAP);
-    void renderThumbnail(subject, 1024, aspect).then((p) => { if (!dropped && p) setPng(p); });
+    void renderThumbnail(subject, 1024, { aspect }).then((p) => { if (!dropped && p) setPng(p); });
     return () => { dropped = true; };
   }, [grid, aspect]);
   return png;

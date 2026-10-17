@@ -27,7 +27,7 @@ import { getCatalogItem } from '../../state/catalog';
 import { applyMacro, detachedContext, paint, previewMacro, type MacroId, type MacroOpts } from '../../tools/macros';
 import type { EditContext } from '../../core/commands/edit-context';
 import { gridCell, mapPoint, type MapPoint } from '../../core/grid/grids';
-import { PLACEMENT_GRID } from '../../core/game/profile';
+import { PLACEMENT_GRID, layerNumber } from '../../core/game/profile';
 import { generateTerrain } from '../../tools/generation';
 import { generateDesigned, type DesignedContext } from '../../tools/generation/designer';
 import type { GenerateConfig } from '../../tools/generation/recipe';
@@ -134,7 +134,7 @@ export class SandboxWorld {
     const first = violations[0];
     if (first) {
       this.refusal = waterLayer !== null
-        ? { message: 'error.water_only_layer', params: { layer: waterLayer }, tone: 'warning' }
+        ? { message: 'error.water_only_layer', params: { layer: layerNumber(waterLayer) }, tone: 'warning' }
         : { message: first.message, params: first.messageParams, tone: 'warning' };
     }
     this.strokeCells = [];

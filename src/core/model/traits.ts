@@ -66,6 +66,15 @@ export type SelfSnappingTrait = typeof SELF_SNAPPING_TRAITS[number];
 export const isSelfSnappingTrait = (type: PlacementTrait['type']): type is SelfSnappingTrait =>
   (SELF_SNAPPING_TRAITS as readonly string[]).includes(type);
 
+/** The ground zones an item's footprint may stand on: its `groundZones` trait, or wholly on buildable
+ *  ground for an item without one. */
+export function groundZonesOf(item: CatalogItem): Omit<Extract<PlacementTrait, { type: 'groundZones' }>, 'type'> {
+  const own = findTrait(item, 'groundZones');
+  return own
+    ? { onGrass: own.onGrass, onSand: own.onSand, acrossBoundary: own.acrossBoundary }
+    : { onGrass: true, onSand: false, acrossBoundary: false };
+}
+
 /** Whether the item is a crossing: a bridge or a ramp, which detects its own site and may stand over coatings. */
 export const isCrossing = (item: CatalogItem | undefined | null): boolean => isBridge(item) || isRamp(item);
 

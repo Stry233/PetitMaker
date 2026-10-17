@@ -7,7 +7,7 @@ import { buildSaveFile } from '../save/json-codec';
 import { parseSave } from '../save/parse';
 import { isInputRefusal } from '../save/import-error';
 import { readParsedSaveCamera } from '../save/camera';
-import type { LandmarkClearance } from '../../tools/generation/transfer';
+import type { LandmarkClearance } from '../../state/landmark-clearance';
 import { loadParsedSave } from '../import/open-save';
 import { encodeHistory, decodeHistory, type HistorySection } from '../save/history-codec';
 import { prefStorageAvailable, readStoredPref, removePref, writePref } from '../../platform/storage/prefs';
@@ -162,6 +162,8 @@ export interface RestoredAutosave {
   history?: HistoryEntry[];
   /** What the restore took off the map from under its landmarks. */
   cleared?: LandmarkClearance;
+  /** The save's text as stored, before the clearance, kept only when the clearance reported a change. */
+  source?: string;
 }
 
 /** The saved undo steps, if they are readable and fit the map being restored. Bounds-checked
@@ -196,13 +198,17 @@ export function readAutosave(): RestoredAutosave | null {
   const json = stored.available ? stored.raw : null;
   if (!json) return null;
   try {
-    const parsed = parseSave(JSON.parse(decodeRecord(json)));
+    const text = decodeRecord(json);
+    const parsed = parseSave(JSON.parse(text));
     const { state, cleared } = loadParsedSave(parsed);
     // A save with no `camera` key restores with `camera` undefined, and the camera is left alone.
     // The history is read the same way: absent or unreadable, the map still restores and simply
     // arrives with nothing to undo.
     const save = parsed.raw as Partial<AutosaveFile>;
-    return { state, camera: readParsedSaveCamera(save), history: readHistory(state, save, parsed.file as Partial<AutosaveFile>), cleared };
+    return {
+      state, camera: readParsedSaveCamera(save), history: readHistory(state, save, parsed.file as Partial<AutosaveFile>), cleared,
+      ...(cleared.report ? { source: text } : {}),
+    };
   } catch (err) {
     if (!isInputRefusal(err)) console.error('[autosave] restore failed', err);
     return null;

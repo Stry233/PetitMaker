@@ -7,7 +7,7 @@
 import { describe, it, expect } from 'vitest';
 import { createHash } from 'node:crypto';
 import { type Locale } from '../../../../../core/model/locale';
-import { categorySearchTerms } from '../../../../../i18n/category-terms';
+import { categorySearchTerms } from '../../../../../i18n/terms/category-terms';
 import { getCatalogByCategory } from '../../../../../state/catalog';
 import { searchCatalog } from '../../../../../state/catalog-search';
 import { placedCategories, ItemCategory } from '../../../../../config/catalog/categories';

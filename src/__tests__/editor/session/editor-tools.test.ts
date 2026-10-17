@@ -29,7 +29,7 @@ function stubView(px: number): ActiveView & { ghost: () => boolean } {
   let ghost = false;
   const on = () => { ghost = true; };
   const overlay = {
-    showGhost: on, showGhostSpans: on, showPlacementGhost: on, showObjectMove: on, showGroupPlacementGhost: on,
+    showGhost: on, showGhostSpans: on, showPlacementGhost: on, showObjectMove: on, showGroupPlacementGhost: on, showNoteGhost: on,
     clearGhost: () => { ghost = false; },
     showHover: vi.fn(), clearHover: vi.fn(), showSelection: vi.fn(), clearSelection: vi.fn(), flashCommit: vi.fn(),
     showCurveFootprint: vi.fn(), clearCurveFootprint: vi.fn(), showBuildableRegion: vi.fn(), clearBuildableRegion: vi.fn(), pulseBuildableRegion: vi.fn(),

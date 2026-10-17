@@ -296,11 +296,13 @@ const rectpad: HelpScene = {
   stage: INTERIOR,
   strip: { kind: 'tools', active: 'rect' },
   run: ({ world }) => {
-    // An uneven shoulder standing before the rect arrives, with an existing cabin to one side.
+    // An uneven shoulder standing before the rect arrives, with an existing cabin to one side. The
+    // shoulder's two rows below the pad are the doorstep the second cabin's door needs.
     world.place(CABIN, 63, 100);
     world.beginStroke();
-    world.paint(column(74, 99, 104), TerrainType.Mountain, 1);
+    world.paint(column(74, 99, 105), TerrainType.Mountain, 1);
     world.paint(row(104, 69, 74), TerrainType.Mountain, 1);
+    world.paint(row(105, 69, 74), TerrainType.Mountain, 1);
     world.paint([{ x: 70, y: 101 }], TerrainType.Mountain, 1);
     world.commit();
     const pad = rect(69, 100, 73, 103);

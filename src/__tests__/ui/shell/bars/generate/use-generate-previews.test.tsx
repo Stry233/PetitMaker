@@ -1,11 +1,13 @@
 // @vitest-environment jsdom
-/** Pins that a preview card whose build throws goes blank and never holds the batch's spinner. */
+/** Pins that a preview card whose build throws goes blank and never holds the batch's spinner, and
+ *  that every card pictures its candidate under the open map's notes, which landing it leaves. */
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { act, renderHook } from '@testing-library/react';
 import { makeState } from '../../../../_support/map-state';
 import { CANDIDATES } from '../../../../../ui/shell/bars/generate/generate-shelf';
+import { sampleNotes } from '../../../../_support/picture-renderer';
 
-const build = vi.hoisted(() => ({ throwOn: new Set<number>(), calls: 0 }));
+const build = vi.hoisted(() => ({ throwOn: new Set<number>(), calls: 0, notes: undefined as unknown, asked: [] as { notes?: unknown }[] }));
 vi.mock('../../../../../editor/operations', async (importOriginal) => ({
   ...await importOriginal<object>(),
   peekCandidate: () => null,
@@ -17,11 +19,11 @@ vi.mock('../../../../../editor/operations', async (importOriginal) => ({
 }));
 vi.mock('../../../../../editor/session/context', async (importOriginal) => ({
   ...await importOriginal<object>(),
-  currentEditor: () => ({ state: {} }),
+  currentEditor: () => ({ state: { annotations: build.notes } }),
 }));
 vi.mock('../../../../../view/map2d/capture/thumbnail', () => ({
   focusFrame: () => ({}),
-  renderThumbnail: async () => 'data:image/png;base64,AA',
+  renderThumbnail: async (_state: unknown, _px: number, opts: { notes?: unknown }) => { build.asked.push(opts); return 'data:image/png;base64,AA'; },
 }));
 
 const { useGeneratePreviews } = await import('../../../../../ui/shell/bars/generate/use-generate-previews');
@@ -43,6 +45,8 @@ async function settle(): Promise<void> {
 afterEach(() => {
   build.throwOn.clear();
   build.calls = 0;
+  build.notes = undefined;
+  build.asked.length = 0;
 });
 
 describe('generate previews', () => {
@@ -64,6 +68,15 @@ describe('generate previews', () => {
     await settle();
     expect(result.current.customPending).toBe(false);
     expect(result.current.customShot).toBeNull();
+    unmount();
+  });
+
+  it('pictures every card under the open map\'s notes', async () => {
+    build.notes = sampleNotes();
+    const { unmount } = renderHook((o) => useGeneratePreviews(o), { initialProps: options(7) });
+    await settle();
+    expect(build.asked.length).toBeGreaterThan(0);
+    expect(build.asked.every((o) => o.notes === build.notes)).toBe(true);
     unmount();
   });
 });

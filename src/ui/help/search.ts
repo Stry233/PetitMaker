@@ -48,7 +48,10 @@ function buildIndex(locale: Locale): Entry[] {
       heads.push({ anchor: s.anchor, text: translateFor(locale, s.titleKey, helpFacts(locale)) });
       body.push(resolveAll(locale, s.titleKey));
       if (s.kind === 'prose') for (const k of s.bodyKeys) body.push(resolveAll(locale, k));
-      else if (s.kind === 'steps') {
+      else if (s.kind === 'list') {
+        for (const k of s.bodyKeys ?? []) body.push(resolveAll(locale, k));
+        for (const item of s.items) body.push(resolveAll(locale, item.key));
+      } else if (s.kind === 'steps') {
         for (const k of s.bodyKeys ?? []) body.push(resolveAll(locale, k));
         for (const g of s.groups) for (const k of g.stepKeys) body.push(resolveAll(locale, k));
       } else {

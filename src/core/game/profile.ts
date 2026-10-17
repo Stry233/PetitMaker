@@ -1,22 +1,29 @@
-import { ROTATIONS, type MacroCoord } from '../base/coords';
+import { ROTATIONS, type MacroCoord } from '../base/coords.ts';
 
 // The game the editor plans maps for, as facts: porting the editor to another game replaces this
 // module and the catalog and map data, not the modules that read them.
 
+/** Where the object grid lies: the map's own lattice. */
+const OBJECT_OFFSET = { x: 0, y: 0 } as const;
+
 /**
  * The map's grids and where each lies, in cells. Objects, roads and notes lie on the object grid,
  * the map's own lattice; terrain lies on the terrain grid, half a cell up and left of it, so a
- * terrain cell (x, y) covers [x - 0.5, x + 0.5).
+ * terrain cell (x, y) covers [x - 0.5, x + 0.5). The half grid splits each object-grid cell in two
+ * per axis, so its cell (x, y) covers [x / 2, x / 2 + 0.5); notes drawn in half-cell steps lie on it.
  */
 export const GRIDS = {
-  object: { offset: { x: 0, y: 0 } },
+  object: { offset: OBJECT_OFFSET },
   terrain: { offset: { x: -0.5, y: -0.5 } },
-} as const satisfies Record<string, { readonly offset: Readonly<MacroCoord> }>;
+  half: { offset: OBJECT_OFFSET, size: 0.5 },
+} as const satisfies Record<string, { readonly offset: Readonly<MacroCoord>; readonly size?: number }>;
 
 /** The grid placed objects, coatings and notes lie on. */
 export const PLACEMENT_GRID = 'object' satisfies keyof typeof GRIDS;
 /** The grid terrain and water lie on. */
 export const TERRAIN_GRID = 'terrain' satisfies keyof typeof GRIDS;
+/** The placement grid at half its cell size: where a note drawn in half-cell steps lies. */
+export const HALF_GRID = 'half' satisfies keyof typeof GRIDS;
 
 /** Cells on each side of a chunk, the unit of map size and load accounting. */
 export const CHUNK_SIZE = 16;
@@ -36,16 +43,25 @@ export const LOAD_DECIMALS = 1;
 export const GAME_NAME = 'Petit Planet';
 
 /** The highest terrain and water layer. */
-export const ELEVATION_MAX = 8;
+export const ELEVATION_MAX = 9;
+/** A layer as the game numbers it; only `layerNumber` makes one, and the copy that names a layer
+ *  takes nothing else (`i18n/keys.ts:LAYER_PARAMS`). */
+export type LayerNumber = number & { readonly __layerNumber: true };
+/** How the game numbers a layer: the ground, elevation 0, is its layer 1. Every layer number the
+ *  user reads is this; elevations stay the stored values. */
+export const layerNumber = (elevation: number): LayerNumber => (elevation + 1) as LayerNumber;
 /** The highest layer the ground carries by itself; a terrain or water layer above it needs the layer
  *  beneath it in the same cell. */
 export const GROUND_SUPPORT_LAYER = 1;
 
+/** `N` values of `T`, so a list sized by a constant fails the type check when it runs short or long. */
+type Tuple<T, N extends number, R extends readonly T[] = []> = R['length'] extends N ? R : Tuple<T, N, readonly [...R, T]>;
+
 /** The game's terrain colours: the ground and each mountain layer, 0 to `ELEVATION_MAX`, and water. */
 export const PALETTE = {
-  elevation: ['#b1e291', '#A3D070', '#93c956', '#79c440', '#5cb837', '#4ca42a', '#3e941d', '#298c19', '#1b7511'],
+  elevation: ['#b1e291', '#A3D070', '#93c956', '#79c440', '#5cb837', '#4ca42a', '#3e941d', '#298c19', '#1b7511', '#0e640d'],
   water: '#97e1ff',
-} as const;
+} as const satisfies { elevation: readonly [string, ...Tuple<string, typeof ELEVATION_MAX>]; water: string };
 
 /** The bits a zone id takes in the share codec and the worker wire; every id is below `1 << ZONE_ID_BITS`. */
 export const ZONE_ID_BITS = 3;
@@ -118,6 +134,15 @@ export const BASE_SUPPORT = { fromLayer: 4, reach: 3, window: 3 } as const;
  * `gateMinArea` cells has a gate; a smaller one is street furniture.
  */
 export const CLEARANCE = { gateStripWidth: 3, gateStripDepth: 2, crossingEndSide: 3, gateMinArea: 4 } as const;
+
+/**
+ * A house's door side (V-PLACE-DOOR). Measured out from the footprint side that carries the door,
+ * along its whole length, the ground keeps the house's layer for `dropDepth` cells
+ * before any drop below it (the sea and the map edge count as drops), and neither rises above it nor
+ * holds water nearer than `riseDepth`. The depths, and water counting with higher ground, are the
+ * owner's ruling from the game.
+ */
+export const DOOR = { dropDepth: 1.5, riseDepth: 2.5 } as const;
 
 /**
  * The ground a landmark stands on. `grass`: every cell under its footprint is grass. `coast`: no cell

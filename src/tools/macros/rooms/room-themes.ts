@@ -6,12 +6,12 @@
  * placement door's `tryPlace` or `tryDecorate`. The bodies run inside the caller's stroke group.
  */
 import { type CatalogItem, type MacroCoord, type PlacedObject, type Rotation, ROTATIONS } from '../../../core/model/types';
-import { crossingRunsAlongX, objectRect } from '../../../state/object-geometry';
+import { hasGate, crossingRunsAlongX, objectRect } from '../../../state/object-geometry';
 import { getRotatedSize } from '../../../core/grid/footprint';
 import { makeRng, type Rng } from '../../../core/base/rng';
 import { analyzeTerrain, type PlacementAnalysis } from '../../placement/analysis';
 import {
-  buildingGate, forEachFootprintCell, hasGate, makeCtx, markCells as mark, openAt, tryDecorate, tryPlace, type PlaceCtx,
+  buildingGate, forEachFootprintCell, makeCtx, markCells as mark, openAt, tryDecorate, tryPlace, type PlaceCtx,
 } from '../../placement/object';
 import { scanPortals } from '../roads/portals';
 import { crossingPool, type CrossingKind } from '../../placement/crossings';

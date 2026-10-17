@@ -9,7 +9,7 @@ import { useLocale, useT } from '../../../../i18n/context';
 import { joinList } from '../../../../i18n/locale-info';
 import { EDITION_COPY, SUPPORTS_CLIPBOARD, SUPPORTS_EXTERNAL_LINKS, inEdition } from '../../../../platform/build/edition';
 import { APP_VERSION, BUILD_DATE, BUILD_NUMBER, BUILD_SHA, BUILD_YEAR } from '../../../../platform/build/build-info';
-import { APP_NAME } from '../../../../i18n/brand';
+import { APP_NAME } from '../../../../i18n/terms/brand';
 import { DOCS, qqChannelPageUrl, teamInReadingOrder, type DocId } from '../../../../legal/registry';
 import { DocIcon } from './doc-icons';
 import { LEGAL, memberUrl } from '../../../../legal/config';

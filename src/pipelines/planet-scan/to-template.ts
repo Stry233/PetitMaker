@@ -11,6 +11,11 @@ import { GRASS, SAND } from './ground/color';
 import { ScanError } from './errors';
 import type { LandmarkDetection } from './ground/landmark';
 
+/** The template zone of a ground reading's kind. */
+export function groundZoneOf(kind: number): CellZone {
+  return kind === GRASS ? CellZone.Grass : kind === SAND ? CellZone.Beach : CellZone.Void;
+}
+
 // The scanned ground as a planet template, built by the planet model as a drawn planet is
 // (`cropPlanet`): the ground's bounding box snapped to whole chunks, the shore rim derived, the
 // landmark as the plaza and the content-addressed id. The evidence grid starts on a chunk line of
@@ -95,8 +100,7 @@ export function scannedPlanet(reading: GroundReading, read: readonly LandmarkDet
   for (let i = 0; i < isGrass.length; i++) isGrass[i] = reading.ground[i] === GRASS ? 1 : 0;
   if (!isGrass.some((g) => g)) throw new ScanError('no-ground');
   const ground: CellZone[][] = Array.from({ length: rows }, (_, r) => Array.from({ length: cols }, (_, c): CellZone => {
-    const g = reading.ground[r * cols + c];
-    return g === GRASS ? CellZone.Grass : g === SAND ? CellZone.Beach : CellZone.Void;
+    return groundZoneOf(reading.ground[r * cols + c]!);
   }));
   const reviewed = reading.inferred.slice();
   let landmark: PlacedObject | null = null;

@@ -49,10 +49,14 @@ export interface Scene {
   readonly deck?: CellRect | null;
   /** Inland water standing over grass cells, drawn in the sea's colour. */
   readonly water?: readonly CellRect[];
+  /** Where the game's lighting tints the ground: grass and sea cells there are drawn in `COLOURS.tinted`. */
+  readonly tinted?: readonly CellRect[];
   /** Roofs drawn in the grass's colour, as the Neighbor Center's roof reads. */
   readonly roofs?: readonly CellRect[];
   /** Roads over grass cells, drawn in `COLOURS.road`. */
   readonly roads?: readonly CellRect[];
+  /** The grass drawn this many cells north and east of its cells, sand where it has moved off. */
+  readonly grassOffset?: { readonly north: number; readonly east: number };
 }
 
 export const COLOURS = {
@@ -64,6 +68,9 @@ export const COLOURS = {
   build: [[90, 60, 40], [235, 225, 210]],
   shadow: [200, 184, 140],
   road: [150, 150, 158],
+  /** Grass under the blue light of some places, as measured on Tafa (L*a*b* hue 141 degrees, inside
+   *  the sea's band); the shallows of other places take the same colour. */
+  tinted: [111, 186, 109],
 } as const;
 
 const inRect = (r: CellRect, x: number, y: number) => x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h;
@@ -86,10 +93,13 @@ export function islandScene(
     readonly deck?: CellRect | null;
     readonly builds?: readonly CellRect[];
     readonly water?: readonly CellRect[];
+    readonly tinted?: readonly CellRect[];
     readonly roofs?: readonly CellRect[];
     readonly roads?: readonly CellRect[];
     /** Sea cells made sand, for a wider beach. */
     readonly sand?: readonly CellRect[];
+    /** Grass cells made sand. */
+    readonly notches?: readonly CellRect[];
   } = {},
 ): Scene {
   const cols = 112;
@@ -103,7 +113,8 @@ export function islandScene(
     { x: 38, y: 72, w: 32, h: 4 },
   ];
   const isGrass = (x: number, y: number) =>
-    !(y < 26 && x >= 44 && x < 48) && !inRect(SAND_NOTCH, x, y) && !inRect(SHADOW_NOTCH, x, y) && blocks.some((r) => inRect(r, x, y));
+    !(y < 26 && x >= 44 && x < 48) && !inRect(SAND_NOTCH, x, y) && !inRect(SHADOW_NOTCH, x, y) && !(options.notches ?? []).some((r) => inRect(r, x, y))
+    && blocks.some((r) => inRect(r, x, y));
   const near = (x: number, y: number, r: number) => {
     for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) if (isGrass(x + dx, y + dy)) return true;
     return false;
@@ -127,7 +138,7 @@ export function islandScene(
     ...(options.builds ?? []),
   ];
   return {
-    cols, rows, ground, builds, shadows: [SHADOW_NOTCH], plaza: options.plaza ?? null, water: options.water ?? [],
+    cols, rows, ground, builds, shadows: [SHADOW_NOTCH], plaza: options.plaza ?? null, water: options.water ?? [], tinted: options.tinted ?? [],
     roofs: options.roofs ?? [], roads: options.roads ?? [],
     ...(options.pavingStripes ? { pavingStripes: options.pavingStripes } : {}), deck: options.deck ?? null,
   };
@@ -217,6 +228,12 @@ export function paintWorld(scene: Scene, lattice: LatticeModel, blur = 1.5, seed
       const i = py * width + px;
       const inside = cx >= 0 && cy >= 0 && cx < scene.cols && cy < scene.rows;
       let g = inside ? scene.ground[cy * scene.cols + cx]! : SEA;
+      if (scene.grassOffset) {
+        const gx = Math.floor(c.x - scene.grassOffset.east), gy = Math.floor(c.y + scene.grassOffset.north);
+        const under = gx >= 0 && gy >= 0 && gx < scene.cols && gy < scene.rows ? scene.ground[gy * scene.cols + gx]! : SEA;
+        if (under === GRASS) g = GRASS;
+        else if (g === GRASS) g = SAND;
+      }
       // The game draws the beach as a smooth outline reaching about a cell beyond the land cells.
       if (g === SEA && nearLand(scene, c.x, c.y, SHORE_REACH)) g = SAND;
       let colour: readonly number[] = g === GRASS ? COLOURS.grass : g === SAND ? COLOURS.sand : COLOURS.sea;
@@ -230,6 +247,7 @@ export function paintWorld(scene: Scene, lattice: LatticeModel, blur = 1.5, seed
       if (scene.deck && g === SEA && inRect(scene.deck, c.x, c.y)) colour = COLOURS.deck;
       if (scene.shadows.some((r) => inRect(r, cx, cy))) colour = COLOURS.shadow;
       if (scene.water?.some((r) => inRect(r, cx, cy))) colour = COLOURS.sea;
+      if (g !== SAND && scene.tinted?.some((r) => inRect(r, cx, cy))) colour = COLOURS.tinted;
       if (scene.builds.some((b) => inRect(b, cx, cy))) {
         colour = COLOURS.build[(Math.floor(px / 3) + Math.floor(py / 3)) % 2]!;
         sharp[i] = 1;

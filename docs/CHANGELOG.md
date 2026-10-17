@@ -4,6 +4,40 @@ All notable changes to PetitMaker are documented here.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.109] - 2026-10-17
+
+### Added
+
+- Added repair for older maps. When a map saved by an earlier version has content that no longer fits this version, the preview marks what will change, and you choose Repair automatically or Repair by hand. You can also Export first to keep a copy of the original.
+- Added drag and drop for objects. Press and hold an object in the Objects list, drag it onto the map, and release to place it.
+- Added grid lines that follow terrain cells. While you paint mountains or water, the grid lines up with the terrain cells, so you can see exactly which cells each stroke covers. In Settings, Grid lines can also stay on one grid or be turned off.
+- Added a landing preview to Measure, Route and Tag chip. Before you press, you can see where the item will go and how big it will be.
+- Added zoom to map previews. When you import a map, you can zoom in on the preview to check details and double-click to reset. On touch screens, you can pinch to zoom map previews.
+
+### Changed
+
+- Layers are numbered as in the game: the ground is layer 1, and you can build up to layer 10. Before, the ground was not counted and the top was layer 8.
+- Houses, Glenn's Goods and the Omni-Gallery can stand on the beach, as in the game, but not across the edge between grass and sand.
+- Annotation zones, routes and measurements snap to half cells, so they can be drawn more precisely.
+- In the Default keyboard style, R also deletes the selection.
+- Clicking the Chunk bounds thumbnail in Settings tells you whether chunk bounds are shown or hidden.
+
+### Fixed
+
+- Fixed dragging, dropping and rotating a large selection being slow.
+- Fixed annotations being lost when you change a planet and choose Bring your build along.
+- Fixed map previews in Change a planet and when importing a map not showing annotations.
+- Fixed prints on roads often not showing in the 2D view.
+- Fixed marks being drawn at the wrong height in the 3D view when you select or move raised roads, bridges and ramps.
+- Fixed the row you clicked in the layer panel losing its highlight once the pointer moved away.
+- Fixed a horizontal scrollbar sometimes appearing in the layer panel when it is narrow.
+- Fixed the caret in Your own recipe not moving when you used the arrow keys.
+- Fixed text typed in one Generate category showing up after switching to another.
+- Fixed the page going blank when switching Generate categories with reduced motion.
+- Fixed houses being placed with their door side against a cliff edge, the edge of the planet, higher ground or water. The door side needs 1.5 cells of level ground before a drop and 2.5 cells before higher ground or water.
+- Fixed houses being placed right next to each other. Two houses need at least one cell of open ground between them, corners included.
+- Fixed trees being planted right next to a house. A house and a tree need at least one cell of open ground between them, corners included.
+
 ## [1.6.1797] - 2026-10-14
 
 ### Fixed

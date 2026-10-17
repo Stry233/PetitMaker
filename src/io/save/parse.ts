@@ -4,6 +4,7 @@ import type { MapTemplate } from '../../core/model/types';
 import { resolveTemplate } from '../../config/maps/resolve';
 import { parseStoredTemplate } from './planet-codec';
 import { migrateToCurrent, type RawSave, type SaveFile } from './format';
+import { earlierLandmarks, type EarlierLandmark } from './format/earlier-landmarks';
 import { ImportError } from './import-error';
 
 /** A save read once: the input as given, the envelope migrated to the current version, the
@@ -14,6 +15,9 @@ export interface ParsedSave {
   readonly template: MapTemplate;
   /** A save without a numeric `version` predates the field and reads as version 1. */
   readonly fromVersion: number;
+  /** Where the save's landmarks stood when it was written, when that differs from `template`: an
+   *  embedded planet's own footprints before they were regrown, or a built-in planet's earlier layout. */
+  readonly landmarksAsSaved?: readonly EarlierLandmark[];
 }
 
 /** Migrates a parsed save once and checks its envelope. `template` is the planet the caller
@@ -30,7 +34,17 @@ export function parseSave(raw: unknown, options: { template?: MapTemplate } = {}
   if (file.templateId && file.templateId !== template.id && readTemplateId(file) !== template.id) {
     throw new ImportError('incompatible-template', `Save was made for map template "${file.templateId}", not "${template.id}".`);
   }
-  return { raw, file, template, fromVersion: typeof raw.version === 'number' ? raw.version : 1 };
+  const fromVersion = typeof raw.version === 'number' ? raw.version : 1;
+  const asSaved = landmarksAsSaved(raw, template, fromVersion);
+  return { raw, file, template, fromVersion, ...(asSaved ? { landmarksAsSaved: asSaved } : {}) };
+}
+
+/** Where the landmarks of a save of `version` on `template` stood when it was written, or undefined
+ *  when they stood where `template` lays them. */
+function landmarksAsSaved(raw: RawSave, template: MapTemplate, version: number): readonly EarlierLandmark[] | undefined {
+  const stored = storedTemplateOf(raw as { templateId?: unknown; template?: unknown });
+  if (stored) return upgradeLandmarks(stored) === stored ? undefined : stored.landmarks;
+  return isCustomTemplate(template) ? undefined : earlierLandmarks(template.id, version);
 }
 
 /** The template a parsed save was made on: its embedded planet, else the built-in its id names.

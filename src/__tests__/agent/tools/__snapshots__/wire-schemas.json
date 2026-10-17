@@ -13,7 +13,7 @@
  },
  {
   "name": "set_annotation",
-  "description": "Create a planning annotation, or update the supplied id. Updates preserve omitted fields and cannot change kind. Zone cells and measurement endpoints use integer map coordinates; chips and routes may use fractional coordinates. Zones may have tag null. Chips require a tag. Measurements require two aligned endpoints. This edits annotation history independently of terrain history.",
+  "description": "Create a planning annotation, or update the supplied id. Updates preserve omitted fields and cannot change kind. Zone cells use integer map coordinates and measurement endpoints multiples of 0.5, each naming the cell whose top-left corner it is; chips and routes may use fractional coordinates. A zone read with grid \"half\" counts its cells in half cells, cell x covering x/2 to x/2+0.5. Zones may have tag null. Chips require a tag. Measurements require two aligned endpoints. This edits annotation history independently of terrain history.",
   "parameters": {
    "type": "object",
    "properties": {
@@ -464,7 +464,8 @@
     "elevation": {
      "type": "integer",
      "minimum": 0,
-     "maximum": 8
+     "maximum": 9,
+     "description": "The final elevation; the game numbers this layer elevation + 1."
     },
     "smooth": {
      "type": "string",
@@ -745,22 +746,37 @@
  },
  {
   "name": "find_flat_areas",
-  "description": "Search the whole map for flat buildable spots where a footprint of minWidth x minHeight fits (grass zone, uniform elevation, no water, no objects; includes the +1 right/bottom margin the flat trait checks, so place_object at a returned anchor will pass). Use this instead of guessing where things fit.",
+  "description": "Search the whole map for flat buildable spots where a footprint of minWidth x minHeight fits (grass zone, uniform elevation, no water, no objects; includes the +1 right/bottom margin the flat trait checks, so place_object at a returned anchor will pass). Pass catalogId (and rotation) to search for that item: its own turned footprint, beach as well where its groundZones allow it, and for a house the level ground its door side needs (V-PLACE-DOOR). Use this instead of guessing where things fit.",
   "parameters": {
    "type": "object",
    "properties": {
     "minWidth": {
      "type": "integer",
-     "minimum": 1
+     "minimum": 1,
+     "description": "Footprint width; taken from catalogId when given."
     },
     "minHeight": {
      "type": "integer",
-     "minimum": 1
+     "minimum": 1,
+     "description": "Footprint height; taken from catalogId when given."
+    },
+    "catalogId": {
+     "type": "string",
+     "description": "The item to be placed: its footprint, ground zones and door decide the fit."
+    },
+    "rotation": {
+     "type": "integer",
+     "enum": [
+      0,
+      90,
+      180,
+      270
+     ]
     },
     "elevation": {
      "type": "integer",
      "minimum": 0,
-     "maximum": 8,
+     "maximum": 9,
      "description": "Terrain elevation to search on (default 0 = flat ground)."
     },
     "nearX": {
@@ -788,11 +804,7 @@
      "maximum": 10,
      "description": "Max anchors to return (default 5, spread apart)."
     }
-   },
-   "required": [
-    "minWidth",
-    "minHeight"
-   ]
+   }
   }
  },
  {
@@ -957,7 +969,7 @@
     "crest": {
      "type": "integer",
      "minimum": 2,
-     "maximum": 8,
+     "maximum": 9,
      "description": "Crest elevation (default 6; lowered automatically if the rect is too shallow for the insets)."
     },
     "flood": {

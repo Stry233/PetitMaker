@@ -12,3 +12,8 @@ export const LOSS_COLOR = '#e2574c';
 /** `LOSS_COLOR` as an engine colour: a ghost's loss wash, a refused 3D ghost body and the planet
  *  frame's warning flash. */
 export const GHOST_LOSS = hexStringToNumber(LOSS_COLOR);
+
+/** An object flagged as standing where it may not (a hand repair's problems), in every view and
+ *  picture that draws it: its footprint washed at `wash` and edged `edgePx` screen px wide in
+ *  `GHOST_LOSS`. */
+export const FLAG_MARK = { wash: 0.35, edgePx: 2 } as const;

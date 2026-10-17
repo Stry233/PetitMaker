@@ -4,7 +4,7 @@ import { StrictMode } from 'react';
 import { MotionConfig } from 'framer-motion';
 import { cleanup, render, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { providerName } from '../../../i18n/providers';
+import { providerName } from '../../../i18n/terms/providers';
 import { I18nProvider, translateFor } from '../../../i18n/context';
 import { HelpModal } from '../../../ui/help/HelpModal';
 import { PROVIDER_IDS, PROVIDER_META } from '../../../agent/providers/defaults';

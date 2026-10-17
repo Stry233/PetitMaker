@@ -1,6 +1,7 @@
 /**
- * The video import's guide: the recording protocol beside a looping example recording, the reason
- * the last video was refused, and the drop zone that takes the next one.
+ * The video import's guide: the recording steps beside a looping example recording, with the way
+ * into the full guide in Help, the reason the last video was refused with the way to its fix there,
+ * and the drop zone that takes the next one.
  *
  * The example loads when the guide mounts, plays muted and loops; under reduced motion it rests on
  * its poster with a play button and plays only when asked.
@@ -10,7 +11,7 @@ import { useRef, useState, type CSSProperties, type DragEvent } from 'react';
 import { AnimatePresence, useReducedMotionConfig } from 'framer-motion';
 import { useT } from '../../../../i18n/context';
 import type { ImportFailure } from '../../../../pipelines/planet-scan';
-import { radii } from '../../../design/styles';
+import { cursors, radii } from '../../../design/styles';
 import { ERROR, FRAME_INK } from '../../../design/tokens';
 import { roleFont } from '../../../design/text-weight';
 import { skin } from '../../../design/window-skin';
@@ -19,18 +20,16 @@ import { PlayIcon } from '../../../primitives/line-glyphs';
 import { ImportDropZone } from '../import/ImportDropZone';
 import { acceptsVideo, VIDEO_ACCEPT } from '../../../../io/import/facts';
 import { SCAN_EXAMPLE, SCAN_EXAMPLE_SIZE } from './scan-example';
-
-/** The protocol, in order. */
-const STEPS = [
-  'planet.scan_step_window', 'planet.scan_step_region', 'planet.scan_step_zoom', 'planet.scan_step_rows', 'planet.scan_step_cover', 'planet.scan_step_upload',
-] as const;
+import { openHelp } from '../../../session/help-targets';
+import { VIDEO_GUIDE_HELP, VIDEO_STEPS, videoFixAnchor } from './video-guide';
 
 /** Each refusal's copy key; every locale defines each (`planet-import-window.test.tsx`). */
 export const FAILURE_COPY = {
   framing: 'planet.scan_failed_framing',
   'not-map-view': 'planet.scan_failed_not_map_view',
+  'not-max-zoom': 'planet.scan_failed_zoom',
+  'zoom-changed': 'planet.scan_failed_zoom_changed',
   'region-load-off': 'planet.scan_failed_region_off',
-  'different-zoom': 'planet.scan_failed_zoom',
   'too-little': 'planet.scan_failed_too_little',
   'too-long': 'planet.scan_failed_too_long',
   'too-fast': 'planet.scan_failed_too_fast',
@@ -57,7 +56,21 @@ const playStyle: CSSProperties = {
 };
 const failureStyle: CSSProperties = {
   ...roleFont('label'), color: ERROR, background: skin.inset, borderRadius: radii.md, padding: '10px 14px', lineHeight: 1.45,
+  display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 6,
 };
+const helpLinkStyle: CSSProperties = {
+  ...roleFont('label'), border: 'none', background: 'none', padding: 0, color: skin.plateInk, textDecoration: 'underline', textUnderlineOffset: 3,
+  cursor: cursors.clickable, textAlign: 'start',
+};
+
+/** A link that opens Help at `anchor` on the Change a planet page, over this window. */
+function GuideLink({ anchor, label, testId }: { anchor: string; label: string; testId: string }) {
+  return (
+    <ActionButton interaction="quietLink" style={helpLinkStyle} data-testid={testId} onClick={() => openHelp(VIDEO_GUIDE_HELP.page, anchor)}>
+      {label}
+    </ActionButton>
+  );
+}
 
 function ExampleVideo() {
   const t = useT();
@@ -112,9 +125,12 @@ export function VideoImportGuide({ failure, stacked, onFile }: {
       <input ref={fileRef} type="file" hidden accept={VIDEO_ACCEPT} data-testid="scan-file"
         onChange={(e) => { const f = e.currentTarget.files?.[0]; if (f) onFile(f); }} />
       <div style={{ display: 'flex', flexDirection: stacked ? 'column' : 'row', gap: 20, alignItems: stacked ? 'stretch' : 'center' }}>
-        <ol style={{ ...listStyle, flex: 1, minWidth: 0 }} data-testid="scan-steps">
-          {STEPS.map((key) => <li key={key}>{t(key)}</li>)}
-        </ol>
+        <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <ol style={listStyle} data-testid="scan-steps">
+            {VIDEO_STEPS.map((key) => <li key={key}>{t(key)}</li>)}
+          </ol>
+          <GuideLink anchor={VIDEO_GUIDE_HELP.anchor} label={t('planet.video_guide_link')} testId="scan-guide-help" />
+        </div>
         <div style={{ flex: stacked ? 'none' : '0 0 46%', minWidth: 0 }}>
           <ExampleVideo />
         </div>
@@ -122,7 +138,10 @@ export function VideoImportGuide({ failure, stacked, onFile }: {
       <AnimatePresence initial={false}>
         {failure && (
           <Disclosure key={failure} motionId="section.expand">
-            <div role="alert" data-testid="scan-failure" style={failureStyle}>{t(FAILURE_COPY[failure])}</div>
+            <div role="alert" data-testid="scan-failure" style={failureStyle}>
+              <span>{t(FAILURE_COPY[failure])}</span>
+              <GuideLink anchor={videoFixAnchor(failure)} label={t('planet.video_fix_link')} testId="scan-failure-help" />
+            </div>
           </Disclosure>
         )}
       </AnimatePresence>

@@ -9,7 +9,7 @@
  */
 export { moveObject, rotateObject, peelTerrain, type RotateResult } from './actions';
 export {
-  groupMembers, groupBounds, moveGroup, previewGroupMove, rotateGroup, deleteGroup,
+  groupMembers, groupBounds, moveGroup, planGroupMove, rotateGroup, deleteGroup,
   type DeleteGroupResult, type QuarterTurn,
 } from './group-actions';
 export type { GroupRotation } from './group-rotation';

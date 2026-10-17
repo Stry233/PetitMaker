@@ -5,7 +5,7 @@
 import { BRAND_LOGO_URL } from '../../../chrome/brand-logo';
 import { makeRng } from '../../../../core/base/rng';
 import { localizedName } from '../../../../i18n/context';
-import { brandName } from '../../../../i18n/brand';
+import { brandName } from '../../../../i18n/terms/brand';
 import type { Locale, LocalizedName } from '../../../../core/model/locale';
 import { NEIGHBORS } from '../../../../config/neighbors';
 import type { StencilKind } from '../../../../tools/generation/facts';

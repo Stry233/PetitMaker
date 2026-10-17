@@ -35,11 +35,20 @@ interface HelpStepGroup {
   stepKeys: readonly TextKey[];
 }
 
+/** One list entry: its copy and, where the interface links to it, its anchor. */
+interface HelpListItem {
+  key: TextKey;
+  anchor?: string;
+}
+
 export type HelpSection =
   /** A heading and one or more paragraphs. Body strings may mark gestures with `**bold**`. */
   | Editioned<{ kind: 'prose'; anchor: string; titleKey: TextKey; bodyKeys: readonly TextKey[]; figure?: HelpFigure }>
   /** A heading, optional paragraphs, then one bulleted step list per provider. */
   | Editioned<{ kind: 'steps'; anchor: string; titleKey: TextKey; bodyKeys?: readonly TextKey[]; groups: readonly HelpStepGroup[] }>
+  /** A heading, optional paragraphs, then a numbered (`ordered`) or bulleted list; an item with an
+   *  anchor is a deep-link target of its own. */
+  | Editioned<{ kind: 'list'; anchor: string; titleKey: TextKey; bodyKeys?: readonly TextKey[]; ordered?: true; items: readonly HelpListItem[] }>
   /** A heading over a key table, with optional prose after it. */
   | Editioned<{ kind: 'keys'; anchor: string; titleKey: TextKey; rows: readonly HelpKeyRow[]; afterKeys?: readonly TextKey[] }>
   /** A yellow aside between sections. */

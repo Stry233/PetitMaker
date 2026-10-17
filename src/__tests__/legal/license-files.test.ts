@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { existsSync, readFileSync } from 'node:fs';
-import { APP_NAME } from '../../i18n/brand';
+import { APP_NAME } from '../../i18n/terms/brand';
 import { LEGAL } from '../../legal/config';
 
 // `LICENSE` is the official Apache-2.0 text from

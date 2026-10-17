@@ -11,7 +11,7 @@ import type { PreviewCell } from '../runtime/view-seam';
 import type { CursorId } from '../../../assets/cursors/cursor-spec';
 import { brushCells, expandLine, line4, splineCells } from '../../../core/grid/shapes';
 import { ShapeGesture } from './gestures';
-import { violationToast } from '../../../i18n/rule-copy';
+import { violationToast } from '../../../i18n/terms/rule-copy';
 import { getCell } from '../../../core/model/grid-model';
 import type { ContentType } from '../../../state/editing/edit-mode';
 import { peelCommand } from '../../placement/terrain-peel';
@@ -45,7 +45,7 @@ function groundPeel(coord: MacroCoord, cell: MacroCell | null, ctx: CurveToolCon
 export class EraserTool implements Tool<GridId, CurveToolContext> {
   readonly id = ToolType.Eraser;
   cursor(): CursorId { return 'eraser'; }
-  grid(ctx: CurveToolContext): GridId { return CONTENT_GRID[ctx.arming.contentType]; }
+  grid(ctx: Pick<CurveToolContext, 'arming'>): GridId { return CONTENT_GRID[ctx.arming.contentType]; }
 
   canActAt(coord: MacroCoord, ctx: CurveToolContext): boolean {
     if (ctx.arming.contentType === 'road') {

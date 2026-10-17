@@ -27,7 +27,14 @@ export class BoxMaterials {
   fill(color: number, opacity: number): THREE.MeshBasicMaterial {
     const key = `fill:${color}:${opacity}`;
     let mat = this.mats.get(key) as THREE.MeshBasicMaterial | undefined;
-    if (!mat) { mat = makeMat(color, opacity); this.mats.set(key, mat); }
+    if (!mat) {
+      mat = makeMat(color, opacity);
+      // A box may lie flush on the face it marks (a coating's), so its fill wins the depth tie.
+      mat.polygonOffset = true;
+      mat.polygonOffsetFactor = -1;
+      mat.polygonOffsetUnits = -1;
+      this.mats.set(key, mat);
+    }
     return mat;
   }
 

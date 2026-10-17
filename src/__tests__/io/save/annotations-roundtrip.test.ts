@@ -114,7 +114,7 @@ describe('measurement persistence', () => {
   });
   it.each([
     { points: [{ x: 1, y: 2 }] },
-    { points: [{ x: 1.5, y: 2 }, { x: 8, y: 2 }] },
+    { points: [{ x: 1.25, y: 2 }, { x: 8, y: 2 }] },
     { points: [{ x: 1, y: 2 }, { x: 8, y: 9 }] },
     { points: [null, { x: 8, y: 2 }] },
     { points: [{ x: 1, y: 2 }, { x: Infinity, y: 2 }] },
@@ -171,5 +171,63 @@ describe('route width in saves', () => {
     expect(route({ width: 2.5 }).width).toBeUndefined();
     expect(route({ width: 'wide' }).width).toBeUndefined();
     expect(route({ width: 40 }).width).toBe(5);
+  });
+});
+
+describe('half-cell notes in saves and share codes', () => {
+  const half = (): AnnotationsState => ({
+    items: [
+      { kind: 'zone', id: 'h1', cells: [{ x: 5, y: 6 }, { x: 6, y: 6 }, { x: 5, y: 7 }], grid: 'half', color: '#FF8A7A', tag: 'homes', num: 1, size: 'm' },
+      { kind: 'zone', id: 'w1', cells: [{ x: 2, y: 3 }, { x: 3, y: 3 }], color: '#FF8A7A', tag: null, num: 2, size: 'm' },
+      { kind: 'measure', id: 'm1', points: [{ x: 1.5, y: 4 }, { x: 8, y: 4 }], color: '#FFB347' },
+      { kind: 'route', id: 'r1', points: [{ x: 1.5, y: 1 }, { x: 4.5, y: 2.5 }], color: '#FFFEE3', dashed: true },
+    ],
+    visible: true,
+    locked: false,
+  });
+
+  it('round-trips half-grid zones, half-cell measurements and routes losslessly through a save', () => {
+    const state = makeState(12, 12);
+    state.annotations = half();
+    for (const json of [serialize(state), toSaveJSON(canonicalize(state), state.annotations)]) {
+      expect(deserialize(json, state.template).annotations).toEqual(state.annotations);
+    }
+  });
+
+  it('writes a zone whole cells hold without a grid, as releases before half cells wrote it', () => {
+    const state = makeState(12, 12);
+    state.annotations = half();
+    const zones = (JSON.parse(serialize(state)) as { annotations: { items: Array<Record<string, unknown>> } }).annotations.items.filter((n) => n.kind === 'zone');
+    expect(zones.map((z) => z.grid)).toEqual(['half', undefined]);
+  });
+
+  it('opens a save from before half cells exactly as it was written', () => {
+    const legacy = {
+      items: [
+        { kind: 'zone', id: 'z', cells: [{ x: 2, y: 3 }, { x: 3, y: 3 }], color: '#FF8A7A', tag: 'homes', num: 1, size: 'm' },
+        { kind: 'measure', id: 'm', points: [{ x: 1, y: 4 }, { x: 84, y: 4 }], color: '#FFB347', flipped: true },
+      ],
+      visible: true, locked: false,
+    };
+    const back = decodeAnnotations(legacy)!;
+    expect(back).toEqual(legacy);
+    expect(back.items[0]).not.toHaveProperty('grid');
+    const state = makeState(100, 100);
+    state.annotations = back;
+    expect(JSON.parse(serialize(state)).annotations).toEqual(legacy);
+  });
+
+  it('reads a half-grid record that whole cells hold as the whole-cell zone', () => {
+    const quarters = [{ x: 4, y: 6 }, { x: 5, y: 6 }, { x: 4, y: 7 }, { x: 5, y: 7 }];
+    const back = decodeAnnotations({ items: [{ kind: 'zone', id: 'z', cells: quarters, grid: 'half', color: '#FF8A7A', tag: null, num: 1 }] })!;
+    expect(back.items[0]).toMatchObject({ cells: [{ x: 2, y: 3 }] });
+    expect(back.items[0]).not.toHaveProperty('grid');
+  });
+
+  it('bounds a half-grid zone by the same map area and coordinate limits', () => {
+    const near = { kind: 'zone', id: 'z', cells: [{ x: 2000, y: 1 }, { x: 2049, y: 1 }], grid: 'half', color: '#FF8A7A', tag: null, num: 1 };
+    expect((decodeAnnotations({ items: [near] })!.items[0] as ZoneNote).cells).toEqual([{ x: 2000, y: 1 }]);
+    const whole = { ...near, grid: undefined };
+    expect(decodeAnnotations({ items: [whole] })).toBeUndefined();
   });
 });

@@ -13,7 +13,7 @@ import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { MotionConfig } from 'framer-motion';
 import { I18nProvider, translate } from '../../../i18n/context';
 import { TimedButton } from '../../../ui/primitives/TimedButton';
-import { timedHint } from '../../../i18n/timed-hint';
+import { timedHint } from '../../../ui/chrome/timed-hint';
 import { ACTIVE } from '../../../ui/design/tokens';
 
 /** jsdom re-serializes a hex fill as `rgb(...)`, so the fired fill is compared in that form rather

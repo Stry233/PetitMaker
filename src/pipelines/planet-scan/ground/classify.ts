@@ -1,20 +1,25 @@
+import { blurField } from '../../../core/base/fields';
 import { median } from '../../../core/base/math';
 import { makeRng } from '../../../core/base/rng';
-import { classLookup, inSeaBand, labHue, toLab, GRASS, SAND, SEA, type PixelClass } from './color';
+import { GRASS, SAND, SEA, type PaletteSampler } from './color';
 import { areaWeights, type CellEvidence } from './evidence';
 import { SCAN_PROFILE } from '../profile';
-import { blur, chessboardDistance, close, componentsTouching, erode, fillHoles, largestComponent } from './raster';
+import { blur, chessboardDistance, close, componentsTouching, dilate, erode, fillHoles, largestComponent } from './raster';
+import { grassShift, shiftGrass, type GrassShift, type GrassShiftSettings } from './grass-shift';
 import { atCell, coastRasters, shoreLand, SHORE_MODEL, type CoastRasters, type ShoreModel } from './shore-model';
+import { mosaicRaster, nameSurfaces } from './surfaces';
 
 // Sea, sand and grass from the evidence. The palette is fitted per recording, since lighting and
-// exposure differ: k-means in L*a*b*, sea by its hue band, and sand from grass at an Otsu split of
-// the land pixels' hue. Grass is decided first and land around it:
+// exposure differ: k-means in L*a*b*, each cluster named by where it lies in the palette mosaic
+// (`surfaces.ts`), never by its colour. Grass is decided first, from the grass vote read past the
+// recording's grass edge offset (`grass-shift.ts`), and land around it:
 //
 // - observed grass: the largest 4-connected run of cells whose inner area is mostly grass, holes
 //   filled;
 // - the grass blob (the grass vote closed and filled at sample resolution) and a row and column
 //   profile of the grass outline, which interpolates edges hidden by builds, may each add a cell
-//   only where it shows build texture (local contrast), so smooth or washed-out sand stays sand;
+//   only where it shows build texture (local contrast) and does not read as the sand round it, so
+//   smooth or washed-out sand and one-cell notches of the edge stay sand;
 // - land is the grass plus, near the observed coast, cells the shore model calls land or that lie
 //   deeper inside it than the drawn beach reaches and, elsewhere, cells more than `inland` cells
 //   inside the observed sea's edge; only land
@@ -23,12 +28,10 @@ import { atCell, coastRasters, shoreLand, SHORE_MODEL, type CoastRasters, type S
 
 const G = SCAN_PROFILE.ground;
 
-/** The recording's ground palette: cluster centres in L*a*b*, each centre's class, and the hue
- *  that splits sand from grass. */
+/** The recording's ground palette: cluster centres in L*a*b* and each centre's class. */
 export interface Palette {
   readonly centres: Float64Array;
   readonly classes: Uint8Array;
-  readonly split: number;
 }
 
 function kmeans(samples: Float32Array, k: number, seed: number, iterations: number): { centres: Float64Array; inertia: number } {
@@ -96,43 +99,12 @@ function kmeans(samples: Float32Array, k: number, seed: number, iterations: numb
   return { centres, inertia };
 }
 
-/** The Otsu threshold of the land samples' hue histogram over `G.hueRange` in 1-degree bins. */
-function hueSplit(samples: Float32Array): number {
-  const [lo, hi] = G.hueRange;
-  const bins = hi - lo;
-  const hist = new Float64Array(bins);
-  for (let i = 0; i < samples.length; i += 3) {
-    const h = labHue(samples[i + 1]!, samples[i + 2]!);
-    if (inSeaBand(h) || h < lo || h > hi) continue;
-    hist[Math.min(bins - 1, Math.floor(h - lo))]! += 1;
-  }
-  let best = 0;
-  let split: number = G.fallbackSplit;
-  for (let t = 1; t < bins; t++) {
-    let w0 = 0, w1 = 0, s0 = 0, s1 = 0;
-    for (let b = 0; b < bins; b++) {
-      const c = lo + b + 0.5;
-      if (b < t) {
-        w0 += hist[b]!;
-        s0 += hist[b]! * c;
-      } else {
-        w1 += hist[b]!;
-        s1 += hist[b]! * c;
-      }
-    }
-    if (w0 === 0 || w1 === 0) continue;
-    const v = w0 * w1 * (s0 / w0 - s1 / w1) ** 2;
-    if (v > best) {
-      best = v;
-      split = lo + t;
-    }
-  }
-  return split;
-}
-
-/** Fits the palette to L*a*b* samples (`colour.ts:PaletteSampler`); deterministic. */
-export function fitPalette(samples: Float32Array): Palette {
+/** Fits the palette to a palette sampler's mosaic (`color.ts:PaletteSampler`): k-means over its
+ *  samples, then each cluster named by the mosaic's structure (`surfaces.ts:nameSurfaces`);
+ *  deterministic. */
+export function fitPalette(sampler: PaletteSampler): Palette {
   const P = G.palette;
+  const samples = sampler.samples();
   if (samples.length < P.clusters * 3) throw new Error('too few colour samples for the palette');
   let best: { centres: Float64Array; inertia: number } | null = null;
   for (let r = 0; r < P.restarts; r++) {
@@ -140,32 +112,7 @@ export function fitPalette(samples: Float32Array): Palette {
     if (!best || run.inertia < best.inertia) best = run;
   }
   const centres = best!.centres;
-  const split = hueSplit(samples);
-  const classes = new Uint8Array(P.clusters);
-  for (let c = 0; c < P.clusters; c++) {
-    const h = labHue(centres[c * 3 + 1]!, centres[c * 3 + 2]!);
-    classes[c] = inSeaBand(h) ? SEA : h < split ? SAND : GRASS;
-  }
-  return { centres, classes, split };
-}
-
-/** The class lookup of a palette: each colour takes its nearest centre's class. */
-export function paletteLookup(palette: Palette): Uint8Array {
-  const lab = new Float64Array(3);
-  const k = palette.classes.length;
-  return classLookup((r, g, b): PixelClass => {
-    toLab(r, g, b, lab);
-    let best = 0;
-    let bd = Infinity;
-    for (let c = 0; c < k; c++) {
-      const d = (lab[0]! - palette.centres[c * 3]!) ** 2 + (lab[1]! - palette.centres[c * 3 + 1]!) ** 2 + (lab[2]! - palette.centres[c * 3 + 2]!) ** 2;
-      if (d < bd) {
-        bd = d;
-        best = c;
-      }
-    }
-    return palette.classes[best] as PixelClass;
-  });
+  return { centres, classes: nameSurfaces(centres, mosaicRaster(centres, sampler)) };
 }
 
 /** Per-cell readings the ground decision and the landmark search share. */
@@ -184,6 +131,9 @@ export interface CellReadings {
   readonly texture: Float32Array;
   /** L*a*b* distance of the inner area's mean colour from the recording's sand. */
   readonly sandDistance: Float32Array;
+  /** L*a*b* distance of the inner area's mean colour from the sand round it: the mean inner colour
+   *  of the confidently sandy cells within `sandRadius` cells; Infinity where none is. */
+  readonly localSandDistance: Float32Array;
 }
 
 function pointsGrassBlob(ev: CellEvidence): Uint8Array {
@@ -203,8 +153,8 @@ function pointsContrast(ev: CellEvidence): Float32Array {
   return out;
 }
 
-/** The readings of every cell of the evidence. */
-export function cellReadings(ev: CellEvidence): CellReadings {
+/** The readings of every cell of the evidence; the sand round a cell is that within `sandRadius` cells. */
+export function cellReadings(ev: CellEvidence, sandRadius: number = G.localSand.radius): CellReadings {
   const { cols, rows } = ev.grid;
   const s = ev.sub;
   const pw = ev.points.width;
@@ -260,7 +210,20 @@ export function cellReadings(ev: CellEvidence): CellReadings {
     const d = Math.hypot(ev.inner.l[i]! - sl, ev.inner.a[i]! - sa, ev.inner.b[i]! - sb);
     sandDistance[i] = Number.isFinite(d) && ev.inner.weight[i]! > 0 ? d : Infinity;
   }
-  return { cols, rows, known, grass, sand, sea, blob: blobShare, texture, sandDistance };
+  // The sand round each cell: the beach facing away from the light reads far darker than the
+  // recording's sand, so a cell is compared with its own stretch of beach.
+  const isSand = new Float32Array(n);
+  for (const i of sandCells) isSand[i] = 1;
+  const local = (plane: Float32Array) => blurField(plane.map((v, i) => (isSand[i] ? v : 0)), cols, rows, sandRadius, 1);
+  const share = blurField(isSand, cols, rows, sandRadius, 1);
+  const ll = local(ev.inner.l), la = local(ev.inner.a), lb = local(ev.inner.b);
+  const localSandDistance = new Float32Array(n);
+  for (let i = 0; i < n; i++) {
+    const w = share[i]!;
+    localSandDistance[i] = w > 0 && ev.inner.weight[i]! > 0
+      ? Math.hypot(ev.inner.l[i]! - ll[i]! / w, ev.inner.a[i]! - la[i]! / w, ev.inner.b[i]! - lb[i]! / w) : Infinity;
+  }
+  return { cols, rows, known, grass, sand, sea, blob: blobShare, texture, sandDistance, localSandDistance };
 }
 
 /** Rounds to the nearest integer, a half to the even neighbour, so an outline midway between two
@@ -376,19 +339,33 @@ export interface GroundReading {
   readonly inferred: Uint8Array;
   /** Cells no frame saw well enough to read. */
   readonly unseen: Uint8Array;
+  /** Read past the recording's grass edge offset. */
   readonly readings: CellReadings;
+  /** The grass edge offset `readGround` read the evidence with; absent on readings made otherwise. */
+  readonly grassShift?: GrassShift;
 }
 
-/** The build-texture guard of the grass rule: the contrast above which the blob and the profile may
- *  add a cell; defaults to `SCAN_PROFILE.ground`'s. */
-export interface TextureGuard {
+/** The settings of the grass rule, defaulting to `SCAN_PROFILE.ground`'s: the build contrast above
+ *  which the blob and the profile may add a cell, the colour test that keeps a cell reading as the
+ *  sand round it out of the blob and the profile, and how the grass edge offset is read. */
+export interface GrassGuard {
   readonly blobTexture: number;
   readonly profileTexture: number;
+  readonly localSand: { readonly radius: number; readonly grassVote: number; readonly distance: number };
+  readonly grassShift: GrassShiftSettings;
 }
 
-/** Reads sea, sand and grass from the evidence; `shore` decides land near the coast. */
-export function readGround(ev: CellEvidence, shore: ShoreModel = SHORE_MODEL, guard: TextureGuard = G): GroundReading {
-  const R = cellReadings(ev);
+/** Reads sea, sand and grass from the evidence, the water the open sea does not reach as
+ *  `inlandWater` reads it; `shore` decides land near the coast. */
+export function readGround(evidence: CellEvidence, shore: ShoreModel = SHORE_MODEL, guard: GrassGuard = G): GroundReading {
+  const water = inlandWater(evidence);
+  const ev = water.evidence;
+  const offset = grassShift(ev, guard.grassShift);
+  const R = cellReadings(shiftGrass(ev, offset.shift), guard.localSand.radius);
+  // The grass vote the inland water gave each cell, read where `R` reads the grass.
+  const fromWater = innerShare(ev, shiftGrass({ ...ev, points: { ...ev.points, grass: water.moved } }, offset.shift).points.grass);
+  // The notch test compares a cell's grass vote with its own colour, both read where it lies.
+  const own = offset.shift === 0 ? R : cellReadings(ev, guard.localSand.radius);
   const { cols, rows, known } = R;
   const n = cols * rows;
   const mask = (f: (i: number) => boolean) => {
@@ -398,11 +375,15 @@ export function readGround(ev: CellEvidence, shore: ShoreModel = SHORE_MODEL, gu
   };
   const cert = mask((i) => R.grass[i]! > G.vote);
   const observed = fillHoles(largestComponent(cert, cols, rows), cols, rows);
-  const fromBlob = mask((i) => R.blob[i]! > G.vote && !observed[i] && R.texture[i]! > guard.blobTexture);
+  // A one-cell notch of the grass edge shows the edge's own contrast, which the build guard takes for
+  // a build; a cell that reads as the sand round it stays sand whatever its contrast.
+  const sandColour = mask((i) => !!known[i] && own.grass[i]! < guard.localSand.grassVote && own.localSandDistance[i]! < guard.localSand.distance);
+  const fromBlob = mask((i) => R.blob[i]! > G.vote && !observed[i] && R.texture[i]! > guard.blobTexture && !sandColour[i]);
   const base = fillHoles(mask((i) => !!(observed[i] || fromBlob[i])), cols, rows);
   // Unseen cells are not certainly anything; the profile treats them as hidden on its own.
   const notGrass = mask((i) => !!known[i] && !cert[i] && (
-    (R.sand[i]! + R.sea[i]! > G.vote && R.sandDistance[i]! < G.sandDistance && R.texture[i]! < G.cleanTexture) || R.sea[i]! > G.waterVote));
+    (R.sand[i]! + R.sea[i]! > G.vote && R.sandDistance[i]! < G.sandDistance && R.texture[i]! < G.cleanTexture) || R.sea[i]! > G.waterVote
+    || !!sandColour[i]));
   const profile = profileGrass(cert, notGrass, known, cols, rows);
   const fromProfile = mask((i) => !!profile[i] && !base[i] && R.texture[i]! > guard.profileTexture && !(R.sea[i]! > G.profileSea));
   const grass = fillHoles(mask((i) => !!(base[i] || fromProfile[i])), cols, rows);
@@ -418,9 +399,78 @@ export function readGround(ev: CellEvidence, shore: ShoreModel = SHORE_MODEL, gu
   for (let i = 0; i < n; i++) {
     ground[i] = onGrass[i] ? GRASS : land[i] ? SAND : SEA;
     unseen[i] = known[i] ? 0 : 1;
-    inferred[i] = (onGrass[i] && !cert[i]) || filled[i] || (!known[i] && land[i]) ? 1 : 0;
+    inferred[i] = (onGrass[i] && !(R.grass[i]! - fromWater[i]! > G.vote)) || filled[i] || (!known[i] && land[i]) ? 1 : 0;
   }
-  return { cols, rows, ground, inferred, unseen, readings: R };
+  return { cols, rows, ground, inferred, unseen, readings: R, grassShift: offset };
+}
+
+/** The water the open sea does not reach (`inlandWater`). */
+export interface InlandWater {
+  /** The evidence with the water of every body at least `G.waterBody` cells across read as grass. */
+  readonly evidence: CellEvidence;
+  /** Per sample point, the sea vote `evidence` reads as grass. */
+  readonly moved: Float32Array;
+}
+
+/** Each cell's share of a sample-point plane over its inner area (`SCAN_PROFILE.evidence.inner`). */
+function innerShare(ev: CellEvidence, plane: Float32Array): Float32Array {
+  const { cols, rows } = ev.grid;
+  const s = ev.sub;
+  const width = ev.points.width;
+  const inner = areaWeights(s, SCAN_PROFILE.evidence.inner);
+  const out = new Float32Array(cols * rows);
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      let v = 0, cnt = 0;
+      for (let j = 0; j < s; j++) {
+        for (let i = 0; i < s; i++) {
+          const a = inner[i]! * inner[j]!;
+          v += a * plane[(r * s + j) * width + c * s + i]!;
+          cnt += a;
+        }
+      }
+      out[r * cols + c] = v / cnt;
+    }
+  }
+  return out;
+}
+
+/**
+ * The water the open sea does not reach: seen sample points that vote sea, cut off from the
+ * evidence's border by points that do not. The game draws a sand rim between grass and the sea all
+ * round (`PLANET_PROFILE.shoreRadius`) and lays water only on grass, so such water is never the sea,
+ * whatever its colour. A body with cells that are water over more than `waterVote` of their inner
+ * area, at least `G.waterBody` cells across, is read as grass with the cells round them: a pond, or
+ * grass whose lighting moves it into the sea's colours, which would otherwise take the coast inland.
+ * A narrower one keeps its vote: it is as often a raised top's face drawn dark over the beach as
+ * over its own grass, and the land rule reads it as before.
+ */
+export function inlandWater(ev: CellEvidence): InlandWater {
+  const { width, height, sea, grass, weight } = ev.points;
+  const n = width * height;
+  const dry = new Uint8Array(n);
+  for (let p = 0; p < n; p++) dry[p] = sea[p]! > G.vote ? 0 : 1;
+  const closed = fillHoles(dry, width, height);
+  const cut = new Float32Array(n);
+  for (let p = 0; p < n; p++) if (closed[p] && !dry[p] && weight[p]! > 0) cut[p] = sea[p]!;
+  const { cols, rows } = ev.grid;
+  const s = ev.sub;
+  const share = innerShare(ev, cut);
+  const watery = new Uint8Array(cols * rows);
+  for (let i = 0; i < watery.length; i++) watery[i] = share[i]! > G.waterVote ? 1 : 0;
+  const core = erode(watery, cols, rows, (G.waterBody - 1) / 2);
+  const bodies = dilate(componentsTouching(watery, core, cols, rows, false), cols, rows, 1);
+  const moved = new Float32Array(n);
+  const openSea = sea.slice();
+  const onGrass = grass.slice();
+  for (let p = 0; p < n; p++) {
+    const x = p % width;
+    if (!cut[p] || !bodies[Math.floor((p - x) / width / s) * cols + Math.floor(x / s)]) continue;
+    moved[p] = sea[p]!;
+    onGrass[p] = grass[p]! + sea[p]!;
+    openSea[p] = 0;
+  }
+  return { evidence: { ...ev, points: { ...ev.points, sea: openSea, grass: onGrass } }, moved };
 }
 
 /** Each cell centre's signed distance in cells to the observed coast, positive on land. */

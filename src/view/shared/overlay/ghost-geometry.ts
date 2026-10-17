@@ -27,6 +27,9 @@ export interface TrimmedGhostCell { x: number; y: number; corners: readonly stri
  *  views keep their own tuned values. */
 export const GHOST_WASH_ALPHA = { map2d: 0.32, map3d: 0.4 } as const;
 
+/** The strength a note ghost draws at in both views: the note as it would land, lighter. */
+export const NOTE_GHOST_ALPHA = 0.55;
+
 /** The two sides a `tri-*` keeps, straight from its name. */
 const TRI_SIDES: Record<string, [Side, Side]> = {
   'tri-NW': ['N', 'W'], 'tri-NE': ['N', 'E'], 'tri-SW': ['S', 'W'], 'tri-SE': ['S', 'E'],

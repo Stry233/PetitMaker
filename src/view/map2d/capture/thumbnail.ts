@@ -1,12 +1,12 @@
 /**
- * The picture on a candidate card: a map that is not the live one, drawn by the renderer that draws
- * the live one.
+ * Every in-app picture of a map (cards, planet windows, the repair choice, the assistant, Help): a
+ * map that need not be the live one, drawn by the renderer that draws the live one.
  *
  * There is one drawing of a map, so a card cannot promise a planet the click does not build:
- * `MapRenderer.captureState` builds the real base, terrain and object layers over the candidate's
- * own grid, off the stage, and rasterizes them with the live renderer's GPU context. The colours,
- * the trims, the road shapes, the waterfall arrows and the icons are the map's own by construction,
- * and whole-island framing excludes the sea added for the reference grid.
+ * `MapRenderer.captureState` builds the real base, terrain, object and notes layers over the
+ * picture's own grid, off the stage, and rasterizes them with the live renderer's GPU context. The
+ * colours, the trims, the road shapes, the waterfall arrows, the icons and the plan notes are the
+ * map's own by construction, and whole-island framing excludes the sea added for the reference grid.
  *
  * What is left here is the framing. A run bounded by a painted region only writes inside it, so a
  * card framed on the whole planet photographs a change a few cells across at a few pixels:
@@ -19,8 +19,13 @@
  * shows when it fits the map to the window.
  */
 import { WATER_COLOR } from '../../../core/model/palette';
-import type { GridState } from '../../../core/model/types';
+import type { GridState, PlacedObject } from '../../../core/model/types';
+import { objectRect } from '../../../state/object-geometry';
+import { cellsCaptureFrame, type MapFrame } from '../../../core/grid/map-chunks';
+import type { AnnotationsState } from '../../../core/model/annotations';
 import { boundedMap, type BoundedMap } from '../../../core/base/bounded-map';
+import { useEditorStore } from '../../../state/store';
+import { pictureNotes } from '../../shared/annotation/draw-options';
 import { getMapRenderer } from '../scene/renderer-registry';
 
 /** A rectangle of macro cells a picture is framed on, where the whole template is not the answer. */
@@ -97,67 +102,133 @@ function frameInSea(shot: HTMLCanvasElement, aspect: number): HTMLCanvasElement 
   return out;
 }
 
-/** One photograph per grid, kept as long as the grid: a cached candidate returns the same
- *  `GridState`, so its picture is taken once. Only successful shots are kept (null means no renderer
- *  yet). The live grid mutates in place, so a caller photographing a map being edited passes
- *  `version` for a fresh capture per value. Bounded per grid, since `version` makes the key space
- *  unbounded; a hit moves its key to the end of the insertion-ordered `Map`, so eviction is LRU. */
-const SHOTS_PER_GRID = 12;
-const shots = new WeakMap<GridState, BoundedMap<string, string>>();
-const pendingShots = new WeakMap<GridState, Map<string, Promise<string | null>>>();
+/**
+ * The cells a picture of `state` covers, in cells, and so where a painter places it: `frame` when the
+ * picture is a crop; else everything the renderer draws of the map, the whole template with the
+ * terrain bleed of its first row and column and every object it draws, `flagged` included. An
+ * object's art stays inside its footprint (`draw/sprite-fit.ts:footprintFit`), so its footprint
+ * bounds its drawing; a landmark laid past the template's edge (Hexia's station) widens the picture.
+ */
+export function mapPictureFrame(state: Pick<GridState, 'template' | 'objects'>, frame?: CellFrame, flagged: readonly PlacedObject[] = []): MapFrame {
+  if (frame) return cellsCaptureFrame(frame);
+  const box = cellsCaptureFrame({ x: 0, y: 0, width: state.template.width, height: state.template.height });
+  let x0 = box.x, y0 = box.y, x1 = box.x + box.width, y1 = box.y + box.height;
+  for (const objects of [state.objects.values(), flagged]) {
+    for (const o of objects) {
+      const r = objectRect(o);
+      x0 = Math.min(x0, r.x); y0 = Math.min(y0, r.y); x1 = Math.max(x1, r.x + r.w); y1 = Math.max(y1, r.y + r.h);
+    }
+  }
+  return { x: x0, y: y0, width: x1 - x0, height: y1 - y0 };
+}
 
-function rememberShot(state: GridState, key: string, png: string): void {
-  const per = shots.get(state) ?? boundedMap<string, string>(SHOTS_PER_GRID);
-  per.delete(key);
-  per.set(key, png);
-  shots.set(state, per);
+/** What a picture of a map is, beyond its grid and its long side. */
+export interface MapPictureOptions {
+  /** Width over height of the picture, the map centred in sea; absent keeps the map's own shape. */
+  aspect?: number;
+  /** The cells to frame; absent frames the whole template. */
+  frame?: CellFrame | null;
+  /** The caller's version of a grid edited in place, which takes a fresh picture per value; absent
+   *  takes it once. The notes are versioned here, so callers never fold them in. */
+  version?: string | number;
+  /** The notes drawn over the map. Absent draws the map's own as its notes layer shows them; another
+   *  map's notes stand where a picture promises the map they land under (a candidate keeps the open
+   *  map's notes); null draws none. */
+  notes?: AnnotationsState | null;
+  /** Objects drawn flagged over the map, as the live overlay flags them. */
+  flagged?: readonly PlacedObject[];
+}
+
+/** One photograph per grid and key, kept as long as the grid: a cached candidate returns the same
+ *  `GridState`, so its picture is taken once. Only successful shots are kept (null means no
+ *  renderer yet). Bounded per grid, since `version` makes the key space unbounded; a hit moves its
+ *  key to the end of the insertion-ordered `Map`, so eviction is LRU. */
+class ShotCache<T> {
+  private readonly shots = new WeakMap<GridState, BoundedMap<string, T>>();
+  private readonly pending = new WeakMap<GridState, Map<string, Promise<T | null>>>();
+  constructor(private readonly perGrid: number) {}
+
+  async take(state: GridState, key: string, shoot: () => Promise<T | null>): Promise<T | null> {
+    // A read counts as a use too, or a shot taken once and asked for on every render (a card whose
+    // subject never moves) would still age out from under an otherwise-idle cache.
+    const seen = this.shots.get(state)?.touch(key);
+    if (seen !== undefined) return seen;
+    const pending = this.pending.get(state) ?? new Map<string, Promise<T | null>>();
+    const running = pending.get(key);
+    if (running) return running;
+    const take = queued(shoot);
+    pending.set(key, take);
+    this.pending.set(state, pending);
+    try {
+      const shot = await take;
+      if (shot) {
+        const per = this.shots.get(state) ?? boundedMap<string, T>(this.perGrid);
+        per.delete(key);
+        per.set(key, shot);
+        this.shots.set(state, per);
+      }
+      return shot;
+    } finally {
+      pending.delete(key);
+      if (pending.size === 0) this.pending.delete(state);
+    }
+  }
 }
 
 /** Captures run one at a time: two interleaved `captureState` calls would share the renderer's one
  *  off-stage scene. The chain never rejects, so one failed capture cannot jam the queue. */
 let capturing: Promise<unknown> = Promise.resolve();
 
+function queued<T>(shoot: () => Promise<T | null>): Promise<T | null> {
+  const take = capturing.then(shoot);
+  capturing = take.catch(() => null);
+  return take;
+}
+
+/** PNGs are small, so more versions of a grid stay as PNGs than as full-size canvases. */
+const pngShots = new ShotCache<string>(12);
+const canvasShots = new ShotCache<HTMLCanvasElement>(3);
+
+/** The notes' part of a picture's key. Notes change in place under the store's epoch and their tag
+ *  labels follow the locale, so both name the drawing; a picture that draws no notes keys none. */
+function notesKey(state: GridState, notes: AnnotationsState | null | undefined): string {
+  if (!pictureNotes(state, notes)) return '';
+  const { annotationsEpoch, locale } = useEditorStore.getState();
+  return `${notes === undefined ? 'own' : 'given'}:${annotationsEpoch}:${locale}`;
+}
+
+function pictureKey(state: GridState, longSidePx: number, opts: MapPictureOptions): string {
+  const { aspect, frame, version, flagged } = opts;
+  const framed = frame ? `${frame.x},${frame.y},${frame.width},${frame.height}` : '';
+  const flags = flagged?.map((o) => `${o.id}@${o.position.x},${o.position.y},${o.rotation}`).join(';') ?? '';
+  return `${longSidePx}|${aspect ?? ''}|${framed}|${version ?? ''}|${notesKey(state, opts.notes)}|${flags}`;
+}
+
+async function capture(state: GridState, longSidePx: number, opts: MapPictureOptions): Promise<HTMLCanvasElement | null> {
+  const renderer = getMapRenderer();
+  if (!renderer) return null;
+  const shot = await renderer.captureState(state, {
+    maxPx: longSidePx,
+    ...(opts.frame ? { frame: opts.frame } : {}),
+    ...(opts.notes !== undefined ? { notes: opts.notes } : {}),
+    ...(opts.flagged?.length ? { flagged: opts.flagged } : {}),
+  });
+  return shot && opts.aspect ? frameInSea(shot, opts.aspect) : shot;
+}
+
 /**
- * `state` as a PNG data URL whose long side is at most `longSidePx`, in a picture of `aspect`
- * (width over height) if one is asked for, framed on `frame`'s cells if one is given and on the
- * whole template otherwise.
+ * `state` as a PNG data URL whose long side is at most `longSidePx`, drawn by the renderer that
+ * draws the live map, plan notes included as `opts.notes` says.
  *
  * Null where there is no 2D renderer to draw with, which the caller shows as a picture still being
  * made rather than as a broken one.
  */
-export async function renderThumbnail(
-  state: GridState,
-  longSidePx: number,
-  aspect?: number,
-  frame?: CellFrame | null,
-  version?: string | number,
-): Promise<string | null> {
-  const key = `${longSidePx}|${aspect ?? ''}|${frame ? `${frame.x},${frame.y},${frame.width},${frame.height}` : ''}|${version ?? ''}`;
-  // A read counts as a use too, or a shot taken once and asked for on every render (a card whose
-  // subject never moves) would still age out from under an otherwise-idle cache.
-  const seen = shots.get(state)?.touch(key);
-  if (seen !== undefined) return seen;
+export function renderThumbnail(state: GridState, longSidePx: number, opts: MapPictureOptions = {}): Promise<string | null> {
+  return pngShots.take(state, pictureKey(state, longSidePx, opts), async () => (await capture(state, longSidePx, opts))?.toDataURL('image/png') ?? null);
+}
 
-  const pending = pendingShots.get(state) ?? new Map<string, Promise<string | null>>();
-  const running = pending.get(key);
-  if (running) return running;
-
-  const take = capturing.then(async (): Promise<string | null> => {
-    const renderer = getMapRenderer();
-    if (!renderer) return null;
-    const shot = await renderer.captureState(state, { maxPx: longSidePx, frame: frame ?? undefined });
-    if (!shot) return null;
-    return (aspect ? frameInSea(shot, aspect) : shot).toDataURL('image/png');
-  });
-  capturing = take.catch(() => null);
-  pending.set(key, take);
-  pendingShots.set(state, pending);
-  try {
-    const png = await take;
-    if (png) rememberShot(state, key, png);
-    return png;
-  } finally {
-    pending.delete(key);
-    if (pending.size === 0) pendingShots.delete(state);
-  }
+/** The same picture as `renderThumbnail`, as a canvas for a painter that draws it again at every
+ *  zoom and pan. The canvas is shared: draw from it, never into it. */
+export function mapPicture(state: GridState, longSidePx: number, opts: MapPictureOptions = {}): Promise<HTMLCanvasElement | null> {
+  return canvasShots.take(state, pictureKey(state, longSidePx, opts), () => capture(state, longSidePx, opts));
 }

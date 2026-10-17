@@ -59,12 +59,13 @@ describe('README share-map artifacts', () => {
         if (c.terrain?.type === TerrainType.Water) water++;
       }
       // The plaza now covers 8 of the 3218 placed objects and some of the terrain; the load takes
-      // them off with the water that terrain held, lays the layer-1 mountain Hexia keeps under the
-      // plaza (this older code never stored it), and takes back the water and the one object that
-      // mountain leaves breaking a rule.
-      expect(objects.length).toBe(3209);
-      expect(water).toBe(4108);
-      expect(terrain).toBe(14359);
+      // them off with that terrain, lays the layer-1 mountain Hexia keeps under the plaza (this older
+      // code never stored it), lowers what then stands unsupported a layer at a time, and takes off
+      // the 37 more objects the current placement rules refuse where they stand (the spacing homes and
+      // trees keep, one doorstep). The repair the editor asks sets all 45 back, none removed.
+      expect(objects.length).toBe(3173);
+      expect(water).toBe(4170);
+      expect(terrain).toBe(14476);
       // A hand-built map carries no informational generation recipe.
       expect(state.generation ?? null).toBeNull();
       expect(state.annotations).toBeUndefined();

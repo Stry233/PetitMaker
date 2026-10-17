@@ -70,9 +70,10 @@ describe('ObjectPlacerTool: rotating the ghost before placement', () => {
     try {
       // Anchored at (10,10), the house's flat-trait sweep is dx:0..w, dy:0..h off the anchor
       // (V-PLACE-TRAIT). Unrotated that sweep reaches y<=10+H; rotated 90 it reaches y<=10+W.
-      // A raised strip at y=10+H+2 therefore sits outside the unrotated sweep but inside the
-      // rotated one — so rotating alone must flip this placement from legal to illegal.
-      const stripY = 10 + H + 2;
+      // A raised strip at y=10+H+3 therefore sits outside the unrotated sweep, and past the rise
+      // depth the door facing it keeps (V-PLACE-DOOR), but inside the rotated sweep, so rotating
+      // alone must flip this placement from legal to illegal.
+      const stripY = 10 + H + 3;
       expect(stripY).toBeLessThanOrEqual(10 + W);
       const state = makeState(30, 30);
       for (let x = 10; x <= 10 + H; x++) setTerrain(state, x, stripY, TerrainType.Mountain, 1);

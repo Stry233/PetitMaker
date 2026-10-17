@@ -11,7 +11,7 @@ import { PlantingSpray } from './planting-spray';
 import { PLACEMENT_GRID } from '../../../core/game/profile';
 import type { GridId, GridCell, MapPoint } from '../../../core/grid/grids';
 
-function armedMacroId(ctx: MacroToolContext): MacroId | null {
+function armedMacroId(ctx: Pick<MacroToolContext, 'arming'>): MacroId | null {
   return ctx.arming.armedMacro !== null && (MACRO_IDS as readonly string[]).includes(ctx.arming.armedMacro) ? ctx.arming.armedMacro as MacroId : null;
 }
 
@@ -26,7 +26,7 @@ export class MacroTool implements Tool<GridId, MacroToolContext> {
   private readonly mountain = new MountainSpray();
   private readonly planting = new PlantingSpray({ next: () => this.seed++, peek: () => this.seed });
 
-  grid(ctx: MacroToolContext): GridId { const id = armedMacroId(ctx); return id === null ? PLACEMENT_GRID : MACROS[id].grid; }
+  grid(ctx: Pick<MacroToolContext, 'arming'>): GridId { const id = armedMacroId(ctx); return id === null ? PLACEMENT_GRID : MACROS[id].grid; }
 
   canActAt(coord: MacroCoord, ctx: MacroToolContext): boolean {
     return onBuildableGround(coord, ctx);

@@ -140,8 +140,8 @@ describe('BuildChecklist — supply shelves', () => {
   it('terrain is one compact card of per-layer chips, never a full-height row per layer', () => {
     renderChecklist();
     const terrainCard = screen.getByTestId('checklist-card-terrain');
-    expect(within(terrainCard).getByText('Ground')).toBeTruthy();
     expect(within(terrainCard).getByText('Layer 1')).toBeTruthy();
+    expect(within(terrainCard).getByText('Layer 2')).toBeTruthy();
     // Compact: header + one flex-wrap row of chips, no per-layer block taking its own line.
     expect(terrainCard.children).toHaveLength(2);
   });

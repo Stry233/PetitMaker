@@ -63,6 +63,24 @@ describe('AnnotationLayer', () => {
     layer.destroy();
   });
 
+  it('washes a half-grid zone over its half cells, half a cell over from its whole-cell twin', () => {
+    const washRects = (zone: ZoneNote) => {
+      const layer = new AnnotationLayer(() => {});
+      layer.draw({ items: [zone], visible: true, locked: false }, OPTS);
+      const wash = passes(layer).wash.children[0] as Graphics;
+      const rects = wash.geometry.graphicsData.map((d) => d.shape as unknown as { x: number; y: number; width: number; height: number });
+      layer.destroy();
+      return rects.map((r) => ({ x: r.x, y: r.y, w: r.width, h: r.height }));
+    };
+    const base = { kind: 'zone', id: 'z', color: '#FF8A7A', tag: null, num: 0, size: 'none' } as const;
+    const half = washRects({ ...base, grid: 'half', cells: [{ x: 5, y: 4 }, { x: 6, y: 4 }] });
+    expect(half).toEqual([
+      { x: 2.5 * TILE_SIZE, y: 2 * TILE_SIZE, w: TILE_SIZE / 2, h: TILE_SIZE / 2 },
+      { x: 3 * TILE_SIZE, y: 2 * TILE_SIZE, w: TILE_SIZE / 2, h: TILE_SIZE / 2 },
+    ]);
+    expect(washRects({ ...base, cells: [{ x: 2, y: 2 }] })).toEqual([{ x: 2 * TILE_SIZE, y: 2 * TILE_SIZE, w: TILE_SIZE, h: TILE_SIZE }]);
+  });
+
   it('the eye hides the whole layer', () => {
     const layer = new AnnotationLayer(() => {});
     layer.draw({ ...data(), visible: false }, OPTS);

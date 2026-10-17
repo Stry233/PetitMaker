@@ -7,8 +7,8 @@ import type { GreyImage } from '../types';
 // region load lines animate over land and sea and the ground does not, so a run's temporal
 // standard deviation shows the chunk lattice and its mean is the ground with less noise.
 //
-// Memory: the last distinct tile and two run accumulators (3 x 816 KB on the 680 x 300 tile),
-// plus each closed run's mean and deviation (2 x 816 KB), which the caller owns. Frames are read
+// Memory: the last distinct tile and two run accumulators (3 x 373 KB on the 466 x 200 tile),
+// plus each closed run's mean and deviation (2 x 373 KB), which the caller owns. Frames are read
 // and never kept.
 
 /** Grouping tuning; each value defaults to, and is documented in, `SCAN_PROFILE`. */
@@ -27,6 +27,8 @@ export interface StillRun {
   readonly distinct: number;
   /** Frames in the run, its distinct frame included. */
   readonly frames: number;
+  /** Seconds from the run's first frame to its last. */
+  readonly seconds: number;
   /** Per-pixel temporal mean, in grey levels. */
   readonly mean: GreyImage;
   /** Per-pixel temporal standard deviation, in grey levels. */
@@ -72,6 +74,8 @@ export class StillRunGrouper {
   private readonly sumSq: Float32Array;
   private distinctCount = 0;
   private frames = 0;
+  private firstTime = 0;
+  private lastTime = 0;
 
   constructor(
     readonly width: number,
@@ -92,8 +96,9 @@ export class StillRunGrouper {
     return this.distinctCount;
   }
 
-  /** Classifies the next frame and folds it into its run. The tile is read, never kept. */
-  push(tile: GreyImage): FrameVerdict {
+  /** Classifies the next frame, shown at `time` seconds, and folds it into its run. The tile is
+   *  read, never kept. */
+  push(tile: GreyImage, time: number): FrameVerdict {
     if (tile.width !== this.width || tile.height !== this.height) {
       throw new Error(`still runs expect ${this.width}x${this.height} tiles`);
     }
@@ -107,6 +112,7 @@ export class StillRunGrouper {
       this.sumSq.fill(0);
       this.distinctCount++;
       this.frames = 1;
+      this.firstTime = time;
     } else {
       const { reference, sum, sumSq } = this;
       const d = tile.data;
@@ -117,6 +123,7 @@ export class StillRunGrouper {
       }
       this.frames++;
     }
+    this.lastTime = time;
     return { distinct, index: this.distinctCount - 1, closed };
   }
 
@@ -141,6 +148,7 @@ export class StillRunGrouper {
     return {
       distinct: this.distinctCount - 1,
       frames,
+      seconds: this.lastTime - this.firstTime,
       mean: { width, height, data: mean },
       deviation: { width, height, data: deviation },
     };

@@ -144,7 +144,7 @@ img {
   96%, 100% { opacity: 0; }
 }
 
-/* The custom recipe card's drawn caret (the hidden input's own native caret is invisible along
+/* A ghost field's painted caret (`PaintedText`; the hidden input's native caret is invisible along
    with the rest of it): a plain square blink, on/off with no fade, the way a text caret reads. */
 .pw-caret-blink { animation: pw-caret-blink 1s steps(1) infinite; }
 @keyframes pw-caret-blink {
@@ -178,7 +178,8 @@ img {
    giant digits drawn over it): `color: transparent` on the element hides its own painted text, but
    a Ctrl+A or drag-select still repaints the SELECTED run using the browser's own default
    selection foreground, ignoring the element's inherited colour — the real characters flash in
-   system font at the field's own position. `::selection` needs its own transparent pair too. */
+   system font at the field's own position. `::selection` needs its own transparent pair too;
+   `PaintedText` paints the selection over the drawn digits instead. */
 .pw-ghost-field::selection { background: transparent; color: transparent; }
 
 /* ── Reduced motion ──────────────────────────────────────────────────────

@@ -4,7 +4,7 @@ import { render, screen, cleanup } from '@testing-library/react';
 import { BrandLockup } from '../../../ui/chrome/BrandLockup';
 import { I18nProvider } from '../../../i18n/context';
 import { setStoreState } from '../../_support/store';
-import { APP_NAME } from '../../../i18n/brand';
+import { APP_NAME } from '../../../i18n/terms/brand';
 
 const wrapper = ({ children }: { children: React.ReactNode }) => <I18nProvider>{children}</I18nProvider>;
 

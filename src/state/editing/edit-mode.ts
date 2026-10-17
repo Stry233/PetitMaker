@@ -11,6 +11,7 @@ import { ToolType, type BuildShape, type DesignMode } from './vocabulary';
 import { PLACEMENT_GRID, TERRAIN_GRID } from '../../core/game/profile';
 import type { GridId } from '../../core/grid/grids';
 import { SESSION_BUILD_MODES, type PlanetSession } from '../slices/planet-session';
+import { REPAIR_BUILD_MODES } from '../slices/repair-session';
 
 /** What is being built. `null` is rest: the map takes no marks. `annotate` is the plan-notes
  *  layer: it has no block in the mode row — the layer panel's Notes row and the export modal's
@@ -18,17 +19,17 @@ import { SESSION_BUILD_MODES, type PlanetSession } from '../slices/planet-sessio
  *  stay one fact. */
 export type BuildMode = 'object' | 'road' | 'mountain' | 'water' | 'generate' | 'annotate' | null;
 
-/** The mode-row modes `session` offers, ground first; null outside a planet session, where the row
- *  offers every mode. */
-export function modesInSession(session: PlanetSession | null): readonly BuildMode[] | null {
-  return session ? SESSION_BUILD_MODES : null;
+/** The mode-row modes `session` offers, ground first, or none at all during a hand repair
+ *  (`repairing`); null outside both, where the row offers every mode. */
+export function modesInSession(session: PlanetSession | null, repairing = false): readonly BuildMode[] | null {
+  return repairing ? REPAIR_BUILD_MODES : session ? SESSION_BUILD_MODES : null;
 }
 
-/** Whether `mode` can be armed in `session`: rest and the notes layer, which has no block in the mode
- *  row, always can; a mode-row mode when the session offers it. */
-export function modeOpenIn(session: PlanetSession | null, mode: BuildMode): boolean {
-  const offered = modesInSession(session);
-  return !offered || mode === null || mode === 'annotate' || offered.includes(mode);
+/** Whether `mode` can be armed in `session`: rest always can, and outside a hand repair (`repairing`)
+ *  the notes layer, which has no block in the mode row; a mode-row mode when the session offers it. */
+export function modeOpenIn(session: PlanetSession | null, mode: BuildMode, repairing = false): boolean {
+  const offered = modesInSession(session, repairing);
+  return !offered || mode === null || (!repairing && mode === 'annotate') || offered.includes(mode);
 }
 
 /** The toolbar tool an arming shows. `none` is a surface with no tool armed (a selection gesture
@@ -334,6 +335,8 @@ export const contentTypeOf = (s: { editMode: EditModeInputs }): ContentType => r
 export const armedItemOf = (s: { editMode: EditModeInputs }): string | null => resolvedOf(s).armedItem;
 /** The armed macro's id, or null. */
 export const armedMacroOf = (s: { editMode: EditModeInputs }): string | null => resolvedOf(s).armedMacro;
+/** Whether the notes layer is being edited, however annotate was entered. */
+export const isAnnotating = (s: { editMode: { mode: BuildMode } }): boolean => s.editMode.mode === 'annotate';
 
 /** The tool the toolbar shows selected, read off the arming. */
 export const buildToolOf = (s: { editMode: EditModeInputs }): BuildTool => TOOL_OF[s.editMode.arming.kind];

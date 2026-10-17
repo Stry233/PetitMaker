@@ -1,10 +1,11 @@
-import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import type { CSSProperties, ReactNode } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { font, radii, shadows } from '../design/styles';
 import { presence } from '../design/motion';
 import { roleFont } from '../design/text-weight';
 import { skin } from '../design/window-skin';
 import { SUPPORTS_CLIPBOARD } from '../../platform/build/edition';
+import { useTransient } from './use-transient';
 
 /** How long the confirmation stands after a copy, in ms; a copy while it stands restarts it. */
 const COPIED_HOLD_MS = 1200;
@@ -18,9 +19,7 @@ export function useCopyFeedback<T extends string = 'copied'>(): {
   copied: T | null;
   copy: (text: string, target?: T) => Promise<void>;
 } {
-  const [copied, setCopied] = useState<T | null>(null);
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
+  const { value: copied, show } = useTransient<T>(COPIED_HOLD_MS);
   const copy = async (text: string, target = 'copied' as T) => {
     if (!SUPPORTS_CLIPBOARD) return;
     try {
@@ -28,9 +27,7 @@ export function useCopyFeedback<T extends string = 'copied'>(): {
     } catch {
       return;
     }
-    setCopied(target);
-    if (timer.current) clearTimeout(timer.current);
-    timer.current = setTimeout(() => setCopied(null), COPIED_HOLD_MS);
+    show(target);
   };
   return { copied, copy };
 }

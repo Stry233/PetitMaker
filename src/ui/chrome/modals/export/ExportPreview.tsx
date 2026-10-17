@@ -13,8 +13,8 @@ import { LEGAL } from '../../../../legal/config';
 import { CodeWarn } from './ExportControls';
 import type { ShareCodeIssue } from './use-share-code';
 import { angleKey } from '../../../../view/map3d/capture/stills';
-import { usePanZoom } from './use-pan-zoom';
-import { PanZoomResetHint, stageOutline } from './pan-zoom-stage';
+import { usePanZoom } from '../../../primitives/use-pan-zoom';
+import { PanZoomResetHint, stageOutline } from '../../../primitives/pan-zoom-stage';
 import { useStylizeVersions } from './stylize/use-stylize-versions';
 import { useTransition } from '../../../design/motion/use-motion';
 import { useSettledValue } from '../../../primitives/use-settled-value';
@@ -136,7 +136,7 @@ export function ExportPreview({ open, preparing = open, checkingMap = false, opt
             style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain', borderRadius: radii.chip, userSelect: 'none', ...pz.viewStyle }} />
         )}
         {open && !busy && !picture && <div style={hintStyle}><div style={{ fontSize: 28 }}>🗺️</div><div>{t('export.fail_t')}</div></div>}
-        <PanZoomResetHint show={pz.showResetHint} />
+        <PanZoomResetHint show={pz.showResetHint} label={t('export.preview_reset_hint')} />
         <div style={stageOutline} aria-hidden />
       </div>
       {codeIssue && <CodeWarn text={t(codeIssue)} />}

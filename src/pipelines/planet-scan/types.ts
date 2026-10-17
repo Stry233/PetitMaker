@@ -23,27 +23,21 @@ export interface RgbaImage {
   readonly data: Uint8Array | Uint8ClampedArray;
 }
 
-/** A 2D polynomial: `value = sum_k coef[k] * a^terms[k][0] * b^terms[k][1]`. */
-export interface Polynomial2 {
-  readonly terms: ReadonlyArray<readonly [number, number]>;
-  readonly coef: readonly number[];
-}
+/** A plane projective map, row-major 3 x 3: (x, y) goes to ((h0 x + h1 y + h2) / w, (h3 x + h4 y + h5) / w)
+ *  with w = h6 x + h7 y + h8. */
+export type Homography = readonly [number, number, number, number, number, number, number, number, number];
 
 /**
- * The fixed map between a decoded frame's screen pixels and the flat ground plane at one zoom.
- * Ground coordinates are rectified pixels whose origin is the screen point `origin`; both
- * polynomials take their arguments divided by `scale`, and the screen side is offset by `origin`
- * first.
+ * The fixed map between a decoded frame's screen pixels and the flat ground plane at the zoom the
+ * scan reads. Ground coordinates are rectified pixels from the calibration's ground origin.
  */
 export interface Rectification {
   /** The decoded frame size the calibration is measured in. */
   readonly frame: { readonly width: number; readonly height: number };
-  readonly origin: { readonly u: number; readonly v: number };
-  readonly scale: number;
-  /** Ground (X / scale, Y / scale) to screen u and v. */
-  readonly toScreen: { readonly u: Polynomial2; readonly v: Polynomial2 };
-  /** Screen ((u - origin.u) / scale, (v - origin.v) / scale) to ground X and Y. */
-  readonly toGround: { readonly x: Polynomial2; readonly y: Polynomial2 };
+  /** Ground to screen pixels. */
+  readonly toScreen: Homography;
+  /** Screen pixels to ground; the inverse of `toScreen`. */
+  readonly toGround: Homography;
 }
 
 /** The rectified tile: `width` by `height` ground pixels with ground (0, 0) at tile pixel

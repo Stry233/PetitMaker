@@ -4,7 +4,7 @@
  * `Worker` does not exist here, so the worker's own entry is loaded as a module with a stand-in
  * `self` and handed a structured clone of the message the pool posts; its answer is cloned and
  * revived exactly the way the pool revives it. Both ends run `transferPreviewOf`, so what this pins is the wire between them:
- * the source map on the way in, the destination and the loss report on the way out.
+ * the source map and its plan notes on the way in, the destination, its notes and the loss report on the way out.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { generateMap, newMap } from '../../../../editor/operations';
@@ -20,6 +20,8 @@ import { type GridState, type MapTemplate } from '../../../../core/model/types';
 import { defaultConfig, type GenerateConfig } from '../../../../tools/generation/recipe';
 import { CellZone } from '../../../../core/game/zones';
 import { ANCHOR_LANDMARK } from '../../../_support/anchor';
+import { annotationsOf } from '../../../../core/model/annotations';
+import { DEFAULT_TAG } from '../../../../config/annotation-tags';
 
 vi.setConfig({ testTimeout: 60_000 });
 
@@ -56,7 +58,9 @@ interface Answer { id: number; ok: boolean; error?: string; preview?: WireTransf
 async function post(state: GridState, target: MapTemplate, send: { grid: boolean; target: boolean }): Promise<Answer> {
   const id = answers.length + 1;
   const grid = wireGrid(state, send.grid);
-  const message = { id, grid, ...(send.target ? { templates: [target] } : {}), kind: 'transfer', targetId: target.id };
+  // The plan notes ride beside the grid, as the pool sends them.
+  const notes = state.annotations ? { annotations: state.annotations } : {};
+  const message = { id, grid, ...(send.target ? { templates: [target] } : {}), kind: 'transfer', targetId: target.id, ...notes };
   scope.onmessage!({ data: structuredClone(message) } as MessageEvent);
   await vi.waitFor(() => expect(answers).toHaveLength(id));
   return structuredClone(answers[id - 1]) as Answer;
@@ -76,6 +80,7 @@ function expectSame(worker: TransferPreview, main: TransferPreview): void {
   expect(worker.dropped).toEqual(main.dropped);
   expect(worker.moved).toEqual(main.moved);
   expect(worker.droppedCounts).toEqual(main.droppedCounts);
+  expect(worker.state.annotations).toEqual(main.state.annotations);
 }
 
 describe('a carry preview worked out in the worker', () => {
@@ -85,6 +90,10 @@ describe('a carry preview worked out in the worker', () => {
     const kit = currentEditor()!;
     await generateMap(kit, { config, region: null });
     const state = kit.state;
+    // A note near each corner, so the small planet leaves some behind and keeps the middle one.
+    const w = state.template.width, h = state.template.height;
+    annotationsOf(state).items = [[1.5, 1.5], [w - 1.5, h - 1.5], [w / 2, h / 2]].map(([x, y], i) => (
+      { kind: 'chip', id: `chip-${i}`, x: x!, y: y!, tag: DEFAULT_TAG, size: 'm', color: '#ff0000' }));
 
     const tafa = getMapTemplate('tafa');
     expectSame(revived(await post(state, tafa, { grid: true, target: true }), tafa), transferPreviewOf(state, tafa));
@@ -93,6 +102,7 @@ describe('a carry preview worked out in the worker', () => {
     const small = smallPlanet();
     const main = transferPreviewOf(state, small);
     expect(main.dropped.length).toBeGreaterThan(0);
+    expect(main.state.annotations!.items.map((n) => n.id)).toEqual(['chip-2']);
     expectSame(revived(await post(state, small, { grid: false, target: true }), small), main);
     expectSame(revived(await post(state, small, { grid: false, target: false }), small), main);
   });

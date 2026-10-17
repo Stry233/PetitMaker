@@ -1,6 +1,8 @@
 import type { ToolType } from '../../../state/editing/vocabulary';
 import type { HostedTool } from './host';
 import type { ToolArming } from '../../../state/editing/arming';
+import type { GridId } from '../../../core/grid/grids';
+import { PLACEMENT_GRID } from '../../../core/game/profile';
 import { holdsSelection, isBrushTool } from '../../../state/editing/edit-mode';
 import { HandTool } from './hand';
 import { DrawingTool } from '../paint/drawing-tool';
@@ -25,12 +27,13 @@ let declared: ReadonlyMap<ToolType, HostedTool> | null = null;
 
 /** What the tool of `type` declares, for a caller that knows the store's tool type rather than a
  *  live tool: whether a selection may stand while it is up and whether it is a terrain brush (both
- *  the store's facts, `state/editing/edit-mode.ts`), and whether an arming puts it in the map's
- *  select mode. */
+ *  the store's facts, `state/editing/edit-mode.ts`), whether an arming puts it in the map's
+ *  select mode, and the grid its cells lie on under an arming. */
 export interface ToolDeclaration {
   holdsSelection: boolean;
   brush: boolean;
   selectMode(arming: ToolArming): boolean;
+  grid(arming: ToolArming): GridId;
 }
 
 export function toolDeclares(type: ToolType): ToolDeclaration {
@@ -40,5 +43,6 @@ export function toolDeclares(type: ToolType): ToolDeclaration {
     holdsSelection: holdsSelection(type),
     brush: isBrushTool(type),
     selectMode: (arming) => tool?.selectMode?.(arming) === true,
+    grid: (arming) => tool?.grid({ arming }) ?? PLACEMENT_GRID,
   };
 }

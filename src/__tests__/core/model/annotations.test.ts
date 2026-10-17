@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { generateAnnotationId, isEmptyNote, isMeasureSpan, mergeZones, nextZoneNumber, withTag, type ChipNote, type MapAnnotation } from '../../../core/model/annotations';
+import { generateAnnotationId, isEmptyNote, isMeasureSpan, mergeZones, movedNote, nextZoneNumber, noteStepCell, withTag, zoneCellsOnGrid, zoneHalfCells, type ChipNote, type MapAnnotation, type ZoneNote } from '../../../core/model/annotations';
 import { roundedZoneLoops, annotationsInRect, routeSamples, zoneLabelAnchor } from '../../../core/model/annotation/geometry';
 import { chipApproxWidthCells } from '../../../core/model/annotation/text-metrics';
 import { isTagId, SELECTABLE_ANNOTATION_TAGS } from '../../../config/annotation-tags';
@@ -21,10 +21,11 @@ describe('annotation model ops', () => {
     expect(mergeZones(items, ['a', 'c'])).toBeNull();
   });
 
-  it('a measurement spans whole cells on one row or column', () => {
+  it('a measurement spans cells cornered on the half-cell lattice, on one row or column', () => {
     expect(isMeasureSpan([{ x: 1, y: 2 }, { x: 5, y: 2 }])).toBe(true);
+    expect(isMeasureSpan([{ x: 1.5, y: 2 }, { x: 5, y: 2 }])).toBe(true);
     expect(isMeasureSpan([{ x: 1, y: 2 }, { x: 5, y: 3 }])).toBe(false);
-    expect(isMeasureSpan([{ x: 1.5, y: 2 }, { x: 5, y: 2 }])).toBe(false);
+    expect(isMeasureSpan([{ x: 1.25, y: 2 }, { x: 5, y: 2 }])).toBe(false);
   });
 
   it('a chip keeps its tag when a pick clears it, and empty drafts are recognised', () => {
@@ -172,5 +173,53 @@ describe('painted zone boundaries', () => {
       if (area !== cells.length || loops.some((loop) => loop.length < 3)) failures.push(mask);
     }
     expect(failures).toEqual([]);
+  });
+});
+
+describe('zones on the half grid', () => {
+  const whole = (c: Array<[number, number]>): ZoneNote => ({ kind: 'zone', id: 'z', cells: cells(...c), color: '#FF8A7A', tag: null, num: 1 });
+  const keys = (c: ReadonlyArray<{ x: number; y: number }>) => c.map((p) => `${p.x},${p.y}`).sort();
+
+  it('splits each whole cell into its four half cells', () => {
+    expect(keys(zoneHalfCells(whole([[2, 3]])))).toEqual(keys(cells([4, 6], [5, 6], [4, 7], [5, 7])));
+    const half: ZoneNote = { ...whole([[1, 1]]), grid: 'half' };
+    expect(zoneHalfCells(half)).toBe(half.cells);
+  });
+
+  it('stores half cells on the coarsest grid that holds them', () => {
+    expect(zoneCellsOnGrid(zoneHalfCells(whole([[2, 3], [3, 3]])))).toEqual({ cells: cells([2, 3], [3, 3]), grid: 'object' });
+    const offset = cells([5, 6], [6, 6], [5, 7], [6, 7]);
+    expect(zoneCellsOnGrid(offset)).toEqual({ cells: offset, grid: 'half' });
+  });
+
+  it('moves in half-cell steps and returns to its whole-cell form', () => {
+    const z = whole([[4, 8], [5, 8]]);
+    const there = movedNote(z, 0.4, -0.2) as ZoneNote;
+    expect(there.grid).toBe('half');
+    expect(keys(there.cells)).toEqual(keys(zoneHalfCells(z).map((c) => ({ x: c.x + 1, y: c.y }))));
+    expect(movedNote(there, -0.6, 0)).toEqual(z);
+    expect(movedNote(z, 2.2, 1)).toEqual(whole([[6, 9], [7, 9]]));
+  });
+
+  it('merges zones on both grids on the half grid', () => {
+    const items: MapAnnotation[] = [whole([[0, 0]]), { ...whole([]), id: 'h', cells: cells([2, 0]), grid: 'half' }];
+    const merged = mergeZones(items, ['z', 'h'])!;
+    expect(merged.items).toHaveLength(1);
+    expect(merged.items[0]).toMatchObject({ id: 'z', grid: 'half' });
+    expect(keys((merged.items[0] as ZoneNote).cells)).toEqual(keys(cells([0, 0], [1, 0], [0, 1], [1, 1], [2, 0])));
+  });
+
+  it('traces, anchors and bands a half-grid zone in map cells', () => {
+    const loop = roundedZoneLoops(cells([1, 1], [2, 1]), 0, 'half')[0]!.slice(0, -1);
+    expect(loop.map(([x, y]) => `${x},${y}`).sort()).toEqual(['0.5,0.5', '0.5,1', '1.5,0.5', '1.5,1']);
+    expect(zoneLabelAnchor(cells([1, 1], [2, 1]), 'half')).toEqual({ x: 1, y: 0.75 });
+    const z: MapAnnotation = { ...whole([]), cells: cells([20, 20]), grid: 'half' };
+    expect(annotationsInRect({ x: 10, y: 10, w: 1, h: 1 }, [z])).toEqual(['z']);
+    expect(annotationsInRect({ x: 20, y: 20, w: 1, h: 1 }, [z])).toEqual([]);
+  });
+
+  it('puts a note step on the whole cell centred at the nearest half-cell point', () => {
+    expect(noteStepCell({ x: 3.5, y: 3.5 })).toEqual({ x: 3, y: 3 });
+    expect(noteStepCell({ x: 3.8, y: 3.1 })).toEqual({ x: 3.5, y: 2.5 });
   });
 });

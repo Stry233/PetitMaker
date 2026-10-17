@@ -49,7 +49,8 @@ export function MenuSheet({ open, onDismiss, trigger }: {
   const t = useT();
   const zoom = useFrameZoom();
   const setModal = useEditorStore((s) => s.setModal);
-  const rows = menuRows(useEditorStore((s) => s.planetSession !== null));
+  // A planet session or a hand repair holds the map, so the rows that act on it stand down.
+  const rows = menuRows(useEditorStore((s) => s.planetSession !== null || s.repairSession?.phase === 'hand'));
   const items: FloatMenuItem[] = rows.map((row, i) => ({
     id: row.modal,
     label: t(row.labelKey),

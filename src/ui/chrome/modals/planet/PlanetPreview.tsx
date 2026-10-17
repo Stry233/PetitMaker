@@ -1,23 +1,25 @@
 /**
  * A planet on the export preview's stage: drag to pan, wheel to zoom, double-click to reset. The
- * picture is repainted through `paintPlanet` for every view rather than scaled as an image, so it
- * stays crisp at any zoom. At rest the land fills the stage less an equal margin, centred. The
- * planet's name and size stand over the picture's top-left corner in the map's own label treatment,
- * on a corner wash; an optional toolbar stands at the top right.
+ * map's picture is the renderer's own, plan notes included (`usePlanetPicture`), taken as sharp as
+ * the zoom asks and placed by `paintPlanet` for every view. At rest the land fills the stage less an
+ * equal margin, centred. The planet's name and size stand over the picture's top-left corner in the
+ * map's own label treatment, on a corner wash; an optional toolbar stands at the top right.
  */
 import { useGridRevision } from '../../../session/use-map-derived';
 import { useObservedSize } from '../../../primitives/use-observed-size';
 import { useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
-import { type GridState, type MacroCoord, type MapTemplate } from '../../../../core/model/types';
-import { paintPlanet, type CellExtent } from '../../../../view/map2d/capture/planet-painter';
+import { type GridState, type MapTemplate, type PlacedObject } from '../../../../core/model/types';
+import { paintPlanet, planetPictureSide, type CellExtent, type PlanetPaintInput } from '../../../../view/map2d/capture/planet-painter';
+import { usePlanetPicture } from './use-planet-picture';
 import { Spinner } from '../../../primitives/Spinner';
 import { radii } from '../../../design/styles';
 import { roleFont } from '../../../design/text-weight';
 import { CORNER_VIGNETTE, MAP_LABEL, SEA } from '../../../design/tokens';
 import { visualRect } from '../../../design/visual-rect';
-import { usePanZoom } from '../export/use-pan-zoom';
-import { PanZoomResetHint, stageOutline } from '../export/pan-zoom-stage';
+import { usePanZoom } from '../../../primitives/use-pan-zoom';
+import { PanZoomResetHint, stageOutline } from '../../../primitives/pan-zoom-stage';
 import { useEffectEvent } from '../../../primitives/use-effect-event';
+import { useT } from '../../../../i18n/context';
 
 /** The rest view's margin between the land and the stage's tighter pair of edges, in css px. */
 const PICTURE_MARGIN = 20;
@@ -51,7 +53,10 @@ export interface PlanetPreviewProps {
   template: MapTemplate;
   /** The map to draw on it; absent draws the planet as a fresh map opens on it. */
   state?: GridState;
-  dropped?: readonly MacroCoord[];
+  /** Cells marked in the loss red, each naming the grid it lies on. */
+  dropped?: PlanetPaintInput['dropped'];
+  /** Objects drawn flagged, as the live map flags them; they need not stand on `state`. */
+  flagged?: readonly PlacedObject[];
   /** The box the rest view fits, in cells; absent fits this picture's own land and dropped cells. */
   fit?: CellExtent;
   /** The planet's name over its top-left corner; absent leaves the planet the whole stage. */
@@ -61,13 +66,14 @@ export interface PlanetPreviewProps {
   toolbar?: ReactNode;
   /** A press that ends where it began; a press that pans is not a tap. */
   onTap?: () => void;
-  /** The picture is not ready: the stage holds the loader and no planet. */
+  /** The map is not ready: the stage holds the loader and no planet. */
   pending?: boolean;
   /** Drawn over the picture, under the outline. */
   children?: ReactNode;
 }
 
-export function PlanetPreview({ template, state, dropped, fit, label, size, toolbar, onTap, pending = false, children }: PlanetPreviewProps) {
+export function PlanetPreview({ template, state, dropped, flagged, fit, label, size, toolbar, onTap, pending = false, children }: PlanetPreviewProps) {
+  const t = useT();
   const pz = usePanZoom(onTap ? { onTap } : {});
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const toolbarRef = useRef<HTMLDivElement>(null);
@@ -75,13 +81,21 @@ export function PlanetPreview({ template, state, dropped, fit, label, size, tool
   const [toolbarWidth, setToolbarWidth] = useState(0);
   const { tx, ty, scale } = pz.view;
   const revision = useGridRevision(state);
+  const input = { template, ...(state ? { state } : {}), revision, ...(dropped ? { dropped } : {}), ...(flagged ? { flagged } : {}) };
+  const placing = { margin: PICTURE_MARGIN, ...(fit ? { bounds: fit } : {}) };
+  // The sharpness the stage asks for, known once its canvas has a box.
+  const [side, setSide] = useState(0);
+  const picture = usePlanetPicture(input, side, !pending && side > 0);
+  const waiting = pending || !picture;
 
   const paint = () => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     // The stage's pan is in screen pixels; the painter pans in the canvas's own css pixels.
     const k = canvas.clientWidth > 0 ? visualRect(canvas).width / canvas.clientWidth || 1 : 1;
-    paintPlanet(canvas, { template, state, revision, dropped }, { tx: tx / k, ty: ty / k, scale }, { margin: PICTURE_MARGIN, ...(fit ? { bounds: fit } : {}) });
+    const view = { tx: tx / k, ty: ty / k, scale };
+    setSide(planetPictureSide(canvas, input, view, placing));
+    paintPlanet(canvas, input, picture, view, placing);
   };
   const paintRef = useRef(paint);
   paintRef.current = paint;
@@ -89,7 +103,7 @@ export function PlanetPreview({ template, state, dropped, fit, label, size, tool
   pendingRef.current = pending;
 
   const paintNow = useEffectEvent(paint);
-  useLayoutEffect(() => { if (!pending) paintNow(); }, [template, state, revision, dropped, fit, tx, ty, scale, label, pending]);
+  useLayoutEffect(() => { if (!pending) paintNow(); }, [template, state, revision, dropped, flagged, fit, tx, ty, scale, label, pending, picture]);
 
   // The canvas takes its backing size from its box, so a resized stage repaints. The toolbar is
   // measured before the first paint, so the label never shows over it.
@@ -100,12 +114,12 @@ export function PlanetPreview({ template, state, dropped, fit, label, size, tool
 
   const { stageProps } = pz;
   return (
-    <div data-testid="planet-preview" aria-busy={pending || undefined}
+    <div data-testid="planet-preview" aria-busy={waiting || undefined}
       {...stageProps}
       style={{ ...stage, ...stageProps.style }}
    >
-      <canvas ref={canvasRef} aria-hidden style={pending ? { ...canvasStyle, visibility: 'hidden' } : canvasStyle} />
-      {pending && <div style={loaderStyle}><Spinner /></div>}
+      <canvas ref={canvasRef} aria-hidden style={waiting ? { ...canvasStyle, visibility: 'hidden' } : canvasStyle} />
+      {waiting && <div style={loaderStyle}><Spinner /></div>}
       {label !== undefined && <div data-testid="planet-preview-vignette" style={vignetteStyle} aria-hidden />}
       {label !== undefined && (
         <div style={{ ...labelStyle, right: TOOLBAR_EDGE + (toolbarWidth ? toolbarWidth + LABEL_GAP : 0) }}>
@@ -117,7 +131,7 @@ export function PlanetPreview({ template, state, dropped, fit, label, size, tool
       {/* A press on a tool is the tool's: the stage captures the pointer on press, which would take
           the click away from the button. */}
       <div ref={toolbarRef} style={toolbarSlot} onPointerDown={(e) => e.stopPropagation()} onDoubleClick={(e) => e.stopPropagation()}>{toolbar}</div>
-      <PanZoomResetHint show={pz.showResetHint} />
+      <PanZoomResetHint show={pz.showResetHint} label={t('export.preview_reset_hint')} />
       <div style={stageOutline} aria-hidden />
     </div>
   );

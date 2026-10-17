@@ -65,7 +65,7 @@ describe('MapRenderer base refresh', () => {
     const r = new MapRenderer(bus, document.createElement('div'), 200, 200);
     renderers.push(r);
     const state = makeState(32, 32) as GridState;
-    r.initMap(state, false);
+    r.initMap(state, null);
     const flush = vi.spyOn(rendererLayers(r).baseLayer, 'flushDirty');
     vi.spyOn(r.app.renderer, 'render').mockImplementation(() => {});
     setZone(state, 20, 20, CellZone.Void);

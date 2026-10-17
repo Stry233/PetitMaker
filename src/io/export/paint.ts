@@ -10,6 +10,7 @@ import type { GridState, MapTemplate } from '../../core/model/types';
 import type { Rect } from '../../core/grid/rect';
 import { chunkColumnLabel, chunkRowLabel, mapCaptureFrame, mapChunkAxes } from '../../core/grid/map-chunks';
 import { layersFor } from './layer-preview';
+import { layerName } from '../../i18n/terms/layer-name';
 import { paintLayer } from '../../view/shared/terrain/layer-section';
 import { fitAspect } from '../../core/grid/rect';
 import { rrPath } from '../../view/shared/viewport/round-rect';
@@ -233,7 +234,7 @@ function drawLayerColumn(p: Painter, rect: Rect): void {
     ctx.fillStyle = EXPORT_CAPTION;
     ctx.font = `700 ${10 * S}px ${FF}`;
     ctx.textAlign = 'center';
-    ctx.fillText(assets.translate(step.labelKey, step.level > 0 ? { n: step.level } : undefined), tx + subW / 2, ty + thumbH - 2 * S);
+    ctx.fillText(layerName(assets.translate, step.level), tx + subW / 2, ty + thumbH - 2 * S);
     ctx.textAlign = 'left';
   }
 }

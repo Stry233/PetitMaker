@@ -39,8 +39,9 @@ export function FrameLayoutProvider({ children }: { children: ReactNode }) {
   // The mode row and corner a planet session reduces to, so its menu stays beside the modes as
   // long as the controls that show allow.
   const planetSession = useEditorStore((s) => s.planetSession);
-  const modes = sessionModes(planetSession).length;
-  const corner = cornerArt(planetSession !== null);
+  const repairing = useEditorStore((s) => s.repairSession?.phase === 'hand');
+  const modes = sessionModes(planetSession, repairing).length;
+  const corner = cornerArt(planetSession !== null || repairing);
   let width = viewport.w / zoom - dock / ZOOM;
   let height = viewport.h / zoom;
   // Reserve the tighter endpoint during a slide without subscribing React to its individual frames.

@@ -21,7 +21,7 @@ export function useEditorSession({ beforeRestore, afterRestore, settleRestore }:
   }, [grid, settleRestore]);
   return useCallback((save: RestoredAutosave) => {
     beforeRestore?.();
-    restoreSession(save);
-    afterRestore?.();
+    // The rest of the restore follows the map in; a declined landmark repair opens nothing.
+    restoreSession(save, afterRestore);
   }, [beforeRestore, afterRestore]);
 }

@@ -21,7 +21,7 @@ vi.mock('../../core/game/profile', async (importOriginal) => {
     .map(([id, zone]) => [id, { ...zone, color: zone.sea && !zone.rim ? PALETTE.water : zone.color }]));
   return {
     ...real,
-    GRIDS: { object: { offset: { x: 0.5, y: 0.5 } }, terrain: { offset: { x: 0, y: 0 } } },
+    GRIDS: { object: { offset: { x: 0.5, y: 0.5 } }, terrain: { offset: { x: 0, y: 0 } }, half: { offset: { x: 0.5, y: 0.5 }, size: 0.5 } },
     CHUNK_SIZE: 50,
     CHUNK_LOAD_LIMIT: 4_000,
     LOAD_DECIMALS: 2,

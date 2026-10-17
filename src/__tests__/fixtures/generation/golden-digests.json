@@ -1,15 +1,15 @@
 {
-  "generatorVersion": 2,
+  "generatorVersion": 6,
   "digests": {
-    "mixed seed 4": "9a30ea729b5cd2f381065a1f44b6561873f3baec1cdc38bf7a99ab52aa0dcba7",
-    "mixed seed 11": "9fc99abba396386ebc67588bc7c05f7fce7964d717629c7b27f67fe4c953a2f2",
-    "earth seed 42": "6f372506abaa03974954812bf5a165a49786ce79e51e7a9ff04f6f67065df3e4",
-    "garden town (richness 0) seed 4": "81e1e2db3d78bf692c1a37aa97bdb1065f990688f6204ba419713a84aadd7d66",
-    "terraced planet (richness 1) seed 4": "2cb094d2c82ec575f85037067444a5d46ca8546a2e857586aa9c61ab92b4074a",
+    "mixed seed 4": "b459d495d444df079c051d3b1e6c62cbf5989e1f0ac008a18fc5f7549d42cf9d",
+    "mixed seed 11": "658d928b27f193046b270b3d5edc2ac7f23f7a5e61718343e4ad16dd93d01875",
+    "earth seed 42": "6e205b45a4f0af1f0f2e414cec5401033334410b7fa379dcb42b2d5eb216fc6a",
+    "garden town (richness 0) seed 4": "774751bd3a7a7bd1a2a968ff12119d7eb6f1e529c8542d9ca3d46a992c5ea9dd",
+    "terraced planet (richness 1) seed 4": "c5f4b9dfb1d5ac1b2f464d91fddbde2b70fa4421ba5e41680c7d56fc40a74ae2",
     "maze seed 7": "234f9eb8953ac6616504ba88cde95eedfc226396915050c5d9c2ecaf3c46c676",
     "stencil colour read": "51b103f017c9f982ed4c385aaa5a089e6e393b12bc4c9f86c7530eaaa0f69a8d",
     "stencil shape read": "8879e36debbd625bd71b4e302327d6a8c52c77af4d0d220ffc5950df269f9a92",
-    "hexia water seed 12": "249666c3c35d39bf28627e0575fc06a4309379ae5bb413497a41efec95f8a4f7",
-    "tafa mixed (richness 1) seed 3": "6d66c1e6bbcf23ebf8bea98d77282afc2fd349e5fbec2f2b84dcce497e3a346f"
+    "hexia water seed 12": "4f26e239fb714278bde9b8e2588abff94153f0220990964445c7b4223a4ba570",
+    "tafa mixed (richness 1) seed 3": "39a9cf87d471f2b87f9ba9d8aa4a4b1d0af8dbcc4a241c1e1f5c6b742f96e77e"
   }
 }

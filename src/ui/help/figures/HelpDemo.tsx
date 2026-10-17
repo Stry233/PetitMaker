@@ -23,7 +23,7 @@ import { figureCaption, pressPulseFace } from './caption';
 import { useInView } from './use-in-view';
 import { TerrainToolsStrip, ShelfStrip } from './previews/strips';
 import type { HelpScene, Stage } from './scenes';
-import { refusalKey, ruleToast } from '../../../i18n/rule-copy';
+import { refusalKey, ruleToast } from '../../../i18n/terms/rule-copy';
 import { cellCentre } from '../../../core/grid/grid-convert';
 import { FURNITURE_REST, standUpDemo, type Furniture } from './demo-player';
 import { LoadDisc, BuiltCard } from './demo-cards';

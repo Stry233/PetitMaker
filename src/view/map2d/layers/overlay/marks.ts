@@ -12,6 +12,7 @@ import { HOVER_BOX, SELECTION_MARKS, bracketArm, ringRadius } from '../../../sha
 import { MAP_TEXT, MAP_INK, MAP_EDGE_ALPHA } from '../../../../assets/brand-palette';
 import type { OverlayHost } from './host';
 import type { WorldRect } from './paint';
+import { layerNumeral } from '../../../../i18n/terms/layer-name';
 
 /** Selection marks wear the map-label treatment: warm off-white ink with a translucent dark edge. */
 const SELECTION_CREAM = hexStringToNumber(MAP_TEXT);
@@ -146,7 +147,7 @@ export class OverlayMarks {
       this.selectionLabel = null;
     }
     if (elevation !== undefined) {
-      const label = new PIXI.Text(String(elevation), {
+      const label = new PIXI.Text(layerNumeral(elevation), {
         fontSize: 16, fontWeight: 'bold', fontFamily: APP_FONT_FAMILY,
         fill: SELECTION_CREAM, stroke: SELECTION_EDGE, strokeThickness: 3,
       });

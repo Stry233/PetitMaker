@@ -232,6 +232,20 @@ describe('overlay shades: the ghost', () => {
     expect(fill).toEqual({ x: 3 * TILE_SIZE + TERRAIN_GRID_OFFSET_PX.x, y: 4 * TILE_SIZE + TERRAIN_GRID_OFFSET_PX.y, w: 2 * TILE_SIZE, h: TILE_SIZE });
   });
 
+  it('a half-grid ghost draws its cells at half a cell each, a note brush\'s preview card included', async () => {
+    const overlay = new OverlayLayer(() => {});
+    // A size-1 note dab centred on the corner (5, 5): the whole cell [4.5, 5.5) as four half cells.
+    overlay.showGhost(cellSet('half', [{ x: 9, y: 9 }, { x: 10, y: 9 }, { x: 9, y: 10 }, { x: 10, y: 10 }]), { icon: null, valid: true });
+    await frame();
+    expect(drawn(overlay, 'ghostGraphics')[0]).toEqual({ x: 4.5 * TILE_SIZE, y: 4.5 * TILE_SIZE, w: TILE_SIZE, h: TILE_SIZE });
+    overlay.showGhost(cellSet('half', [{ x: 9, y: 9 }, { x: 10, y: 9 }, { x: 9, y: 10 }]), { icon: null, valid: true });
+    await frame();
+    expect(drawn(overlay, 'ghostGraphics').slice(0, 2)).toEqual([
+      { x: 4.5 * TILE_SIZE, y: 4.5 * TILE_SIZE, w: TILE_SIZE, h: TILE_SIZE / 2 },
+      { x: 4.5 * TILE_SIZE, y: 5 * TILE_SIZE, w: TILE_SIZE / 2, h: TILE_SIZE / 2 },
+    ]);
+  });
+
   it('a halfStep item\'s footprint ghosts at its own half-cell anchor, not the whole cell', async () => {
     const overlay = new OverlayLayer(() => {});
     // What `planPlacementGhost` hands over for a 4x1 bridge anchored at (10.5, 12.5).

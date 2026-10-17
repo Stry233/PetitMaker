@@ -78,6 +78,17 @@ export const animConfig = {
    *  each view, eased out cubic. */
   cameraGlide: { map2dMs: 220, map3dMs: 260 },
 
+  /** The cell grid gliding between grids (a terrain brush armed or put down under the automatic
+   *  grid), eased out cubic, so the lines slide half a cell rather than jump. */
+  gridShift: { durationMs: 220 },
+
+  /** A plan note arriving on or leaving the notes layer, eased out quadratic. */
+  noteFade: { durationMs: 220 },
+
+  /** A note ghost arriving under the pointer (measure, route and chip previews), eased out
+   *  quadratic; it follows the pointer and leaves without a fade, as the cell ghosts do. */
+  noteGhost: { fadeInMs: 120 },
+
   /** Layer-visibility fade: the whole per-elevation object container, as one
    *  fade — never per-object. */
   layerFade: { durationMs: 180 },

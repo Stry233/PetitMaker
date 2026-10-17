@@ -15,7 +15,7 @@ import {
 import { showToast } from '../../platform/channels/toast-bus';
 import { useLocale, useT } from '../../i18n/context';
 import { joinList } from '../../i18n/locale-info';
-import { providerName } from '../../i18n/providers';
+import { providerName } from '../../i18n/terms/providers';
 import { useEditorStore } from '../../state/store';
 import { usePlanetName } from '../chrome/modals/planet/use-planet-library';
 import { GATE_THUMB } from './record/GateBlock';

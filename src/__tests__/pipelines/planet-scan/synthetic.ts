@@ -237,7 +237,9 @@ export function hudFrame(
     // The knob's rows in `layout`, about its middle row as the zoom column scales.
     const mid = (layout.top + layout.bottom) / 2;
     const at = mid + (knob - (C.top + C.bottom) / 2) * layout.scale;
-    const half = 11 * layout.scale;
+    // At the calibrated zoom, the maximum, the knob's colour fills the track from its top; at any
+    // other zoom the knob is 22 rows tall.
+    const half = (knob === Z.knobCentre ? Z.knobCentre - Z.y0 : 11) * layout.scale;
     const x = placeProbe(Z, Z.anchor, layout);
     paintRect(data, { x0: x.x0, x1: x.x1, y0: Math.round(at - half), y1: Math.round(at + half) }, Z.knobColor);
   }

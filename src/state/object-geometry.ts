@@ -1,10 +1,43 @@
-import type { CatalogItem, GridState, MacroCoord, PlacedObject } from '../core/model/types';
+import type { CatalogItem, CategoryId, GridState, MacroCoord, PlacedObject, Rotation } from '../core/model/types';
 import { getCell } from '../core/model/grid-model';
-import { cellKey, onHalfGrid, straddledCells, snapHalf } from '../core/grid/rect';
+import { cellKey, onHalfGrid, straddledCells, snapHalf, type Rect } from '../core/grid/rect';
 import { terrainCellsUnder, getFootprint, getRotatedSize, isQuarterTurn } from '../core/grid/footprint';
 import { surfaceElevation } from '../core/domain/terrain/terrain-surface';
 import { hasTrait, isSelfSnappingTrait } from '../core/model/traits';
-import { getCatalogItem } from './catalog';
+import { CLEARANCE, DOOR } from '../core/game/profile';
+import { getCatalogItem, itemRole } from './catalog';
+
+/** A home large enough to have a door (smaller ones are street furniture). */
+export const hasGate = (item: { category: CategoryId; width: number; height: number }): boolean =>
+  itemRole(item) === 'home' && item.width * item.height >= CLEARANCE.gateMinArea;
+
+/** A house's door: the cell at the centre of the footprint side that is its bottom at rotation 0,
+ *  turned with the house (90 faces -x, 180 faces -y, 270 faces +x, as the sprite and mesh turn), and
+ *  the unit step it faces. `r` is the turned footprint. */
+export function doorOf(r: Rect, rotation: Rotation = 0): { gate: MacroCoord; facing: MacroCoord } {
+  const x0 = Math.floor(r.x), y0 = Math.floor(r.y);
+  const x1 = Math.ceil(r.x + r.w) - 1, y1 = Math.ceil(r.y + r.h) - 1;
+  const midX = Math.floor(r.x + r.w / 2), midY = Math.floor(r.y + r.h / 2);
+  if (rotation === 90) return { gate: { x: x0, y: midY }, facing: { x: -1, y: 0 } };
+  if (rotation === 180) return { gate: { x: midX, y: y0 }, facing: { x: 0, y: -1 } };
+  if (rotation === 270) return { gate: { x: x1, y: midY }, facing: { x: 1, y: 0 } };
+  return { gate: { x: midX, y: y1 }, facing: { x: 0, y: 1 } };
+}
+
+/** The ground in front of a house's door side on the object grid: the whole footprint side that
+ *  carries the door, and `depth` out from it. */
+export function doorGroundRect(r: Rect, rotation: Rotation, depth: number): Rect {
+  const { facing } = doorOf(r, rotation);
+  if (facing.x !== 0) return { x: facing.x > 0 ? r.x + r.w : r.x - depth, y: r.y, w: depth, h: r.h };
+  return { x: r.x, y: facing.y > 0 ? r.y + r.h : r.y - depth, w: r.w, h: depth };
+}
+
+/** The terrain cells in front of a house's door side that V-PLACE-DOOR reads, to the deeper of its two
+ *  depths; empty for an object without a door. A terrain planner keeps them as they are. */
+export function doorstepTerrain(obj: PlacedObject, item = getCatalogItem(obj.catalogId)): MacroCoord[] {
+  if (!item || !hasGate(item)) return [];
+  return terrainCellsUnder(doorGroundRect(objectRect(obj, item), obj.rotation, Math.max(DOOR.dropDepth, DOOR.riseDepth)));
+}
 
 /** Whether an item may anchor on the half-cell grid in both axes — the ramp/bridge
  *  exception to macro-only placement (see the `halfStep` trait). */

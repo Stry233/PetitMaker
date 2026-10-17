@@ -14,7 +14,7 @@
  */
 
 import { zoneSpec, type CellZone } from '../../../core/game/zones';
-import { gridOffset } from '../../../core/grid/grid-convert';
+import { gridOffset, gridSize } from '../../../core/grid/grid-convert';
 import type { GridId } from '../../../core/grid/grids';
 
 /** Shared visual height of one terrain level, in ground-plane cell units. */
@@ -93,6 +93,6 @@ export function platformTopY(elevation: number): number {
  *  point. The object and terrain builders work from cell corners + size, so the footprint centre is
  *  derived as corner + size/2 by the caller. */
 export function cellCornerWorld(cx: number, cy: number, width: number, height: number, grid: GridId): { x: number; z: number } {
-  const off = mapCenterOffset(width, height), shift = gridOffset(grid);
-  return { x: cx - off.x + shift.x, z: cy - off.z + shift.y };
+  const off = mapCenterOffset(width, height), shift = gridOffset(grid), size = gridSize(grid);
+  return { x: cx * size - off.x + shift.x, z: cy * size - off.z + shift.y };
 }

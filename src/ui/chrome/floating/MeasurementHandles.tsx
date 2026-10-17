@@ -2,13 +2,11 @@ import { helpTargetAttr } from '../../session/help-targets';
 import { useRef, type PointerEvent } from 'react';
 import { getActiveView } from '../../../view/active-view';
 import { moveMeasureEnd } from '../../../editor/editing/annotation-edit';
-import { zoneCellCentre, type MeasureNote } from '../../../core/model/annotations';
+import { HALVES, noteStepCell, zoneCellCentre, type MeasureNote } from '../../../core/model/annotations';
 import { clientPoint } from '../../../platform/device/viewport-space';
 import { useT } from '../../../i18n/context';
 import { useEditorStore } from '../../../state/store';
 import { cursors, shadows, z } from '../../design/styles';
-import { PLACEMENT_GRID } from '../../../core/game/profile';
-import { cellUnder } from '../../../core/grid/pointer';
 import { FRAME_INK, ACTIVE } from '../../design/tokens';
 
 /** The parent reprojects on camera, terrain, view and annotation changes. */
@@ -44,7 +42,7 @@ export function MeasurementHandles({ note }: { note: MeasureNote }) {
     const proj = getActiveView()?.projection;
     if (!proj || !s.gridState) return;
     const p = clientPoint(event);
-    const cell = cellUnder(proj, p.x - g.offset.x, p.y - g.offset.y, PLACEMENT_GRID);
+    const cell = noteStepCell(proj.screenToPoint(p.x - g.offset.x, p.y - g.offset.y));
     if (!Number.isFinite(cell.x) || !Number.isFinite(cell.y)) return;
     if (moveMeasureEnd(g.original, g.endpoint, cell, !g.began)) {
       g.began = true;
@@ -74,7 +72,9 @@ export function MeasurementHandles({ note }: { note: MeasureNote }) {
       onLostPointerCapture={() => { grab.current = null; }}
       onClick={event => event.stopPropagation()}
       onKeyDown={event => {
-        const delta = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[event.key];
+        // One press moves the end one note step, half a cell.
+        const step = 1 / HALVES;
+        const delta = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] }[event.key];
         if (!delta) return;
         event.preventDefault(); event.stopPropagation();
         moveMeasureEnd(note, index as 0 | 1, { x: p.x + delta[0]!, y: p.y + delta[1]! }, true);

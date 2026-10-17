@@ -39,10 +39,11 @@ describe('inclusive annotation dimensions', () => {
   });
 });
 
-it('resizes either endpoint on the original axis, including crossing the fixed endpoint', () => {
+it('resizes either endpoint on the original axis in half-cell steps, including crossing the fixed endpoint', () => {
   const vertical = [p(5, 2), p(5, 10)] as const;
-  expect(resizeMeasurement(vertical, 0, p(19, 14.3))).toEqual([p(5, 14), p(5, 10)]);
+  expect(resizeMeasurement(vertical, 0, p(19, 14.3))).toEqual([p(5, 14.5), p(5, 10)]);
+  expect(resizeMeasurement(vertical, 0, p(19, 14.2))).toEqual([p(5, 14), p(5, 10)]);
   expect(resizeMeasurement(vertical, 1, p(19, 2))).toEqual([p(5, 2), p(5, 2)]);
   expect(resizeMeasurement(vertical, 1, p(19, 0))).toEqual([p(5, 2), p(5, 0)]);
-  expect(resizeMeasurement([p(2, 5), p(10, 5)], 0, p(14.3, 19))).toEqual([p(14, 5), p(10, 5)]);
+  expect(resizeMeasurement([p(2, 5), p(10, 5)], 0, p(14.3, 19))).toEqual([p(14.5, 5), p(10, 5)]);
 });

@@ -78,12 +78,13 @@ function useTravel(
   const raf = useRef<number | null>(null);
   const lastTime = useRef(0);
 
-  /** Carry a computed shown array into render, with the same same-value bailout `measure` uses —
-   *  a frame that moved nothing (a same-timestamp tick, a value already snapped) must not requeue
-   *  a render for it. */
+  /** Carry a computed shown array into render; an equal one returns before `setShown`. A bailout
+   *  inside an updater still queues a render, and the reduced path commits from an every-render
+   *  effect, so a queued no-op re-runs that effect without end while the host waits on another update. */
   const commit = (next: EdgeTravel[]) => {
+    if (next.every((t, i) => same(t, shownRef.current[i]!))) return;
     shownRef.current = next;
-    setShown((was) => (was.every((t, i) => same(t, next[i]!)) ? was : next));
+    setShown(next);
   };
   const cancelLoop = () => {
     if (raf.current != null) cancelAnimationFrame(raf.current);

@@ -6,7 +6,7 @@
  * Water commands are not checked (water has no elevation ceiling in this rule).
  */
 import { CommandType, TerrainType } from '../core/model/types';
-import { ELEVATION_MAX, TERRAIN_GRID } from '../core/game/profile';
+import { ELEVATION_MAX, TERRAIN_GRID, layerNumber } from '../core/game/profile';
 import { evidenceOn } from '../core/grid/grids';
 import { definePreRule } from './define';
 
@@ -16,7 +16,7 @@ export const elevationRangeRule = definePreRule({
   validate(cmd, _state, fail) {
     if (cmd.terrainType !== TerrainType.Mountain) return [];
     if (cmd.elevation < 0 || cmd.elevation > ELEVATION_MAX) {
-      return [fail('error.elevation_limit', evidenceOn(TERRAIN_GRID, cmd.cells), { messageParams: { max: ELEVATION_MAX } })];
+      return [fail('error.elevation_limit', evidenceOn(TERRAIN_GRID, cmd.cells), { messageParams: { max: layerNumber(ELEVATION_MAX) } })];
     }
     return [];
   },

@@ -17,10 +17,10 @@ import { fnv1a32 } from '../../../core/base/hash';
 import type { GridState, MacroCoord, PlacedObject } from '../../../core/model/types';
 import type { CategoryRole } from '../../../core/model/traits';
 import { getPlaceableByRole, itemRole } from '../../../state/catalog';
-import { objectRect } from '../../../state/object-geometry';
+import { hasGate, objectRect } from '../../../state/object-geometry';
 import { entriesNear, getObjectIndex } from '../../../state/object-index';
 import { analyzeTerrain } from '../../placement/analysis';
-import { buildingGate, forEachFootprintCell, hasGate, makeCtx, tryDecorate, type PlaceCtx } from '../../placement/object';
+import { buildingGate, forEachFootprintCell, makeCtx, tryDecorate, type PlaceCtx } from '../../placement/object';
 import type { MacroContext } from '../context';
 import { buildHabitatField, dominantSpecies } from './habitat';
 

@@ -1,5 +1,6 @@
 /** The layer panel's pinned row for the plan-notes layer. */
 import { TileToggle } from './LayerTile';
+import { LayerRowPlate } from './LayerRowPlate';
 import { TILE, NOTES_ROW } from './layer-plate';
 import { ActionButton } from '../../primitives/ActionButton';
 import { useT } from '../../../i18n/context';
@@ -8,7 +9,6 @@ import { useEditorStore } from '../../../state/store';
 import { showNotesForEditing } from '../../../editor/editing/annotation-edit';
 import { btnReset, cursors, font } from '../../design/styles';
 import { roleFont } from '../../design/text-weight';
-import { cssMotion } from '../../design/motion';
 import { ACTIVE, INK, INSET, PLATE_INK } from '../../design/tokens';
 import { TEXT } from '../units';
 import { useFrameReadableWeight } from '../use-frame-zoom';
@@ -19,17 +19,15 @@ import { useUiPreviewPose } from '../../design/preview';
  * Selecting it enters annotation editing (and shows a hidden layer); its eye and lock write the map's
  * annotation state.
  */
-export function NotesRow({ lane }: { lane: number }) {
+export function NotesRow({ lane, selected }: { lane: number; selected: boolean }) {
   const t = useT();
   const fw = useFrameReadableWeight();
-  const editMode = useEditorStore((s) => s.editMode);
   const setEditMode = useEditorStore((s) => s.setEditMode);
   const setAnnotationsVisible = useEditorStore((s) => s.setAnnotationsVisible);
   const setAnnotationsLocked = useEditorStore((s) => s.setAnnotationsLocked);
   // The data mutates in place; the epoch is what re-renders this row's count and toggles.
   useEditorStore((s) => s.annotationsEpoch);
   const data = useEditorStore((s) => s.gridState)?.annotations;
-  const selected = editMode.mode === 'annotate';
   const posed = useUiPreviewPose()?.notesRow;
   const visible = posed ? posed.visible : data?.visible !== false;
   const locked = posed ? posed.locked : data?.locked === true;
@@ -54,10 +52,10 @@ export function NotesRow({ lane }: { lane: number }) {
           tabIndex={measurer ? -1 : undefined}
           onClick={measurer ? undefined : () => openHelp('notes')}
           style={{
-            // Drawn at 16 in the floors' 12 px swatch slot, on whole pixels so no projection measures a half-pixel box.
-            ...btnReset, width: 16, height: 16, margin: `0 ${NOTES_ROW.helpMarginX}px`, flex: 'none', borderRadius: '50%',
+            // Drawn over the file's chip slot, starting on the leading column, on whole pixels so no projection measures a half-pixel box.
+            ...btnReset, width: NOTES_ROW.help, height: NOTES_ROW.help, margin: `0 ${NOTES_ROW.helpMarginX}px`, flex: 'none', borderRadius: '50%',
             background: selected ? INK : INSET, color: selected ? ACTIVE : PLATE_INK,
-            fontFamily: font.family, ...roleFont('small'), lineHeight: '16px',
+            fontFamily: font.family, ...roleFont('small'), lineHeight: `${NOTES_ROW.help}px`,
             textAlign: 'center', pointerEvents: measurer ? 'none' : 'auto', cursor: cursors.clickable,
           }}
         >
@@ -92,19 +90,12 @@ export function NotesRow({ lane }: { lane: number }) {
     <div style={{ position: 'relative', flex: 'none', marginBottom: NOTES_ROW.gap }}>
       <div aria-hidden style={{ pointerEvents: 'none', paddingRight: lane }}>{line(true)}</div>
       <div style={{ position: 'absolute', top: 0, bottom: 0, left: 0, right: lane }}>
-      <ActionButton
-        interaction="row"
-        hoverFill={selected ? undefined : INSET}
-        aria-pressed={selected}
+      <LayerRowPlate
+        selected={selected}
         aria-label={t('annot.layer')}
         data-testid="shell-layer-annotation"
         onClick={() => (selected ? setEditMode({ mode: null }) : showNotesForEditing())}
-        style={{
-          ...btnReset, position: 'absolute', inset: 0, borderRadius: tileM.radius,
-          background: selected ? ACTIVE : 'transparent',
-          cursor: cursors.clickable, pointerEvents: 'auto',
-          transition: cssMotion('layer.select.fade', ['background']),
-        }}
+        style={{ borderRadius: tileM.radius, pointerEvents: 'auto' }}
       />
       {/* The row reads in the file tile's own columns — the same padding, the same figure slot,
           the same pair gap — so in the 1×9 file the eyes and the locks stand in one line down the

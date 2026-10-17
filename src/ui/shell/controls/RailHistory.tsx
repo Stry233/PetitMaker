@@ -4,6 +4,7 @@ import { mapEdgeAttr } from '../../primitives/map-edge';
 import { motion } from 'framer-motion';
 import { useT } from '../../../i18n/context';
 import { useEditorStore } from '../../../state/store';
+import { isAnnotating } from '../../../state/editing/edit-mode';
 import { useUiZooming } from '../../design/ui-zoom-anim';
 import {
   GLYPHS, HISTORY_BUTTONS, railCell, } from '../frame';
@@ -27,7 +28,7 @@ export function HistoryGroup({ top, right, files, placement, veiled }: { top: nu
   // The lane the history commands step: the region's while one is painted, the notes' in Notes, else the map's.
   const lane = useEditorStore((s) => (s.selectingRegion
     ? { undo: s.regionUndoLane.length > 0, redo: s.regionRedoLane.length > 0 }
-    : s.editMode.mode === 'annotate'
+    : isAnnotating(s)
       ? { undo: s.annotationUndoLane.length > 0, redo: s.annotationRedoLane.length > 0 }
       : null));
   const { canUndo, canRedo } = useHistoryState();

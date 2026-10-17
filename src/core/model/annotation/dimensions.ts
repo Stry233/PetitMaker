@@ -1,5 +1,8 @@
 import type { MacroCoord } from '../types';
-import { cellsBounds } from '../../grid/rect';
+import { cellsBounds, snapHalf } from '../../grid/rect';
+import { gridSize } from '../../grid/grid-convert';
+import type { GridId } from '../../grid/grids';
+import { PLACEMENT_GRID } from '../../game/profile';
 
 /** A box by its edge coordinates in cell units, cell (x, y) spanning [x, x + 1). */
 interface CellEdges { left: number; top: number; right: number; bottom: number }
@@ -9,20 +12,23 @@ export interface DimensionDrawing {
   labels: { at: MacroCoord; value: number }[];
 }
 
-/** The fixed endpoint and original axis survive a drag through a one-cell span. */
+/** The fixed endpoint and original axis survive a drag through a one-cell span. `pointer` is the
+ *  moved endpoint's cell corner, rounded to the half-cell lattice. */
 export function resizeMeasurement(points: readonly [MacroCoord, MacroCoord], endpoint: 0 | 1, pointer: MacroCoord): [MacroCoord, MacroCoord] {
   const next: [MacroCoord, MacroCoord] = [{ ...points[0] }, { ...points[1] }];
   const fixed = points[endpoint === 0 ? 1 : 0];
   next[endpoint] = points[0].y === points[1].y
-    ? { x: Math.round(pointer.x), y: fixed.y }
-    : { x: fixed.x, y: Math.round(pointer.y) };
+    ? { x: snapHalf(pointer.x), y: fixed.y }
+    : { x: fixed.x, y: snapHalf(pointer.y) };
   return next;
 }
 
-/** Inclusive cell extents: cells 0 through 83 occupy 84 cells, not 83 centre-to-centre intervals. */
-export function cellEdges(cells: readonly MacroCoord[]): CellEdges | null {
+/** Inclusive cell extents of cells of `grid`, in map cells: cells 0 through 83 occupy 84 cells, not
+ *  83 centre-to-centre intervals. A measurement's cells sit at half-cell corners on the placement grid. */
+export function cellEdges(cells: readonly MacroCoord[], grid: GridId = PLACEMENT_GRID): CellEdges | null {
   const box = cellsBounds(cells);
-  return box && { left: box.x, top: box.y, right: box.x + box.w, bottom: box.y + box.h };
+  const s = gridSize(grid);
+  return box && { left: box.x * s, top: box.y * s, right: (box.x + box.w) * s, bottom: (box.y + box.h) * s };
 }
 
 /** CAD-style dimensions in cell units, shared by drawing, selection and both projections. */
@@ -49,13 +55,13 @@ export function dimensionDrawing(bounds: CellEdges, inkScale: number, axes: 'bot
     const y = (flipped ? top : bottom) + side * offset;
     const from = point(left, y), to = point(right, y);
     drawing.guides.push([flipped ? a : d, point(from.x, from.y + side * tick)], [flipped ? b : c, point(to.x, to.y + side * tick)]);
-    dimension(from, to, Math.round(right - left));
+    dimension(from, to, snapHalf(right - left));
   }
   if (axes !== 'x') {
     const x = (flipped ? left : right) + side * offset;
     const from = point(x, top), to = point(x, bottom);
     drawing.guides.push([flipped ? a : b, point(from.x + side * tick, from.y)], [flipped ? d : c, point(to.x + side * tick, to.y)]);
-    dimension(from, to, Math.round(bottom - top));
+    dimension(from, to, snapHalf(bottom - top));
   }
   return drawing;
 }

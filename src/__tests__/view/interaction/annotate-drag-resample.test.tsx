@@ -29,7 +29,7 @@ function makeView(): ActiveView {
     showSelection: vi.fn(), clearSelection: vi.fn(),
     showHover: vi.fn(), clearHover: vi.fn(), flashCommit: vi.fn(),
     showBuildableRegion: vi.fn(), clearBuildableRegion: vi.fn(),
-    showBand: vi.fn(), clearBand: vi.fn(), showPlacementGhost: vi.fn(),
+    showBand: vi.fn(), clearBand: vi.fn(), showPlacementGhost: vi.fn(), showNoteGhost: vi.fn(),
   };
   return {
     projection: {
@@ -96,16 +96,17 @@ afterEach(() => {
 describe('a notes drag through the pointer machine', () => {
   it('lays a brush stroke on each move, and every store listener hears it', () => {
     arm('zone');
-    el.dispatchEvent(pointer('pointerdown', { button: 0, buttons: 1, clientX: 52, clientY: 52 }));
+    // Cell centres, so the half-cell brush lands on whole cells.
+    el.dispatchEvent(pointer('pointerdown', { button: 0, buttons: 1, clientX: 55, clientY: 55 }));
     heard = 0;
-    window.dispatchEvent(pointer('pointermove', { buttons: 1, clientX: 92, clientY: 52 }));
+    window.dispatchEvent(pointer('pointermove', { buttons: 1, clientX: 95, clientY: 55 }));
 
     expect(errors).toEqual([]);
     const draft = useEditorStore.getState().annotationDraft as ZoneNote | null;
     expect(draft?.kind).toBe('zone');
     expect(draft!.cells.some((c) => c.x === 9 && c.y === 5)).toBe(true);
     expect(heard).toBeGreaterThan(0);
-    window.dispatchEvent(pointer('pointerup', { button: 0, buttons: 0, clientX: 92, clientY: 52 }));
+    window.dispatchEvent(pointer('pointerup', { button: 0, buttons: 0, clientX: 95, clientY: 55 }));
   });
 
   it('moves a selected note with the pointer, and every store listener hears it', () => {

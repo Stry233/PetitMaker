@@ -14,7 +14,7 @@ const SQUARE = 26;
 const STYLE: CSSProperties = {
   width: SQUARE, height: SQUARE, borderRadius: radii.chip, flex: '0 0 auto', padding: 0,
   display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-  background: PLATE, color: INK, border: 'none', boxShadow: 'none',
+  color: INK, border: 'none', boxShadow: 'none',
 };
 
 /**
@@ -53,6 +53,7 @@ export function RewindSquare({
         aria-label={busy ? `${label} (${busyWhy})` : label}
         aria-expanded={open}
         disabled={busy}
+        fill={PLATE}
         hoverFill={ACTIVE}
         onClick={() => ask(!asking)}
         style={STYLE}

@@ -214,7 +214,7 @@ describe('the designed generator', () => {
    * six levels, 47% of its pavement above level 4, 2.85 level changes per 100 pavement cells and 70.8%
    * of it with sight of the mass; the floors here are what this batch achieves, stated so the distance
    * left is readable rather than hidden. The max-height reach is the hard half: the shelf's cap is a
-   * promise to the player, so a map asked for eight layers has to come back with eight.
+   * promise to the player, so a map asked for the top layer has to come back reaching it.
    */
   it('THE CLIMB: the asked height is built, the walk stands on it and can see it', () => {
     for (const template of [HEXIA, TAFA]) {

@@ -1,8 +1,8 @@
+import { inlandSquare } from '../../_support/legal-maps';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { getMapTemplate } from '../../../config/maps';
 import { createGridState } from '../../../core/model/template';
 import { TerrainType, type GridState } from '../../../core/model/types';
-import { CellZone } from '../../../core/game/zones';
 import { captureImageAttribution } from '../../../io/save/image-attribution';
 import { protectedImageNotes } from '../../../state/notes-attribution';
 import { buildShareCode } from '../../../io/share/export';
@@ -18,10 +18,8 @@ import { exportable } from '../../_support/exportable';
 function map(): GridState {
   const template = getMapTemplate(undefined);
   const state: GridState = { ...createGridState(template), notes: { title: 'Garden', description: 'A riverside walk' } };
-  let count = 0;
-  for (const row of state.cells) for (const cell of row) {
-    if (cell.zone === CellZone.Grass && count++ < 10) cell.terrain = { type: TerrainType.Mountain, elevation: 1 };
-  }
+  const at = inlandSquare(template, 4);
+  for (let y = at.y; y < at.y + 2; y++) for (let x = at.x; x < at.x + 4; x++) state.cells[y]![x]!.terrain = { type: TerrainType.Mountain, elevation: 1 };
   return state;
 }
 

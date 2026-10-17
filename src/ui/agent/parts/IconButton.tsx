@@ -37,8 +37,8 @@ export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(functio
   testId, icon, label, disabled = false, lit = false, door = false, knob = false, onClick, ...rest
 }, ref) {
   const face: CSSProperties = knob
-    ? { background: PLATE, border: edge, borderRadius: radii.pill, color: INK }
-    : { background: lit ? ACTIVE : panelTint.chip, border: 'none', borderRadius: radii.chip, color: door && !lit ? MUTED : INK };
+    ? { border: edge, borderRadius: radii.pill, color: INK }
+    : { border: 'none', borderRadius: radii.chip, color: door && !lit ? MUTED : INK };
   return (
     <ActionButton
       ref={ref}
@@ -48,6 +48,7 @@ export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(functio
       title={label}
       aria-label={label}
       disabled={disabled}
+      fill={knob ? PLATE : lit ? ACTIVE : panelTint.chip}
       hoverFill={ACTIVE}
       onClick={onClick}
       style={{ ...BOX, ...face }}

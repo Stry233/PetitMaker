@@ -72,7 +72,7 @@ const ALL_COMMAND_META = [
   // Selection
   { id: 'selection.rotate_cw',  category: 'selection', labelKey: 'shortcut.rotate_cw',  defaultCombo: 'e' },
   { id: 'selection.rotate_ccw', category: 'selection', labelKey: 'shortcut.rotate_ccw', defaultCombo: null },
-  { id: 'selection.delete',     category: 'selection', labelKey: 'shortcut.delete',     defaultCombo: 'delete' },
+  { id: 'selection.delete',     category: 'selection', labelKey: 'shortcut.delete',     defaultCombo: 'r' },
   { id: 'selection.deselect',   category: 'selection', labelKey: 'shortcut.deselect',   defaultCombo: 'escape' },
 
   // Multi-select (held): Ctrl turns a click into a membership toggle and a drag into a rubber
@@ -147,6 +147,7 @@ export const META_BY_ID: ReadonlyMap<string, CommandMeta> = new Map(COMMAND_META
  *  aliases so conventional alternates work. Not shown as separate rows / not user-editable. */
 export const ALIASES: { combo: string; commandId: CommandId }[] = [
   { combo: 'ctrl+y',    commandId: 'history.redo' },      // Windows-muscle-memory redo
+  { combo: 'delete',    commandId: 'selection.delete' },  // The conventional delete key, beside the default R
   { combo: 'backspace', commandId: 'selection.delete' },  // Mac laptops' "Delete" key
   // Arrow keys pan alongside WASD (the arrows are the secondary binding; WASD is the editable
   // primary). Listed here so they show on the keyboard + drive the held-pan loop from one source.
@@ -187,6 +188,15 @@ export const PLANET_SESSION_COMMANDS: ReadonlySet<string> = new Set([
   'app.menu', 'app.help',
 ] satisfies CommandId[]);
 
+/** The commands a hand repair answers: history, the camera, deleting and deselecting its objects,
+ *  the menu and Help. */
+export const REPAIR_SESSION_COMMANDS: ReadonlySet<string> = new Set([
+  'history.undo', 'history.redo',
+  'camera.zoom_in', 'camera.zoom_out', 'camera.fit', 'app.ui_zoom_in', 'app.ui_zoom_out',
+  'selection.delete', 'selection.deselect',
+  'app.menu', 'app.help',
+] satisfies CommandId[]);
+
 /** The two commands the always-live UI-zoom listener carries out. */
 export const UI_ZOOM_IDS: readonly string[] = ['app.ui_zoom_in', 'app.ui_zoom_out'] satisfies readonly CommandId[];
 
@@ -212,7 +222,7 @@ const PRO: Record<string, string | null> = {
   'tool.free': null, 'tool.measure': null, 'tool.shape_cycle': null, 'tool.option_cycle': null,
   'tool.line': 'f', 'tool.curve': 'g', 'tool.rect': 'r', 'tool.circle': 'c', 'tool.smart': 't',
   'brush.bigger': ']', 'brush.smaller': '[', 'layer.up': 'q', 'layer.down': 'z',
-  'selection.rotate_cw': '.', 'selection.rotate_ccw': ',',
+  'selection.rotate_cw': '.', 'selection.rotate_ccw': ',', 'selection.delete': 'delete',
   'camera.zoom_in': '=', 'camera.zoom_out': '-',
   'app.help': 'shift+?', 'app.menu': 'm',
   'overlay.grid': 'shift+g', 'overlay.numbers': 'shift+n', 'overlay.chunks': 'shift+c',

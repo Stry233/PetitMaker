@@ -1,6 +1,6 @@
 import type { OverlayLayer } from '../../view/map2d/layers/overlay-layer';
 
-const PARTS = ['flashes', 'ghosts', 'marks', 'regions', 'planet', 'band'] as const;
+const PARTS = ['flashes', 'ghosts', 'noteGhost', 'marks', 'regions', 'planet', 'band', 'flagged'] as const;
 
 /** A display object or field of the 2D overlay, found on the layer or on whichever part holds it. */
 export function overlayPart<T>(overlay: OverlayLayer, field: string): T {

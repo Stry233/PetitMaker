@@ -8,7 +8,7 @@
  */
 import { describe, it, expect, beforeEach } from 'vitest';
 import { newMap, generateMap, transferMap } from '../../../editor/operations';
-import { anchorOffset } from '../../../tools/generation/transfer';
+import { anchorOffset, hasCarriableContent } from '../../../tools/generation/transfer';
 import { currentEditor, editorPort } from '../../../editor/session/context';
 import { getMapTemplate } from '../../../config/maps';
 import { createDefaultRegistry } from '../../../rules';
@@ -21,6 +21,11 @@ import { CellZone } from '../../../core/game/zones';
 import type { GridState, MacroCoord, MapTemplate } from '../../../core/model/types';
 import { defaultConfig, type GenerateConfig } from '../../../tools/generation/recipe';
 import { ANCHOR_LANDMARK } from '../../_support/anchor';
+import { annotationsOf, type AnnotationsState, type MapAnnotation } from '../../../core/model/annotations';
+import { HALF_GRID } from '../../../core/game/profile';
+import { DEFAULT_TAG } from '../../../config/annotation-tags';
+import { transferPreviewOf } from '../../../tools/generation/run/planet-preview';
+import { useEditorStore } from '../../../state/store';
 
 const config = (seed: number): GenerateConfig => (defaultConfig('designed', { maxElevation: 4, seed, richness: 1 }));
 
@@ -299,6 +304,126 @@ describe('a planet the code has never seen', () => {
     expect(outcome.dropped.cells).toBe(lost.length);
     expect({ moved: outcome.moved, dropped: outcome.dropped }).toEqual(diffOf(source, dest, outcome.offset));
     for (const c of kept) expect(getCell(dest.cells, c.x - 3, c.y)?.terrain?.elevation).toBe(1);
+  });
+});
+
+// ── plan notes ────────────────────────────────────────────────────────────────────────────────────
+
+/** Notes on the wide tiny planet, read against the narrow one (offset (−3, 0), 14 cells wide): one of
+ *  each kind landing whole, a zone half off the map, and one of each kind left behind. */
+function plannedNotes(): MapAnnotation[] {
+  const base = { color: '#ff0000' };
+  return [
+    { ...base, kind: 'zone', id: 'zone-whole', cells: [{ x: 4, y: 4 }, { x: 5, y: 4 }], tag: DEFAULT_TAG, num: 1 },
+    { ...base, kind: 'zone', id: 'zone-half', cells: [{ x: 8, y: 8 }, { x: 9, y: 8 }, { x: 8, y: 9 }], grid: HALF_GRID, tag: null, num: 2 },
+    { ...base, kind: 'zone', id: 'zone-edge', cells: [{ x: 16, y: 10 }, { x: 17, y: 10 }], tag: null, num: 3 },
+    { ...base, kind: 'zone', id: 'zone-off', cells: [{ x: 18, y: 2 }], tag: null, num: 4 },
+    { ...base, kind: 'chip', id: 'chip-in', x: 5.3, y: 7.6, tag: 'custom:market', size: 'm' },
+    { ...base, kind: 'chip', id: 'chip-off', x: 17.5, y: 3, tag: DEFAULT_TAG, size: 's' },
+    { ...base, kind: 'route', id: 'route-in', points: [{ x: 6.5, y: 9.5, hx: 1, hy: 0 }, { x: 10, y: 12 }], dashed: true },
+    { ...base, kind: 'route', id: 'route-off', points: [{ x: 10, y: 3 }, { x: 18, y: 3 }], dashed: false },
+    { ...base, kind: 'measure', id: 'measure-in', points: [{ x: 4.5, y: 11 }, { x: 8.5, y: 11 }] },
+    { ...base, kind: 'measure', id: 'measure-off', points: [{ x: 2, y: 13 }, { x: 2, y: 14 }], flipped: true },
+  ];
+}
+
+/** The destination cells the left-behind notes mark: the zones' cells off the map and every cell a
+ *  dropped chip, route or measurement names. */
+const LOST_NOTE_CELLS = ['14,10', '15,2', '14,3', '7,3', '15,3', '-1,13', '-1,14'];
+
+function notedWidePlanet(): { narrow: MapTemplate; notes: AnnotationsState } {
+  const a = tinyPlanet('tiny-a', 20, 16, 8.5, 6.5);
+  const narrow = tinyPlanet('tiny-narrow', 14, 16, 5.5, 6.5);
+  newMap(editorPort, a);
+  const notes = annotationsOf(currentEditor()!.state);
+  notes.items = plannedNotes();
+  notes.customTags = [{ id: 'custom:market', text: 'Market' }];
+  return { narrow, notes };
+}
+
+describe('plan notes move with the build', () => {
+  it('moves every note by the offset the terrain and objects move by', () => {
+    const { narrow } = notedWidePlanet();
+    const outcome = transferMap(editorPort, currentEditor()!, { target: narrow });
+    expect(outcome.offset).toEqual({ x: -3, y: 0 });
+    const arrived = new Map(annotationsOf(currentEditor()!.state).items.map((n) => [n.id, n]));
+
+    expect(arrived.get('zone-whole')).toMatchObject({ cells: [{ x: 1, y: 4 }, { x: 2, y: 4 }], num: 1, tag: DEFAULT_TAG });
+    expect(arrived.get('zone-whole')).not.toHaveProperty('grid');
+    // Half-grid cells move by twice the whole-cell offset and stay on the half grid.
+    expect(arrived.get('zone-half')).toMatchObject({ cells: [{ x: 2, y: 8 }, { x: 3, y: 8 }, { x: 2, y: 9 }], grid: HALF_GRID });
+    expect(arrived.get('chip-in')).toMatchObject({ x: 2.3, y: 7.6, tag: 'custom:market' });
+    expect(arrived.get('route-in')).toMatchObject({ points: [{ x: 3.5, y: 9.5, hx: 1, hy: 0 }, { x: 7, y: 12 }] });
+    expect(arrived.get('measure-in')).toMatchObject({ points: [{ x: 1.5, y: 11 }, { x: 5.5, y: 11 }] });
+    expect(annotationsOf(currentEditor()!.state).customTags).toEqual([{ id: 'custom:market', text: 'Market' }]);
+  });
+
+  it('keeps a zone\'s cells on the map and leaves behind any other note that does not land whole', () => {
+    const { narrow } = notedWidePlanet();
+    transferMap(editorPort, currentEditor()!, { target: narrow });
+    const arrived = annotationsOf(currentEditor()!.state).items;
+
+    expect(arrived.map((n) => n.id).sort()).toEqual(['chip-in', 'measure-in', 'route-in', 'zone-edge', 'zone-half', 'zone-whole']);
+    expect(arrived.find((n) => n.id === 'zone-edge')).toMatchObject({ cells: [{ x: 13, y: 10 }], num: 3 });
+  });
+
+  it('previews exactly the notes that arrive, and marks the left-behind ones as lost', () => {
+    const { narrow } = notedWidePlanet();
+    const preview = transferPreviewOf(currentEditor()!.state, narrow);
+    expect(preview.dropped.map((c) => `${c.x},${c.y}`).sort()).toEqual([...LOST_NOTE_CELLS].sort());
+    // Lost notes mark cells; the counts stay the build's own.
+    expect(preview.droppedCounts).toEqual({ cells: 0, objects: 0 });
+
+    transferMap(editorPort, currentEditor()!, { target: narrow });
+    expect(preview.state.annotations).toEqual(currentEditor()!.state.annotations);
+  });
+
+  it('keeps the notes hidden and locked when they were', () => {
+    const { narrow, notes } = notedWidePlanet();
+    notes.visible = false;
+    notes.locked = true;
+    const preview = transferPreviewOf(currentEditor()!.state, narrow);
+    transferMap(editorPort, currentEditor()!, { target: narrow });
+    const arrived = annotationsOf(currentEditor()!.state);
+    expect({ visible: arrived.visible, locked: arrived.locked }).toEqual({ visible: false, locked: true });
+    expect({ visible: preview.state.annotations!.visible, locked: preview.state.annotations!.locked }).toEqual({ visible: false, locked: true });
+  });
+
+  it('leaves the source notes untouched and opens the destination on a fresh notes history', () => {
+    const { narrow } = notedWidePlanet();
+    const source = currentEditor()!.state;
+    useEditorStore.getState().addAnnotation({ kind: 'chip', id: 'chip-late', x: 3, y: 3, tag: DEFAULT_TAG, size: 'm', color: '#00ff00' });
+    expect(useEditorStore.getState().annotationUndoLane).toHaveLength(1);
+    const before = structuredClone(source.annotations);
+
+    transferMap(editorPort, currentEditor()!, { target: narrow });
+    const dest = annotationsOf(currentEditor()!.state);
+    // The arrival shares nothing the source holds: editing it leaves the source as it was.
+    for (const n of dest.items) {
+      if (n.kind === 'zone') n.cells.push({ x: 0, y: 0 });
+      else if (n.kind === 'chip') n.x += 1;
+      else n.points[0]!.x += 1;
+    }
+    dest.customTags![0]!.text = 'Changed';
+    expect(source.annotations).toEqual(before);
+    // The notes lane, like the map's history, starts over: no undo reaches back to the other planet.
+    expect(useEditorStore.getState().annotationUndoLane).toEqual([]);
+    expect(useEditorStore.getState().undoAnnotation()).toBe(false);
+  });
+
+  it('offers to carry a map that holds nothing but notes', () => {
+    const { notes } = notedWidePlanet();
+    expect(hasCarriableContent(currentEditor()!.state)).toBe(true);
+    notes.items = [];
+    expect(hasCarriableContent(currentEditor()!.state)).toBe(false);
+  });
+
+  it('carries no notes onto a map that had none', () => {
+    const { narrow, notes } = notedWidePlanet();
+    notes.items = [];
+    delete notes.customTags;
+    transferMap(editorPort, currentEditor()!, { target: narrow });
+    expect(annotationsOf(currentEditor()!.state).items).toEqual([]);
   });
 });
 

@@ -1,6 +1,6 @@
 import type { GlQuality } from '../../../platform/device/device-quality';
 import * as THREE from 'three';
-import { MoveOrigins3D } from './move-origins';
+import { BodyOutlines3D } from './body-outlines';
 import type { GridState, ValidationError } from '../../../core/model/types';
 import type { GhostCell, GhostPaint, PlacementGhost, ToolOverlay, SelectionOpts } from '../../../tools/pointer/runtime';
 import type { MacroRect } from '../../interaction/marquee';
@@ -15,6 +15,9 @@ import { OverlayGhosts3D } from './overlay/ghost';
 import { Boxes3D } from './overlay/boxes';
 import { OverlayFlashes3D } from './overlay/flash';
 import { OverlayRegions3D } from './overlay/region';
+import { OverlayNoteGhost3D } from './overlay/note-ghost';
+import { OverlayFlagged3D } from './overlay/flagged';
+import type { MapAnnotation } from '../../../core/model/annotations';
 
 /** What the 3D overlay reads from the scene that holds it. */
 export interface Overlay3DDeps {
@@ -26,7 +29,7 @@ export interface Overlay3DDeps {
   nowMs?(): number;
   /** Shows the moved objects at their destinations while a move preview runs. */
   moveObjects?(destinations: readonly PlacedObject[]): void;
-  /** The camera and canvas rect the move origins' screen-space outlines project through. */
+  /** The camera and canvas rect the move origins' and flags' screen-space outlines project through. */
   camera?: THREE.Camera;
   viewport?(): { width: number; height: number };
   modelQuality?(): GlQuality;
@@ -43,13 +46,15 @@ export class OverlayLayer3D implements ToolOverlay, OverlayHost3D {
   readonly group = new THREE.Group();
   readonly mats = new BoxMaterials();
 
-  private moveOrigins: MoveOrigins3D | null = null;
+  private moveOrigins: BodyOutlines3D | null = null;
   private isMoving = false;
 
   private readonly regions: OverlayRegions3D;
   private readonly ghosts = new OverlayGhosts3D(this);
   private readonly boxes = new Boxes3D(this);
   private readonly flashes = new OverlayFlashes3D(this);
+  private readonly noteGhost = new OverlayNoteGhost3D(this);
+  private readonly flagged: OverlayFlagged3D;
 
   readonly state = (): GridState => this.deps.state();
   readonly requestRender = (): void => this.deps.requestRender();
@@ -60,7 +65,9 @@ export class OverlayLayer3D implements ToolOverlay, OverlayHost3D {
 
   constructor(private readonly deps: Overlay3DDeps) {
     this.regions = new OverlayRegions3D(this);
+    this.flagged = new OverlayFlagged3D(this, deps.camera, deps.viewport);
     this.group.add(this.regions.regionDimensions.group);
+    this.group.add(this.noteGhost.notes.group);
     this.group.renderOrder = 50; // over terrain and water, under nothing that matters
   }
 
@@ -77,7 +84,9 @@ export class OverlayLayer3D implements ToolOverlay, OverlayHost3D {
   }
 
   showObjectMove(destinations: readonly PlacedObject[], _valid: boolean): void {
-    this.moveOrigins ??= new MoveOrigins3D(this.group, this.deps.camera, this.deps.viewport, this.nowMs, this.modelQuality);
+    this.moveOrigins ??= new BodyOutlines3D(this.group, {
+      camera: this.deps.camera, viewport: this.deps.viewport, nowMs: this.nowMs, modelQuality: this.modelQuality,
+    });
     this.moveOrigins.show(this.state(), destinations.map(obj => obj.id));
     this.isMoving = true;
     this.ghosts.hideBodies();
@@ -95,7 +104,12 @@ export class OverlayLayer3D implements ToolOverlay, OverlayHost3D {
       this.boxes.setShadowsVisible(true);
     }
     this.ghosts.clearGhost();
+    this.noteGhost.clear();
     this.requestRender();
+  }
+
+  showNoteGhost(note: MapAnnotation, label: string): void {
+    this.noteGhost.show(note, label);
   }
 
   showPlacementGhost(ghost: PlacementGhost, valid: boolean): void {
@@ -111,6 +125,8 @@ export class OverlayLayer3D implements ToolOverlay, OverlayHost3D {
     this.moveOrigins?.update();
     this.boxes.flush();
     this.ghosts.flush();
+    this.noteGhost.flush();
+    this.flagged.flush();
   }
 
   showSelection(rect: Rect, grid: GridId, opts: SelectionOpts = {}): void { this.boxes.showSelection(rect, grid, opts); }
@@ -129,7 +145,9 @@ export class OverlayLayer3D implements ToolOverlay, OverlayHost3D {
   /** Advance flash decay, the move origins' fade and the region pulse; true while any runs (keeps
    *  the render window open, like a canvas animation). */
   tick(): boolean {
-    const fading = this.moveOrigins?.tick() ?? false;
+    const arriving = this.noteGhost.tick();
+    const flagFading = this.flagged.tick();
+    const fading = (this.moveOrigins?.tick() ?? false) || arriving || flagFading;
     const pulsing = this.regions.stepRegionPulse() || fading;
     return this.flashes.tick() || pulsing;
   }
@@ -142,6 +160,7 @@ export class OverlayLayer3D implements ToolOverlay, OverlayHost3D {
   showCurveFootprint(set: CellSet): void { this.ghosts.showCurveFootprint(set); }
   clearCurveFootprint(): void { this.ghosts.clearCurveFootprint(); }
   showPath(set: CellSet): void { this.regions.showPath(set); }
+  showFlaggedObjects(objects: readonly PlacedObject[] | null): void { this.flagged.show(objects); }
   clearPath(): void { this.regions.clearPath(); }
 
   dispose(): void {
@@ -157,6 +176,8 @@ export class OverlayLayer3D implements ToolOverlay, OverlayHost3D {
     this.clearBand();
     this.clearBuildableRegion();
     this.regions.regionDimensions.dispose();
+    this.noteGhost.dispose();
+    this.flagged.dispose();
     this.clearPath();
     this.flashes.dispose();
     this.mats.dispose();

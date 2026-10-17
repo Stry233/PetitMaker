@@ -10,8 +10,8 @@ import { ScaleProvider, useDenseScript, useDevicePixelRatio, useFitFloor, useVie
 import { font } from '../../design/styles';
 import { weightVars } from '../../design/text-weight';
 import { useAnimatedUiZoom } from '../../design/ui-zoom-anim';
-import { ChunkBoundary } from '../../primitives/ChunkBoundary';
-import { ChunkNotice } from '../../chrome/guards/ChunkNotice';
+import { RenderBoundary } from '../../primitives/RenderBoundary';
+import { ChunkNotice } from '../../chrome/guards/FailureNotice';
 import { useLatch } from '../../primitives/use-latch';
 import { PanelColumn } from '../edition-surfaces';
 import { frameZoomAt } from '../panel-frame';
@@ -55,11 +55,11 @@ export function DockedAssistant({ hidden }: { hidden: boolean }) {
       } as CSSProperties}
     >
       <ScaleProvider value={SCALE}>
-        <ChunkBoundary resetKey={open} fallback={<ChunkNotice />}>
+        <RenderBoundary resetKey={open} fallback={<ChunkNotice />}>
           <Suspense fallback={null}>
             <PanelColumn open={open} hosted veiled={hidden} />
           </Suspense>
-        </ChunkBoundary>
+        </RenderBoundary>
       </ScaleProvider>
     </div>
   );

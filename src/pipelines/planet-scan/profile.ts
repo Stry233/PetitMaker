@@ -1,33 +1,27 @@
 import { CHUNK_SIZE, PLANET_PROFILE } from '../../core/game/profile';
 import calibrationData from './calibration.json';
-import type { PixelRect, Polynomial2, Rectification, TileSpec } from './types';
+import type { Homography, PixelRect, Rectification, TileSpec } from './types';
 
 // The game's map view as the scan pipeline reads it. Screen coordinates are pixels of a
 // frame decoded at `frame` size; ground coordinates are rectified pixels. Stages read these facts
-// here and hard-code none of them. Measured values (the rectification polynomials and the cell
-// size) live in calibration.json, their source of truth.
+// here and hard-code none of them. Measured values (the rectification, the cell size, the trusted
+// region and the tile) live in calibration.json, their source of truth.
 
-function polynomial(terms: readonly (readonly number[])[], coef: readonly number[]): Polynomial2 {
-  if (terms.length !== coef.length) throw new Error('calibration polynomial terms and coefficients differ in length');
-  return { terms: terms.map((t) => [t[0]!, t[1]!] as const), coef };
+function homography(coef: readonly number[]): Homography {
+  if (coef.length !== 9) throw new Error('a calibration homography has nine coefficients');
+  return coef as unknown as Homography;
 }
 
-/** The rectification polynomials of the map view at its minimum zoom, measured from recordings. */
+/** The map view at its maximum zoom, a plain perspective view of the flat ground, measured from the
+ *  region load lines of recordings. */
 export const MAP_VIEW_RECTIFICATION: Rectification = {
   frame: calibrationData.frame,
-  origin: calibrationData.origin,
-  scale: calibrationData.scale,
-  toScreen: {
-    u: polynomial(calibrationData.toScreen.terms, calibrationData.toScreen.u),
-    v: polynomial(calibrationData.toScreen.terms, calibrationData.toScreen.v),
-  },
-  toGround: {
-    x: polynomial(calibrationData.toGround.terms, calibrationData.toGround.x),
-    y: polynomial(calibrationData.toGround.terms, calibrationData.toGround.y),
-  },
+  toScreen: homography(calibrationData.toScreen),
+  toGround: homography(calibrationData.toGround),
 };
 
-/** One cell of the ground in rectified pixels, measured from the region load lines. */
+/** One cell of the ground in rectified pixels: the unit the calibration draws the ground in, which
+ *  every pixel setting below is tuned to. */
 const CELL = calibrationData.cell;
 
 /** The game's view: 16:10, fit to the window's height and centred. */
@@ -44,9 +38,9 @@ export interface HudAnchor {
 export const SCAN_PROFILE = {
   /** Frames are decoded at this size; every screen coordinate below is in its pixels. */
   frame: MAP_VIEW_RECTIFICATION.frame,
-  /** The game window the calibration was measured in: 16:10 and as tall as the frame, from frame
-   *  column `x0` (picture columns 95 to 1823 of the 1920 x 1080 reference recordings, half a frame
-   *  pixel left of the centre). The game draws the world at a scale that follows the window's height (a fixed vertical field
+  /** The game window the HUD's probes were measured in: 16:10 and as tall as the frame, from frame
+   *  column `x0` (picture columns 95 to 1823 of 1920 x 1080 recordings, half a frame pixel left of
+   *  the centre; the rectification's 2304 x 1440 recordings put it at 48, within `window.snap`). The game draws the world at a scale that follows the window's height (a fixed vertical field
    *  of view), so a window of any shape is placed with its height on the frame's, or its width on
    *  the frame's where it is wider than the frame (`framing.ts:placeWindow`). */
   view: { aspect: VIEW_ASPECT, x0: 47.5 },
@@ -75,11 +69,10 @@ export const SCAN_PROFILE = {
     measuredAspect: [VIEW_ASPECT, 16 / 9] as const,
     aspectSlack: 0.01,
   },
-  /** The part of the screen that shows the ground undistorted enough to read, free of the HUD. */
-  trustedRegion: { x0: 146, y0: 66, x1: 810, y1: 369 } satisfies PixelRect,
-  /** The flat tile the trusted region rectifies to. The view is curved, so the tile's top corners
-   *  fall inside the region and its bottom corners on the region's corners. */
-  tile: { width: 680, height: 300, originX: 340, originY: 170 } satisfies TileSpec,
+  /** The part of the screen the ground is read in: clear of the HUD. */
+  trustedRegion: calibrationData.trustedRegion satisfies PixelRect,
+  /** The flat tile, the largest ground rectangle of even sides inside the trusted region. */
+  tile: calibrationData.tile satisfies TileSpec,
   cell: CELL,
   /** One chunk's period on the ground, in rectified pixels; the region load display draws its lines. */
   chunk: {
@@ -136,30 +129,36 @@ export const SCAN_PROFILE = {
       knobTolerance: 35,
       minShare: 0.9,
       knobRows: 8,
-      /** The knob's centre row at the calibration's zoom, the minimum, with the knob at the track's
-       *  zoom-out end; a scan whose median knob row lies more than `knobDrift` rows away was
-       *  recorded at another zoom. */
-      knobCentre: 291,
+      /** The knob's centre row at the calibration's zoom, the maximum, where the knob's colour fills
+       *  the track from its zoom-in end; a knob more than `knobDrift` rows away stands at another zoom. */
+      knobCentre: 251,
       knobDrift: 6,
     },
     /** A frame shows the map view when this many of the three structures (bar, discs, zoom column)
      *  match: the cursor or a name tag can cover one. The scan starts at the first frame where
-     *  all three match, past the view's fade-in, whose frames show another picture. */
+     *  all three match with the knob at the calibrated zoom (`frame/scan-gate.ts`). */
     required: 2,
-    /** A scan ends after this many consecutive frames that do not show the map view; frames before the
-     *  scan starts are skipped. */
-    endAfter: 30,
-    /** A recording with fewer map-view frames is not a map-view recording. */
+    /** A scan ends once the map view has been gone, or its knob off the calibrated zoom, this many
+     *  seconds (30 frames at 60 fps); frames before the scan starts are skipped. */
+    endAfter: 0.5,
+    /** A recording with fewer map-view frames at the calibrated zoom is not a map-view recording at
+     *  that zoom. */
     minFrames: 60,
-    /** A recording that shows no map-view frame within this many frames is read no further. */
-    startWithin: 600,
+    /** A recording that shows no map-view frame at the calibrated zoom within this many seconds of
+     *  its first frame (600 frames at 60 fps) is read no further. */
+    startWithin: 10,
   },
   /** A frame is a repeat of the previous one below this mean absolute grey difference, sampled
    *  every `sampleStep` tile pixels on both axes. */
   repeat: { meanAbsDiff: 0.6, sampleStep: 4 },
-  /** Consecutive repeat frames needed for a still run, and for a still run to place the lattice. */
+  /** Consecutive repeat frames needed for a still run: its deviation is a per-pixel spread over
+   *  its frames, too noisy over fewer. */
   stillRunMinFrames: 6,
-  latticeMinFrames: 10,
+  /** A still run pins the lattice once its lines have animated this long, from its first frame to
+   *  its last: ten frames of the 60 fps recordings the comb gates were set on. It is a time, since
+   *  the animation, not the frame count, shows the lines; a recorder at 30 fps or a variable rate
+   *  holds a pause in half as many frames or fewer. */
+  latticeMinSeconds: 9 / 60,
   tracking: {
     /** Tiles are high-passed by subtracting a Gaussian blur of this sigma, in rectified pixels, so the
      *  static vignette does not pin the correlation at zero. */
@@ -223,6 +222,13 @@ export const SCAN_PROFILE = {
     /** A recovered consecutive match must beat the best match at a different shift by this much
      *  overlap correlation; on periodic ground the true shift and its aliases correlate alike. */
     recoveryMargin: 0.1,
+    /** A consecutive step's neighbours move the camera when each shifts it by at least this share
+     *  of a chunk (`lattice.ts:resolveChunkSlips`): the map view pans in steps of one game frame,
+     *  0.21 chunk a step on every maximum-zoom recording, and a camera at rest shifts under 0.01.
+     *  A lost step is placed on its frames' lines (`lattice.ts:bridgeLostSteps`) only within
+     *  `bridge` of a chunk of the steps around it, off the midpoint between two chunks: tracked
+     *  steps lie at most 0.43 chunk from their neighbours' mean on the maximum-zoom recordings. */
+    chunkSlip: { moving: 1 / 8, bridge: 0.45 },
     solve: {
       /** Solves per robust least-squares path solve, each but the first after reweighting. */
       iterations: 5,
@@ -269,6 +275,14 @@ export const SCAN_PROFILE = {
      *  exceeds `minScore` and its lines deviate from the comb by under `maxSpread` pixels. */
     minScore: 2.5,
     maxSpread: 1.5,
+    /** A kept frame's own lines are searched within `window` tile pixels of where its tracked
+     *  position predicts them: the circular median of the scan phases (line plus tracked position)
+     *  of the last `history` frames read, dropped after a step tracking could not verify and after
+     *  `patience` frames in a row the prediction found nothing. */
+    framePrior: { window: 4, history: 7, patience: 5 },
+    /** A kept frame's own lines are read from its dash plane at tile resolution (`frameLines`):
+     *  the still run's phase step, line window, detrend sigma and spread gate, in tile pixels. */
+    frame: { phaseStep: 0.5, lineRadius: 6, detrendSigma: 20, maxSpread: 3 },
     /** Weight of a tile position in the scan profile: a Gaussian centred at the shares `centreX`
      *  and `centreY` of the tile, sigma `sigma` tile lengths. Depth of field blurs the view's edges. */
     weight: { centreX: 0.5, centreY: 0.45, sigma: 0.3 },
@@ -308,16 +322,27 @@ export const SCAN_PROFILE = {
   ground: {
     /** Lab k-means of the pixel palette. */
     palette: { clusters: 8, restarts: 4, iterations: 100, seed: 1 },
-    /** A palette colour whose Lab hue angle lies strictly inside this range, in degrees, is sea. */
-    seaHue: [138, 300] as const,
-    /** Land colours split into sand and grass at an Otsu threshold on the land pixels' hue
-     *  histogram over this range in 1-degree bins (sand is warmer than grass even when washed
-     *  out); `fallbackSplit` when the histogram cannot be split. */
-    hueRange: [40, 140] as const,
-    fallbackSplit: 90,
-    /** The import's live preview splits land at this hue before any palette is fitted, between
-     *  sand's (80 to 92 degrees) and grass's (about 125); it never decides a cell of the planet. */
-    previewSplit: 105,
+    /** The sand centres fitted again per region (`ground/color.ts:localPalette`): regions of
+     *  `regionChunks` chunks a side, from the mosaic bins at most `margin` times as far from the
+     *  centre as from any other, drawn towards the recording's centre by `prior` bins, refitted
+     *  `iterations` times. */
+    localPalette: { regionChunks: 2, prior: 20, iterations: 2, margin: 0.5 },
+    /** Reading the ground by its structure (`ground/surfaces.ts`): runs of one cluster no step over
+     *  `split` (objects: `objectSplit`) times the median step between clusters crosses, specks under
+     *  `speck` cells and ribbons under `ribbon` thick merged; sea seeds hold `seaBorder` of the edge,
+     *  grass seeds `deepShare` of the pixels `deep` into the interior; a cut across a step read `reach`
+     *  cells out costs 1 / (1 + (step / sigma)^2) a pixel pair (sigma `contrast` times the median),
+     *  sea beside grass `touch`. Pass 1 names a cluster sea by `seaPart`, `seaShare` and `sandShare`,
+     *  grass under `offGrass` off it (`blend`, `edge`). Objects lie under `paving` (sand-like) or
+     *  `water` (sea-like) times as far from that surface as from the grass, enclosed (`enclosed`) or
+     *  under `object` of the grass; decks between `deckApart` and `deckColour` of the water's
+     *  distance from the sand, moored when over `moored` of their edge is sea. Votes blend across an
+     *  edge between the pixels `blendReach` cells out. */
+    surfaces: {
+      speck: 12, ribbon: 1, split: 3, reach: 0.6, seaBorder: 0.1, deep: 0.7, deepShare: 0.1, contrast: 0.5, touch: 100, seaPart: 0.15,
+      seaShare: 0.2, sandShare: 0.125, offGrass: 0.2, edge: 1, blend: 0.25, paving: 0.5,
+      objectSplit: 0.4, enclosed: 0.1, object: 0.05, water: 0.5, deckColour: 0.75, deckApart: 0.25, moored: 0.6, blendReach: 1,
+    },
     /** A vote share above this decides a cell or sample. */
     vote: 0.5,
     /** Sigma in rectified pixels of the blur on the sea vote before the coast is located. */
@@ -340,6 +365,14 @@ export const SCAN_PROFILE = {
     cleanTexture: 1,
     sandDistance: 20,
     waterVote: 0.6,
+    /** Water the open sea does not reach is read as grass in a body at least this many cells across,
+     *  odd (`ground/classify.ts:inlandWater`); a narrower one keeps its vote. */
+    waterBody: 3,
+    /** A cell is also certainly not grass when its grass vote is below `grassVote` and its colour lies
+     *  within `distance` Lab units of the mean of the confidently sandy cells within `radius` cells. */
+    localSand: { radius: 6, grassVote: 0.2, distance: 12 },
+    /** Reading a recording's grass edge offset (`ground/grass-shift.ts:GrassShiftSettings`), in cells. */
+    grassShift: { vote: 0.8, sea: 0.5, clear: 0.4, straight: 0.15, span: 2, minEdges: 20, maxShift: 0.35, eastWestTolerance: 0.2 },
     /** A sand cell is one whose sand vote exceeds this and whose centre weight exceeds `sandWeight`,
      *  used to find the scan's sand colour. */
     sandVote: 0.9,
@@ -387,9 +420,10 @@ export const SCAN_PROFILE = {
     /** Fewer distinct frames than this cover too little of a planet to read. */
     minDistinct: 12,
     /** One import keeps at most this many distinct frames for tracking, which bounds the tracking
-     *  tiles held until the path is solved (51 KB each); a thinned scan of the largest planet,
-     *  continuously panned, needs well under half as many. */
-    maxDistinct: 2400,
+     *  tiles held until the path is solved (23 KB each, 121 MB at the cap); a thinned scan of the
+     *  largest planet and its overscan, continuously panned, needs about 3,000 (the Hexia recording
+     *  kept 1,379 over the 36,500 cells it saw). */
+    maxDistinct: 5200,
     /** Each axis needs this many still runs whose lines pin the lattice; with fewer, the region
      *  load display was off, or the zoom differs when the runs' lines fit another period. */
     minPins: 6,

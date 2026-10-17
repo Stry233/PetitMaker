@@ -6,6 +6,7 @@ import { NEIGHBORS4 } from '../../../../core/grid/directions';
 import { getObjectIndex } from '../../../../state/object-index';
 import { objectRect } from '../../../../state/object-geometry';
 import { generateObjectId } from '../../../../core/model/object-id';
+import { bumpObjectsVersion } from '../../../../core/model/grid-model';
 import { applyMacro } from '../../../../tools/macros';
 import { buildingGate } from '../../../../tools/placement/object';
 import { gateTerminalCells } from '../../../../tools/macros/roads/route';
@@ -28,7 +29,9 @@ interface Kit extends EditContext { executor: CommandExecutor }
 
 /**
  * A lagoon down the west edge, flat shore, and an upland step from x = 22 east. Three cabins stand
- * on the shore with their doors to the water and two on the flat with their doors to the step.
+ * on the shore with their doors to the water and two on the flat with their doors to the step, as a
+ * map saved before V-PLACE-DOOR holds them: the rule refuses both doorsteps, so they are laid
+ * straight onto the map.
  */
 function shoreBench(): { kit: Kit; seaward: PlacedObject[]; inland: PlacedObject[] } {
   const state = makeState(SIZE, SIZE);
@@ -42,8 +45,10 @@ function shoreBench(): { kit: Kit; seaward: PlacedObject[]; inland: PlacedObject
   const put = (spec: readonly [string, number, number], rotation: 90 | 270): PlacedObject => {
     const [catalogId, x, y] = spec;
     const obj: PlacedObject = { id: generateObjectId(), catalogId, position: { x, y }, rotation, elevation: 0 };
-    const r = executor.execute(placeObjectCommand(obj));
-    expect(r.success, `${catalogId}@${x},${y}: ${r.errors?.[0]?.message ?? ''}`).toBe(true);
+    const errors = kit.registry.validatePreCommand(placeObjectCommand(obj), state).filter((e) => e.ruleId !== 'V-PLACE-DOOR');
+    expect(errors, `${catalogId}@${x},${y}`).toEqual([]);
+    state.objects.set(obj.id, obj);
+    bumpObjectsVersion(state, { added: [obj] });
     return obj;
   };
   return {

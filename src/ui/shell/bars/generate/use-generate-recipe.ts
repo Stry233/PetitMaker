@@ -13,19 +13,28 @@ export function useGenerateRecipe(initialKind: GenerateKind | undefined, onOwnCh
   }));
   const state = useSyncExternalStore(recipe.subscribe, recipe.get);
   const [pickingItem, setPickingItem] = useState(false);
-  /** Non-null only while the own card's field is typed in, so a half-typed number is never a seed. */
-  const [customDraft, setCustomDraft] = useState<string | null>(null);
+  /** Each kind's own card field while it is typed in, absent otherwise, so a half-typed number is
+   *  never a seed and one tab's typing never shows in another's field. */
+  const [drafts, setDrafts] = useState<Partial<Record<GenerateKind, string>>>({});
 
   const { kind } = state;
   const memory = state.byKind[kind];
   const stencil = isStencilKind(kind);
+  const customDraft = drafts[kind] ?? null;
+
+  const setCustomDraft = useCallback((text: string | null) => setDrafts((all) => {
+    const next = { ...all };
+    if (text === null) delete next[kind];
+    else next[kind] = text;
+    return next;
+  }), [kind]);
 
   /** The typing has stopped: the recipe files what was typed. */
   const commitCustom = useCallback(() => {
     const raw = customDraft ?? '';
     setCustomDraft(null);
     if (recipe.commitCustom(raw)) onOwnChanged();
-  }, [customDraft, recipe, onOwnChanged]);
+  }, [customDraft, setCustomDraft, recipe, onOwnChanged]);
 
   /** Takes a picture from the visitor's files. */
   const pickImage = useCallback(() => {

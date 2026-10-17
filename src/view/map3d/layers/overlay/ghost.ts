@@ -17,7 +17,7 @@ import { groupModelGeometry } from '../../models/build-model';
 import { archetypeGeometry } from '../../models/object-archetypes';
 import { cellsBounds, cellKey } from '../../../../core/grid/rect';
 import type { ArchetypeKey } from '../../geometry/types';
-import { cellCentre } from '../../../../core/grid/grid-convert';
+import { cellCentre, gridSize } from '../../../../core/grid/grid-convert';
 import type { OverlayHost3D } from './host';
 import { makeMat, toGeo } from './paint';
 import { GHOST_LOSS } from '../../../shared/viewport/view-constants';
@@ -305,6 +305,8 @@ export class OverlayGhosts3D {
     const bounds = cellsBounds(cells);
     if (!bounds) return;
     const s = this.host.state();
+    // Positions below are in the grid's cells; the dots and the glyph keep their size in map cells.
+    const size = gridSize(grid);
     const wx = (cx: number): number => cellCornerWorld(cx, 0, s.template.width, s.template.height, grid).x;
     const wz = (cy: number): number => cellCornerWorld(0, cy, s.template.width, s.template.height, grid).z;
     const surface = (cx: number, cy: number): number => surfaceHeightAt(s, wx(cx), wz(cy));
@@ -313,9 +315,11 @@ export class OverlayGhosts3D {
       this.card.push(part);
     };
 
-    for (const dot of marks ? previewDots(bounds) : []) {
+    const mapBounds = { x: bounds.x * size, y: bounds.y * size, w: bounds.w * size, h: bounds.h * size };
+    for (const dot of marks ? previewDots(mapBounds) : []) {
       const geo = new THREE.CircleGeometry(dot.r, 12).rotateX(-Math.PI / 2);
-      geo.translate(wx(dot.x), surface(dot.x, dot.y) + DECAL_LIFT * 2, wz(dot.y));
+      const dx = dot.x / size, dy = dot.y / size;
+      geo.translate(wx(dx), surface(dx, dy) + DECAL_LIFT * 2, wz(dy));
       add(new THREE.Mesh(geo, this.host.mats.fill(palette.line, 1)));
     }
 
@@ -327,10 +331,11 @@ export class OverlayGhosts3D {
       const mid = cellCentre(c);
       const y = surface(mid.x, mid.y) + DECAL_LIFT * 2;
       const x0 = wx(c.x), z0 = wz(c.y);
-      if (!inSet.has(cellKey(c.x, c.y - 1))) rim.push(x0, y, z0, x0 + 1, y, z0);
-      if (!inSet.has(cellKey(c.x, c.y + 1))) rim.push(x0, y, z0 + 1, x0 + 1, y, z0 + 1);
-      if (!inSet.has(cellKey(c.x - 1, c.y))) rim.push(x0, y, z0, x0, y, z0 + 1);
-      if (!inSet.has(cellKey(c.x + 1, c.y))) rim.push(x0 + 1, y, z0, x0 + 1, y, z0 + 1);
+      const x1 = x0 + size, z1 = z0 + size;
+      if (!inSet.has(cellKey(c.x, c.y - 1))) rim.push(x0, y, z0, x1, y, z0);
+      if (!inSet.has(cellKey(c.x, c.y + 1))) rim.push(x0, y, z1, x1, y, z1);
+      if (!inSet.has(cellKey(c.x - 1, c.y))) rim.push(x0, y, z0, x0, y, z1);
+      if (!inSet.has(cellKey(c.x + 1, c.y))) rim.push(x1, y, z0, x1, y, z1);
     }
     if (rim.length) {
       const geo = new THREE.BufferGeometry();
@@ -341,7 +346,7 @@ export class OverlayGhosts3D {
     if (!marks || !card.icon) return;
     const tex = iconTexture(card.icon);
     if (!tex) return;
-    const rect = previewIconRect(bounds, card.icon);
+    const rect = previewIconRect(mapBounds, card.icon);
     const cx = bounds.x + bounds.w / 2, cy = bounds.y + bounds.h / 2;
     // The tallest surface under the footprint, sampled at a stride: a glyph at the centre cell's own
     // height sinks into any block beside it, and a map-sized drag shape must not cost a sample a cell.

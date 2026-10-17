@@ -9,7 +9,7 @@ import { motion, useReducedMotionConfig } from 'framer-motion';
 import { defaultListModels, type ListModels, type ProviderId, type SetupEntry } from '../../../agent/panel';
 import type { Translate } from '../../../i18n/keys';
 import { useT } from '../../../i18n/context';
-import { providerName } from '../../../i18n/providers';
+import { providerName } from '../../../i18n/terms/providers';
 import { useUiPreview } from '../../design/preview';
 import { DANGER_INK } from '../../design/tokens';
 import { ActionButton } from '../../primitives/ActionButton';

@@ -1,5 +1,5 @@
 import type { Translate, I18nKey } from '../../../i18n/keys';
-import { providerName } from '../../../i18n/providers';
+import { providerName } from '../../../i18n/terms/providers';
 import { isRegionSplit, type KeyShape, type ProviderId } from '../../../agent/panel';
 import type { FloatMenuItem } from '../../primitives/FloatMenu';
 import { PROVIDER_ROSTER } from './setup-parts';

@@ -15,7 +15,7 @@ import type { EditorEvents } from '../../../../state/editing/events';
 import { I18nProvider } from '../../../../i18n/context';
 import { useEditorStore } from '../../../../state/store';
 import { Rail } from '../../../../ui/shell/Rail';
-import { ELEVATION_MAX } from '../../../../core/game/profile';
+import { ELEVATION_MAX, layerNumber } from '../../../../core/game/profile';
 
 const mount = () => render(<I18nProvider><Rail hidden={false} onHide={() => {}} /></I18nProvider>);
 const step = (name: 'Add layer' | 'Remove layer') => screen.getByRole('button', { name }) as HTMLButtonElement;
@@ -28,13 +28,13 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe('the layer control', () => {
-  /** And it names it the way the panel it opens does: `ui/session/layer-name.ts` is the one rule, so the
-   *  ground floor cannot read "Ground" on the plate and "Layer 0" on the readout one click apart. */
-  it('names the layer rather than showing a bare figure, and the ground by its word', () => {
+  /** And it names it the way the panel it opens does: `i18n/terms/layer-name.ts` is the one rule, so the
+   *  readout and the plate number a layer alike, the game's way, the ground as layer 1. */
+  it('names the layer rather than showing a bare figure, the ground as layer 1', () => {
     mount();
-    expect(screen.getByTestId('shell-layer-readout').textContent).toBe('Ground');
-    fireEvent.click(step('Add layer'));
     expect(screen.getByTestId('shell-layer-readout').textContent).toBe('Layer 1');
+    fireEvent.click(step('Add layer'));
+    expect(screen.getByTestId('shell-layer-readout').textContent).toBe('Layer 2');
   });
 
   it('keeps the count off the plate, which carries the two steps and nothing else', () => {
@@ -52,7 +52,7 @@ describe('the layer control', () => {
     expect(step('Add layer').disabled).toBe(false);
 
     for (let i = 0; i < ELEVATION_MAX; i++) fireEvent.click(step('Add layer'));
-    expect(screen.getByTestId('shell-layer-readout').textContent).toBe(`Layer ${ELEVATION_MAX}`);
+    expect(screen.getByTestId('shell-layer-readout').textContent).toBe(`Layer ${layerNumber(ELEVATION_MAX)}`);
     expect(step('Add layer').disabled, 'and nothing above the top layer').toBe(true);
     expect(step('Remove layer').disabled).toBe(false);
   });
@@ -60,6 +60,6 @@ describe('the layer control', () => {
   it('shows the layer being previewed while one is, and the armed one otherwise', () => {
     useEditorStore.setState({ activeLayer: 3, displayLayer: 6 });
     mount();
-    expect(screen.getByTestId('shell-layer-readout').textContent).toBe('Layer 6');
+    expect(screen.getByTestId('shell-layer-readout').textContent).toBe('Layer 7');
   });
 });

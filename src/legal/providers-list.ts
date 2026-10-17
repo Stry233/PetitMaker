@@ -1,4 +1,4 @@
-import { illustrationProviderName, providerName } from '../i18n/providers';
+import { illustrationProviderName, providerName } from '../i18n/terms/providers';
 import { PROVIDER_IDS } from '../agent/providers/defaults';
 import { loadedTable } from '../i18n/translations';
 import { STYLIZE_PROVIDERS } from '../pipelines/stylize/facts';

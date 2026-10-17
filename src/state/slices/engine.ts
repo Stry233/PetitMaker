@@ -63,12 +63,15 @@ type Deps = EditSlice
   & Pick<AnnotationsSlice, 'annotationsEpoch' | keyof typeof ANNOTATION_SESSION_RESET>;
 
 /**
- * The update a selection write makes, or null for none. A selection stands only under a tool that
+ * The update a selection write makes, or null for none. On a map that limits presses
+ * (`GridState.unsettled`) only those objects are kept. A selection stands only under a tool that
  * holds one (`editing/edit-mode.ts:holdsSelection`): written while a terrain brush is up, it puts
  * the brush away for the Hand tool in the same update, keeping the build surface (`tool: 'none'`);
  * under any other such tool the write is dropped.
  */
-function selectionFields(s: EngineSlice & Deps, next: BlockRef[]): Partial<EngineSlice & Deps> | null {
+function selectionFields(s: EngineSlice & Deps, requested: BlockRef[]): Partial<EngineSlice & Deps> | null {
+  const unsettled = s.gridState?.unsettled;
+  const next = unsettled ? requested.filter((r) => r.kind === 'object' && unsettled.has(r.id)) : requested;
   const tool = activeToolOf(s);
   if (next.length === 0 || holdsSelection(tool)) return { selection: next };
   if (isBrushTool(tool)) return { ...editModeFields(s, nextEditMode(s.editMode, { arm: { kind: 'none' } })), selection: next };

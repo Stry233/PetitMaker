@@ -11,7 +11,7 @@ import { setMapRenderer } from './scene/renderer-registry';
 import { takeParkedCamera } from '../shared/viewport/parked-camera';
 import { animConfig } from '../shared/motion/anim-config';
 import { useAnnotationSync, useBoxSize } from './use-renderer-sync';
-import { useViewSettings } from '../shared/viewport/view-settings';
+import { shownGridOf, useViewSettings } from '../shared/viewport/view-settings';
 
 /** The 2D view. A WebGL context the engine takes and never restores leaves the canvas blank, so the
  *  view is rebuilt on a fresh one; the map itself lives in the store and is untouched. */
@@ -87,8 +87,8 @@ function Canvas2D({ onUnrecoverableLoss }: { onUnrecoverableLoss: () => void }) 
     const renderer = rendererRef.current;
     if (!renderer || !gridState) return;
     // The overlays start as the settings stand; `useViewSettings` applies later changes.
-    const { showGrid, showChunkBounds } = useEditorStore.getState();
-    renderer.initMap(gridState, showGrid, showChunkBounds);
+    const s = useEditorStore.getState();
+    renderer.initMap(gridState, shownGridOf(s), s.showChunkBounds);
     // A camera parked for this map (a restore, a planet session's end) replaces the fit.
     const parked = takeParkedCamera(gridState, 'view2d');
     if (parked) {

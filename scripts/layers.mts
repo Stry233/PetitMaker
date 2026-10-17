@@ -49,10 +49,13 @@ export const LAYER_RANK: ReadonlyMap<Layer, number> = new Map<Layer, number>(
 /**
  * Paths inside a layer that rank with a lower one, keyed by src-relative prefix (a module without
  * its extension, or a folder ending in `/`). The i18n key schema and the English tables it derives
- * from import only `core` types, so the layers below `i18n` may name an `I18nKey` as data does.
+ * from import only `core` types, so the layers below `i18n` may name an `I18nKey` as data does; the
+ * layer namer reads only the key schema and the profile, so a state derivation names a layer as the
+ * interface does.
  */
 export const LEAF_RANKS: Readonly<Record<string, Layer>> = {
   'i18n/keys': 'config',
+  'i18n/terms/layer-name': 'config',
   'i18n/locales/': 'config',
 };
 
@@ -101,7 +104,7 @@ export const LAYER_DOCS: Readonly<Record<Layer, { summary: string; owns: string 
   },
   i18n: {
     summary: 'the seven locale tables, localizedName and the brand name',
-    owns: 'the seven-locale translation tables, the `localizedName` and `translate` helpers, and the brand name (`brand.ts`)',
+    owns: 'the seven-locale translation tables, the `localizedName` and `translate` helpers, and the brand name (`terms/brand.ts`)',
   },
   tools: {
     summary: 'the pointer tools and their Tool/ToolContext contract in `pointer/`, and the map-edit libraries and generation they share, each behind an index.ts door',

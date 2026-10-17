@@ -4,7 +4,9 @@
  * An item with `maxCount` set may exist on the map at most that many times.
  * Used for one-of-a-kind items, which set maxCount: 1. Items without the field
  * are unlimited. Validation runs before the object is added, so the new object
- * is not yet in state.objects — reject once the existing count reaches the cap.
+ * is not yet in state.objects — reject once the existing count reaches the cap. A
+ * candidate under the id of a standing object of the same item at its own anchor
+ * re-describes it in place, so that one is not counted against it.
  */
 import { CommandType } from '../core/model/types';
 import { bodyEvidence } from '../core/grid/footprint';
@@ -21,7 +23,11 @@ export const placementMaxCountRule = definePreRule({
     const item = getCatalogItem(cmd.object.catalogId);
     if (!item || item.maxCount === undefined) return [];
 
-    const count = getObjectIndex(state).countByCatalog.get(cmd.object.catalogId) ?? 0;
+    const standing = state.objects.get(cmd.object.id);
+    const inPlace = standing?.catalogId === cmd.object.catalogId
+      && standing.position.x === cmd.object.position.x && standing.position.y === cmd.object.position.y;
+    const self = inPlace ? 1 : 0;
+    const count = (getObjectIndex(state).countByCatalog.get(cmd.object.catalogId) ?? 0) - self;
     if (count >= item.maxCount) {
       // Non-spatial rule: the evidence is the whole attempted (rotated) footprint.
       return [fail('error.max_count', bodyEvidence([objectRect(cmd.object)]), { messageParams: { n: item.maxCount } })];

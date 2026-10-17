@@ -1,18 +1,34 @@
 /**
  * The route verb of the notes tool. A drag draws a route through `route-fit.ts` and keeps its anchors
  * on release; a press that does not move lays a waypoint, and a press back on the last waypoint ends
- * the route. A press near a committed route selects it and raises the curve brush's adjust handles.
+ * the route. Anchors and waypoints land on the half-cell lattice. A press near a committed route selects it and raises the curve brush's adjust handles.
  */
 import type { MacroCoord } from '../../../core/model/types';
 import { generateAnnotationId, type RouteNote } from '../../../core/model/annotations';
 import type { CurveAnchor } from '../../../core/base/spline';
 import { PLACEMENT_GRID } from '../../../core/game/profile';
+import { halfPoint } from '../../../core/grid/pointer';
+import { mapPoint } from '../../../core/grid/grids';
 import { curveArmingKey } from '../paint/curve-session';
 import type { AnnotateContext } from './channel';
 import { annotationInkScale, INK_CELLS, routeHitDistCells } from '../../../core/model/annotation/text-metrics';
 import { extendRouteFit, routeFitAnchors, startRouteFit, type RouteFit } from '../../../core/model/annotation/route-fit';
 import { routeAt } from './note-hits';
-import { layerEditable } from './note-edits';
+import { layerEditable, NOTE_GHOST_ID } from './note-edits';
+
+/** A route's opening draft: one point at the half-cell point nearest `p`, in the armed style. */
+function firstPoint(p: MacroCoord, id: string, ctx: AnnotateContext): RouteNote {
+  return {
+    kind: 'route', id, points: [halfPoint(mapPoint(p))],
+    color: ctx.arming.annotationColor, dashed: ctx.arming.annotationRouteDashed, width: ctx.arming.annotationRouteWidth,
+  };
+}
+
+/** Whether a press at `p` lands back on the waypoint route's last point, which ends it. */
+function endsAt(d: RouteNote, p: MacroCoord, ctx: AnnotateContext): boolean {
+  const last = d.points[d.points.length - 1]!;
+  return Math.hypot(p.x - last.x, p.y - last.y) <= routeHitDistCells(annotationInkScale(ctx.state.template));
+}
 
 export class RouteGesture {
   /** A dragged route's fit, whether the drag has left its press, and the context its pending frame
@@ -28,13 +44,12 @@ export class RouteGesture {
     const d = ctx.arming.notes.draft;
     if (d && d.kind === 'route') {
       // Waypoint mode: a press back on the last waypoint ends the route instead of extending it.
-      const last = d.points[d.points.length - 1]!;
-      if (Math.hypot(p.x - last.x, p.y - last.y) <= routeHitDistCells(annotationInkScale(ctx.state.template))) {
+      if (endsAt(d, p, ctx)) {
         this.finish(d, ctx);
         return;
       }
       ctx.annotationEdit.begin();
-      ctx.annotationEdit.setDraft({ ...d, points: [...d.points, p] });
+      ctx.annotationEdit.setDraft({ ...d, points: [...d.points, halfPoint(mapPoint(p))] });
       return;
     }
     const near = routeAt(p, ctx);
@@ -46,10 +61,20 @@ export class RouteGesture {
     if (ctx.arming.notes.selection.length > 0) ctx.annotationEdit.select([]);
     ctx.annotationEdit.begin();
     this.drag = { fit: startRouteFit(p, ctx.cellPixels), moved: false, ctx };
-    ctx.annotationEdit.setDraft({
-      kind: 'route', id: generateAnnotationId(), points: [p],
-      color: ctx.arming.annotationColor, dashed: ctx.arming.annotationRouteDashed, width: ctx.arming.annotationRouteWidth,
-    });
+    ctx.annotationEdit.setDraft(firstPoint(p, generateAnnotationId(), ctx));
+  }
+
+  /** The route a press at `p` would leave: its first point, or the waypoint route with the point
+   *  added. Null while a drag draws, and where the press would end the route or select one. */
+  ghost(p: MacroCoord, ctx: AnnotateContext): RouteNote | null {
+    if (this.drag) return null;
+    const d = ctx.arming.notes.draft;
+    if (d?.kind === 'route') {
+      if (endsAt(d, p, ctx)) return null;
+      return { ...d, id: NOTE_GHOST_ID, points: [...d.points, halfPoint(mapPoint(p))] };
+    }
+    if (routeAt(p, ctx)) return null;
+    return firstPoint(p, NOTE_GHOST_ID, ctx);
   }
 
   move(p: MacroCoord, ctx: AnnotateContext): void {

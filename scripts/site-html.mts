@@ -1,5 +1,5 @@
 import { DEPLOY_TARGETS, type DeployTarget } from '../src/platform/build/deploy-targets.ts';
-import { baseBrandName, brandName } from '../src/i18n/brand.ts';
+import { baseBrandName, brandName } from '../src/i18n/terms/brand.ts';
 import { en } from '../src/i18n/locales/en.ts';
 import { zh } from '../src/i18n/locales/zh.ts';
 import { PLATE } from '../src/assets/brand-palette.ts';

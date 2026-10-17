@@ -11,7 +11,7 @@ import { isBuildableZone } from '../../../core/game/zones';
 import { createGridState } from '../../../core/model/template';
 import { getMapTemplate } from '../../../config/maps';
 import { serialize, decodeSave } from '../../../io/save/json-codec';
-import { clearUnderLandmarks } from '../../../tools/generation/transfer';
+import { clearUnderLandmarks } from '../../../state/landmark-clearance';
 import { parseSave } from '../../../io/save/parse';
 import { encodeMapPayload, decodeMapPayload } from '../../../io/share/codec/payload';
 import { toSaveJSON } from '../../../io/save/canonical';
@@ -189,7 +189,7 @@ describe('roads beneath supporting structures', () => {
     const state = mixedMap();
     const json = serialize(state);
     const loaded = decodeSave(parseSave(JSON.parse(json), { template: state.template }));
-    const cleared = clearUnderLandmarks(loaded);
+    const cleared = clearUnderLandmarks(loaded, createDefaultRegistry());
     expect(cleared).toEqual({ objects: 0, cells: 0, restored: 0 });
     expect(comparable(loaded)).toEqual(comparable(state));
     expect(createDefaultRegistry().validatePostStroke(loaded)).toEqual([]);
@@ -207,7 +207,7 @@ describe('roads beneath supporting structures', () => {
     }
     state.objects.set('old-house', { id: 'old-house', catalogId: house, position: edge, rotation: 0, elevation: 0 });
     const loaded = decodeSave(parseSave(JSON.parse(serialize(state)), { template: state.template }));
-    const cleared = clearUnderLandmarks(loaded);
+    const cleared = clearUnderLandmarks(loaded, createDefaultRegistry());
     expect(cleared.objects).toBeGreaterThan(1);
     expect(loaded.objects.has('old-house')).toBe(false);
     expect(comparable(loaded).objects.filter(o => !o.id.startsWith('old-'))).toEqual(kept);
@@ -222,7 +222,7 @@ describe('roads beneath supporting structures', () => {
     const state = mixedMap();
     const decoded = await decodeMapPayload(await encodeMapPayload(state, null, { appVersion: 'roads-under', saveVersion: 1 }));
     const loaded = decodeSave(parseSave(JSON.parse(toSaveJSON(decoded.canonical, decoded.annotations)), { template: state.template }));
-    const cleared = clearUnderLandmarks(loaded);
+    const cleared = clearUnderLandmarks(loaded, createDefaultRegistry());
     expect(cleared).toEqual({ objects: 0, cells: 0, restored: 0 });
     expect(withoutIds(comparable(loaded))).toEqual(withoutIds(comparable(state)));
   });

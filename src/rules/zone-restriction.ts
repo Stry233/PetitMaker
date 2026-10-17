@@ -2,7 +2,8 @@
  * V-ZONE-01: Zone Restriction (pre-command)
  *
  * Rejects painting, erasing or placing on a non-Grass zone: only Grass is
- * buildable. A landmark stands on the ground its profile names instead
+ * buildable, except that an item's `groundZones` trait may let its footprint stand wholly on sand
+ * (and, with `acrossBoundary`, across grass and sand). A landmark stands on the ground its profile names instead
  * (`core/game/profile.ts:LandmarkGround`), read from each cell's own ground. A template records grass
  * under a locked landmark, and the collision rules (V-PLACE-BLOCK / V-PLACE-OVERLAP) keep terrain and
  * objects off that footprint. A planet-session ground edit rewrites the zone
@@ -22,7 +23,9 @@ import {
 } from '../core/model/types';
 import { getCell, clearsTerrain, commandGrid } from '../core/model/grid-model';
 import { cellKey } from '../core/grid/rect';
-import { groundZone, isBuildableZone } from '../core/game/zones';
+import { groundZone, isBuildableZone, isSandZone } from '../core/game/zones';
+import { groundZonesOf } from '../core/model/traits';
+import { getCatalogItem } from '../state/catalog';
 import { landmarkSpec } from '../core/game/profile';
 import { landmarkGroundHolds } from '../core/model/landmarks';
 import { getPlacedObjectSize } from '../state/object-geometry';
@@ -97,11 +100,21 @@ export const zoneRestrictionRule = definePreRule({
         if (landmarkGroundHolds(landmark, rect, cmd.object.rotation, zoneAt)) return [];
         return [fail('error.landmark_coast', evidenceOn(commandGrid(cmd), footprintCells(rect.x, rect.y, w, h)))];
       }
-      for (const c of footprintCells(cmd.object.position.x, cmd.object.position.y, w, h)) {
+      // Each footprint cell is buildable ground, sand, or neither; the item's ground zones say which
+      // it may stand wholly on, and whether its footprint may take both.
+      const item = getCatalogItem(cmd.object.catalogId);
+      const zones = item ? groundZonesOf(item) : { onGrass: true, onSand: false, acrossBoundary: false };
+      const footprint = footprintCells(cmd.object.position.x, cmd.object.position.y, w, h);
+      let grass = 0, sand = 0;
+      for (const c of footprint) {
         const cell = getCell(state.cells, c.x, c.y);
-        if (!cell || !isBuildableZone(cell.zone)) {
-          errors.push(fail('error.zone_restricted', evidenceOn(commandGrid(cmd), [c])));
-        }
+        const kind = !cell ? null : isBuildableZone(cell.zone) ? 'grass' : isSandZone(groundZone(cell)) ? 'sand' : null;
+        if (kind === 'grass' && zones.onGrass) grass++;
+        else if (kind === 'sand' && zones.onSand) sand++;
+        else errors.push(fail('error.zone_restricted', evidenceOn(commandGrid(cmd), [c])));
+      }
+      if (errors.length === 0 && grass > 0 && sand > 0 && !zones.acrossBoundary) {
+        errors.push(fail('error.across_zone_boundary', evidenceOn(commandGrid(cmd), footprint)));
       }
       return errors;
     }

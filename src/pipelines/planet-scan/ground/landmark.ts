@@ -62,11 +62,11 @@ function halfCellShares(n: number, sub: number): { k: number; w: number }[][] {
   });
 }
 
-/** Per half cell, the mean vote of the sample points over it for a colour that is neither the
- *  cell's reading nor sea: neither grass nor sea where it reads grass for a grass landmark, any but
- *  sea where it reads sea for a coast one. The
- *  sea within `landmarkSearch.shoreGap` cells of land is left out: the drawn beach reaches past the
- *  land cells there along every coast. */
+/** Per half cell, the mean vote of the sample points over it for what is not the cell's reading:
+ *  neither grass nor sea where it reads grass for a grass landmark, an object standing on the sea
+ *  (`CellEvidence.points.seaObject`) where it reads sea for a coast one. The sea within
+ *  `landmarkSearch.shoreGap` cells of land is left out: the drawn beach reaches past the land cells
+ *  there along every coast. */
 function foreignVote(ev: CellEvidence, reading: GroundReading, coast: boolean): Float64Array {
   const { cols, rows, ground } = reading;
   const { sub, points } = ev;
@@ -79,8 +79,8 @@ function foreignVote(ev: CellEvidence, reading: GroundReading, coast: boolean): 
       const cell = Math.floor(py / sub) * cols + Math.floor(px / sub);
       const g = ground[cell];
       const p = py * points.width + px;
-      const sea = points.sea[p]!, grass = points.grass[p]!;
-      const v = coast ? (g === SEA && offshore[cell]! > L.shoreGap ? 1 - sea : 0) : (g === GRASS ? Math.max(0, 1 - sea - grass) : 0);
+      const v = coast ? (g === SEA && offshore[cell]! > L.shoreGap ? points.seaObject[p]! : 0)
+        : (g === GRASS ? Math.max(0, 1 - points.sea[p]! - points.grass[p]!) : 0);
       for (const a of ys[py]!) for (const b of xs[px]!) {
         const j = a.k * W + b.k;
         sum[j] = sum[j]! + a.w * b.w * v;

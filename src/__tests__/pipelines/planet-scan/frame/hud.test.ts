@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { CALIBRATED_WINDOW } from '../../../../pipelines/planet-scan/frame/framing';
-import { barMatches, CALIBRATED_LAYOUT, hudScale, InsetSurvey, placeProbe, readHud, windowLayout, zoomDiffers, type HudLayout } from '../../../../pipelines/planet-scan/frame/hud';
+import { atScanZoom, barMatches, CALIBRATED_LAYOUT, hudScale, InsetSurvey, placeProbe, readHud, windowLayout, type HudLayout } from '../../../../pipelines/planet-scan/frame/hud';
 import { SCAN_PROFILE } from '../../../../pipelines/planet-scan/profile';
 import type { PixelRect } from '../../../../pipelines/planet-scan/types';
 import { hudFrame as buildFrame, paintRect as paint, windowFrame } from '../synthetic';
@@ -122,11 +122,11 @@ describe("the map view's HUD", () => {
   it('tells a moved zoom knob from the calibrated zoom in a window of any shape', () => {
     for (const [, window, inset] of shapes) {
       const layout = windowLayout(window, inset);
-      const knobs = (row: number) => Array.from({ length: 20 }, () => read(buildFrame(row, null, layout, window), layout).knob!);
-      expect(zoomDiffers(knobs(HUD.zoom.knobCentre))).toBe(false);
-      expect(zoomDiffers(knobs(HUD.zoom.knobCentre - 40))).toBe(true);
+      const knob = (row: number) => read(buildFrame(row, null, layout, window), layout).knob!;
+      expect(atScanZoom(knob(HUD.zoom.knobCentre))).toBe(true);
+      expect(atScanZoom(knob(HUD.zoom.knobCentre + HUD.zoom.knobDrift - 1))).toBe(true);
+      expect(atScanZoom(knob(HUD.zoom.knobCentre + 40))).toBe(false);
     }
-    expect(zoomDiffers([])).toBe(false);
   });
 
   it('reads only frames of the calibrated size', () => {

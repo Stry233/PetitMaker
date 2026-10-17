@@ -1,17 +1,17 @@
 /**
  * Display/session preferences. Persisted ones delegate to `platform/storage/prefs`'s `PREFS` table
- * (the only declaration site for a storage key); `showLayerNumbers` is the one session-only
- * toggle beside them — a LayerPanel inspection aid rather than a Settings choice, so a fresh
- * session starting with it off is the expected state, not a lost preference.
+ * (the only declaration site for a storage key). Two fields are session-only: `showLayerNumbers`, a
+ * LayerPanel inspection aid rather than a Settings choice, so a fresh session starting with it off
+ * is the expected state, not a lost preference; and `lastGridMode`, the grid toggle's memory.
  *
  * Self-contained: no field here is read by `initMap`/`setEditMode`/any shell action, so this slice
  * takes no cross-slice dependency and imports nothing from `engine`/`edit`/`shell`.
  */
 import type { StateCreator } from 'zustand';
 import type { Locale } from '../../core/model/locale';
-import { readPref, writePref, type HintLevel, type MotionPref, type PrefId, type Quality3d, type ValueOf, type ViewMode, clampUiZoom } from '../../platform/storage/prefs';
+import { GRID_MODES, readPref, removePref, writePref, type GridMode, type HintLevel, type MotionPref, type PrefId, type Quality3d, type ValueOf, type ViewMode, clampUiZoom } from '../../platform/storage/prefs';
 
-export type { HintLevel, Quality3d, ViewMode };
+export type { GridMode, HintLevel, Quality3d, ViewMode };
 
 export interface PrefsSlice {
   uiZoom: number;  // UI scale multiplier (Ctrl +/-), independent of the map zoom
@@ -37,8 +37,15 @@ export interface PrefsSlice {
    *  seconds a full frame costs there. */
   quality3d: Quality3d;
   setQuality3d: (q: Quality3d) => void;
-  showGrid: boolean;
-  setShowGrid: (show: boolean) => void;
+  /** Which grid the map draws (`view/shared/viewport/view-settings.ts:shownGridOf` resolves `auto`). */
+  gridMode: GridMode;
+  setGridMode: (mode: GridMode) => void;
+  /** The Settings tile: the next mode in `GRID_MODES`, wrapping from the last to the first. */
+  cycleGridMode: () => void;
+  /** The grid shortcut: off, or back to the mode it last turned off (`auto` when none was shown). */
+  toggleGrid: () => void;
+  /** The mode `toggleGrid` brings back: the last mode other than `off`, for this session. */
+  lastGridMode: Exclude<GridMode, 'off'>;
   showChunkBounds: boolean;
   setShowChunkBounds: (show: boolean) => void;
   showLayerNumbers: boolean;
@@ -47,11 +54,16 @@ export interface PrefsSlice {
 
 type PersistedField = Extract<keyof PrefsSlice, PrefId>;
 
-export const createPrefsSlice: StateCreator<PrefsSlice, [], [], PrefsSlice> = (set) => {
+export const createPrefsSlice: StateCreator<PrefsSlice, [], [], PrefsSlice> = (set, get) => {
   /** The setter for a field stored under the pref of the same name: the store first, then storage. */
   const persisted = <K extends PersistedField>(key: K) => (value: ValueOf<K> & PrefsSlice[K]): void => {
     set({ [key]: value } as Partial<PrefsSlice>);
     writePref(key, value);
+  };
+  const gridMode = readPref('gridMode');
+  const setGridMode = (mode: GridMode): void => {
+    set(mode === 'off' ? { gridMode: mode } : { gridMode: mode, lastGridMode: mode });
+    if (writePref('gridMode', mode)) removePref('legacyShowGrid');
   };
   return {
     uiZoom: readPref('uiZoom'),
@@ -68,8 +80,11 @@ export const createPrefsSlice: StateCreator<PrefsSlice, [], [], PrefsSlice> = (s
     setHintLevel: persisted('hintLevel'),
     quality3d: readPref('quality3d'),
     setQuality3d: persisted('quality3d'),
-    showGrid: readPref('showGrid'),
-    setShowGrid: persisted('showGrid'),
+    gridMode,
+    setGridMode,
+    cycleGridMode: () => setGridMode(GRID_MODES[(GRID_MODES.indexOf(get().gridMode) + 1) % GRID_MODES.length]!),
+    toggleGrid: () => { const s = get(); setGridMode(s.gridMode === 'off' ? s.lastGridMode : 'off'); },
+    lastGridMode: gridMode === 'off' ? 'auto' : gridMode,
     showChunkBounds: readPref('showChunkBounds'),
     setShowChunkBounds: persisted('showChunkBounds'),
     showLayerNumbers: false,

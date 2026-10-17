@@ -5,16 +5,16 @@ import { blur, sampleBilinear } from './raster';
 import weights from './shore-weights.json';
 
 // The shore classifier: land or sea for a cell near the coast, from its neighbourhood of the sea
-// vote and the signed distance to the observed coast, its foam animation and its colour. The game
-// draws the beach as a smooth, shaded outline with animated foam, which no fixed offset from the
-// observed sand edge reproduces. The model is a gradient-boosted tree ensemble trained on the
-// reference recordings against their templates; shore-weights.json is its source of truth and
-// names the features in order.
+// vote and the signed distance to the observed coast and its foam animation, never its colour, so a
+// planet drawn in other colours reads alike. The game draws the beach as a smooth, shaded outline
+// with animated foam, which no fixed offset from the observed sand edge reproduces. The model is a
+// gradient-boosted tree ensemble trained on the reference recordings against their truths;
+// shore-weights.json is its source of truth and names the features in order.
 //
 // Feature names: `psea<dx>,<dy>` is the blurred sea vote and `sd<dx>,<dy>` the signed distance in
-// cells (positive on land) at the cell centre offset by (dx, dy) cells; `anim`, `sat`, `L`, `a`,
-// `b` and `tstdL` are the centre's still-run deviation, saturation, L*a*b* and lightness temporal
-// deviation. Beyond the evidence a sea vote reads 1 and a distance -5.
+// cells (positive on land) at the cell centre offset by (dx, dy) cells; `anim` and `tstdL` are the
+// centre's still-run deviation and lightness temporal deviation. Beyond the evidence a sea vote
+// reads 1 and a distance -5.
 
 interface Tree {
   readonly feature: Int16Array;
@@ -125,19 +125,14 @@ function featureOf(name: string): Feature {
   }
   switch (name) {
     case 'anim': return (ev, _k, c) => ev.animation[c]!;
-    case 'sat': return (ev, _k, c) => ev.saturation[c]!;
-    case 'L': return (ev, _k, c) => ev.lab.l[c]!;
-    case 'a': return (ev, _k, c) => ev.lab.a[c]!;
-    case 'b': return (ev, _k, c) => ev.lab.b[c]!;
     case 'tstdL': return (ev, _k, c) => ev.lightnessDeviation[c]!;
     default: throw new Error(`unknown shore feature ${name}`);
   }
 }
 
-/** The model's feature rows of the listed cells (grid indices), one row of `model.features.length`
- *  values per cell. */
-export function shoreFeatures(ev: CellEvidence, coast: CoastRasters, cells: ArrayLike<number>, model: ShoreModel = SHORE_MODEL): Float64Array {
-  const features = model.features.map(featureOf);
+/** The feature rows of the listed cells (grid indices), one row of the named features per cell. */
+export function shoreFeatures(ev: CellEvidence, coast: CoastRasters, cells: ArrayLike<number>, names: readonly string[] = SHORE_MODEL.features): Float64Array {
+  const features = names.map(featureOf);
   const f = features.length;
   const x = new Float64Array(cells.length * f);
   const cols = ev.grid.cols;
@@ -153,7 +148,7 @@ export function shoreFeatures(ev: CellEvidence, coast: CoastRasters, cells: Arra
 /** Land probabilities of the listed cells (grid indices) by `model`. */
 export function shoreLand(ev: CellEvidence, coast: CoastRasters, cells: ArrayLike<number>, model: ShoreModel = SHORE_MODEL): Float32Array {
   const f = model.features.length;
-  const x = shoreFeatures(ev, coast, cells, model);
+  const x = shoreFeatures(ev, coast, cells, model.features);
   const out = new Float32Array(cells.length);
   for (let k = 0; k < cells.length; k++) out[k] = model.predict(x.subarray(k * f, (k + 1) * f));
   return out;

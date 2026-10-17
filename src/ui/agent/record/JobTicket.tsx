@@ -108,7 +108,6 @@ const LIVE_TURN = -1;
 const THOUGHTS_PILL: CSSProperties = {
   flex: '0 0 auto',
   border: 'none',
-  background: INSET,
   borderRadius: radii.pill,
   padding: '2px 8px',
   ...roleFont('small'),
@@ -118,7 +117,7 @@ const THOUGHTS_PILL: CSSProperties = {
 
 /** The says line's expand chevron, at the line's own height. */
 const SAYS_EXPAND: CSSProperties = {
-  flex: '0 0 auto', width: 20, height: 20, border: 'none', background: 'none', padding: 0,
+  flex: '0 0 auto', width: 20, height: 20, border: 'none', padding: 0,
   borderRadius: radii.chip, color: MUTED,
   display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
 };
@@ -310,6 +309,7 @@ export function JobTicket({
                 interaction="pill"
                 aria-expanded={openThoughts.has(LIVE_TURN)}
                 onClick={() => toggleThought(LIVE_TURN)}
+                fill={INSET}
                 hoverFill={ACTIVE}
                 style={THOUGHTS_PILL}
               >

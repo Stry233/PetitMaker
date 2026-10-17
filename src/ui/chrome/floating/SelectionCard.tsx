@@ -36,7 +36,7 @@ import { amplitude, framerMotion } from '../../design/motion';
 import { SegmentedControl } from '../../primitives/SegmentedControl';
 import { Glyph, TrashIcon, ChevronIcon } from '../../primitives/line-glyphs';
 import { MODE_ICONS } from '../../design/mode-icons';
-import { layerName } from '../../session/layer-name';
+import { layerName } from '../../../i18n/terms/layer-name';
 import { helpTargetAttr } from '../../session/help-targets';
 import { facingAngle, useSelectionCardPlace } from './use-selection-card-place';
 import { useObservedSize } from '../../primitives/use-observed-size';

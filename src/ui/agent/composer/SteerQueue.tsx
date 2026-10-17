@@ -71,7 +71,6 @@ const MORE_STYLE: CSSProperties = {
   display: 'inline-flex',
   alignItems: 'center',
   gap: 4,
-  background: SURFACE_SECONDARY,
   borderRadius: radii.pill,
   border: 'none',
   padding: '4px 12px',
@@ -161,6 +160,7 @@ export function SteerQueue({ steers, onRecall }: SteerQueueProps) {
           data-testid="steer-more"
           interaction="pill"
           onClick={() => setExpanded(more === 'expand')}
+          fill={SURFACE_SECONDARY}
           hoverFill={ACTIVE}
           style={MORE_STYLE}
         >

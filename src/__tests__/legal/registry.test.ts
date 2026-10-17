@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { illustrationProviderName, providerName } from '../../i18n/providers';
+import { illustrationProviderName, providerName } from '../../i18n/terms/providers';
 import { describe, it, expect } from 'vitest';
 import { DOCS, docBody, docNodes, localizeZhSlug } from '../../legal/registry';
 import { DOC_IDS, type DocId } from '../../legal/site-paths';
@@ -13,7 +13,7 @@ import { zh as zhStrings } from '../../i18n/locales/zh';
 import { parseLegalMarkdown } from '../../legal/markdown';
 import { renderedLink } from '../_support/legal-links';
 import { renderHtml } from '../../legal/markdown-html';
-import { APP_NAME } from '../../i18n/brand';
+import { APP_NAME } from '../../i18n/terms/brand';
 
 const TERMS_SECTIONS_EN = [
   "Scope and Definitions",

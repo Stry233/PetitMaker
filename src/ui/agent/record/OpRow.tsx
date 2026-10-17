@@ -15,7 +15,7 @@ import { INK, INSET, MUTED, PLATE_INK, rgbaOf } from '../../design/tokens';
 import { roleFont, LINE_HEIGHT } from '../../design/text-weight';
 import { localizedName, useLocale, useT } from '../../../i18n/context';
 import type { Translate } from '../../../i18n/keys';
-import { refusalKey, ruleReason } from '../../../i18n/rule-copy';
+import { refusalKey, ruleReason } from '../../../i18n/terms/rule-copy';
 import { skillTitle } from '../parts/skill-title';
 
 /** The tool whose work runs in a helper lane rather than on this row. */

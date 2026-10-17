@@ -32,3 +32,6 @@ export class EventBus<EventMap> {
     }
   }
 }
+
+/** The publishing side of a bus, for code that announces events and never listens. */
+export type EventSink<EventMap> = Pick<EventBus<EventMap>, 'emit'>;

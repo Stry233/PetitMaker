@@ -28,6 +28,7 @@ import { BandSelect } from './band-select';
 import { TouchGesture } from './touch-gesture';
 import { RegionPointer } from './region-pointer';
 import { watchResampleTriggers } from './resampler';
+import { isCarried, registerCarryTarget, type CarryTarget } from './carry';
 import { armedItemOf } from '../../../state/editing/edit-mode';
 
 type Point = { x: number; y: number };
@@ -281,6 +282,7 @@ export function installPointerMachine(container: HTMLDivElement): () => void {
   };
 
   const onPointerMove = (e: PointerEvent) => {
+    if (isCarried(e.pointerId)) return; // the carry hands this pointer's moves to `carryTarget`
     const at = clientPoint(e);
     // "Here" means either this container is literally under the pointer, or a stroke already
     // started on it (a mid-stroke drag stays live even if the browser occasionally reports a target
@@ -364,6 +366,7 @@ export function installPointerMachine(container: HTMLDivElement): () => void {
    *  a nav button, the region brush, an object drop; anything else settles a tap and releases the
    *  primary button. */
   const onPointerUp = (e: PointerEvent) => {
+    if (isCarried(e.pointerId)) return;
     if (touch.up(e)) return; // navigation fingers never reach the tool/select paths
     const at = clientPoint(e);
     if (releaseBand(e, at) || releaseNav(e, at) || releaseRegion(e)) return;
@@ -461,6 +464,49 @@ export function installPointerMachine(container: HTMLDivElement): () => void {
     if (e.buttons === 0) setCursorDrag('none');
   };
 
+  /**
+   * An entry carried from a list (`carry.ts`): the pointer stays captured by the entry, so this
+   * canvas is found by hit testing the native point. Over it, the carry is an idle hover of the
+   * active tool, and the release one press and release of it, the click a placement would be.
+   */
+  const carryTarget: CarryTarget = {
+    over(clientX, clientY) {
+      const hit = typeof document.elementFromPoint === 'function' ? document.elementFromPoint(clientX, clientY) : null;
+      return !!hit && container.contains(hit);
+    },
+    hover(e) {
+      const at = clientPoint(e);
+      if (e.pointerType !== 'touch') remember(at);
+      tools()?.handlePointerMove(at.x, at.y, e.timeStamp);
+      hover.update({ clientX: e.clientX, clientY: e.clientY, pointerType: e.pointerType, target: container });
+      // A drop always reaches the tool: it never selects what it lands on instead.
+      setCursorPressSelects(false);
+    },
+    leave() {
+      view()?.overlay.clearGhost();
+      view()?.overlay.clearHover();
+      hover.forget();
+      pointer.known = false;
+      clearCursorFacts();
+    },
+    drop(e) {
+      const at = clientPoint(e);
+      view()?.overlay.clearHover();
+      const store = useEditorStore.getState();
+      store.setContextMenu(null);
+      store.setDeletePopover(null);
+      tools()?.handlePointerDown(at.x, at.y, e.timeStamp);
+      tools()?.handlePointerUp(at.x, at.y, e.timeStamp);
+    },
+    settle(e) {
+      hover.forget();
+      if (e.pointerType === 'touch') { view()?.overlay.clearGhost(); return; }
+      remember(clientPoint(e));
+      resamplePointer();
+    },
+  };
+  const releaseCarryTarget = registerCarryTarget(carryTarget);
+
   installKeyTracking(); // Shift tracker for the shape brushes (idempotent)
   container.addEventListener('pointerdown', onPointerDown);
   container.addEventListener('pointerleave', onPointerLeave);
@@ -488,5 +534,6 @@ export function installPointerMachine(container: HTMLDivElement): () => void {
     window.removeEventListener('blur', onWindowBlur);
     eventBus.off('viewport-changed', onViewportChanged);
     unwatchTriggers();
+    releaseCarryTarget();
   };
 }

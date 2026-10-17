@@ -5,7 +5,7 @@ import { getCatalogItem } from '../../../../state/catalog';
 import { useEditorStore } from '../../../../state/store';
 import { helpTargetAttr } from '../../../session/help-targets';
 import { SegmentedControl } from '../../../primitives/SegmentedControl';
-import { layerName } from '../../../session/layer-name';
+import { layerName } from '../../../../i18n/terms/layer-name';
 import { TEXT } from '../../units';
 import { BarSlider } from '../BarSlider';
 import { Knob, StripChip, StripSwitch } from './generate-controls';

@@ -6,7 +6,8 @@
 import { createDefaultRegistry } from '../../../rules/index';
 import { makeState, makeTemplate } from '../../_support/map-state';
 import { openSave } from '../../../io/import/open-save';
-import { clearUnderLandmarks } from '../../../tools/generation/transfer';
+import { clearUnderLandmarks } from '../../../state/landmark-clearance';
+import { applyRelocation } from '../../../state/relocation-plan';
 import { getMapTemplate, MAP_TEMPLATES } from '../../../config/maps';
 import { createGrid } from '../../../core/model/grid-model';
 import { NEIGHBORS4 } from '../../../core/grid/directions';
@@ -56,6 +57,15 @@ function namedState(id: string, width: number, height: number): GridState {
   const template: MapTemplate = { ...makeTemplate(width, height), id };
   MAP_TEMPLATES[id] = template;
   return { ...makeState(width, height), template, cells: createGrid(template) };
+}
+
+/** `state` as a load opens it once its automatic repair has landed: a map the rules accept, which
+ *  every later load leaves as it is. */
+function repaired(state: GridState): GridState {
+  const rules = createDefaultRegistry();
+  const { report } = clearUnderLandmarks(state, rules);
+  if (report) applyRelocation(createExecutor(state, rules), state, report.plan);
+  return state;
 }
 
 // ── Corpus cases ─────────────────────────────────────────────────────────────────────────────
@@ -110,7 +120,7 @@ function generatedThenEdited(): GridState {
       added++;
     }
   }
-  return state;
+  return repaired(state);
 }
 
 function mazeCase(): GridState {
@@ -132,7 +142,7 @@ export function adversarialState(n: number, seed: number): GridState {
   const { width, height } = state.template;
 
   // `cell.zone` reads Grass under the plaza, but every load path strips terrain under a landmark
-  // (tools/generation/transfer/landmark-clearance.ts:clearUnderLandmarks), since the plaza object
+  // (state/landmark-clearance.ts:clearUnderLandmarks), since the plaza object
   // always occupies that footprint in real gameplay. Terrain this rule-bypassing builder wrote
   // there would vanish on the next save/load round trip and break the E2E content-equality
   // assertion for a reason that has nothing to do with the codec, so no write here lands on a cell
@@ -204,16 +214,20 @@ export function adversarialState(n: number, seed: number): GridState {
     }
   }
 
-  // A load takes off whatever stands under a landmark, so the corpus holds none of it.
-  clearUnderLandmarks(state);
-  return state;
+  // A load holds a map to the rules, so the corpus holds the map a load opens.
+  return repaired(state);
+}
+
+/** The hand-edited corpus case alone, for tests that need no other. */
+export function handEditedCase(): GridState {
+  return repaired(handEditSmall());
 }
 
 export async function corpusCases(): Promise<{ name: string; state: GridState }[]> {
   const cases: { name: string; state: GridState }[] = [];
 
   cases.push({ name: 'empty-hexia', state: hexiaBlank() });
-  cases.push({ name: 'hand-edit-small', state: handEditSmall() });
+  cases.push({ name: 'hand-edit-small', state: handEditedCase() });
 
   const gen64Cfg = islandCfg(7);
   const gen64 = genOn(namedState('generated-64', 64, 64), gen64Cfg);

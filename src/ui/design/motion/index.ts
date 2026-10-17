@@ -20,6 +20,12 @@ export function amplitude(id: MotionId): number {
   return 'amplitude' in m ? m.amplitude : 0;
 }
 
+/** How long the entry's transient state stands, in seconds; 0 when it declares no hold. */
+export function holdSeconds(id: MotionId): number {
+  const m = MOTIONS[id];
+  return 'hold' in m && typeof m.hold === 'number' ? m.hold : 0;
+}
+
 /** Fractional position of an overshoot keyframe, or even spacing when none is declared. */
 export function overshootAt(id: MotionId): number {
   const m = MOTIONS[id];

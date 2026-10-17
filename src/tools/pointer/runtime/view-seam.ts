@@ -15,6 +15,7 @@ import type { TrimmedCell } from '../../trim/trim-preview';
 import type { RowSpan } from '../../../core/grid/cell-spans';
 import type { GroupRotation } from '../../objects/group-rotation';
 import type { PlanetFrame } from '../../../core/model/planet';
+import type { MapAnnotation } from '../../../core/model/annotations';
 
 /** The glyph a preview card carries: the four content glyphs plus the two tool glyphs the design
  *  draws. Each view draws them from its own art. */
@@ -121,6 +122,9 @@ export interface ToolOverlay {
   /** Hatched cells to look at and an optional footprint outline (a scanned planet's review); null
    *  cells take both down. 2D only. */
   showCellMarks?(cells: CellSet | null, outline: Rect | null): void;
+  /** Objects standing where they may not, each drawn whole above the landmarks with the loss red;
+   *  null takes them down. */
+  showFlaggedObjects?(objects: readonly PlacedObject[] | null): void;
   /** A path draped over cells (the maze's answer), its own drape so it can stand beside the
    *  buildable region. */
   showPath(cells: CellSet): void;
@@ -143,6 +147,10 @@ export interface ToolOverlay {
   /** One body per member at its own position, all sharing one validity tint (the group form of
    *  `showPlacementGhost`). Replaces whatever the last call drew. */
   showGroupPlacementGhost(members: readonly PlacementGhost[], valid: boolean): void;
+  /** The note the next press would lay (a measurement end, a route point or segment, a tag chip),
+   *  drawn as the notes layer draws it at a ghost's strength; `label` is a chip's drawn tag text.
+   *  Replaces whatever the last call drew; cleared by clearGhost. */
+  showNoteGhost(note: MapAnnotation, label: string): void;
 }
 
 /** One body a placement ghost shows: the item at its anchor cell, turned and standing at the
@@ -174,8 +182,8 @@ export interface EditorView {
    *  (not once per member) since the whole body shares one clock. */
   animateGroupRotation(turn: GroupRotation, onFrame?: (eased: number) => void): void;
   /** Collapse animation for an object about to be removed (view-specific, optional). Runs before the
-   *  command: the removal emits `objects-changed` synchronously and the view destroys the body, so
-   *  there is nothing left to animate afterwards. */
+   *  command: the removal's `objects-changed`, at once or when its transaction closes, has the view
+   *  destroy the body, so there is nothing left to animate afterwards. */
   animateRemove?(id: string): void;
   /** The map this view currently renders. Not the same as the store's `gridState`: a freshly loaded
    *  map reaches each view on that view's own schedule (the 3D scene is rebuilt behind an async

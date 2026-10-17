@@ -286,7 +286,7 @@ describe('planObjectRotation — validate before mutate', () => {
     // its width downward, which runs off the map → the rotation is rejected.
     const house: PlacedObject = {
       id: 'house', catalogId: 'building-myhouse',
-      position: { x: 4, y: 25 }, rotation: 0, elevation: 0,
+      position: { x: 4, y: 24 }, rotation: 0, elevation: 0,
     };
     expect(executor.execute({ type: CommandType.PlaceObject, object: house } as PlaceObjectCommand).success).toBe(true);
 

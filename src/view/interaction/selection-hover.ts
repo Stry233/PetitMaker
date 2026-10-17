@@ -32,7 +32,8 @@ export interface PointerTarget {
 }
 
 export function pointerTarget(gs: GridState, point: MapPoint, meshHitId?: string): PointerTarget {
-  const hit = (meshHitId ? gs.objects.get(meshHitId) : undefined) ?? objectAtPoint(getObjectIndex(gs), point);
+  const meshHit = meshHitId && (!gs.unsettled || gs.unsettled.has(meshHitId)) ? gs.objects.get(meshHitId) : undefined;
+  const hit = meshHit ?? objectAtPoint(getObjectIndex(gs), point, gs.unsettled);
   const centre = halfPoint(point);
   return { hit, centre, terrain: cellAtPoint(mapPoint(centre), TERRAIN_GRID) };
 }
@@ -56,6 +57,7 @@ function targetBox(gs: GridState, target: PointerTarget): HoverBox | null {
     return { x: target.hit.position.x, y: target.hit.position.y, w: size.w, h: size.h, grid: PLACEMENT_GRID };
   }
   const { x, y } = target.terrain;
+  if (gs.unsettled) return null;
   if (x < 0 || y < 0 || x >= gs.template.width || y >= gs.template.height) return null;
   const offset = GRIDS[PLACEMENT_GRID].offset;
   return { x: target.centre.x - 0.5 - offset.x, y: target.centre.y - 0.5 - offset.y, w: 1, h: 1, grid: PLACEMENT_GRID };

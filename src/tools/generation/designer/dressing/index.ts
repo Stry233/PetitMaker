@@ -16,6 +16,8 @@ import { makeRng } from '../../../../core/base/rng';
 import { flatIndex } from '../../../../core/grid/rect';
 import { getCatalogItem, itemRole } from '../../../../state/catalog';
 import { tryDecorate } from '../../../placement/object';
+import { spacingClash } from '../../../../rules/placement';
+import type { GridState } from '../../../../core/model/types';
 import { planPalettes } from './palette';
 import { composesFormally, mirrorOf, type Axis } from './symmetry';
 import { LoadBudget } from '../../../../state/load-budget';
@@ -92,6 +94,8 @@ export interface DressOutcome {
   /** Plants the rules turned down. A composed mark stands on ground the pass already read as
    *  plantable, so this counts the cases the reading and the rules disagree on. */
   refused: number;
+  /** Marks left out whole because one stood too near a spaced object (`exclusionRadius`). */
+  spaced: number;
   /** Marks left out because their region's load budget could not carry them. A mirrored pair is
    *  left out whole, so the budget never breaks a composed mirror in half. */
   overBudget: number;
@@ -102,12 +106,18 @@ export interface DressOutcome {
   formal: number;
 }
 
+/** Whether a mark would stand too near a spaced object already on the map. */
+function tooNearSpaced(state: GridState, mark: PlantMark): boolean {
+  const item = getCatalogItem(mark.catalogId);
+  return !!item && spacingClash(state, item, { x: mark.x, y: mark.y, w: item.width, h: item.height }) !== null;
+}
+
 export function dressRegions(input: DressInput): DressOutcome {
   const { place, plan, anchors, seed } = input;
   const state = place.state;
   const W = state.template.width, H = state.template.height;
   const surface = plantableSurface(state);
-  const out: DressOutcome = { planted: 0, refused: 0, overBudget: 0, paved: 0, composed: 0, formal: 0 };
+  const out: DressOutcome = { planted: 0, refused: 0, spaced: 0, overBudget: 0, paved: 0, composed: 0, formal: 0 };
   // The forecourts go down before the ground is read: they are pavement, and pavement is one of the
   // things that decides where a plant may stand.
   out.paved = layForecourts(input, surface);
@@ -230,6 +240,13 @@ export function dressRegions(input: DressInput): DressOutcome {
     if (!ledger.fits) {
       for (const o of objects) ledger.change(o, -1);
       out.overBudget += group.length;
+      return;
+    }
+    // A mark too near a house the build stood is dropped with its mirror image: the spacing between
+    // houses and trees is a rule the composition does not draw.
+    if (group.some((mark) => tooNearSpaced(place.state, mark))) {
+      for (const o of objects) ledger.change(o, -1);
+      out.spaced += group.length;
       return;
     }
     for (const [i, mark] of group.entries()) {

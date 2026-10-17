@@ -115,7 +115,7 @@ export function planDesign(input: DesignInput): DesignBundle {
   const streets = planStreets({ ...input, composition, line });
   const districts = planDistricts({ ...input, composition, streets, line });
   const plan = districts.design;
-  const anchors = planAnchors({ ...input, plan });
+  const anchors = planAnchors({ ...input, plan, flights: streets.flights.map((f) => f.corridor) });
   const ground = planKitGround({ ...input, plan });
   return { composition, line, streets, districts, plan, anchors, ground };
 }

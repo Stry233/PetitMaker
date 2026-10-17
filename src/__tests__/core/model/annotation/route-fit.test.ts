@@ -78,13 +78,25 @@ describe('the route fit', () => {
     for (const a of bend) expect(a.hx).toBeUndefined();
   });
 
-  it('fits one gesture to the same line at every zoom', () => {
+  it('fits one gesture to the same line at every zoom, up to the half-cell snap', () => {
     const gesture = jitter(screenPath(CORNERS, 80), 2);
-    const shapes = [6, 16, 48, 120].map((cellPx) => fitRoutePath(toCells(gesture, cellPx), cellPx).map((p) => ({ x: p.x * cellPx, y: p.y * cellPx })));
-    for (const shape of shapes.slice(1)) {
+    const zooms = [6, 16, 48, 120];
+    const shapes = zooms.map((cellPx) => fitRoutePath(toCells(gesture, cellPx), cellPx).map((p) => ({ x: p.x * cellPx, y: p.y * cellPx })));
+    // Each anchor rounds by at most a quarter cell per axis, in that zoom's px.
+    shapes.slice(1).forEach((shape, z) => {
+      const reach = (zooms[0]! + zooms[z + 1]!) / 4 + 1e-6;
       expect(shape).toHaveLength(shapes[0]!.length);
-      shape.forEach((p, i) => { expect(p.x).toBeCloseTo(shapes[0]![i]!.x, 6); expect(p.y).toBeCloseTo(shapes[0]![i]!.y, 6); });
-    }
+      shape.forEach((p, i) => {
+        expect(Math.abs(p.x - shapes[0]![i]!.x)).toBeLessThanOrEqual(reach);
+        expect(Math.abs(p.y - shapes[0]![i]!.y)).toBeLessThanOrEqual(reach);
+      });
+    });
+  });
+
+  it('lands every anchor on the half-cell lattice, without two on one point', () => {
+    const anchors = fitRoutePath(toCells(jitter(screenPath(CORNERS, 120), 3), 16), 16);
+    for (const a of anchors) { expect(Number.isInteger(a.x * 2)).toBe(true); expect(Number.isInteger(a.y * 2)).toBe(true); }
+    anchors.slice(1).forEach((a, i) => expect(a.x !== anchors[i]!.x || a.y !== anchors[i]!.y).toBe(true));
   });
 
   it('drops samples closer than a screen spacing that holds at every zoom', () => {

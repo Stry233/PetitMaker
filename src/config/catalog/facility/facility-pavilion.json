@@ -27,6 +27,12 @@
     },
     {
       "type": "coatingSupport"
+    },
+    {
+      "type": "groundZones",
+      "onGrass": true,
+      "onSand": true,
+      "acrossBoundary": false
     }
   ]
 }

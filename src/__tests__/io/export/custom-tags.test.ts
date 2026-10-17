@@ -13,7 +13,7 @@ import { decodeAnnotations } from '../../../io/save/annotations-codec';
 import { canonicalize, toSaveJSON } from '../../../io/save/canonical';
 import { decodeMapPayload, encodeMapPayload } from '../../../io/share/codec/payload';
 import { exportable } from '../../_support/exportable';
-import { tagLabel } from '../../../i18n/annotation-tags';
+import { tagLabel } from '../../../i18n/terms/annotation-tags';
 import { AnnotationLayer } from '../../../view/map2d/layers/annotation-layer';
 import { __resetTextVerdicts, recordTextVerdict } from '../../../state/text-verdicts';
 import { setReducedMotion, __resetMotionState } from '../../../platform/channels/motion-state';

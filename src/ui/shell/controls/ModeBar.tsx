@@ -11,6 +11,8 @@ import { useEditorStore } from '../../../state/store';
 import { presence } from '../../design/motion';
 import { useBeat, useTransition } from '../../design/motion/use-motion';
 import { z } from '../../design/styles';
+import { SurfaceBoundary } from '../../chrome/guards/SurfaceBoundary';
+import { BarFailure } from '../bars/BarFailure';
 import { EditToolbar } from '../bars/EditToolbar';
 import { ObjectShelf } from '../bars/objects/ObjectShelf';
 import { planetShelfItems } from '../bars/objects/object-shelf';
@@ -23,6 +25,8 @@ const agentSelecting = (): boolean => {
   return state.selectingRegion && state.regionSelectionOwner === 'agent';
 };
 const finishScope = () => useEditorStore.getState().setSelectingRegion(false);
+/** A bar that throws stands its slot's band in its place; choosing another mode or toolbar mounts that one fresh. */
+const barFailure = (retry: () => void) => <BarFailure onRetry={retry} />;
 
 /**
  * The assistant's region selection replaces the bar: the bar fades out before the scope screen
@@ -44,6 +48,7 @@ export function ModeBar({ mode, surface }: { mode: BuildMode; surface: ContentTy
   const [scopeReady, setScopeReady] = useState(covered);
   const hidden = covered || (!reduced && scopeReady);
   const hasBar = bar !== null;
+  const barKey = toolbar ? 'toolbar' : mode;
 
   useLayoutEffect(() => {
     if (reduced) setScopeReady(covered);
@@ -68,13 +73,13 @@ export function ModeBar({ mode, surface }: { mode: BuildMode; surface: ContentTy
         <AnimatePresence>
           {bar ? (
             <motion.div
-              key={toolbar ? 'toolbar' : mode}
+              key={barKey}
               initial={reduced ? false : { opacity: 0 }}
               animate={{ opacity: 1, transition: arriving }}
               exit={{ opacity: 0, transition: leaving }}
               style={{ position: 'relative', zIndex: z.panel }}
             >
-              {bar}
+              <SurfaceBoundary name={`${toolbar ?? mode} bar`} resetKey={toolbar ?? mode} fallback={barFailure}>{bar}</SurfaceBoundary>
             </motion.div>
           ) : null}
         </AnimatePresence>

@@ -1,7 +1,7 @@
 /* The maker's band's words and lockup, shared by the preview and the export. The site is the
  * deployment's canonical origin, which the caller reads from `legal/` (it ranks above this layer);
  * lockups are self-contained SVG banner assets. */
-import { brandName } from '../../i18n/brand';
+import { brandName } from '../../i18n/terms/brand';
 import { translateFor } from '../../i18n/context';
 import type { Locale } from '../../core/model/locale';
 import { isImportable, type ExportOptions } from '../../io/export/types';

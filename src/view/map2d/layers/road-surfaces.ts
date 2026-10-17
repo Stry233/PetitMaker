@@ -9,6 +9,7 @@ import type { RoadLookup } from '../../../core/model/road-lookup';
 import type { RoadMaterialSpec } from '../../../config/catalog/road-material';
 import { hexStringToNumber } from '../../../core/base/color';
 import { getCatalogItem } from '../../../state/catalog';
+import { coatingLayer } from '../../../core/model/traits';
 import { roadLookup } from '../../../state/object-index';
 import { objectElevation } from '../../../state/object-geometry';
 import { iconUrl } from '../../../assets/icon-urls';
@@ -25,17 +26,18 @@ export interface RoadSurfaceHost {
   /** The layer's root, destroyed with the world it stands in. */
   container(): PIXI.Container;
   requestRender(): void;
-  /** The per-elevation container a surface draws at the bottom of. */
-  layerContainerFor(elev: number): PIXI.Container;
+  /** The per-elevation coatings container, under every solid object, sorted by `zIndex`. */
+  surfaceContainerFor(elev: number): PIXI.Container;
   /** The map the layer draws. */
   state(): GridState | null;
 }
 
 export class RoadSurfaces {
   /** The drawn road surfaces, one Graphics per region, keyed by the region's content (members,
-   *  corners, cells) so an unchanged surface is never redrawn. Region graphics sit at index 0 of
-   *  their elevation container — under every wrapper, since nothing stands under a coating —
-   *  and skip chunk bucketing (a surface spans chunks; a handful of Graphics needs no cull). */
+   *  corners, cells) so an unchanged surface is never redrawn. Region graphics sit in their
+   *  elevation's coatings container at their material's coating layer, under every wrapper and
+   *  under the prints above them, and skip chunk bucketing (a surface spans chunks; a handful of
+   *  Graphics needs no cull). */
   private regionGfx = new Map<string, {
     g: PIXI.Container; members: Set<string>; material: string;
     /** Band window keys drawn by `windowGfx` children; absent for an unbanded draw. */
@@ -101,7 +103,8 @@ export class RoadSurfaces {
         ? this.drawBandedRegion(region, spec)
         : { g: this.drawUnbandedRegion(region), unbanded: !!spec };
       const elev = objectElevation(gridState, region.members[0]!);
-      this.host.layerContainerFor(elev).addChildAt(entry.g, 0);
+      entry.g.zIndex = coatingLayer(getCatalogItem(region.material));
+      this.host.surfaceContainerFor(elev).addChild(entry.g);
       this.regionGfx.set(key, { ...entry, members: new Set(region.members.map((m) => m.id)), material: region.material });
     }
     for (const key of [...this.regionGfx.keys()]) {

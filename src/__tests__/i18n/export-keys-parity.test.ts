@@ -7,7 +7,7 @@ const KEYS = [
   'export.res_compact','export.res_standard','export.res_high','export.res_original',
   'export.btn_export','export.btn_cancel','export.exporting',
   'export.load_t','export.fail_t',
-  'export.layer_ground','export.layer_level','export.card_3d','export.layers_title',
+  'export.card_3d','export.layers_title',
   'export.preset','export.preset_share','export.preset_plain',
   'export.preset_share_desc','export.preset_plain_desc',
   'export.sec_size','export.importability','export.importable','export.importable_sub','export.code_size_warn',

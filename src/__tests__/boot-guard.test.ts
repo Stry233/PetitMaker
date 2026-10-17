@@ -9,7 +9,7 @@ import { JSDOM } from 'jsdom';
 import { DEPLOY_TARGETS } from '../platform/build/deploy-targets';
 import { LOCALES } from '../core/model/locale';
 import { translateFor } from '../i18n/context';
-import { baseBrandName } from '../i18n/brand';
+import { baseBrandName } from '../i18n/terms/brand';
 
 const GUARD_SOURCE = readFileSync('public/boot-guard.js', 'utf8');
 const INDEX_HTML = readFileSync('index.html', 'utf8');

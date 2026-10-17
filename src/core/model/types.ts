@@ -113,7 +113,11 @@ export type PlacementTrait =
   | { type: 'halfStep' }
   // Turns as a whole footprint about its centre (width and height swap) while the map it stands
   // on is being shaped, and only unlocked; its art rests upright in every footprint while a spin plays each turn.
-  | { type: 'footprintTurn' };
+  | { type: 'footprintTurn' }
+  // The ground zones a footprint may stand on (V-ZONE-01): wholly on buildable ground (`onGrass`),
+  // wholly on the shore's sand (`onSand`), or across the boundary between the two
+  // (`acrossBoundary`). An item without it stands wholly on buildable ground only.
+  | { type: 'groundZones'; onGrass: boolean; onSand: boolean; acrossBoundary: boolean };
 
 /** The colour families a plant can read as at map scale, in the order generation offers them.
  *  Neutrals (grey, black, brown) name no plant. */
@@ -234,6 +238,11 @@ export interface MapSessionFields {
   /** The region the last generation was scoped to, which bounds Clear. Never copied; undo and redo
    *  restore it with `generation`. */
   generationScope?: readonly MacroCoord[];
+  /** Objects a hand repair has yet to settle: they stand where a save had them, over a landmark or
+   *  against a rule. When set, a press, the hover box and band selection reach only them, no terrain
+   *  cell is selected, and the road lookup the stroke policy reads does not count them as surfaces.
+   *  Never copied. */
+  unsettled?: ReadonlySet<string>;
 }
 
 /**

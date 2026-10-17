@@ -4,6 +4,7 @@
     "src/__tests__/agent/providers/provider-branching.test.ts": "Reads the harness and panel sources for provider-id comparisons, which only the provider tables may make.",
     "src/__tests__/assets/fonts/family.test.ts": "Reads the stylesheet that declares the shipped faces; the test environment applies no CSS.",
     "src/__tests__/view/shared/overlay/ghost-plan.test.ts": "Guards that both overlays draw through the one ghost plan.",
+    "src/__tests__/view/map2d/capture/one-map-picture.test.ts": "Guards that every in-app map picture is taken through the one detached capture.",
     "src/__tests__/core/commands/stroke-doors.test.ts": "Guards that only the executor and the stroke handle reach the depth-taking steps.",
     "src/__tests__/i18n/copy-punctuation.test.ts": "Guards user-facing copy for dot separators and em dashes, including the legal surfaces.",
     "src/__tests__/pipelines/stylize/neural/cold-start.test.ts": "Requests the worker entry from a dev server; the path is what it loads.",

@@ -18,8 +18,9 @@ import { useT } from '../../../i18n/context';
 import { useFloatingPosition } from '../../primitives/use-floating-position';
 import { useSurfaceScope } from '../../primitives/surface-scope';
 import { radii, font, z } from '../../design/styles';
-import { INSET, LINE, PANEL_EDGE, PLATE, PLATE_INK, DANGER_INK } from '../../design/tokens';
-import { floatMenuItemStyle } from '../../primitives/FloatMenu';
+import { LINE, PANEL_EDGE, PLATE, PLATE_INK, DANGER_INK } from '../../design/tokens';
+import { floatMenuHoverFill, floatMenuItemFill, floatMenuItemStyle } from '../../primitives/FloatMenu';
+import { hoverFillMotion } from '../../primitives/hover-fill';
 import type { Rotation } from '../../../core/model/types';
 import { ROTATIONS } from '../../../core/model/types';
 import { framerMotion } from '../../design/motion';
@@ -111,7 +112,7 @@ export function ContextMenuFace({ rows, onPick, style, anchor, zoom = 1, onDismi
           {row.separated ? <div style={dividerStyle} /> : null}
           <motion.button type="button" role="menuitem" disabled={row.inactive}
             aria-current={row.current || undefined}
-            whileHover={row.inactive || row.current ? undefined : { backgroundColor: INSET }}
+            {...hoverFillMotion({ fill: floatMenuItemFill(!!row.current), hoverFill: row.inactive || row.current ? undefined : floatMenuHoverFill(false) })}
             transition={framerMotion('surface.arrive')}
             style={{
               ...floatMenuItemStyle(!!row.current, row.inactive),

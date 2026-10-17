@@ -13,7 +13,7 @@ import { useChromeScale } from '../../../../design/scale';
 import { FloatMenu } from '../../../../primitives/FloatMenu';
 import { Spinner } from '../../../../primitives/Spinner';
 import { useT } from '../../../../../i18n/context';
-import { illustrationProviderName } from '../../../../../i18n/providers';
+import { illustrationProviderName } from '../../../../../i18n/terms/providers';
 import { STYLE_PACKS, STYLIZE_PROVIDERS, type StylizeProvider } from '../../../../../pipelines/stylize/facts';
 import { packSampleUrl } from './sample-assets';
 import { Field, GhostVerb, PrimaryVerb, SampleTile, StatusSlot, WindowFoot, entering, fieldBox, fieldLabel } from './stylize-parts';

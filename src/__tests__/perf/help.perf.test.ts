@@ -131,6 +131,9 @@ describe.runIf(PERF)('perf: help', () => {
           translateFor(locale, sec.titleKey, facts); n++;
           if (sec.kind === 'prose') {
             for (const k of sec.bodyKeys) { translateFor(locale, k, facts); n++; }
+          } else if (sec.kind === 'list') {
+            for (const k of sec.bodyKeys ?? []) { translateFor(locale, k, facts); n++; }
+            for (const item of sec.items) { translateFor(locale, item.key, facts); n++; }
           } else if (sec.kind === 'steps') {
             for (const k of sec.bodyKeys ?? []) { translateFor(locale, k, facts); n++; }
             for (const g of sec.groups) for (const k of g.stepKeys) { translateFor(locale, k, facts); n++; }

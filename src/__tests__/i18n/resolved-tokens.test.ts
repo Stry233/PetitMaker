@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { localizedName, translateFor } from '../../i18n/context';
 import { landmarkItem } from '../../state/catalog';
 import { LOCALES } from '../../core/model/locale';
-import { brandName, GLYPH_NAME } from '../../i18n/brand';
+import { brandName, GLYPH_NAME } from '../../i18n/terms/brand';
 
 
 describe('translator-filled tokens', () => {
@@ -12,7 +12,7 @@ describe('translator-filled tokens', () => {
     expect(text).not.toMatch(/\{[a-zA-Z0-9_]+\}/);
   });
 
-  it.each(LOCALES)('names the app and its map code from brand.ts in %s', (locale) => {
+  it.each(LOCALES)('names the app and its map code from terms/brand.ts in %s', (locale) => {
     expect(translateFor(locale, 'app.name')).toBe(brandName(locale));
     expect(translateFor(locale, 'export.code_failed')).toContain(GLYPH_NAME);
   });

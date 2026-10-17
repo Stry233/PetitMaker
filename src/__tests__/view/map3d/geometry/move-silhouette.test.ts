@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { dashedContourTriangles, silhouetteContours } from '../../../../view/map3d/geometry/move-silhouette';
+import { contourTriangles, silhouetteContours } from '../../../../view/map3d/geometry/move-silhouette';
 
 const rect = (x: number, y: number, w: number, h: number) => [x,y, x+w,y, x+w,y+h, x,y, x+w,y+h, x,y+h];
 const area = (loop: { x: number; y: number }[]) => loop.slice(1).reduce((sum, b, i) => sum + loop[i]!.x * b.y - b.x * loop[i]!.y, 0) / 2;
@@ -30,7 +30,7 @@ describe('model silhouette contours', () => {
   });
 
   it('makes a three-pixel stroke with gaps along the contour', () => {
-    const vertices = dashedContourTriangles([[{x:0,y:0},{x:60,y:0}]]);
+    const vertices = contourTriangles([[{x:0,y:0},{x:60,y:0}]]);
     const ys = vertices.filter((_,i) => i % 2 === 1);
     expect(Math.max(...ys) - Math.min(...ys)).toBe(3);
     const xs = vertices.filter((_,i) => i % 2 === 0);

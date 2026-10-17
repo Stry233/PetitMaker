@@ -15,7 +15,9 @@ import { fireEvent, render, waitFor } from '@testing-library/react';
 import { MotionConfig } from 'framer-motion';
 import { CountPill, ResultChip, Stamp, TapeBar, TickDot } from '../../../ui/agent/parts/panel-parts';
 import { tickInk } from '../../../ui/agent/panel-skin';
-import { INK, MUTED, TAPE } from '../../../ui/design/tokens';
+import { ACTIVE, INK, MUTED, TAPE } from '../../../ui/design/tokens';
+import { IconButton } from '../../../ui/agent/parts/IconButton';
+import { RegionButton } from '../../../ui/agent/composer/region-chip';
 import { windowPill, type PillVariant, type WindowSurface } from '../../../ui/design/window-skin';
 import { I18nProvider } from '../../../i18n/context';
 import { MOTIONS } from '../../../ui/design/motion/registry';
@@ -345,5 +347,44 @@ describe('ResultChip', () => {
     const chip = getByTestId('op-chip');
     expect(chip.style.whiteSpace).toBe('nowrap');
     expect(chip.style.textOverflow).toBe('ellipsis');
+  });
+});
+
+/**
+ * A control whose resting fill follows state keeps following it after a hover tinted it: the press
+ * that lights it is made under the pointer, so the hover is always there first.
+ */
+describe('a lit control after a hover', () => {
+  const rgbOf = (colour: string) => {
+    const probe = document.createElement('i');
+    probe.style.backgroundColor = colour;
+    return /rgba?\((\d+), (\d+), (\d+)/.exec(probe.style.backgroundColor)!.slice(1).join(', ');
+  };
+  /** Long enough for the hover's tint to have run. */
+  const tinted = () => new Promise((r) => setTimeout(r, 400));
+  const settles = async (el: HTMLElement, colour: string) => {
+    const want = new RegExp(`^rgba?\\(${rgbOf(colour)}(, 1)?\\)$`);
+    await waitFor(() => expect(el.style.backgroundColor).toMatch(want));
+    // Past the hover spring's settle, which is where a stale fill would land.
+    await new Promise((r) => setTimeout(r, 900));
+    expect(el.style.backgroundColor).toMatch(want);
+  };
+
+  it('keeps an icon button lit when it was lit under the pointer', async () => {
+    const { getByTestId, rerender } = render(<IconButton testId="gear" icon="pw-chevron" label="Pin" />);
+    fireEvent.pointerEnter(getByTestId('gear'), { pointerType: 'mouse' });
+    await tinted();
+    rerender(<IconButton testId="gear" icon="pw-chevron" label="Pin" lit />);
+    fireEvent.pointerLeave(getByTestId('gear'), { pointerType: 'mouse' });
+    await settles(getByTestId('gear'), ACTIVE);
+  });
+
+  it('keeps the region button lit when it was lit under the pointer', async () => {
+    const { getByTestId, rerender } = render(<I18nProvider><RegionButton bounds={null} marking={false} onPress={() => {}} /></I18nProvider>);
+    fireEvent.pointerEnter(getByTestId('composer-region-mark'), { pointerType: 'mouse' });
+    await tinted();
+    rerender(<I18nProvider><RegionButton bounds={null} marking onPress={() => {}} /></I18nProvider>);
+    fireEvent.pointerLeave(getByTestId('composer-region-mark'), { pointerType: 'mouse' });
+    await settles(getByTestId('composer-region-mark'), ACTIVE);
   });
 });

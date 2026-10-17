@@ -4,19 +4,22 @@
  * on a dense build, so the window asks through `requestTransferPreview`, which runs it in the
  * generation worker pool and on the main thread only where the pool is unavailable.
  */
-import type { GridState, MacroCoord, MapTemplate } from '../../../core/model/types';
+import type { GridState, MapTemplate } from '../../../core/model/types';
+import type { GridCellRef } from '../../../core/grid/grids';
 import { poolAvailable, runTransferPreviewInPool } from './candidate-pool';
 import { buildTransfer, type TransferCounts } from '../transfer';
 
 export interface TransferPreview {
   /** The destination as the transfer would install it, for painting: cells, objects and versions.
-   *  Detached: nothing live refers to it. One worked out in a worker carries no provenance or notes. */
+   *  Detached: nothing live refers to it. One worked out in a worker carries its plan notes but no
+   *  provenance or map notes. */
   state: GridState;
-  /** The cells to mark as lost, in destination coordinates and including cells off the
-   *  destination, each once: every dropped terrain cell plus every cell a dropped object's
-   *  footprint covers. Its length is the number of red cells, the count shown beside them: one
-   *  dropped house adds each cell it covers, and a dropped tree on dropped ground adds none. */
-  dropped: MacroCoord[];
+  /** The cells to mark as lost, each on the grid it names, in destination coordinates and including
+   *  cells off the destination, each once: every dropped terrain cell (terrain grid) plus every cell
+   *  a dropped object's footprint covers (placement grid). Its length is the number of red cells,
+   *  the count shown beside them: one dropped house adds each cell it covers, and a dropped tree on
+   *  dropped ground adds none. */
+  dropped: GridCellRef[];
   /** What arrives: source terrain cells and objects, counted apart. */
   moved: TransferCounts;
   /** What does not arrive: `cells` is the number of source terrain cells that land nowhere,

@@ -20,7 +20,7 @@ import { teamInReadingOrder } from '../../../../../legal/registry';
 import { en } from '../../../../../i18n/locales/en';
 import { localeLoaded, registerLocaleTable, translations } from '../../../../../i18n/translations';
 import { APP_VERSION, BUILD_NUMBER, BUILD_SHA, BUILD_DATE } from '../../../../../platform/build/build-info';
-import { APP_NAME } from '../../../../../i18n/brand';
+import { APP_NAME } from '../../../../../i18n/terms/brand';
 import { setStoreState } from '../../../../_support/store';
 import { useEditorStore } from '../../../../../state/store';
 

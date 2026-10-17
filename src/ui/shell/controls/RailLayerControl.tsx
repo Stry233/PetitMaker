@@ -7,7 +7,7 @@ import {
 import { helpTargetAttr } from '../../session/help-targets';
 import { useT } from '../../../i18n/context';
 import { useEditorStore } from '../../../state/store';
-import { layerName } from '../../session/layer-name';
+import { layerTileName } from '../../../i18n/terms/layer-name';
 import { btnReset, cursors, radii, UNAVAILABLE } from '../../design/styles';
 import {
   LAYER_STEP_RIGHT,
@@ -87,7 +87,7 @@ export function LayerControl({ panelOpen, onOpen, veiled }: { panelOpen: boolean
   const zoom = useFrameZoom();
   const countRef = useRef<HTMLButtonElement>(null);
   const [lane, setLane] = useState<number | null>(null);
-  const word = layerName(t, shown);
+  const word = layerTileName(t, shown);
   useLayoutEffect(() => {
     const measure = () => {
       const el = countRef.current;

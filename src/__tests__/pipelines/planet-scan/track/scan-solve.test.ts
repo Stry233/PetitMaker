@@ -16,7 +16,7 @@ describe('scan solve', () => {
   const origin = { x: 37.3, y: 51.9 };
   const runs: RunProfiles[] = [];
   for (let k = 0; k < n; k += 5) {
-    runs.push({ distinct: k, frames: 12, profiles: lineProfiles(latticeDeviation(truth.x[k]!, truth.y[k]!, origin, 300 + k)) });
+    runs.push({ distinct: k, frames: 12, seconds: 11 / 60, profiles: lineProfiles(latticeDeviation(truth.x[k]!, truth.y[k]!, origin, 300 + k)) });
   }
   /** Edges from the truth with noise, every x shift read `stretch` times too long. */
   const edgesOf = (stretch: number) => {

@@ -101,8 +101,8 @@ describe('objects are measured by their footprint', () => {
   });
   /** A grass map, so a cabin stands wherever the region lets it. */
   function grassWorld(region: MacroCoord[]) {
-    const made = world(region);
-    for (let y = 0; y < 12; y++) for (let x = 0; x < 12; x++) setZone(made.state, x, y, CellZone.Grass);
+    const made = world(region, 14, 14);
+    for (let y = 0; y < 14; y++) for (let x = 0; x < 14; x++) setZone(made.state, x, y, CellZone.Grass);
     return made;
   }
   const strays = (content: string) => [...content.matchAll(/\((\d+),(\d+)\)/g)].map((m) => ({ x: Number(m[1]), y: Number(m[2]) }));

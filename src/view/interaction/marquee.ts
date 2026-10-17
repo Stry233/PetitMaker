@@ -18,14 +18,14 @@ export function macroRect(a: MacroCoord, b: MacroCoord): MacroRect {
   return { x: x0, y: y0, w: Math.max(a.x, b.x) - x0 + 1, h: Math.max(a.y, b.y) - y0 + 1 };
 }
 
-/** Ids of objects whose footprint intersects `rect` — containment would make a
+/** Ids of objects whose footprint intersects `rect`, of the unsettled ones when the map limits them (`GridState.unsettled`); containment would make a
  *  large building nearly unselectable by band. Collected through the object
  *  index (never a scan of state.objects), so a band over a generated map costs
  *  the rect's chunk span, not the map's object count. */
 export function objectsInBand(state: GridState, rect: MacroRect): string[] {
   const out: string[] = [];
   for (const entry of entriesNear(getObjectIndex(state), rect)) {
-    if (rectsOverlap(entry.rect, rect)) out.push(entry.obj.id);
+    if (rectsOverlap(entry.rect, rect) && (!state.unsettled || state.unsettled.has(entry.obj.id))) out.push(entry.obj.id);
   }
   return out;
 }

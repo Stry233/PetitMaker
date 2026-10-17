@@ -20,6 +20,7 @@ import { CURVE_FOOTPRINT, boundsOfSpans, hatchBars, isPreviewCell, isSolidRect, 
 import { previewIconCanvas } from '../../../shared/overlay/preview-cell-raster';
 import type { OverlayHost } from './host';
 import { cellRect, spanRect, type Shift } from './paint';
+import { gridSize } from '../../../../core/grid/grid-convert';
 import { GHOST_LOSS } from '../../../shared/viewport/view-constants';
 import { lerpColor } from '../../../../core/base/color';
 
@@ -37,6 +38,36 @@ function previewIconTexture(icon: PreviewIcon): PIXI.Texture | null {
   const tex = canvas ? PIXI.Texture.from(canvas) : null;
   iconTextures.set(icon, tex);
   return tex;
+}
+
+/** `r`, in cells of side `scale`, in map cells. */
+function scaleRect(r: Rect, scale: number): Rect {
+  return scale === 1 ? r : { x: r.x * scale, y: r.y * scale, w: r.w * scale, h: r.h * scale };
+}
+
+/** Point a sprite at one item's placement: the hover-preview ghost, each member of the group drag
+ *  ghost and a flagged object. Returns false (and hides `g`) when the item has no sprite icon
+ *  (roads): the cell drawing is the only feedback those get. `repaint` runs when the texture loads. */
+export function paintItemSprite(
+  g: PIXI.Sprite, ghost: { catalogId: string; x: number; y: number; rotation: number; spanLength?: number }, valid: boolean,
+  repaint: () => void,
+): boolean {
+  const { catalogId, x, y, rotation, spanLength } = ghost;
+  const item = getCatalogItem(catalogId);
+  const url = item?.icon ? iconUrl(item.icon) : undefined;
+  if (!item || !url) { g.visible = false; return false; }
+  const tex = PIXI.Texture.from(url);
+  g.texture = tex;
+  const size = spanLength === undefined ? getRotatedSize(item, rotation as Rotation)
+    : getPlacedObjectSize({ id: '__ghost__', catalogId, position: { x, y }, rotation: rotation as Rotation, elevation: 0, spanLength });
+  g.anchor.set(0.5);
+  g.position.set((x + size.w / 2) * TILE_SIZE, (y + size.h / 2) * TILE_SIZE);
+  // A uniform scale preserves the icon aspect ratio when placement changes the footprint.
+  const rampTurn = isRamp(item) ? rampIconTurn(rotation) : null;
+  g.rotation = rampTurn?.rotation ?? (spriteTurns(item) ? ((rotation % 360) * Math.PI) / 180 : 0);
+  fitSpriteToTexture(g, tex, footprintFit(size.w * TILE_SIZE, size.h * TILE_SIZE, itemSpriteFill(item)), rampTurn?.flipX ?? false, repaint);
+  g.tint = valid ? 0xffffff : REFUSED_ICON_TINT;
+  return true;
 }
 
 /** Placement ghosts: the cell wash or preview card a shape would leave, item sprites riding it, and the editable curve footprint. */
@@ -83,30 +114,6 @@ export class OverlayGhosts {
 
   private placementGhost: PIXI.Sprite | null = null;
 
-  /** Point a ghost sprite at one item's ghosted placement. Shared by the single hover-preview
-   *  ghost and each member of the group drag ghost. Returns false (and hides `g`) when the item
-   *  has no sprite icon (roads) — the plain cell ghost is the only feedback those get. */
-  private paintGhostSprite(
-    g: PIXI.Sprite, ghost: { catalogId: string; x: number; y: number; rotation: number; spanLength?: number }, valid: boolean,
-  ): boolean {
-    const { catalogId, x, y, rotation, spanLength } = ghost;
-    const item = getCatalogItem(catalogId);
-    const url = item?.icon ? iconUrl(item.icon) : undefined;
-    if (!item || !url) { g.visible = false; return false; }
-    const tex = PIXI.Texture.from(url);
-    g.texture = tex;
-    const size = spanLength === undefined ? getRotatedSize(item, rotation as Rotation)
-      : getPlacedObjectSize({ id: '__ghost__', catalogId, position: { x, y }, rotation: rotation as Rotation, elevation: 0, spanLength });
-    g.anchor.set(0.5);
-    g.position.set((x + size.w / 2) * TILE_SIZE, (y + size.h / 2) * TILE_SIZE);
-    // A uniform scale preserves the icon aspect ratio when placement changes the footprint.
-    const rampTurn = isRamp(item) ? rampIconTurn(rotation) : null;
-    g.rotation = rampTurn?.rotation ?? (spriteTurns(item) ? ((rotation % 360) * Math.PI) / 180 : 0);
-    fitSpriteToTexture(g, tex, footprintFit(size.w * TILE_SIZE, size.h * TILE_SIZE, itemSpriteFill(item)), rampTurn?.flipX ?? false, this.repaint);
-    g.tint = valid ? 0xffffff : REFUSED_ICON_TINT;
-    return true;
-  }
-
   /** The item's sprite riding the ghost cell — placement previews and object
    *  drags show the thing itself, validity-tinted, over the cell wash. Items
    *  without a sprite icon (roads) keep the plain cell ghost. */
@@ -116,7 +123,7 @@ export class OverlayGhosts {
       this.placementGhost.alpha = 0.65;
       this.placementSlot.addChild(this.placementGhost);
     }
-    this.paintGhostSprite(this.placementGhost, { catalogId, x, y, rotation, spanLength }, valid);
+    paintItemSprite(this.placementGhost, { catalogId, x, y, rotation, spanLength }, valid, this.repaint);
     this.host.requestRender();
   }
 
@@ -145,7 +152,7 @@ export class OverlayGhosts {
     }
     for (let i = 0; i < members.length; i++) {
       const m = members[i]!;
-      this.paintGhostSprite(this.groupGhosts[i]!, { catalogId: m.catalogId, x: m.x, y: m.y, rotation: m.rotation }, valid);
+      paintItemSprite(this.groupGhosts[i]!, { catalogId: m.catalogId, x: m.x, y: m.y, rotation: m.rotation }, valid, this.repaint);
     }
     this.host.requestRender();
   }
@@ -180,6 +187,8 @@ export class OverlayGhosts {
       const empty = p.kind === 'cells' ? p.cells.length === 0 && !(p.losses && p.losses.length > 0) : p.spans.length === 0;
       if (empty) return;
       const shift = gridOffsetPx(p.grid);
+      // Cell-unit geometry below is scaled to map cells by the ghost grid's cell side.
+      const scale = gridSize(p.grid);
       // Cells naming another grid draw beside the shape as their own plain footprint; the card,
       // the trim and the outline below belong to the cells on the ghost's own grid.
       const { own, across, trim } = ghostPlan(p.kind === 'cells' ? p.cells : [], p.grid, p.trim ?? []);
@@ -216,7 +225,8 @@ export class OverlayGhosts {
       // what the ghost is for — at this radius the rounding is a pixel and a half.
       const bounds = p.kind === 'spans' ? boundsOfSpans(p.spans) : cellsBounds(own);
       const cellCount = p.kind === 'spans' ? p.spans.reduce((n, s) => n + s.w, 0) : own.length;
-      const cardRect = palette && trim.length === 0 && isSolidRect(cellCount, bounds) ? bounds : null;
+      const solid = palette && trim.length === 0 && isSolidRect(cellCount, bounds) ? bounds : null;
+      const cardRect = solid && scaleRect(solid, scale);
       this.ghostGraphics.beginFill(fillColor, fillAlpha);
       if (cardRect) this.roundedCardRect(cardRect, shift);
       else for (const sp of spans) spanRect(this.ghostGraphics, sp);
@@ -240,8 +250,8 @@ export class OverlayGhosts {
       if (palette?.hatch !== undefined) {
         const rects: Rect[] = cardRect
           ? [cardRect]
-          : [...spans.map((sp) => ({ x: sp.x, y: sp.y, w: sp.w, h: 1 })),
-             ...trim.map((t) => ({ x: t.x, y: t.y, w: 1, h: 1 }))];
+          : [...spans.map((sp) => scaleRect({ x: sp.x, y: sp.y, w: sp.w, h: 1 }, scale)),
+             ...trim.map((t) => scaleRect({ x: t.x, y: t.y, w: 1, h: 1 }, scale))];
         this.ghostGraphics.beginFill(palette.hatch, palette.bgAlpha);
         for (const bar of hatchBars(rects)) {
           this.ghostGraphics.drawPolygon(bar.map((v, i) => v * TILE_SIZE + (i % 2 === 0 ? shift.x : shift.y)));
@@ -277,26 +287,28 @@ export class OverlayGhosts {
           : roadTrim.length > 0
             ? roadTrimmedOutline(rim, roadTrim, inShape)
             : trimmedOutline(rim, trim, inShape);
-        this.strokeGhostEdges(edges, shift, palette);
+        this.strokeGhostEdges(edges, shift, palette, scale);
       }
       for (const [grid, cells] of groupByGrid(across, p.grid)) {
         this.ghostGraphics.beginFill(fillColor, fillAlpha);
         for (const sp of mergeCellSpans(cells.map(({ x, y }) => ({ x, y, grid })))) spanRect(this.ghostGraphics, sp);
         this.ghostGraphics.endFill();
-        this.strokeGhostEdges(boundaryEdges(cells), gridOffsetPx(grid), palette);
+        this.strokeGhostEdges(boundaryEdges(cells), gridOffsetPx(grid), palette, gridSize(grid));
       }
 
-      if (palette && bounds) this.paintCardMarks(card!, palette, bounds, shift);
+      if (palette && bounds) this.paintCardMarks(card!, palette, scaleRect(bounds, scale), shift);
     });
   }
 
-  /** A ghost outline: the card's line, or a dark halo under a bright core that reads on any ground. */
-  private strokeGhostEdges(edges: readonly EdgeSegment[], shift: Shift, palette: PreviewPalette | null): void {
+  /** A ghost outline: the card's line, or a dark halo under a bright core that reads on any ground.
+   *  `scale` is the side of the edges' grid cells in map cells. */
+  private strokeGhostEdges(edges: readonly EdgeSegment[], shift: Shift, palette: PreviewPalette | null, scale: number): void {
+    const px = scale * TILE_SIZE;
     const stroke = (width: number, col: number, alpha: number) => {
       this.ghostGraphics.lineStyle(width, col, alpha);
       for (const e of edges) {
-        this.ghostGraphics.moveTo(e.ax * TILE_SIZE + shift.x, e.ay * TILE_SIZE + shift.y);
-        this.ghostGraphics.lineTo(e.bx * TILE_SIZE + shift.x, e.by * TILE_SIZE + shift.y);
+        this.ghostGraphics.moveTo(e.ax * px + shift.x, e.ay * px + shift.y);
+        this.ghostGraphics.lineTo(e.bx * px + shift.x, e.by * px + shift.y);
       }
     };
     if (palette) {
@@ -308,7 +320,7 @@ export class OverlayGhosts {
     this.ghostGraphics.lineStyle(0);
   }
 
-  /** The card's background outline: the footprint as one rounded rect on its grid. */
+  /** The card's background outline: the footprint, in map cells from its grid's origin, as one rounded rect. */
   private roundedCardRect(b: Rect, shift: Shift): void {
     this.ghostGraphics.drawRoundedRect(
       b.x * TILE_SIZE + shift.x, b.y * TILE_SIZE + shift.y,
@@ -316,8 +328,8 @@ export class OverlayGhosts {
     );
   }
 
-  /** The card's four corner dots and its centre glyph — the two parts that do not stretch with the
-   *  footprint (see view/shared/overlay/preview-cell). */
+  /** The card's four corner dots and its centre glyph, the two parts that do not stretch with the
+   *  footprint (see view/shared/overlay/preview-cell), around `bounds` in map cells from its grid's origin. */
   private paintCardMarks(card: PreviewCell, palette: PreviewPalette, bounds: Rect, shift: Shift): void {
     this.ghostGraphics.beginFill(palette.line, 1);
     for (const dot of previewDots(bounds)) {

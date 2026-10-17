@@ -12,7 +12,10 @@ import { LANDMARKS } from '../../core/game/profile';
 import { CellZone } from '../../core/game/zones';
 import { TerrainType, type GridState, type MapTemplate } from '../../core/model/types';
 import { canonicalBytes, canonicalize, toSaveJSON } from '../../io/save/canonical';
-import { clearUnderLandmarks } from '../../tools/generation/transfer';
+import { createDefaultRegistry } from '../../rules';
+import { clearUnderLandmarks } from '../../state/landmark-clearance';
+import { applyRelocation } from '../../state/relocation-plan';
+import { createExecutor } from '../../state/executor';
 import { openSave } from '../../io/import/open-save';
 import { decodeSave } from '../../io/save/json-codec';
 import { parseSave } from '../../io/save/parse';
@@ -102,15 +105,19 @@ export async function canonicalSha(state: GridState): Promise<string> {
   return hex(await sha256(canonicalBytes(canonicalize(state))));
 }
 
-/** The map a decoded share payload opens as, by the share import's own steps. */
-export function importPayload(dec: DecodedMapPayload): GridState {
+/** The map a decoded share payload opens as, by the share import's own steps and its automatic
+ *  repair, and whether that repair changed the map. */
+export function importPayload(dec: DecodedMapPayload): { state: GridState; repaired: boolean } {
   const planet = dec.template && upgradeLandmarks(dec.template);
   const templateId = planet ? planet.id : dec.canonical.templateId;
   const json = toSaveJSON({ ...dec.canonical, templateId }, dec.annotations);
   const state = decodeSave(parseSave(JSON.parse(json), { template: resolveTemplate(templateId, planet) }));
-  clearUnderLandmarks(state);
+  const rules = createDefaultRegistry();
+  const { report } = clearUnderLandmarks(state, rules);
+  const repaired = report !== undefined;
+  if (report) applyRelocation(createExecutor(state, rules), state, report.plan);
   if (isGenerationConfig(dec.generation)) state.generation = dec.generation;
-  return state;
+  return { state, repaired };
 }
 
 export { decodeMapPayload, encodeMapPayload };

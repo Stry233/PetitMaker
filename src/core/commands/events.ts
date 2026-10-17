@@ -9,7 +9,8 @@ export type KernelEvents = {
    *  cells for terrain, an object's anchor on the placement grid for an object edit. */
   'cells-changed': { cells: CellSet[]; cause?: string };
   /** Removed objects by id, since they have left the map, and added ones whole. A listener applies
-   *  the removals first: an object edited in place is removed and added under one id. */
+   *  the removals first: an object edited in place is removed and added under one id. One event may
+   *  carry many commands' changes (`held-object-changes.ts`). */
   'objects-changed': { added?: PlacedObject[]; removed?: string[]; cause?: string };
   'validation-failed': Refusal;
   'history-changed': { canUndo: boolean; canRedo: boolean };

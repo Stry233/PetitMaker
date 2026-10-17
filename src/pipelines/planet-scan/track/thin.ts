@@ -1,5 +1,6 @@
-import type { PaletteSampler } from '../ground/color';
+import { dashPlane, type PaletteSampler } from '../ground/color';
 import { ScanError } from '../errors';
+import { median } from '../../../core/base/math';
 import { SCAN_PROFILE } from '../profile';
 import type { FrameVerdict, StillRun } from './still-runs';
 import { frameLines, lineScratch, type LineScratch } from './lattice';
@@ -72,6 +73,59 @@ export class MotionThinner {
   }
 }
 
+const PRIOR = SCAN_PROFILE.lattice.framePrior;
+const PERIOD = { x: SCAN_PROFILE.chunk.width, y: SCAN_PROFILE.chunk.height };
+const wrap = (d: number, p: number): number => ((((d % p) + 1.5 * p) % p) - p / 2);
+
+/** Where the next kept frame's lines should lie, from the scan phases (a line's tile position plus
+ *  the frame's tracked position) of the last frames read. The tracked motion's scale differs from
+ *  the lines' by a few percent, so the phase drifts with the position: it is fitted as a line in
+ *  the position, robustly (the median of the pairwise slopes and of the intercepts), each phase
+ *  unwrapped against the one before it. */
+export class LinePrior {
+  private readonly reads = { x: [] as { at: number; phase: number }[], y: [] as { at: number; phase: number }[] };
+  private readonly misses = { x: 0, y: 0 };
+
+  /** Forgets the phases: after a step tracking could not verify, the tracked position may be off. */
+  reset(): void {
+    for (const a of ['x', 'y'] as const) { this.reads[a].length = 0; this.misses[a] = 0; }
+  }
+
+  /** The predicted tile position of a line per axis for a frame tracked at `at`; NaN where none. */
+  predict(at: { readonly x: number; readonly y: number }): { x: number; y: number } {
+    const one = (a: 'x' | 'y'): number => {
+      const v = this.reads[a];
+      if (!v.length) return Number.NaN;
+      const p = PERIOD[a];
+      const phase: number[] = [v[0]!.phase];
+      for (let k = 1; k < v.length; k++) phase.push(phase[k - 1]! + wrap(v[k]!.phase - phase[k - 1]!, p));
+      const slopes: number[] = [];
+      for (let i = 0; i < v.length; i++) for (let j = i + 1; j < v.length; j++) {
+        const d = v[j]!.at - v[i]!.at;
+        if (Math.abs(d) >= 1) slopes.push((phase[j]! - phase[i]!) / d);
+      }
+      const slope = slopes.length ? median(slopes, 'mean') : 0;
+      const centre = median(v.map((r, k) => phase[k]! + slope * (at[a] - r.at)), 'mean');
+      return (((centre - at[a]) % p) + p) % p;
+    };
+    return { x: one('x'), y: one('y') };
+  }
+
+  /** Records a frame's reading: a phase where it read one, a miss where its prediction found none. */
+  record(seen: { readonly x: number | null; readonly y: number | null }, at: { readonly x: number; readonly y: number }): void {
+    for (const a of ['x', 'y'] as const) {
+      const v = this.reads[a], t = seen[a];
+      if (t === null) {
+        if (v.length && ++this.misses[a] >= PRIOR.patience) { v.length = 0; this.misses[a] = 0; }
+        continue;
+      }
+      this.misses[a] = 0;
+      v.push({ at: at[a], phase: (((t + at[a]) % PERIOD[a]) + PERIOD[a]) % PERIOD[a] });
+      if (v.length > PRIOR.history) v.shift();
+    }
+  }
+}
+
 /** One distinct frame waiting for its decision: its tiles, and its probe against the last kept frame. */
 interface Slot {
   index: number;
@@ -86,7 +140,8 @@ interface Slot {
  * Feeds the distinct frames tracking keeps to the tracker and the palette sampler, one frame late:
  * whether a distinct frame starts a still run, and where the next one lies, is known only when the
  * next distinct frame arrives. Holds two frames' half-resolution grey and high-passed tiles and
- * rectified colour tiles, and one set of the planes `frameLines` reads a frame in. Still runs come
+ * rectified colour tiles, and the kept frame's dash plane with the planes `frameLines` reads it in,
+ * all at tile resolution. Still runs come
  * back indexed by kept frame, the index the solved path uses.
  */
 export class KeptFrames {
@@ -96,8 +151,10 @@ export class KeptFrames {
   readonly lines = { x: [] as number[], y: [] as number[] };
   private readonly thinner: MotionThinner;
   private readonly slots: readonly [Slot, Slot];
-  /** `frameLines`'s planes, reused for every kept frame. */
+  /** The kept frame's dash plane (`dashPlane`) and `frameLines`'s planes, reused for every kept frame. */
+  private readonly dash: Float32Array<ArrayBuffer>;
   private readonly scratch: LineScratch;
+  private readonly prior = new LinePrior();
   private pending: Slot | null = null;
 
   /** `width` and `height` are the full-resolution tile's; past `maxKept` kept frames the scan is
@@ -115,7 +172,8 @@ export class KeptFrames {
       return { index: -1, time: 0, half: new Float32Array(n), hp: new Float32Array(n), rgba: new Uint8Array(width * height * 4), probe: null };
     };
     this.slots = [slot(), slot()];
-    this.scratch = lineScratch((width >> 1) * (height >> 1));
+    this.dash = new Float32Array(width * height);
+    this.scratch = lineScratch(width * height);
   }
 
   /** Kept frames so far. */
@@ -177,7 +235,11 @@ export class KeptFrames {
     tracker.push({ width: this.width >> 1, height: this.height >> 1, data: p.half }, p.probe ?? undefined);
     this.sampler.push({ width: this.width, height: this.height, data: p.rgba }, tracker.position);
     this.times.push(p.time);
-    const seen = frameLines({ width: this.width >> 1, height: this.height >> 1, data: p.half }, undefined, this.scratch);
+    if (this.tracker.frames > 1 && !tracker.lastMotion) this.prior.reset();
+    const at = tracker.position;
+    const plane = dashPlane({ width: this.width, height: this.height, data: p.rgba }, this.dash);
+    const seen = frameLines(plane, undefined, this.scratch, this.prior.predict(at));
+    this.prior.record(seen, at);
     this.lines.x.push(seen.x ?? Number.NaN);
     this.lines.y.push(seen.y ?? Number.NaN);
     this.thinner.kept(p.index, tracker.lastMotion, stillRun);

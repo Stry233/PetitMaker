@@ -12,12 +12,15 @@
  * accessibility opt-out and stays.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { render, screen, fireEvent, cleanup, within } from '@testing-library/react';
+import { act, render, screen, fireEvent, cleanup, within } from '@testing-library/react';
 import { I18nProvider } from '../../../../../i18n/context';
 import { SettingsModal } from '../../../../../ui/chrome/modals/settings/SettingsModal';
 import { en } from '../../../../../i18n/locales/en';
 import { setStoreState } from '../../../../_support/store';
 import { useEditorStore, type EditorStore } from '../../../../../state/store';
+import { MotionConfig } from 'framer-motion';
+import { readPref } from '../../../../../platform/storage/prefs';
+import { holdSeconds } from '../../../../../ui/design/motion';
 
 /** The English string a control shows. `en` reads as possibly-absent by index, and a key that is
  *  not there is a test bug rather than a missing assertion. */
@@ -29,18 +32,27 @@ function label(key: string): string {
 
 const onClose = vi.fn();
 
-type Prefs = Partial<Pick<EditorStore, 'showGrid' | 'showChunkBounds' | 'motionPref' | 'systemCursors' | 'quality3d'>>;
+type Prefs = Partial<Pick<EditorStore, 'gridMode' | 'lastGridMode' | 'showChunkBounds' | 'motionPref' | 'systemCursors' | 'quality3d'>>;
 
-function renderModal(prefs: Prefs = {}) {
-  setStoreState({ showGrid: false, showChunkBounds: false, motionPref: 'system', systemCursors: false, quality3d: 'auto', ...prefs });
-  return render(<I18nProvider><SettingsModal open onClose={onClose} /></I18nProvider>);
+function renderModal(prefs: Prefs = {}, reducedMotion: 'always' | 'never' = 'never') {
+  setStoreState({ gridMode: 'off', lastGridMode: 'auto', showChunkBounds: false, motionPref: 'system', systemCursors: false, quality3d: 'auto', ...prefs });
+  return render(<MotionConfig reducedMotion={reducedMotion}><I18nProvider><SettingsModal open onClose={onClose} /></I18nProvider></MotionConfig>);
+}
+
+/** The grid tile: a button named by the setting and the mode it holds. */
+function gridTile(): HTMLElement {
+  return screen.getByRole('button', { name: new RegExp(`^${label('modal.settings_grid')} `) });
+}
+
+/** The wordings a tile caption draws: during a morph the leaving one and the arriving one. */
+function captions(tile: HTMLElement): string[] {
+  return within(tile).getAllByTestId('morph-label').map((n) => n.textContent ?? '');
 }
 
 /** Every control's role and accessible name, in the order the panel lays them out. */
 const CONTROLS = [
   ['radiogroup', 'modal.settings_language'],
   ['slider', 'modal.settings_ui_scale'],
-  ['switch', 'modal.settings_grid'],
   ['switch', 'modal.settings_chunks'],
   ['radiogroup', 'modal.settings_quality3d'],
   ['radiogroup', 'modal.settings_motion'],
@@ -90,16 +102,50 @@ describe('and each control still writes its preference', () => {
     expect(slider.getAttribute('aria-valuenow')).toBeTruthy();
   });
 
-  it('the grid tile toggles', () => {
-    renderModal({ showGrid: false });
-    fireEvent.click(screen.getByRole('switch', { name: label('modal.settings_grid') }));
-    expect(useEditorStore.getState().showGrid).toBe(true);
+  it('the grid tile cycles Auto, Object grid, Terrain grid, Off and back to Auto, saving each', () => {
+    renderModal({ gridMode: 'auto' });
+    const seen: string[] = [];
+    for (let i = 0; i < 4; i++) {
+      fireEvent.click(gridTile());
+      const mode = useEditorStore.getState().gridMode;
+      expect(readPref('gridMode')).toBe(mode);
+      seen.push(mode);
+    }
+    expect(seen).toEqual(['object', 'terrain', 'off', 'auto']);
   });
 
-  it('the chunk-bounds tile toggles', () => {
-    renderModal({ showChunkBounds: true });
-    fireEvent.click(screen.getByRole('switch', { name: label('modal.settings_chunks') }));
+  it('the grid tile is named by the setting and the mode it holds, and speaks a change', () => {
+    renderModal({ gridMode: 'terrain' });
+    expect(gridTile().getAttribute('role')).toBeNull();
+    expect(screen.getByRole('button', { name: `${label('modal.settings_grid')} ${label('modal.settings_grid_terrain')}` })).toBeTruthy();
+    fireEvent.click(gridTile());
+    expect(screen.getByRole('button', { name: `${label('modal.settings_grid')} ${label('modal.settings_grid_off')}` })).toBeTruthy();
+    const live = gridTile().querySelector('[aria-live="polite"]');
+    expect(live?.textContent).toBe(label('modal.settings_grid_off'));
+  });
+
+  it('the grid tile is a native button in the tab order, so Enter and Space press it as a click does', () => {
+    renderModal({ gridMode: 'auto' });
+    const tile = gridTile();
+    expect(tile.tagName).toBe('BUTTON');
+    expect(tile.getAttribute('type')).toBe('button');
+    expect(tile.tabIndex).toBe(0);
+    tile.focus();
+    expect(document.activeElement).toBe(tile);
+    // jsdom fires no click for a key on a button; the browser does, and runs this handler.
+    fireEvent.click(tile, { detail: 0 });
+    expect(useEditorStore.getState().gridMode).toBe('object');
+  });
+
+  it('the chunk-bounds tile toggles, a switch named by its setting', () => {
+    renderModal({ showChunkBounds: true }, 'always');
+    const tile = screen.getByRole('switch', { name: label('modal.settings_chunks') });
+    fireEvent.click(tile);
     expect(useEditorStore.getState().showChunkBounds).toBe(false);
+    expect(tile.getAttribute('aria-checked')).toBe('false');
+    fireEvent.click(tile);
+    expect(useEditorStore.getState().showChunkBounds).toBe(true);
+    expect(tile.getAttribute('aria-checked')).toBe('true');
   });
 
   it('the quality trio reports the chosen rendering', () => {
@@ -156,5 +202,81 @@ describe('and each control still writes its preference', () => {
     renderModal();
     fireEvent.click(screen.getByText(label('modal.settings_reset_btn')));
     expect(screen.getByText(label('modal.settings_reset_confirm'))).toBeTruthy();
+  });
+});
+
+describe('a map tile caption names its setting and shows a pressed value for a moment', () => {
+  const HOLD_MS = holdSeconds('settings.label.morph') * 1000;
+  const chunkTile = () => screen.getByRole('switch', { name: label('modal.settings_chunks') });
+
+  beforeEach(() => { vi.useFakeTimers(); });
+  afterEach(() => { vi.useRealTimers(); });
+
+  it('names the setting at rest', () => {
+    renderModal({ gridMode: 'auto', showChunkBounds: true }, 'always');
+    expect(captions(gridTile())).toEqual([label('modal.settings_grid')]);
+    expect(captions(chunkTile())).toEqual([label('modal.settings_chunks')]);
+  });
+
+  it('morphs from the name into the new grid mode on a press', () => {
+    renderModal({ gridMode: 'auto' });
+    fireEvent.click(gridTile());
+    expect(captions(gridTile())).toEqual([label('modal.settings_grid'), label('modal.settings_grid_object')]);
+  });
+
+  it('shows the chunk state word on a press', () => {
+    renderModal({ showChunkBounds: false }, 'always');
+    fireEvent.click(chunkTile());
+    expect(captions(chunkTile())).toEqual([label('modal.settings_chunks_shown')]);
+    act(() => { vi.advanceTimersByTime(HOLD_MS); });
+    fireEvent.click(chunkTile());
+    expect(captions(chunkTile())).toEqual([label('modal.settings_chunks_hidden')]);
+  });
+
+  it('returns to the name once the hold has passed', () => {
+    renderModal({ gridMode: 'auto' }, 'always');
+    fireEvent.click(gridTile());
+    act(() => { vi.advanceTimersByTime(HOLD_MS - 1); });
+    expect(captions(gridTile())).toEqual([label('modal.settings_grid_object')]);
+    act(() => { vi.advanceTimersByTime(1); });
+    expect(captions(gridTile())).toEqual([label('modal.settings_grid')]);
+  });
+
+  it('morphs back from the value into the name', () => {
+    renderModal({ gridMode: 'auto' });
+    fireEvent.click(gridTile());
+    act(() => { vi.advanceTimersByTime(HOLD_MS); });
+    expect(captions(gridTile())).toEqual(expect.arrayContaining([label('modal.settings_grid_object'), label('modal.settings_grid')]));
+  });
+
+  it('shows the newer value on a press during the hold and restarts it', () => {
+    renderModal({ gridMode: 'auto' }, 'always');
+    fireEvent.click(gridTile());
+    act(() => { vi.advanceTimersByTime(HOLD_MS - 100); });
+    fireEvent.click(gridTile());
+    expect(captions(gridTile())).toEqual([label('modal.settings_grid_terrain')]);
+    act(() => { vi.advanceTimersByTime(HOLD_MS - 1); });
+    expect(captions(gridTile())).toEqual([label('modal.settings_grid_terrain')]);
+    act(() => { vi.advanceTimersByTime(1); });
+    expect(captions(gridTile())).toEqual([label('modal.settings_grid')]);
+  });
+
+  it('under reduced motion swaps each way at once and still returns after the hold', () => {
+    renderModal({ gridMode: 'auto' }, 'always');
+    fireEvent.click(gridTile());
+    expect(captions(gridTile())).toEqual([label('modal.settings_grid_object')]);
+    act(() => { vi.advanceTimersByTime(HOLD_MS); });
+    expect(captions(gridTile())).toEqual([label('modal.settings_grid')]);
+  });
+
+  it('keeps the button named by the setting and its current value throughout', () => {
+    renderModal({ gridMode: 'auto' });
+    const named = (mode: string) => screen.getByRole('button', { name: `${label('modal.settings_grid')} ${label(mode)}` });
+    expect(named('modal.settings_grid_auto')).toBe(gridTile());
+    fireEvent.click(gridTile());
+    expect(named('modal.settings_grid_object')).toBe(gridTile());
+    act(() => { vi.advanceTimersByTime(HOLD_MS); });
+    expect(named('modal.settings_grid_object')).toBe(gridTile());
+    expect(gridTile().querySelector('[aria-live="polite"]')?.textContent).toBe(label('modal.settings_grid_object'));
   });
 });

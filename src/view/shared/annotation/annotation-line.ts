@@ -11,6 +11,8 @@ import { MAP_EDGE_ALPHA, MAP_INK } from '../../../assets/brand-palette';
 import { isAnnotationInk } from '../../../config/annotation-palette';
 import { loopInwardNormals, roundedZoneLoops } from '../../../core/model/annotation/geometry';
 import type { MacroCoord } from '../../../core/model/types';
+import type { ZoneGridId } from '../../../core/model/annotations';
+import { PLACEMENT_GRID } from '../../../core/game/profile';
 
 export const ANNOTATION_LINE = {
   /** css px where a cell spans `refCellPx`, growing with the cell's size to `power`, held within
@@ -60,11 +62,11 @@ function zoneBorderInset(lineCells: number): number {
   return Math.min(lineCells / 2 + 0.02, 0.34);
 }
 
-/** Each zone outline as one closed path in drawn cell coordinates (the road grid),
- *  corners rounded and inset by half a line of `lineCells`. The first point repeats at the end. */
-export function zoneBorderPaths(cells: readonly MacroCoord[], lineCells: number): Array<Array<[number, number]>> {
+/** Each outline of a zone's `cells` on `grid` as one closed path in drawn map cells, corners
+ *  rounded and inset by half a line of `lineCells`. The first point repeats at the end. */
+export function zoneBorderPaths(cells: readonly MacroCoord[], lineCells: number, grid: ZoneGridId = PLACEMENT_GRID): Array<Array<[number, number]>> {
   const inset = zoneBorderInset(lineCells);
-  return roundedZoneLoops(cells).map((loop) => {
+  return roundedZoneLoops(cells, undefined, grid).map((loop) => {
     const open = loop.slice(0, -1);
     const normals = loopInwardNormals(open);
     const path = open.map(([x, y], i) => {

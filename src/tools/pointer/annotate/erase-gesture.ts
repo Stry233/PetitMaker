@@ -2,22 +2,22 @@
  * The erase verb of the notes tool: it subtracts cells from every zone it crosses (a zone emptied this
  * way is removed) and deletes a chip, route or measurement it presses. It takes the road eraser's
  * shapes (`ctx.arming.eraserShape`): the free brush erases as it moves, a line, rectangle or circle on
- * release, and the curve lays anchors until a press back on the last one.
+ * release, and the curve lays anchors until a press back on the last one. It moves in the zone
+ * brush's half-cell steps (`note-edits.ts`).
  */
 import type { MacroCoord } from '../../../core/model/types';
-import { removeZoneCells, zoneCellAt, zoneCellSet } from '../../../core/model/annotations';
-import { splineCells } from '../../../core/grid/shapes';
+import { HALVES, removeZoneCells, zoneCellSet, zoneHalfCells, zoneWithHalfCells, type ZoneNote } from '../../../core/model/annotations';
 import { cellKey } from '../../../core/grid/rect';
 import type { AnnotateContext } from './channel';
 import { annotationInkScale, routeHitDistCells } from '../../../core/model/annotation/text-metrics';
 import { hitAt } from './note-hits';
-import { figureCells, finePoint, footprint, layerEditable, run } from './note-edits';
+import { curveCells, figureCells, finePoint, footprint, layerEditable, run, stepAt, stepDistance } from './note-edits';
 
 export class EraseGesture {
-  /** A stroke in progress: whether it has opened its undo step, the cell it last reached, and for a
-   *  line, rectangle or circle the cell the drag began on. */
+  /** A stroke in progress: whether it has opened its undo step, the step it last reached, and for a
+   *  line, rectangle or circle the step the drag began on. */
   private stroke: { began: boolean; last: MacroCoord; anchor: MacroCoord | null } | null = null;
-  /** The curve eraser's anchors so far. */
+  /** The curve eraser's anchor steps so far. */
   private anchors: MacroCoord[] = [];
 
   get stroking(): boolean { return this.stroke !== null; }
@@ -30,20 +30,20 @@ export class EraseGesture {
     const shape = ctx.arming.eraserShape;
     const hit = this.anchors.length ? null : hitAt(p, ctx);
     if (hit && hit.kind !== 'zone') { ctx.annotationEdit.remove(hit.id); return; }
-    const cell = zoneCellAt(p);
-    if (shape === 'curve') { this.curvePress(cell, ctx); return; }
-    this.stroke = { began: false, last: cell, anchor: shape === 'free' ? null : cell };
-    if (shape === 'free') this.erase(footprint(cell, ctx), ctx);
+    const step = stepAt(p);
+    if (shape === 'curve') { this.curvePress(step, ctx); return; }
+    this.stroke = { began: false, last: step, anchor: shape === 'free' ? null : step };
+    if (shape === 'free') this.erase(footprint(step, ctx), ctx);
   }
 
   /** The free eraser takes the run between samples; a figure waits for its release. */
   move(p: MacroCoord, ctx: AnnotateContext): void {
     const e = this.stroke!;
     if (e.anchor) return;
-    const cell = zoneCellAt(p);
-    if (cell.x === e.last.x && cell.y === e.last.y) return;
-    this.erase(run(e.last, cell, ctx), ctx);
-    e.last = cell;
+    const step = stepAt(p);
+    if (step.x === e.last.x && step.y === e.last.y) return;
+    this.erase(run(e.last, step, ctx), ctx);
+    e.last = step;
   }
 
   /** Ends the stroke, laying a figure's cells where the drag was released. */
@@ -51,7 +51,7 @@ export class EraseGesture {
     const anchor = this.stroke?.anchor;
     const shape = ctx.arming.eraserShape;
     if (anchor && shape !== 'free' && shape !== 'curve') {
-      this.erase(figureCells(shape, anchor, zoneCellAt(finePoint(coord, ctx)), ctx), ctx);
+      this.erase(figureCells(shape, anchor, stepAt(finePoint(coord, ctx)), ctx), ctx);
       ctx.overlay.clearGhost();
     }
     this.stroke = null;
@@ -69,33 +69,38 @@ export class EraseGesture {
   dropAnchors(): void { this.anchors = []; }
 
   /** A press back on the last curve anchor takes the band away as one undo step. */
-  private curvePress(cell: MacroCoord, ctx: AnnotateContext): void {
+  private curvePress(step: MacroCoord, ctx: AnnotateContext): void {
     const last = this.anchors[this.anchors.length - 1];
-    if (!last || Math.hypot(cell.x - last.x, cell.y - last.y) > routeHitDistCells(annotationInkScale(ctx.state.template))) {
-      this.anchors = [...this.anchors, cell];
+    if (!last || stepDistance(step, last) > routeHitDistCells(annotationInkScale(ctx.state.template))) {
+      this.anchors = [...this.anchors, step];
       return;
     }
     const anchors = this.anchors;
     this.anchors = [];
-    this.stroke = { began: false, last: cell, anchor: null };
-    this.erase(anchors.length === 1 ? footprint(anchors[0]!, ctx) : splineCells(anchors, ctx.arming.brushSize), ctx);
+    this.stroke = { began: false, last: step, anchor: null };
+    this.erase(anchors.length === 1 ? footprint(anchors[0]!, ctx) : curveCells(anchors, ctx), ctx);
     this.stroke = null;
     ctx.overlay.clearGhost();
   }
 
-  /** Subtract `gone` from every zone it crosses, and from the draft. */
+  /** Subtract the half-grid cells `gone` from every zone they cross, and from the draft. */
   private erase(gone: MacroCoord[], ctx: AnnotateContext): void {
-    const goneSet = zoneCellSet(gone);
-    const touches = (cells: readonly MacroCoord[]): boolean => cells.some((c) => goneSet.has(cellKey(c.x, c.y)));
+    const goneHalf = zoneCellSet(gone);
+    const goneWhole = zoneCellSet(gone.map((c) => ({ x: Math.floor(c.x / HALVES), y: Math.floor(c.y / HALVES) })));
+    const touches = (zone: ZoneNote): boolean => {
+      const set = zone.grid ? goneHalf : goneWhole;
+      return zone.cells.some((c) => set.has(cellKey(c.x, c.y)));
+    };
+    const cut = <Z extends ZoneNote>(zone: Z): Z => zoneWithHalfCells(zone, removeZoneCells(zoneHalfCells(zone), gone));
     const d = ctx.arming.notes.draft;
-    const draftTouched = d?.kind === 'zone' && touches(d.cells);
+    const draftTouched = d?.kind === 'zone' && touches(d);
     const items = ctx.state.annotations?.items ?? [];
-    if (!draftTouched && !items.some((n) => n.kind === 'zone' && touches(n.cells))) return;
+    if (!draftTouched && !items.some((n) => n.kind === 'zone' && touches(n))) return;
     if (!this.stroke!.began) { this.stroke!.began = true; ctx.annotationEdit.begin(); }
-    if (draftTouched) ctx.annotationEdit.setDraft({ ...d, cells: removeZoneCells(d.cells, gone) });
+    if (draftTouched) ctx.annotationEdit.setDraft(cut(d));
     ctx.annotationEdit.apply((data) => {
       data.items = data.items
-        .map((n) => (n.kind === 'zone' && touches(n.cells) ? { ...n, cells: removeZoneCells(n.cells, gone) } : n))
+        .map((n) => (n.kind === 'zone' && touches(n) ? cut(n) : n))
         .filter((n) => n.kind !== 'zone' || n.cells.length > 0);
     });
   }

@@ -23,6 +23,7 @@ import type { Locale } from '../../core/model/locale';
 import type { MapProvenanceSummary } from '../../core/provenance/types';
 import { selectedVersion } from '../../state/stylize-versions';
 import { brandInfo } from './brand';
+import { layerNumeral } from '../../i18n/terms/layer-name';
 
 export { loadBrandLockup } from './brand';
 
@@ -44,7 +45,7 @@ export function footerTokenValues(state: GridState, options: ExportOptions, loca
     brand: translateFor(locale, 'app.name'),
     time: now.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' }),
     weekday: now.toLocaleDateString(locale, { weekday: 'long' }),
-    peak: peak > 0 ? `L${peak}` : '',
+    peak: peak > 0 ? `L${layerNumeral(peak)}` : '',
     seed: seed != null ? String(seed) : '',
     // Coverage is a real number even at zero: no AI/procedural content means 0%, not "unavailable".
     ai: `${summary?.aiTerrainPct ?? 0}%`,

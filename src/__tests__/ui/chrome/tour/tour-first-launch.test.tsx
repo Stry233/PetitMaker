@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 // The whole first-launch gate lives in `useFirstLaunchTour`, so this is the one place it is pinned.
+import { firstInland } from '../../../_support/legal-maps';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { renderHook, act, cleanup } from '@testing-library/react';
 import { TOUR_SEEN_KEY, useFirstLaunchTour } from '../../../../ui/chrome/tour/use-tour';
@@ -17,15 +18,9 @@ const AUTOSAVE_STORAGE_KEY = 'petit-planet-autosave';
  *  on the first Grass cell so the round-trip carries content — same fixture as io/storage/autosave.test.ts. */
 function makeWorkingMap(): GridState {
   const cells = createGrid(DEFAULT_MAP);
-  for (let y = 0; y < DEFAULT_MAP.height; y++) {
-    for (let x = 0; x < DEFAULT_MAP.width; x++) {
-      if (DEFAULT_MAP.zones[y]?.[x] === CellZone.Grass) {
-        cells[y]![x] = { zone: CellZone.Grass, terrain: { type: TerrainType.Mountain, elevation: 3 } };
-        return { template: DEFAULT_MAP, cells, objects: new Map(), objectsVersion: 0, cellsVersion: 0, lockedLayers: new Set() };
-      }
-    }
-  }
-  throw new Error('no Grass cell in DEFAULT_MAP');
+  const { x, y } = firstInland(DEFAULT_MAP);
+  cells[y]![x] = { zone: CellZone.Grass, terrain: { type: TerrainType.Mountain, elevation: 3 } };
+  return { template: DEFAULT_MAP, cells, objects: new Map(), objectsVersion: 0, cellsVersion: 0, lockedLayers: new Set() };
 }
 
 describe('first launch', () => {

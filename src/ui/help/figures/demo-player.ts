@@ -20,7 +20,7 @@ import { firePressPulse } from './caption';
 import { drawCursorImg } from './demo-cursor';
 import { SandboxWorld } from '../../../editor/sandbox/demo-world';
 import type { DemoCtx, DemoView, HelpScene, SceneStep } from './scenes';
-import { TERRAIN_GRID } from '../../../core/game/profile';
+import { PLACEMENT_GRID, TERRAIN_GRID } from '../../../core/game/profile';
 import type { MapPoint } from '../../../core/grid/grids';
 
 export interface Cam { dx: number; dy: number; z: number }
@@ -109,7 +109,7 @@ export class Player {
     this.ctx = { world, view: this.view };
     this.still = isMotionReduced();
     this.steps = scene.run(this.ctx, (key) => this.t(key));
-    this.r.initMap(world.state, true, false, { labels: false });
+    this.r.initMap(world.state, PLACEMENT_GRID, false, { labels: false });
     // A figure takes no pointer of its own, so its projection answers in figure px: the box's offset is the origin.
     this.r.viewport.setOriginSource(() => this.host.boxPos());
     this.applyCamera();
@@ -446,7 +446,7 @@ export function standUpDemo(opts: DemoStandup): () => void {
     const facts = helpFacts(useEditorStore.getState().locale);
     player = new Player(
       renderer, world, scene,
-      (key, params) => opts.t(key, params ? { ...facts, ...params } : facts),
+      (key, params) => opts.t(key as TextKey, params ? { ...facts, ...params } : facts),
       { W, H, cursorEl, pulseEl, stripCard, boxPos, setFurniture: opts.onFurniture },
     );
     player.setPointer('select');

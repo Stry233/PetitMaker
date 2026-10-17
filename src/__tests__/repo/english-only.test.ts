@@ -15,7 +15,7 @@ import { SRC, sourceFiles, srcRelative } from '../_support/source-graph';
 const DATA_SCRIPTS: Readonly<Record<string, string>> = {
   'src/agent/core/language-cue.ts': "the cue the assistant hears to answer in the user's language is written in that language",
   'src/config/neighbors.ts': "game data: each neighbour's name per locale, read by localizedName()",
-  'src/i18n/brand.ts': "the product's name in each locale is a brand fact, not copy",
+  'src/i18n/terms/brand.ts': "the product's name in each locale is a brand fact, not copy",
   'src/i18n/locale-info.ts': "each locale's name in its own script and its list separators",
   'src/legal/config.ts': 'legal facts in the language the law and the filings state them in',
   'src/platform/build/deploy-targets.ts': "the CN target's page title and ICP filing number, as filed",

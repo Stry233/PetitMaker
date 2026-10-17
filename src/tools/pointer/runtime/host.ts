@@ -50,6 +50,7 @@ export const HEADLESS_OVERLAY: ToolOverlay = {
   showSelection: noop, clearSelection: noop, showHover: noop, clearHover: noop, flashCommit: noop,
   showBuildableRegion: noop, clearBuildableRegion: noop, pulseBuildableRegion: noop, showPath: noop, clearPath: noop,
   showBand: noop, clearBand: noop, showPlacementGhost: noop, showObjectMove: noop, showGroupPlacementGhost: noop,
+  showNoteGhost: noop,
 };
 
 const NO_MODIFIERS: ToolModifiers = { constrain: false, multiSelect: false };

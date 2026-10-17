@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
-import { fitPalette, paletteLookup } from '../../../../pipelines/planet-scan/ground/classify';
-import { GRASS, PaletteSampler, SAND, SEA } from '../../../../pipelines/planet-scan/ground/color';
+import { fitPalette } from '../../../../pipelines/planet-scan/ground/classify';
+import { GRASS, localPalette, PaletteSampler, SAND, SEA } from '../../../../pipelines/planet-scan/ground/color';
 import { EvidenceAccumulator, evidenceGrid } from '../../../../pipelines/planet-scan/ground/evidence';
 import {
   coveragePreview, PREVIEW_GRASS, PREVIEW_MAX_UNITS, PREVIEW_MS, PREVIEW_SAND, PREVIEW_SEA, PREVIEW_UNSEEN, previewClass, PreviewClock, PreviewGrid,
@@ -56,7 +56,8 @@ describe('pass 1 coverage', () => {
     expect(coveragePreview(new PaletteSampler(W, H), { x: 0, y: 0, w: W, h: H })).toBeNull();
   });
 
-  it('classes the ground each tile showed by its colour, leaves the rest unseen and carries the view', () => {
+  it('marks the ground each tile showed as seen whatever its colour, leaves the rest unseen and carries the view', () => {
+    // No palette is fitted in pass 1, so a unit's class says only that it was seen.
     const sampler = new PaletteSampler(W, H);
     sampler.push(plain([70, 125, 215]), { x: 0, y: 0 });
     sampler.push(plain([165, 205, 110]), { x: 2 * W, y: 0 });
@@ -65,8 +66,8 @@ describe('pass 1 coverage', () => {
     const p = coveragePreview(sampler, view)!;
     expect(p.kind).toBe('coverage');
     expect(p.view).toEqual(view);
-    expect(classAt(p, W / 2, H / 2)).toBe(PREVIEW_SEA);
-    expect(classAt(p, 2.5 * W, H / 2)).toBe(PREVIEW_GRASS);
+    expect(classAt(p, W / 2, H / 2)).toBe(PREVIEW_SAND);
+    expect(classAt(p, 2.5 * W, H / 2)).toBe(PREVIEW_SAND);
     expect(classAt(p, W / 2, 2.5 * H)).toBe(PREVIEW_SAND);
     expect(classAt(p, 2.5 * W, 2.5 * H)).toBe(PREVIEW_UNSEEN);
     expect(p.cols).toBeLessThanOrEqual(PREVIEW_MAX_UNITS);
@@ -96,7 +97,7 @@ describe('pass 1 coverage', () => {
     const after = coveragePreview(sampler, { x: 0, y: 0, w: W, h: H })!;
     expect(after.unitW).toBe(before.unitW);
     expect(((before.x - after.x) / after.unitW) % 1).toBe(0);
-    expect(classAt(after, W / 2, H / 2)).toBe(PREVIEW_SEA);
+    expect(classAt(after, W / 2, H / 2)).toBe(classAt(before, W / 2, H / 2));
   });
 
   it('merges units to stay within PREVIEW_MAX_UNITS a side', () => {
@@ -118,7 +119,8 @@ describe('pass 2 ground', () => {
     const sampler = new PaletteSampler(W, H);
     tiles.forEach((t, k) => sampler.push(t, positions[k]!));
     const grid = evidenceGrid(lattice, positions, W, H);
-    const acc = new EvidenceAccumulator(grid, lattice, paletteLookup(fitPalette(sampler.samples())), W, H);
+    const palette = fitPalette(sampler);
+    const acc = new EvidenceAccumulator(grid, lattice, localPalette(palette.centres, palette.classes, sampler), W, H);
 
     const empty = acc.preview();
     expect(empty.kind).toBe('ground');

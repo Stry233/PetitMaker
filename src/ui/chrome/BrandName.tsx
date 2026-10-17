@@ -1,6 +1,6 @@
 import { EDITION_COPY } from '../../platform/build/edition';
 import { useLocale, useT } from '../../i18n/context';
-import { baseBrandName } from '../../i18n/brand';
+import { baseBrandName } from '../../i18n/terms/brand';
 import { roleFont } from '../design/text-weight';
 import { skin } from '../design/window-skin';
 import { Wavy } from '../primitives/Wavy';

@@ -4,10 +4,11 @@ import { ANCHOR_LANDMARK } from '../../../_support/anchor';
 import { templateAnchor, planetLandmarkObject } from '../../../../core/model/landmarks';
 import { isBuildableZone, isGrassZone, isLandZone, CellZone } from '../../../../core/game/zones';
 import { isTrustedPlanet } from '../../../../core/model/planet-validate';
-import { fitPalette, paletteLookup, readGround, type GroundReading } from '../../../../pipelines/planet-scan/ground/classify';
-import { GRASS, PaletteSampler, SAND, SEA } from '../../../../pipelines/planet-scan/ground/color';
+import { fitPalette, inlandWater, readGround, type GroundReading } from '../../../../pipelines/planet-scan/ground/classify';
+import { GRASS, localPalette, PaletteSampler, SAND, SEA } from '../../../../pipelines/planet-scan/ground/color';
 import { EvidenceAccumulator, evidenceGrid, reduceDeviation, type CellEvidence } from '../../../../pipelines/planet-scan/ground/evidence';
 import { detectLandmarks } from '../../../../pipelines/planet-scan/ground/landmark';
+import { shiftGrass } from '../../../../pipelines/planet-scan/ground/grass-shift';
 import { SCAN_PROFILE } from '../../../../pipelines/planet-scan/profile';
 import { scannedPlanet } from '../../../../pipelines/planet-scan/to-template';
 import { SHORE_MODEL, type ShoreModel } from '../../../../pipelines/planet-scan/ground/shore-model';
@@ -23,7 +24,11 @@ import {
 
 vi.setConfig({ testTimeout: 60_000 });
 
-const { width: W, height: H } = SCAN_PROFILE.tile;
+// A synthetic camera of its own, 680 x 300 ground pixels a frame: the evidence reads a tile of any
+// size, and the scenes' landmark ties (a deck narrower than its footprint, paving mostly in the
+// grass's colour) were laid out for this one. Under the calibration's tile they resolve half a cell
+// to two cells apart with the scan's step, so these tests pin the reading, not the camera.
+const { width: W, height: H } = { width: 680, height: 300 };
 
 interface Run {
   scene: Scene;
@@ -31,20 +36,31 @@ interface Run {
   reading: GroundReading;
 }
 
-/** Scans `scene` row by row; `keep` drops frame positions, as a partial scan would. */
-function scan(scene: Scene, keep: (p: FramePosition, all: readonly FramePosition[]) => boolean = () => true): Run {
+/** Scans `scene` row by row; `keep` drops frame positions, as a partial scan would. With `jitter`
+ *  the frames fall at every sub-pixel phase, as a real camera's do, so the evidence resolves where an
+ *  edge lies within a pixel. */
+function scan(
+  scene: Scene, keep: (p: FramePosition, all: readonly FramePosition[]) => boolean = () => true, blur?: number, jitter = false,
+  recolour?: (rgb: readonly number[]) => number[],
+): Run {
   const lattice = testLattice(37.3, 81.9);
-  const world = paintWorld(scene, lattice);
-  const all = scanPositions(world, W, H);
+  const world = paintWorld(scene, lattice, blur);
+  const steps = scanPositions(world, W, H);
+  const all = jitter ? steps.map((p, k) => ({ x: p.x + ((k * 0.618) % 1), y: p.y + ((k * 0.382) % 1) })) : steps;
   const positions = all.filter((p) => keep(p, all));
-  const tiles = positions.map((p, k) => viewTile(world, p, { width: W, height: H }, k, (k % 5) / 4));
+  const drawn = positions.map((p, k) => viewTile(world, p, { width: W, height: H }, k, (k % 5) / 4));
+  const tiles = !recolour ? drawn : drawn.map((t) => {
+    const data = new Uint8ClampedArray(t.data.length);
+    for (let i = 0; i < data.length; i += 4) data.set([...recolour([t.data[i]!, t.data[i + 1]!, t.data[i + 2]!]), 255], i);
+    return { ...t, data };
+  });
   const sampler = new PaletteSampler(W, H);
   tiles.forEach((t, k) => sampler.push(t, positions[k]!));
-  const lut = paletteLookup(fitPalette(sampler.samples()));
+  const palette = fitPalette(sampler);
   const grid = evidenceGrid(lattice, positions, W, H);
   expect(Math.abs(grid.cellX0 % CHUNK_SIZE)).toBe(0);
   expect(Math.abs(grid.cellY0 % CHUNK_SIZE)).toBe(0);
-  const acc = new EvidenceAccumulator(grid, lattice, lut, W, H);
+  const acc = new EvidenceAccumulator(grid, lattice, localPalette(palette.centres, palette.classes, sampler), W, H);
   tiles.forEach((t, k) => acc.addFrame(t, positions[k]!));
   for (const p of positions) acc.addDeviation(reduceDeviation(viewDeviation(world, p, W, H)), p, 12);
   const ev = acc.finish();
@@ -353,8 +369,83 @@ describe('the build-texture guard', () => {
   });
 
   it('is what keeps them: without it the blob and the profile turn them to grass', () => {
-    const unguarded = readGround(withoutPlaza.ev, undefined, { blobTexture: 0, profileTexture: 0 });
+    const guard = { ...SCAN_PROFILE.ground, blobTexture: 0, profileTexture: 0, localSand: { ...SCAN_PROFILE.ground.localSand, grassVote: 0, distance: 0 } };
+    const unguarded = readGround(withoutPlaza.ev, undefined, guard);
     for (const r of [SAND_NOTCH, SHADOW_NOTCH]) for (const [x, y] of cellsOf(r)) expect(unguarded.ground[at(withoutPlaza, x, y)]).toBe(GRASS);
+  });
+});
+
+describe('a one-cell notch of a straight grass edge', () => {
+  // Drawn sharp, the notch takes the edge's contrast from its three grass sides, which the build
+  // guard alone reads as a build hiding the edge, and the grass blob closes over it.
+  const notch: CellRect = { x: 81, y: 60, w: 1, h: 1 };
+  const run = scan(islandScene({ notches: [notch] }), undefined, 0.7);
+  const loose = { ...SCAN_PROFILE.ground, localSand: { ...SCAN_PROFILE.ground.localSand, grassVote: 0, distance: 0 } };
+
+  it('stays sand, as its colour shows', () => {
+    expect(run.reading.ground[at(run, notch.x, notch.y)]).toBe(SAND);
+    expect(run.reading.ground[at(run, notch.x, notch.y - 1)]).toBe(GRASS);
+    expect(run.reading.ground[at(run, notch.x, notch.y + 1)]).toBe(GRASS);
+  });
+
+  it('is filled without the local sand test', () => {
+    expect(readGround(run.ev, undefined, loose).ground[at(run, notch.x, notch.y)]).toBe(GRASS);
+  });
+
+  it('leaves the grass under a build on the edge to the inference', () => {
+    // The build over the east edge (x 79 to 81, rows 40 to 45) hides grass the inference restores.
+    for (let y = 40; y < 46; y++) expect(run.reading.ground[at(run, 81, y)]).toBe(GRASS);
+  });
+});
+
+describe('the grass edge offset', () => {
+  // The scene's own drawing puts its edges a little off the lines, which every reading shares.
+  const flat = scan(islandScene(), undefined, undefined, true);
+  const moved = scan({ ...islandScene(), grassOffset: { north: 0.15, east: 0 } }, undefined, undefined, true);
+  /** The mean row, in cells, where the grass vote read `shift` cells north crosses one half going
+   *  `south` through the edge between rows `from` and `to`, over the sample columns of x 40 to 68. */
+  const edgeRow = (run: Run, shift: number, from: number, to: number, south: boolean): number => {
+    const ev = shiftGrass(run.ev, shift);
+    const { width, grass } = ev.points;
+    const s = ev.sub;
+    let sum = 0, n = 0;
+    for (let i = (40 - ev.grid.cellX0) * s; i < (68 - ev.grid.cellX0) * s; i++) {
+      for (let j = (from - ev.grid.cellY0) * s; j < (to - ev.grid.cellY0) * s; j++) {
+        const a = grass[j * width + i]!, b = grass[(j + 1) * width + i]!;
+        if (south ? a >= 0.5 && b < 0.5 : a < 0.5 && b >= 0.5) {
+          sum += (j + 0.5 + (0.5 - a) / (b - a)) / s + ev.grid.cellY0;
+          n++;
+          break;
+        }
+      }
+    }
+    return sum / n;
+  };
+  /** The mean of the north edge's row (row 20) and the south edge's (row 76). */
+  const middle = (run: Run, shift = run.reading.grassShift!.shift) => (edgeRow(run, shift, 18, 22, false) + edgeRow(run, shift, 74, 78, true)) / 2;
+
+  it('measures the offset from the north and south edges against the lines', () => {
+    expect(moved.reading.grassShift!.measured - flat.reading.grassShift!.measured).toBeCloseTo(0.15, 1);
+  });
+
+  it('reads the grass where it lies, whatever its offset', () => {
+    // The drawing moves the north edge by the offset and leaves the rows the south edge is read on
+    // as they are.
+    expect(edgeRow(flat, 0, 18, 22, false) - edgeRow(moved, 0, 18, 22, false)).toBeCloseTo(0.15, 1);
+    expect(Math.abs(middle(moved) - middle(flat))).toBeLessThan(0.05);
+    expect(shiftGrass(moved.ev, 0)).toBe(moved.ev);
+  });
+
+  it('is not read where the east and west edges sit off the lines', () => {
+    const off = scan({ ...islandScene(), grassOffset: { north: 0.15, east: 0.3 } }, undefined, undefined, true);
+    const offset = off.reading.grassShift!;
+    expect(Math.abs(offset.eastShift - flat.reading.grassShift!.eastShift - 0.3)).toBeLessThan(0.1);
+    expect(offset.shift).toBe(0);
+  });
+
+  it('follows the settings it is given', () => {
+    const loose = { ...SCAN_PROFILE.ground, grassShift: { ...SCAN_PROFILE.ground.grassShift, maxShift: 0 } };
+    expect(readGround(moved.ev, undefined, loose).grassShift!.shift).toBe(0);
   });
 });
 
@@ -402,6 +493,99 @@ describe('inland water', () => {
       expect(run.reading.ground[at(run, x, y)]).toBe(GRASS);
       expect(run.reading.inferred[at(run, x, y)]).toBe(1);
     }
+  });
+});
+
+describe('water the open sea does not reach', () => {
+  // A raised top's face drawn dark over the beach reads as water in a strip narrower than a pond.
+  const face: CellRect = { x: 72, y: 72, w: 9, h: 1 };
+  const pond: CellRect = { x: 50, y: 50, w: 8, h: 6 };
+  const run = scan(islandScene({ water: [face, pond] }));
+  const water = inlandWater(run.ev);
+  const movedAt = ([x, y]: readonly [number, number]) => {
+    const i = at(run, x, y), { cols } = run.ev.grid, { sub, points } = run.ev;
+    return water.moved[(Math.floor(i / cols) * sub + (sub >> 1)) * points.width + (i % cols) * sub + (sub >> 1)]!;
+  };
+
+  it('is read as grass in a body wider than a face', () => {
+    for (const c of cellsOf(pond)) expect(movedAt(c)).toBeGreaterThan(0.5);
+  });
+
+  it('keeps its vote in a strip as narrow as a face', () => {
+    for (const c of cellsOf(face)) expect(movedAt(c)).toBe(0);
+  });
+
+  it('leaves the open sea alone', () => {
+    const { ground, cols } = run.scene;
+    const sea = cellsOf({ x: 0, y: 0, w: cols, h: 10 }).filter(([x, y]) => ground[y * cols + x] === SEA);
+    for (const c of sea) expect(movedAt(c)).toBe(0);
+  });
+});
+
+describe('ground under a place-bound tint', () => {
+  // Some places light grass and sea alike into a colour in the sea's hue band. The north of the
+  // island is tinted, its grass, beach-side sea and open sea alike, and so is a stretch of sea off
+  // the south coast: one colour, read as grass inside the beach and as sea outside it.
+  const north: CellRect = { x: 0, y: 0, w: 112, h: 46 };
+  const shallows: CellRect = { x: 30, y: 84, w: 50, h: 8 };
+  const scene = islandScene({ tinted: [north, shallows] });
+  const run = scan(scene);
+  const cells = (r: CellRect, kind: number) => cellsOf(r).filter(([x, y]) => scene.ground[y * scene.cols + x] === kind);
+
+  it('is voted sea by the palette', () => {
+    const { sub, points } = run.ev;
+    const centre = (x: number, y: number) => {
+      const i = at(run, x, y), cols = run.ev.grid.cols;
+      return ((Math.floor(i / cols) * sub + (sub >> 1)) * points.width) + (i % cols) * sub + (sub >> 1);
+    };
+    const grass = cells(north, GRASS);
+    expect(grass.filter(([x, y]) => points.sea[centre(x, y)]! > 0.5).length).toBeGreaterThan(grass.length * 0.8);
+  });
+
+  it('reads the tinted grass as grass', () => {
+    const grass = cells(north, GRASS);
+    expect(grass.length).toBeGreaterThan(500);
+    expect(grass.filter(([x, y]) => run.reading.ground[at(run, x, y)] !== GRASS)).toEqual([]);
+  });
+
+  it('reads the tinted shallows open to the sea as sea', () => {
+    const sea = cells(shallows, SEA);
+    expect(sea.length).toBeGreaterThan(300);
+    expect(sea.filter(([x, y]) => run.reading.ground[at(run, x, y)] !== SEA)).toEqual([]);
+  });
+
+  // The coast is read from the votes alone, which blend across the beach's edge by the colours on its
+  // two sides, so the tinted sea moves a few coast cells either way.
+  it('reads the coast as well as the untinted scan, within a twentieth', () => {
+    const wrongSea = (r: Run) => {
+      let n = 0;
+      for (let i = 0; i < r.reading.ground.length; i++) {
+        const g = r.ev.grid;
+        if ((r.reading.ground[i] === SEA) !== (truth(r, i % g.cols, Math.floor(i / g.cols)) === SEA)) n++;
+      }
+      return n;
+    };
+    expect(wrongSea(run)).toBeLessThanOrEqual(Math.ceil(wrongSea(withoutPlaza) * 1.05));
+  });
+});
+
+describe('a planet drawn in other colours', () => {
+  // The clusters are named by where they lie and the shore model reads colours between the
+  // recording's own surfaces, so the island reads alike with its channels turned (grass blue, sea
+  // pink) and inverted: the grass cell for cell, the coast within a few cells.
+  it.each([
+    ['with its channels turned', (c: readonly number[]) => [c[2]!, c[0]!, c[1]!]],
+    ['inverted', (c: readonly number[]) => c.map((v) => 255 - v)],
+  ])('reads the same ground %s', (_name, recolour) => {
+    const other = scan(islandScene(), undefined, undefined, false, recolour);
+    const { ground } = withoutPlaza.reading;
+    let grass = 0, land = 0;
+    for (let i = 0; i < ground.length; i++) {
+      if ((ground[i] === GRASS) !== (other.reading.ground[i] === GRASS)) grass++;
+      if ((ground[i] === SEA) !== (other.reading.ground[i] === SEA)) land++;
+    }
+    expect(grass).toBe(0);
+    expect(land).toBeLessThan(0.005 * ground.length);
   });
 });
 

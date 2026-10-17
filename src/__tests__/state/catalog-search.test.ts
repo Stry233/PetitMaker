@@ -3,7 +3,7 @@ import { __setCatalogItem, getAllItems, getCatalogByCategory } from '../../state
 import { searchCatalog } from '../../state/catalog-search';
 import { LOCALES, type Locale } from '../../core/model/locale';
 import { CATEGORIES, ItemCategory } from '../../config/catalog/categories';
-import { categorySearchTerms } from '../../i18n/category-terms';
+import { categorySearchTerms } from '../../i18n/terms/category-terms';
 import { ANCHOR_LANDMARK } from '../_support/anchor';
 
 const search = (query: string, locale: Locale) => searchCatalog(query, locale, categorySearchTerms(locale));

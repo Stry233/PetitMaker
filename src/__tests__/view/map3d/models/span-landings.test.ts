@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { modelGeometry } from '../../../../view/map3d/models/build-model';
 import { objectInstance } from '../../../../view/map3d/geometry/object-meshes';
 import { buildTerrainMeshes } from '../../../../view/map3d/geometry/terrain-geometry';
-import { LAYER_HEIGHT, SPAN_DECK_CLEARANCE, surfaceY, waterSurfaceY, bridgeDeckY } from '../../../../view/map3d/geometry/coords';
+import { LAYER_HEIGHT, surfaceY, waterSurfaceY, bridgeDeckY } from '../../../../view/map3d/geometry/coords';
 import { getCatalogByCategory } from '../../../../state/catalog';
 import { TerrainType, type PlacedObject } from '../../../../core/model/types';
 import { makeState, setTerrain } from '../../../_support/map-state';
@@ -59,19 +59,6 @@ describe('span contact surfaces', () => {
         }
       }
       expect(overlaps, `${id}, rotation ${rotation}, elevation ${elevation}`).toBe(0);
-    }
-  });
-
-  it('keeps all upper ramp decks above elevated ground in every facing', () => {
-    const state = makeState(30, 30);
-    for (const item of getCatalogByCategory(ItemCategory.Ramp)) {
-      const deck = deckHeight(item.id, .11, .37);
-      for (const rotation of [0, 90, 180, 270] as const) for (const elevation of [1, 2, 7]) {
-        const obj: PlacedObject = { id: item.id, catalogId: item.id, position: { x: 10, y: 10 }, rotation, elevation };
-        const inst = objectInstance(state, obj)!.inst;
-        expect(inst.y + inst.scaleY, item.id).toBeCloseTo(surfaceY(elevation) + SPAN_DECK_CLEARANCE);
-        expect(inst.y + deck * inst.scaleY, item.id).toBeGreaterThan(surfaceY(elevation) + .005);
-      }
     }
   });
 

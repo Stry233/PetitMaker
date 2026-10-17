@@ -53,14 +53,14 @@ describe('importFile routing', () => {
 
   it('inspects a file without installing it, and commits it on request', async () => {
     const state = makeState();
-    setTerrain(state, 2, 2, TerrainType.Mountain, 1);
+    setTerrain(state, 50, 50, TerrainType.Mountain, 1);
     state.notes = { title: 'River garden', description: 'three homes' };
     const inspection = await inspectImportFile(jsonFile(serialize(state)), 'map.json');
     expect(inspection.status).toBe('ready');
     if (inspection.status !== 'ready') return;
     expect(inspection.preview.source).toBe('json');
     expect(inspection.preview.notes).toEqual(state.notes);
-    expect(inspection.preview.state.cells[2]![2]!.terrain?.type).toBe(TerrainType.Mountain);
+    expect(inspection.preview.state.cells[50]![50]!.terrain?.type).toBe(TerrainType.Mountain);
     const deps = makeDeps();
     expect(deps.loadMap).not.toHaveBeenCalled();
     const outcome = inspection.commit(deps);
@@ -97,7 +97,7 @@ describe('importFile routing', () => {
 
   it('routes a .json-named file to the JSON path by extension', async () => {
     const state = makeState();
-    setTerrain(state, 2, 2, TerrainType.Mountain, 1);
+    setTerrain(state, 50, 50, TerrainType.Mountain, 1);
     state.notes = { title: 'River garden' };
     const deps = makeDeps();
     const outcome = await importFile(jsonFile(serialize(state)), 'map.json', deps);

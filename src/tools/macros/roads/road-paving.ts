@@ -21,9 +21,9 @@ import { centroid, nearestRegionCell, components } from '../../../core/grid/cell
 import { TUNING } from './tuning';
 import type { PlacementAnalysis } from '../../placement/analysis';
 import { approachCells, astar, crossingExitCells, type Node } from './network';
-import { buildingGate, hasGate, openAt, probePlacement, tryPlace, type PlaceCtx } from '../../placement/object';
+import { buildingGate, openAt, probePlacement, tryPlace, type PlaceCtx } from '../../placement/object';
 import { gateTerminalCells } from './route';
-import { crossingRunsAlongX, objectRect } from '../../../state/object-geometry';
+import { hasGate, crossingRunsAlongX, objectRect } from '../../../state/object-geometry';
 import type { MacroContext } from '../context';
 import { networkCells } from './walkable';
 import { isCoatingItem, isCrossing } from '../../../core/model/traits';

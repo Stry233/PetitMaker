@@ -2,7 +2,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { printConsoleBanner } from '../../../ui/app/console-banner';
 import { LEGAL } from '../../../legal/config';
-import { APP_NAME } from '../../../i18n/brand';
+import { APP_NAME } from '../../../i18n/terms/brand';
 import lightLogo from '../../../../docs/media/banner-light.svg?raw';
 import darkLogo from '../../../../docs/media/banner-dark.svg?raw';
 

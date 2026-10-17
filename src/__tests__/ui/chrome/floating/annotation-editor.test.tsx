@@ -68,10 +68,10 @@ it('ignores pointer movement after history changes and hides handles when locked
   expect(screen.queryByRole('button', { name: 'Measurement endpoint 2' })).toBeNull();
 });
 
-it('supports keyboard resizing and clamps endpoints to the map', () => {
+it('supports keyboard resizing in half-cell steps and clamps endpoints to the map', () => {
   const end = screen.getByRole('button', { name: 'Measurement endpoint 2' });
   fireEvent.keyDown(end, { key: 'ArrowRight' });
-  expect(note()).toMatchObject({ points: [{ x: 2, y: 4 }, { x: 9, y: 4 }] });
+  expect(note()).toMatchObject({ points: [{ x: 2, y: 4 }, { x: 8.5, y: 4 }] });
   fireEvent.pointerDown(end, { button: 0, clientX: 90, clientY: 40 });
   fireEvent.pointerMove(end, { clientX: 900, clientY: 400 });
   fireEvent.pointerUp(end, { clientX: 900, clientY: 400 });

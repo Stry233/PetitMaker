@@ -13,8 +13,8 @@ import { useWindow, type WindowProps } from '../use-window';
 import { visuallyHidden } from '../../../design/styles';
 import { skin, windowCard } from '../../../design/window-skin';
 import { useChromeScale, useViewportSize } from '../../../design/scale';
-import { ChunkBoundary } from '../../../primitives/ChunkBoundary';
-import { ChunkNotice } from '../../guards/ChunkNotice';
+import { RenderBoundary } from '../../../primitives/RenderBoundary';
+import { ChunkNotice } from '../../guards/FailureNotice';
 import { ModalShell } from '../../../primitives/ModalShell';
 import { LoadingDots } from '../../../primitives/LoadingDots';
 import { useScrollFade } from '../../../primitives/scroll-fade';
@@ -108,12 +108,12 @@ function AboutBody({ titleId, onClose }: { titleId: string; onClose: () => void 
             {view.kind === 'doc' ? (
               <WindowStep key="doc" view="doc" style={{ width: DOC_WIDTH, height: docHeight, maxHeight: '100%', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
                 <div data-doc-view style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
-                  <ChunkBoundary resetKey={view.id} fallback={<ChunkNotice />}>
+                  <RenderBoundary resetKey={view.id} fallback={<ChunkNotice />}>
                     <Suspense fallback={<div style={suspenseFallback}><LoadingDots color={skin.muted} /></div>}>
                       <LegalDocView id={view.id} lang={docLang} onLang={chooseDocLang} onBack={back}
                         onInternalLink={(path) => { const id = docIdForPath(path); if (id) openDoc(id); }} />
                     </Suspense>
-                  </ChunkBoundary>
+                  </RenderBoundary>
                 </div>
               </WindowStep>
             ) : (

@@ -264,7 +264,7 @@ function stencilPlanDigest(plan: StencilPlan): unknown {
 /** The version of what the generators lay for a recipe. One recipe on one template and catalog
  *  lays one map per version; a change that moves a generated map on purpose bumps it, together with
  *  the golden digests `generation-determinism.test.ts` holds. Not recorded in recipes or share codes. */
-export const GENERATOR_VERSION = 2;
+export const GENERATOR_VERSION = 6;
 
 /** A run's identity: every setting of `config`, with a stencil's picture folded in by content. A
  *  recipe without a picture hashes as `hashJSON(config)`. The candidate cache and the provenance a

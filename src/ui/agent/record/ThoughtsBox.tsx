@@ -69,7 +69,6 @@ const MARK_STYLE: CSSProperties = {
   marginLeft: -2,
   borderRadius: radii.chip,
   border: 'none',
-  background: 'none',
   ...roleFont('small'),
   fontFamily: font.family,
   color: MUTED,

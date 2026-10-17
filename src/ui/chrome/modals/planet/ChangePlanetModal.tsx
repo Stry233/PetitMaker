@@ -22,8 +22,8 @@ import { useUndoDepth } from '../../../session/use-undo-depth';
 import { hasUnsavedEdits } from '../../../../state/unsaved-edits';
 import { radii } from '../../../design/styles';
 import { LoadingDots } from '../../../primitives/LoadingDots';
-import { ChunkBoundary } from '../../../primitives/ChunkBoundary';
-import { ChunkNotice } from '../../guards/ChunkNotice';
+import { RenderBoundary } from '../../../primitives/RenderBoundary';
+import { ChunkNotice } from '../../guards/FailureNotice';
 import { ActionButton } from '../../../primitives/ActionButton';
 import { ModalShell } from '../../../primitives/ModalShell';
 import { DuplicateIcon, EditIcon, ExportFileIcon, RenameIcon, TrashIcon } from '../../../primitives/line-glyphs';
@@ -44,6 +44,7 @@ import { PlanetPreview } from './PlanetPreview';
 import { usePlanetLibrary, usePlanetName } from './use-planet-library';
 import { loadPlanetImportWindow } from '../../loaders';
 import { useHandedImport } from '../import/use-handed-import';
+import { ExportFirstButton } from '../ExportFirstButton';
 
 interface ChangePlanetModalProps extends WindowProps {
   /** The verb: open `target` (a built-in's id, or any other planet's template), carrying this map's build along or leaving it behind. */
@@ -133,12 +134,12 @@ export function ChangePlanetModal({ open: openProp, onClose, ...props }: ChangeP
       <ChangePlanetBody {...props} open={open} canEdit={canEdit} running={running} close={close} pickFile={pickFile} importRef={importRef} />
     </ModalShell>
     {PlanetImportWindow && importEver.current && (
-      <ChunkBoundary resetKey={importOpen} fallback={<ChunkNotice />}>
+      <RenderBoundary resetKey={importOpen} fallback={<ChunkNotice />}>
         <Suspense fallback={null}>
           <PlanetImportWindow key={importSession} canEdit={canEdit} takesHandedFiles={props.takesHandedFiles ?? false}
             {...(SUPPORTS_JSON_FILES ? { onPickFile: pickFile } : {})} onScanned={openScanned} />
         </Suspense>
-      </ChunkBoundary>
+      </RenderBoundary>
     )}
     </>
   );
@@ -331,12 +332,7 @@ function ChangePlanetBody(
         </div>
 
         <WindowFooter
-          tertiary={showExportFirst ? (
-            <ActionButton appearance="secondary" data-testid="planet-export-first" onClick={exportFirst}
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-              <ExportFileIcon />{t('modal.new_export_first')}
-            </ActionButton>
-          ) : undefined}
+          tertiary={showExportFirst ? <ExportFirstButton testId="planet-export-first" onPress={exportFirst} /> : undefined}
           cancel={<ActionButton appearance="tertiary" hoverFill={skin.inset} onClick={close}>{t('delete.cancel')}</ActionButton>}
           primary={(
             <ActionButton appearance="primary" data-testid="planet-switch" busy={busy} disabled={verbDisabled} style={primaryStyle}

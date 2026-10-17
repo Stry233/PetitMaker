@@ -22,6 +22,7 @@ import { createGridState } from '../../../core/model/template';
 import { TerrainType } from '../../../core/model/types';
 import { CellZone } from '../../../core/game/zones';
 import { templateAnchor } from '../../../core/model/landmarks';
+import { ELEVATION_MAX } from '../../../core/game/profile';
 import { exportable } from '../../_support/exportable';
 
 const META: ShareCodeMeta = { appVersion: '1.0-test', saveVersion: 3 };
@@ -161,6 +162,12 @@ describe('the template record', () => {
     const t = { id: planetTemplateId(body), name: { en: 'Reef' }, ...body };
     const back = decodeTemplateRecord(encodeTemplateRecord(t));
     expect(back).toEqual(t);
+  });
+
+  it('round-trips terrain at the highest layer', () => {
+    const terrain = new Uint8Array(48 * 32); terrain[10 * 48 + 10] = ELEVATION_MAX;
+    const t = planetFixture({ terrain });
+    expect(decodeTemplateRecord(encodeTemplateRecord(t))).toEqual(t);
   });
 
   it('drops water on cells that cannot hold it when it reads a record', () => {

@@ -16,7 +16,7 @@ import { useState } from 'react';
 import type { CSSProperties } from 'react';
 import { AnimatePresence } from 'framer-motion';
 import { useT } from '../../../i18n/context';
-import { timedHint } from '../../../i18n/timed-hint';
+import { timedHint } from '../timed-hint';
 import { APP_VERSION, IS_DEV_BUILD } from '../../../platform/build/build-info';
 import { LEGAL } from '../../../legal/config';
 import { TimedButton } from '../../primitives/TimedButton';

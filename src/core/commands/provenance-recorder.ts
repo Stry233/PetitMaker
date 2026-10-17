@@ -72,9 +72,13 @@ export class ProvenanceRecorder implements HistoryRecorder {
         if (byKind[k].length) deltas.push(this.tracker.record(k, byKind[k], [], meta(this.deriving > 0)));
       }
     } else if (cmd.type === CommandType.PlaceObject) {
-      const carried = this.tombstones.get(cmd.object.id);
+      // An object a load took off the map keeps its taint while off it (a removal through a command
+      // clears it), so placing it back re-seats it like a move.
+      const id = cmd.object.id;
+      const offMap = objects?.removed.length ? undefined : this.offMapTaint(id);
+      const carried = this.tombstones.get(id) ?? offMap;
       if (carried) {
-        this.tombstones.delete(cmd.object.id);
+        this.tombstones.delete(id);
         deltas.push(this.tracker.restoreObjectTaint(cmd.object.id, carried, meta(this.deriving > 0)));
       } else {
         deltas.push(this.tracker.record('create', [], [{ id: cmd.object.id, kind: 'create' }], meta(this.deriving > 0)));
@@ -101,6 +105,12 @@ export class ProvenanceRecorder implements HistoryRecorder {
       }
     }
     return deltas.length ? this.tracker.mergeDeltas(deltas) : undefined;
+  }
+
+  /** The taint `id` still carries while no object of that id stood on the map before this placement. */
+  private offMapTaint(id: string): UnitTaint | undefined {
+    const t = this.tracker.state.objectTaint.get(id);
+    return t ? { ...t, contribution: { ...t.contribution } } : undefined;
   }
 
   /** An object edit snapshots no map cell; its op is scoped by the map cell at its anchor's index.

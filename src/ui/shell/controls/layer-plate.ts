@@ -91,8 +91,16 @@ function tileDepth(mode: LayerMode): number {
     : Math.max(tile.icon, TEXT.tab);
   return 2 * tile.padY + words + tile.line + tile.bar;
 }
-/** The pinned plan-notes row between the head and the floors, one line at either size, counted in every depth. */
-export const NOTES_ROW = { padY: 5, gap: 6, helpMarginX: -2 } as const;
+/** The notes row's "?", drawn at `help` css px over the file's chip slot and centred on it. */
+const HELP = 16;
+/** The pinned plan-notes row between the head and the floors, one line at either size, counted in every
+ *  depth. `helpMarginX` is how far the "?" overhangs the chip slot either side (negative). */
+export const NOTES_ROW = { padY: 5, gap: 6, help: HELP, helpMarginX: (TILE.column.swatch - HELP) / 2 } as const;
+/** The panel's leading column, from the plate's content edge: the head's numbers toggle, the notes row's
+ *  "?" and every floor's chip start on it at both sizes. */
+export const LEAD_X = TILE.column.padX + NOTES_ROW.helpMarginX;
+/** How far a size's chip stands left of its tile's padding to start on the leading column; the name keeps its place. */
+export const chipShift = (mode: LayerMode): number => LEAD_X - tileOf(mode).padX;
 function notesRowDepth(): number {
   return 2 * NOTES_ROW.padY + Math.max(TILE.column.icon, TEXT.tab) + NOTES_ROW.gap;
 }

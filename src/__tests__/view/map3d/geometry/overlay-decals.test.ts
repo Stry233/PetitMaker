@@ -31,6 +31,16 @@ describe('cellDecals', () => {
     expect(macro.z1 - macro.z0).toBeCloseTo(1, 5);
   });
 
+  it('drapes a half-grid cell as the half-cell square at its corner', () => {
+    const s = makeState(20, 20) as GridState;
+    const macro = bounds(cellDecals(s, [{ x: 5, y: 5 }], 'object'));
+    const half = bounds(cellDecals(s, [{ x: 11, y: 10 }], 'half'));
+    expect(half.x0 - macro.x0).toBeCloseTo(0.5, 5);
+    expect(half.z0 - macro.z0).toBeCloseTo(0, 5);
+    expect(half.x1 - half.x0).toBeCloseTo(0.5, 5);
+    expect(half.z1 - half.z0).toBeCloseTo(0.5, 5);
+  });
+
   it('drapes a placement cell over a step on both tiers, each part at the terrain under it', () => {
     // Terrain cell (5, 5) covers [4.5, 5.5): placement cell (5, 5) is a quarter on it and three
     // quarters on the ground, and neither part may take the other's height.

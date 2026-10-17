@@ -4,7 +4,7 @@ import { ActionButton } from '../../../../primitives/ActionButton';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useReducedMotionConfig } from 'framer-motion';
 import { useT } from '../../../../../i18n/context';
-import { timedHint } from '../../../../../i18n/timed-hint';
+import { timedHint } from '../../../timed-hint';
 import { ModalShell } from '../../../../primitives/ModalShell';
 import { TimedButton } from '../../../../primitives/TimedButton';
 import { ScrollArea } from '../../../../primitives/ScrollArea';

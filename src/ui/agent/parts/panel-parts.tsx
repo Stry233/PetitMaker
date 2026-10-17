@@ -249,7 +249,7 @@ export function CountPill({ total, shown, expanded, onClick }: { total: number; 
   // A count with nothing to open is a label, not a control.
   if (!onClick) return <span data-testid="ops-count-pill" style={COUNT_PILL}>{words}</span>;
   return (
-    <ActionButton data-testid="ops-count-pill" interaction="pill" aria-expanded={expanded} hoverFill={ACTIVE} onClick={onClick} style={COUNT_PILL}>
+    <ActionButton data-testid="ops-count-pill" interaction="pill" aria-expanded={expanded} fill={INSET} hoverFill={ACTIVE} onClick={onClick} style={COUNT_PILL}>
       {words}
     </ActionButton>
   );
@@ -257,7 +257,7 @@ export function CountPill({ total, shown, expanded, onClick }: { total: number; 
 
 const COUNT_PILL: CSSProperties = {
   alignSelf: 'flex-start', margin: '0 0 2px 6px', ...roleFont('small'), fontFamily: font.family,
-  color: PLATE_INK, background: INSET, border: 'none', borderRadius: radii.pill, padding: '2px 10px', boxShadow: 'none',
+  color: PLATE_INK, border: 'none', borderRadius: radii.pill, padding: '2px 10px', boxShadow: 'none',
 };
 
 /** How wide a result chip may run before it ellipsizes, in CSS pixels. A chip is a short

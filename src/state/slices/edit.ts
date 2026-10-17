@@ -10,7 +10,7 @@ import type { StateCreator } from 'zustand';
 import { type MacroCoord, type Rotation } from '../../core/model/types';
 import { DEFAULT_REGION_REQUEST, type AutoEdgeCut, type BuildShape, type EraserShape, type RegionRequest, type RegionTool } from '../editing/vocabulary';
 import {
-  activeToolOf, armedItemOf, armedMacroOf, buildToolOf, holdsSelection, modeOpenIn, nextEditMode, withSurfaceTools, REST_INPUTS,
+  activeToolOf, armedItemOf, armedMacroOf, buildToolOf, holdsSelection, isAnnotating, modeOpenIn, nextEditMode, withSurfaceTools, REST_INPUTS,
   type EditModeChange, type EditModeInputs,
 } from '../editing/edit-mode';
 import { getRoadMaterials, getCatalogItem } from '../catalog';
@@ -18,6 +18,7 @@ import { isSurfacePrint } from '../../core/model/traits';
 import type { AnnotationsSlice } from './annotations';
 import type { EngineSlice } from './engine';
 import type { PlanetSessionSlice } from './planet-session';
+import type { RepairSessionSlice } from './repair-session';
 
 export interface EditSlice {
   /** The mode and its one arming. The active tool, drawing mode, content, armed item and macro and
@@ -174,7 +175,7 @@ function stepRegion(get: () => EditSlice, set: (patch: Partial<EditSlice>) => vo
   return true;
 }
 
-export const createEditSlice: StateCreator<EditSlice & Pick<AnnotationsSlice, 'annotationDraft' | 'requestAnnotationDiscard'> & Pick<EngineSlice, 'gridState' | 'selection'> & Pick<PlanetSessionSlice, 'planetSession'>, [], [], EditSlice> = (set, get) => ({
+export const createEditSlice: StateCreator<EditSlice & Pick<AnnotationsSlice, 'annotationDraft' | 'requestAnnotationDiscard'> & Pick<EngineSlice, 'gridState' | 'selection'> & Pick<PlanetSessionSlice, 'planetSession'> & Pick<RepairSessionSlice, 'repairSession'>, [], [], EditSlice> = (set, get) => ({
   editMode: REST_INPUTS,
   // The catalog's first Road item in authored order — something has to be armed, and nobody has
   // chosen yet.
@@ -229,7 +230,7 @@ export const createEditSlice: StateCreator<EditSlice & Pick<AnnotationsSlice, 'a
 
   setEditMode: (change) => {
     const editMode = nextEditMode(get().editMode, change);
-    if (!modeOpenIn(get().planetSession, editMode.mode)) return;
+    if (!modeOpenIn(get().planetSession, editMode.mode, get().repairSession?.phase === 'hand')) return;
     if (get().annotationDraft && editMode.mode !== get().editMode.mode) {
       get().requestAnnotationDiscard(() => get().setEditMode(change));
       return;
@@ -247,7 +248,7 @@ export const createEditSlice: StateCreator<EditSlice & Pick<AnnotationsSlice, 'a
   selectLayer: (layer) => {
     const s = get();
     const layerFields = { activeLayer: layer, layerPinned: !(s.layerPinned && s.activeLayer === layer), displayLayer: null };
-    if (s.editMode.mode !== 'annotate') { set(layerFields); return; }
+    if (!isAnnotating(s)) { set(layerFields); return; }
     // A draft asks before annotate stands down; the floor is chosen either way.
     if (s.annotationDraft) { s.setEditMode({ mode: null }); set(layerFields); return; }
     set({ ...editModeFields(s, nextEditMode(s.editMode, { mode: null })), ...layerFields });

@@ -78,8 +78,9 @@ export interface ToolContext extends ToolHost {
  *  called with `C`: the base context plus the host channels it reads (`host.ts:ToolChannels`). */
 export interface Tool<G extends GridId = GridId, C extends ToolContext = ToolContext> {
   id: ToolType;
-  /** The grid the tool's pointer cells lie on, read from what it is armed with. */
-  grid(ctx: C): G;
+  /** The grid the tool's pointer cells lie on, read only from what it is armed with, so a caller
+   *  holding the store's arming asks it without a live context (`tool-set.ts:toolDeclares`). */
+  grid(ctx: Pick<C, 'arming'>): G;
   /** Which cursor, not a CSS value: the view layer owns the CSS (ui/design/cursors). Read from
    *  what is armed (the brush's surface, the placer's `place` vs `select`) through
    *  `ToolManager.getActiveCursor()`, which refreshes the context first. */
