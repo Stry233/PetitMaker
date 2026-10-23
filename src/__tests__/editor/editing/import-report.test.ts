@@ -22,7 +22,7 @@ describe('reportImport', () => {
       warnings: [{ kind: 'dropped-section', section: 'history' }, { kind: 'modified-after-export' }],
     });
     expect(showToastMock.mock.calls.map((c) => c[0])).toEqual([
-      "Couldn't restore the history section from this file",
+      "Couldn't restore Step history from this file",
       'Map imported',
       'This file was edited after it was exported. It loaded, but may not match the original.',
     ]);
@@ -47,9 +47,9 @@ describe('reportImport', () => {
     ]);
   });
 
-  it('unsupported: one generic failure toast', () => {
+  it('[FILE-28] unsupported: says the file is neither a map file nor a Share Image', () => {
     reportImport({ status: 'unsupported' });
-    expect(showToastMock.mock.calls).toEqual([['Could not import a map from this image', 'error']]);
+    expect(showToastMock.mock.calls).toEqual([['This file is neither a map file nor a Share Image', 'error']]);
   });
 
   it('failed with an import error code: maps to its specific message', () => {
@@ -57,8 +57,8 @@ describe('reportImport', () => {
     expect(showToastMock.mock.calls).toEqual([['This map was saved by a newer version. Please update to import it', 'error']]);
   });
 
-  it('failed with no code: the generic message', () => {
+  it('failed with no code and no reader: the generic message about the file', () => {
     reportImport({ status: 'failed' });
-    expect(showToastMock.mock.calls).toEqual([['Could not import a map from this image', 'error']]);
+    expect(showToastMock.mock.calls).toEqual([['Could not import this file', 'error']]);
   });
 });

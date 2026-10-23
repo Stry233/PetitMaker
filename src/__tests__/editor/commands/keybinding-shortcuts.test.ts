@@ -423,13 +423,6 @@ describe('UI zoom is registered, rebindable, and matched by its listener', () =>
   it('a zoom command may take its own twin', () => {
     expect(useKeybinds.getState().rebind('app.ui_zoom_in', 'ctrl+shift+=').ok).toBe(true);
   });
-
-  it('labels resolve in all 7 locales', () => {
-    for (const id of ['app.ui_zoom_in', 'app.ui_zoom_out']) {
-      const key = META_BY_ID.get(id)!.labelKey;
-      for (const [loc, d] of Object.entries(translations)) expect(d[key], `${id} in ${loc}`).toBeTruthy();
-    }
-  });
 });
 
 describe('the shortcut engine wires the registry', () => {

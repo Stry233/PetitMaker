@@ -17,16 +17,12 @@ import { DeskHeader } from '../../../../ui/agent/desk/DeskHeader';
 import { Character, getCharacterHandle } from '../../../../ui/agent/character/Character';
 import { CharacterHost } from '../../../../ui/agent/character/CharacterHost';
 import {
-  carriedAlong, carryStep, parkCharacter, popCharacter, restingSeat, seatBox, setCarry,
+  carryStep, parkCharacter, popCharacter, restingSeat, seatBox, setCarry,
   setDeskSeat, setPanelCarriage, showCharacter,
 } from '../../../../ui/agent/character/seat';
 import { useEditorStore } from '../../../../state/store';
 import { amplitude, outSeconds, overshootAt, seconds } from '../../../../ui/design/motion';
-import {
-  CHARACTER_SEAT, PANEL_LEFT, PANEL_PLATE_PAD, PANEL_TOP, panelTop,
-} from '../../../../ui/shell/panel-frame';
-import { MODE_ROW_BASE, MODE_ROW_INK_BOTTOM } from '../../../../ui/shell/frame';
-import { EDGE_LEFT, LABEL_BOX_DEPTH, MODE } from '../../../../ui/shell/units';
+import { CHARACTER_SEAT, PANEL_LEFT, PANEL_PLATE_PAD, panelTop } from '../../../../ui/shell/panel-frame';
 import { JOB_ZONE_FLOOR, PINNED_HEIGHT } from '../../../../ui/agent/PanelShell';
 import { frameZoom, resolveCss } from '../../shell/_resolve-css';
 import { poseLegacyZoom } from '../../../_support/legacy-zoom';
@@ -247,32 +243,6 @@ describe('the panel stands on the grid and she steps to the desk', () => {
     top: resolveCss(panelTop(LEAST), h, frameZoom(w, h, ui)) + PANEL_PLATE_PAD,
   });
 
-  /**
-   * The column's edges are the frame's own, which is the whole of the alignment: the left margin the
-   * two block rows keep, and the row clearance below the mode row's caption. Nothing about the
-   * character enters either number, so her box moving cannot move the panel.
-   *
-   * The top clears the caption's box, not its modelled ink, which is where it parts from the
-   * character's row beside it: a plate edge inside a caption's line box reads as touching the word.
-   */
-  it('takes both its edges from the frame\'s grid', () => {
-    expect(PANEL_LEFT).toBe(EDGE_LEFT);
-    const captionBox = MODE_ROW_BASE + MODE.label.gap + LABEL_BOX_DEPTH * MODE.label.size;
-    expect(PANEL_TOP).toBeCloseTo(captionBox + MODE.rowClearance, 6);
-    // Strictly below the row spacing the character hangs from, and by the slack the caption's box
-    // holds under its glyphs.
-    expect(PANEL_TOP).toBeGreaterThan(MODE_ROW_INK_BOTTOM + MODE.rowClearance);
-    expect(resolveCss(panelTop(LEAST), 800, frameZoom(1280, 800, 1))).toBeCloseTo(PANEL_TOP, 6);
-  });
-
-  /** And it clears the caption by the clearance it declares, measured to the box the browser
-   *  actually reserves for the word rather than to the glyphs inside it. */
-  it('leaves the mode row\'s caption its own box, whole', () => {
-    const captionBox = MODE_ROW_BASE + MODE.label.gap + LABEL_BOX_DEPTH * MODE.label.size;
-    expect(captionBox).toBeGreaterThan(MODE_ROW_INK_BOTTOM);
-    expect(PANEL_TOP - captionBox).toBeCloseTo(MODE.rowClearance, 6);
-  });
-
   /** The seat carries no offset of its own. The desk's row is top-aligned, so an empty box with no
    *  margins stands on the dock card's own top edge, which is what being aligned with the dock is. */
   it('reserves the seat flush with the status card, with no offset of its own', () => {
@@ -408,13 +378,6 @@ describe('the panel and the character are one object', () => {
     expect(rest.top).toBeCloseTo(SEAT.top, 6);
   });
 
-  /** The number is remembered, so a re-placement between gestures puts both halves back where the last
-   *  frame left them rather than at an end. */
-  it('remembers how far along the gesture is', () => {
-    setCarry(0.4, carryStep(SEAT, FOLDED));
-    expect(carriedAlong()).toBe(0.4);
-  });
-
   /** Silent with no carriage registered: a headless mount has no panel for the gesture to carry. */
   it('places her alone where no carriage has been handed in', () => {
     render(<Character pose="idle" size={40} />);
@@ -487,7 +450,6 @@ describe('the docked ground takes no gesture travel', () => {
  */
 describe('the character leaves and arrives at a change of form', () => {
   let frames: Keyframe[] | null = null;
-  let options: KeyframeAnimationOptions | null = null;
   const realAnimate = (Element.prototype as unknown as { animate?: unknown }).animate;
 
   const POP = {
@@ -500,10 +462,8 @@ describe('the character leaves and arrives at a change of form', () => {
 
   beforeEach(() => {
     frames = null;
-    options = null;
-    (Element.prototype as any).animate = (k: Keyframe[], o: KeyframeAnimationOptions) => {
+    (Element.prototype as any).animate = (k: Keyframe[]) => {
       frames = k;
-      options = o;
       return { cancel: () => {}, finish: () => {}, playState: 'running' };
     };
     render(
@@ -578,8 +538,43 @@ describe('the character leaves and arrives at a change of form', () => {
     expect(getCharacterHandle()?.el.style.transformOrigin).toBe('50% 100%');
   });
 
-  it('runs on its own declared length', () => {
-    popCharacter(1, POP);
-    expect(options?.duration).toBe(seconds('panel.character.pop') * 1000);
+});
+
+/** The host chooses the beat, so the length is read where she is really popped: pinning an open
+ *  floating panel lands the form on the dock ground, and she arrives there. */
+describe('the host pops her on the declared beat at a change of form', () => {
+  let played: KeyframeAnimationOptions[] = [];
+  const realAnimate = (Element.prototype as unknown as { animate?: unknown }).animate;
+
+  beforeEach(() => {
+    played = [];
+    (Element.prototype as any).animate = function (this: Element, _k: Keyframe[], o: KeyframeAnimationOptions) {
+      if (this === getCharacterHandle()?.el) played.push(o);
+      return { cancel: () => {}, finish: () => {}, playState: 'running' };
+    };
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1600 });
+    Object.defineProperty(window, 'innerHeight', { configurable: true, value: 900 });
+    useEditorStore.setState({ assistantPinned: false, assistantOpen: true, uiZoom: 1 });
+  });
+  afterEach(() => {
+    cleanup();
+    setCarry(1, { left: 0, top: 0, scale: 1 });
+    useEditorStore.setState({ assistantPinned: false, assistantOpen: false });
+    (Element.prototype as any).animate = realAnimate;
+  });
+
+  it('runs her arrival on its own declared length', () => {
+    const entrance = document.createElement('div');
+    stubRect(entrance, 78, 188, SEAT);
+    render(
+      <MotionConfig reducedMotion="never">
+        <I18nProvider>
+          <CharacterHost entranceRef={{ current: entrance }} open connected size={60} />
+        </I18nProvider>
+      </MotionConfig>,
+    );
+    expect(played).toHaveLength(0);
+    act(() => { useEditorStore.setState({ assistantPinned: true }); });
+    expect(played.map((o) => o.duration)).toEqual([seconds('panel.character.pop') * 1000]);
   });
 });

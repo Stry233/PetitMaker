@@ -23,7 +23,7 @@ const coastal = (): MapTemplate => ({
 
 describe('validatePlanetTemplate', () => {
   it('accepts a well-formed planet', () => { expect(validatePlanetTemplate(ok())).toBeNull(); });
-  it('rejects sizes over the cap', () => { const t = ok(); t.width = PLANET_MAX_CELLS + 1; expect(validatePlanetTemplate(t)).toBe('size'); });
+  it('[PLAN-07] rejects sizes over the cap', () => { const t = ok(); t.width = PLANET_MAX_CELLS + 1; expect(validatePlanetTemplate(t)).toBe('size'); });
   it('rejects rows of the wrong length', () => { const t = ok(); t.zones[3] = [G]; expect(validatePlanetTemplate(t)).toBe('zones'); });
   it('rejects zone values out of range', () => { const t = ok(); t.zones[0]![0] = 9 as CellZone; expect(validatePlanetTemplate(t)).toBe('zones'); });
   it('rejects a plaza off the half-cell grid', () => { const t = ok(); templateAnchor(t)!.x = 2.25; expect(validatePlanetTemplate(t)).toBe('landmark'); });
@@ -38,7 +38,7 @@ describe('validatePlanetTemplate', () => {
     const v = ok(); v.water = new Uint8Array(32 * 32).fill(2); expect(validatePlanetTemplate(v)).toBe('terrain');
   });
   it('rejects a plaza rotation off the quarter turns', () => { const t = ok(); templateAnchor(t)!.rotation = 45 as never; expect(validatePlanetTemplate(t)).toBe('landmark'); });
-  it('accepts a planet without landmarks on any zones', () => { const t = ok(); t.landmarks = []; t.zones[0]![0] = CellZone.Void; expect(validatePlanetTemplate(t)).toBeNull(); });
+  it('[PLAN-07] accepts a planet without landmarks on any zones', () => { const t = ok(); t.landmarks = []; t.zones[0]![0] = CellZone.Void; expect(validatePlanetTemplate(t)).toBeNull(); });
   it('rejects a zero-size landmark, an unknown landmark and a second one of the same kind', () => {
     const z = ok(); z.landmarks = [{ ...landmarkAt(2.5, 2), width: 0 }]; expect(validatePlanetTemplate(z)).toBe('landmark');
     const u = ok(); u.landmarks = [{ ...landmarkAt(2.5, 2), id: 'tree-apple' }]; expect(validatePlanetTemplate(u)).toBe('landmark');

@@ -1,10 +1,9 @@
 // @vitest-environment jsdom
 /**
- * The closed panel. With it folded the character is all that is left of the assistant: a faint
- * plate behind her so she reads as a control, and while a job runs a chip at her shoulder with the
- * dock's own word and clock. The chip arrives and leaves rather than switching on with the fold's
- * timer. jsdom lays nothing out, so this tests when the two show, what the chip says, and that the
- * layer around it stays pointer-deaf.
+ * The closed panel. With it folded the character is all that is left of the assistant, and while a
+ * job runs a chip at her shoulder carries the dock's own word and clock. The chip arrives and leaves
+ * rather than switching on with the fold's timer. jsdom lays nothing out, so this tests when the chip
+ * shows, what it says, and that the layer around it stays pointer-deaf.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { act, cleanup, fireEvent, render } from '@testing-library/react';
@@ -139,20 +138,6 @@ describe('the chip at the parked character\'s shoulder', () => {
 
     fireEvent.click(chip);
     expect(opened).toEqual([1]);
-  });
-});
-
-/** She stands free, in both states. A plate behind her while the panel was shut read as a second
- *  card standing beside the one she opens, and the panel now unfolds from her own corner: what says
- *  she is a control is her hover and her press. */
-describe('no card is drawn around her', () => {
-  it('draws no plate, panel open or shut', () => {
-    const shut = mount(false);
-    expect(shut.queryByTestId('character-rest-plate')).toBeNull();
-    shut.unmount();
-
-    const openPanel = mount(true);
-    expect(openPanel.queryByTestId('character-rest-plate')).toBeNull();
   });
 });
 

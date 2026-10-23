@@ -19,7 +19,7 @@ vi.stubGlobal('sessionStorage', {
 });
 
 describe('wipeLocalData', () => {
-  it('clears every persisted key and survives the missing IndexedDB vault', async () => {
+  it('[FILE-33] clears every persisted key and survives the missing IndexedDB vault', async () => {
     const { wipeLocalData } = await import('../../../io/storage/local-reset');
     const { autosave } = await import('../../../editor/session/autosave');
     localStorage.setItem('petit-agent-settings-v1', '{"keys":{"claude":"c2stc2VjcmV0"}}');
@@ -53,7 +53,7 @@ describe('an autosave still owed when the wipe runs', () => {
     return { stored, isSuspended: autosave.isSuspended, setSuspended: autosave.setSuspended };
   }
 
-  it('is not written by the reload\'s pagehide', async () => {
+  it('[FILE-33] is not written by the reload\'s pagehide', async () => {
     const { stored, isSuspended, setSuspended } = await owedThenWiped();
     window.dispatchEvent(new Event('pagehide'));
     expect(stored()).toBeNull();
@@ -61,7 +61,7 @@ describe('an autosave still owed when the wipe runs', () => {
     setSuspended(false);
   });
 
-  it('is not written when its debounce fires after the wipe', async () => {
+  it('[FILE-33] is not written when its debounce fires after the wipe', async () => {
     vi.useFakeTimers();
     try {
       const { stored, setSuspended } = await owedThenWiped();

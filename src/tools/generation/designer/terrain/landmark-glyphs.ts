@@ -10,7 +10,7 @@ import type { Stencil } from '../../recipe';
  * The alphabet, 5 cells wide and 6 tall: the letter size of a ground field, and half the size of a
  * banner's, which `SCALES` reaches by doubling.
  *
- * A `#` is ink. Every row of a glyph is the same length as its first, which `landmark.test.ts`
+ * A `#` is ink. Every row of a glyph is the same length as its first, which `landmark.slow.test.ts`
  * holds, so a typo in a drawing fails the build rather than shifting a letter.
  */
 const LETTERS: Readonly<Record<string, readonly string[]>> = {

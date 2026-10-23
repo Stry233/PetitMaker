@@ -1,9 +1,9 @@
-import { decodeGlyph } from './decode';
+import { readGlyph, type GlyphRead } from './decode';
 import { afterPaint } from '../../../platform/async/after-paint';
 export type { PixelOwnership } from './decode-async';
 
 /** Let the import progress paint before bounded recovery on the container's main thread. */
-export async function decodeGlyphAsync(rgba: Uint8Array, width: number, height: number): Promise<Uint8Array | null> {
+export async function decodeGlyphAsync(rgba: Uint8Array, width: number, height: number): Promise<GlyphRead> {
   await afterPaint();
-  return decodeGlyph(rgba, width, height);
+  return readGlyph(rgba, width, height);
 }

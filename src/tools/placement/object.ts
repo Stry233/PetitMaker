@@ -72,7 +72,7 @@ function insideRoad(ctx: PlaceCtx, x: number, y: number): boolean {
 /** Place a decoration through the rules, first refusing any whose footprint meets a reserved
  *  clearance cell (gates and crossing approaches stay open), a paved cell, or a pocket inside the
  *  road (`insideRoad`). The paved test is generator policy and stricter than the rules:
- *  V-PLACE-COATED lets flora stand on a plantable coating (`standsOnCoating`), and generated
+ *  V-PLACE-COATED lets plants stand on a plantable coating (`standsOnCoating`), and generated
  *  decoration still keeps off every road. Infrastructure goes through `tryPlace` and is never gated. */
 export function tryDecorate(ctx: PlaceCtx, catalogId: string, x: number, y: number, rotation: Rotation = 0): PlacedObject | null {
   if (ctx.clearance.size || ctx.roads.size) {
@@ -161,7 +161,7 @@ export function tryPlace(ctx: PlaceCtx, catalogId: string, x: number, y: number,
       if (ctx.clearance.has(i) || ctx.roads.has(i)) return null;
     }
   }
-  // Bulk paving keeps out of flower beds: a plantable road may stand under flora (the editor's
+  // Bulk paving keeps out of flower beds: a plantable road may stand under plants (the editor's
   // rule for a deliberate hand placement), but a generated network that runs through the beds it
   // just planted reads as an accident, so the generator refuses the cell and routes as if the
   // exemption did not exist.

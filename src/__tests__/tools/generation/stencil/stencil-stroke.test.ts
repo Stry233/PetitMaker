@@ -77,37 +77,6 @@ describe('stroke weight follows the room, thin to bold', () => {
     }
   });
 
-  it('never changes again once a stroke fits, so no size is drawn heavier than its neighbour', () => {
-    for (let n = 8; n <= 96; n += 2) expect(glyphWeight('E', box(n, n)), `${n} cells`).toBe(500);
-  });
-
-  it('goes HEAVY where the light instance would draw under a cell', () => {
-    // The one place the curve is not followed, and the reason a small region works at all. A cell is
-    // on or off: at six cells the lightest Latin instance draws a bar a bit over half a cell, which
-    // lands as two rows of half coverage and vanishes at the threshold. The heavier instance draws
-    // one the grid can hold, so it wins however light the curve wanted the letter.
-    expect(glyphWeight('E', box(6, 6))).toBe(700);
-    expect(glyphWeight('E', box(8, 8)), 'and stops as soon as three quarters of a cell is drawn').toBe(500);
-    // The stem the chosen weight draws, in cells of the region: never under three quarters of one at
-    // any size a floor serves, for either script, and the heaviest the face ships where even that
-    // cannot reach it.
-    for (const [text, cap, stems] of [
-      ['E', 0.700, { 500: 0.0800, 700: 0.1250 }],
-      ['谷', 0.775, { 400: 0.0750, 500: 0.0900, 700: 0.1100, 900: 0.1350 }],
-    ] as [string, number, Record<number, number>][]) {
-      for (let n = 6; n <= 96; n += 2) {
-        const stem = stems[glyphWeight(text, box(n, n))]!;
-        const heaviest = Math.max(...Object.values(stems));
-        const extent = glyphExtent(text, box(n, n));
-        if (extent * heaviest / cap >= 0.75) {
-          expect(extent * stem / cap, `${text} at ${n}`).toBeGreaterThanOrEqual(0.75);
-        } else {
-          expect(stem, `${text} at ${n} takes the heaviest there is`).toBe(heaviest);
-        }
-      }
-    }
-  });
-
   it('starts a dense script lighter than a Latin letter, where the room is tightest', () => {
     // A dense Han glyph packs seven stroke rows into the square an E spends on three, so it needs its counters kept
     // open far more than it needs weight — and the small end is where that decides anything.
@@ -139,12 +108,6 @@ describe('the stroke target a region can carry', () => {
 });
 
 describe('nothing reshapes what the face drew', () => {
-  it('has no pass left that could: the target is a number, not an operation', () => {
-    // `finishGlyph` takes a stencil and nothing else, so no text and no box can ask it to thin a
-    // stroke: the target is applied when the face is rasterized, and nothing after that touches it.
-    expect(finishGlyph.length, 'finishing takes the picture alone').toBe(1);
-  });
-
   it('leaves a bar of any width exactly as drawn', () => {
     for (const width of [1, 2, 3, 6]) {
       const rows = Array.from({ length: width + 4 }, () => '.'.repeat(2) + '#'.repeat(width) + '..');

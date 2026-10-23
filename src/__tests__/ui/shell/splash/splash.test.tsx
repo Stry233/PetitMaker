@@ -5,6 +5,7 @@
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, act } from '@testing-library/react';
+import { useState } from 'react';
 import { writePref } from '../../../../platform/storage/prefs';
 import { preloadAssets, probeWarmCache, __resetPreload } from '../../../../ui/shell/splash/preload';
 import { markSplashDone, shouldShowSplash } from '../../../../io/storage/splash-facts';
@@ -239,8 +240,25 @@ describe('the component', () => {
     expect(shouldShowSplash(), 'a completed pass records the build').toBe(false);
   });
 
-  it('the hand-off waits out the declared motion, so the overlay cannot vanish mid-slide', () => {
-    expect(MOTIONS['splash.handoff'].duration).toBeGreaterThan(0);
+  it('the hand-off waits out the declared motion, so the overlay cannot vanish mid-slide', async () => {
+    vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(new Response())));
+    const { Splash } = await import('../../../../ui/shell/splash/Splash');
+    const slideMs = MOTIONS['splash.handoff'].duration! * 1000;
+    let handedOff = false;
+    /** The editor's own use: the splash stands until it reports done. */
+    function Host() {
+      const [shown, setShown] = useState(true);
+      return shown ? <Splash onHandoff={() => { handedOff = true; }} onDone={() => setShown(false)} /> : null;
+    }
+    vi.useFakeTimers();
+    render(<I18nProvider><Host /></I18nProvider>);
+    for (let i = 0; i < 1000 && !handedOff; i++) await act(async () => { await vi.advanceTimersByTimeAsync(10); });
+    expect(handedOff).toBe(true);
+    // The hand-off landed within the last 10 ms step, so this stops short of the slide's end.
+    await act(async () => { await vi.advanceTimersByTimeAsync(slideMs - 20); });
+    expect(screen.queryByTestId('boot-splash'), 'still sliding away').not.toBeNull();
+    await act(async () => { await vi.advanceTimersByTimeAsync(40); });
+    expect(screen.queryByTestId('boot-splash'), 'gone once the slide has played').toBeNull();
   });
 });
 

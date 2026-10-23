@@ -9,7 +9,7 @@
  * Every payload here is copied from the published reference (the chat-completions and models
  * schemas), including the invalid-model message and the usage object's `prompt_tokens_details`.
  */
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { isRetryable } from '../../../agent/core/errors';
 import type { StreamEvent } from '../../../agent/core/types';
@@ -36,6 +36,7 @@ vi.mock('openai', () => {
 });
 
 import { createOpenAIAdapter } from '../../../agent/providers/openai';
+import { buildAdapter } from '../../../agent/providers/connect';
 
 /** A catalog slug, used wherever the model itself is beside the point. */
 const MODEL = 'perplexity/kimi-k3';
@@ -83,6 +84,9 @@ async function failureOf(thrown: unknown) {
 }
 
 describe('providers/perplexity: the registry entry', () => {
+  // The wire tests below read the SDK's recorded calls, so the calls made here are cleared.
+  afterEach(() => { vi.clearAllMocks(); });
+
   it('stands in the roster as its own platform', () => {
     expect(PROVIDER_IDS).toContain('perplexity');
     // Both connection screens build their chooser from this list, so the entry is the whole of what
@@ -102,13 +106,25 @@ describe('providers/perplexity: the registry entry', () => {
     expect(baseUrlFor('perplexity', { region: 1 })).toBe('https://api.perplexity.ai/router/v1');
   });
 
-  it('speaks the OpenAI dialect, asks for streamed usage, and reads reasoning where the Router puts it', () => {
-    expect(QUIRKS.perplexity.dialect).toBe('openai');
-    expect(QUIRKS.perplexity.streamUsage).toBe(true);
-    // The Router honours `stream_options.include_usage`, and both assistant messages and streamed
-    // deltas can carry `reasoning_content`. It declares no second spelling.
-    expect(QUIRKS.perplexity.reasoningFields).toEqual(['reasoning_content']);
-    expect(QUIRKS.perplexity.imageInToolResult).toBe(false);
+  it('connects through the OpenAI dialect, asks for streamed usage, and shows the reasoning the Router streams', async () => {
+    // The Router honours `stream_options.include_usage`, and its streamed deltas carry `reasoning_content`.
+    createMock.mockResolvedValueOnce(fakeChunkStream([
+      { choices: [{ index: 0, delta: { reasoning_content: 'Partition tolerance first.' }, finish_reason: null }] },
+      { choices: [{ index: 0, delta: { content: 'The CAP theorem' }, finish_reason: 'stop' }] },
+    ]));
+
+    const adapter = buildAdapter({ providerId: 'perplexity', apiKey: 'pplx-1234567890abcdef' });
+    const events = await collect(adapter.stream(request(), new AbortController().signal));
+
+    expect(createMock).toHaveBeenCalledWith(
+      expect.objectContaining({ model: MODEL, stream: true, stream_options: { include_usage: true } }),
+      expect.anything(),
+    );
+    expect(events).toEqual([
+      { t: 'reasoning', delta: 'Partition tolerance first.' },
+      { t: 'text', delta: 'The CAP theorem' },
+      expect.objectContaining({ t: 'done', stop: 'stop', final: [] }),
+    ]);
   });
 
   it('is disclosed by name in the privacy policy', () => {

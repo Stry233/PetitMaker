@@ -96,11 +96,11 @@ export type PlacementTrait =
   | { type: 'heightDrop'; layers: number }
   | { type: 'surfaceCoating'; layer?: number }
   | { type: 'coatingSupport' }
-  // A coating flora may stand on (the game plants flowers and crops on some road
-  // surfaces): placing flora keeps this coating instead of stripping it, and the
+  // A coating plants may stand on (the game plants flowers, crops and trees on some road
+  // surfaces): placing a plant keeps this coating instead of stripping it, and the
   // pair passes the standing-on-a-road rule.
   | { type: 'plantable' }
-  // Stands on a `plantable` coating and keeps it (the flora items).
+  // Stands on a `plantable` coating and keeps it (flowers and trees).
   | { type: 'growsOnPlantable' }
   | { type: 'exclusionRadius'; radius: number }
   // Footprint that other terrain may use as a structural base (3x3 support), at

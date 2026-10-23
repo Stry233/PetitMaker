@@ -20,7 +20,7 @@ function reason(text: string): string {
 }
 
 describe('a damaged planet file', () => {
-  it('is refused at every cut, with a planet file error and never a planet', () => {
+  it('[PLAN-08] is refused at every cut, with a planet file error and never a planet', () => {
     const text = file();
     expect(reason(text)).toBe('read');
     for (let n = 0; n < text.length; n += Math.max(1, Math.floor(text.length / 97))) {
@@ -39,7 +39,7 @@ describe('a damaged planet file', () => {
     expect(reason(text)).not.toBe('read');
   });
 
-  it('refuses sizes past the planet limit before reading any cell', () => {
+  it('[PLAN-08] refuses sizes past the planet limit before reading any cell', () => {
     const parsed = JSON.parse(file());
     for (const [width, height] of [[PLANET_MAX_CELLS + 1, 32], [48, PLANET_MAX_CELLS + 1], [0, 32], [-5, 32], [1.5, 32]]) {
       expect(reason(JSON.stringify({ ...parsed, template: { ...parsed.template, width, height } })), `${width} by ${height}`).not.toBe('read');
@@ -54,7 +54,7 @@ describe('a damaged planet file', () => {
     expect(performance.now() - started).toBeLessThan(1000);
   });
 
-  it('refuses a template whose content does not hash to its id', () => {
+  it('[PLAN-08] refuses a template whose content does not hash to its id', () => {
     const t = serializeTemplate(planetFixture());
     const parsed = JSON.parse(file());
     expect(reason(JSON.stringify({ ...parsed, template: { ...t, id: `${t.id}x` } }))).not.toBe('read');
@@ -77,6 +77,6 @@ describe('a damaged planet file', () => {
     } as unknown as Blob;
     expect(await classifyImportFile(huge, 'bay.json')).toBe('map');
     const inspected = await inspectImportFile(huge, 'bay.json');
-    expect(inspected.status).toBe('failed');
+    expect(inspected.status).toBe('too-large');
   });
 });

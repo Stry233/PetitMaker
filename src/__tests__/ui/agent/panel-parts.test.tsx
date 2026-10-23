@@ -15,7 +15,7 @@ import { fireEvent, render, waitFor } from '@testing-library/react';
 import { MotionConfig } from 'framer-motion';
 import { CountPill, ResultChip, Stamp, TapeBar, TickDot } from '../../../ui/agent/parts/panel-parts';
 import { tickInk } from '../../../ui/agent/panel-skin';
-import { ACTIVE, INK, MUTED, TAPE } from '../../../ui/design/tokens';
+import { ACTIVE, MUTED, TAPE } from '../../../ui/design/tokens';
 import { IconButton } from '../../../ui/agent/parts/IconButton';
 import { RegionButton } from '../../../ui/agent/composer/region-chip';
 import { windowPill, type PillVariant, type WindowSurface } from '../../../ui/design/window-skin';
@@ -196,10 +196,6 @@ describe('TickDot: the end-mark vocabulary', () => {
       expect(asColor(getByTestId('tick-dot').style.color)).toBe(asColor(ink));
     });
   }
-
-  it('ok paints the quiet done ink, not a green of its own', () => {
-    expect(asColor(tickInk.ok)).toBe(asColor(INK));
-  });
 
   /** The ask paper is the dock's alone. A mark on its own coloured pill inside an op row reads
    *  as a second card in the middle of the record. */

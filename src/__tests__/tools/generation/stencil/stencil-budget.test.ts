@@ -56,7 +56,7 @@ describe('complete stencils under regional budgets', () => {
     expect(state.objects.get(base.id)).toEqual(base);
   });
 
-  it('preserves the full image frame and all four sides under a tight budget', () => {
+  it('[GEN-12] preserves the full image frame and all four sides under a tight budget', () => {
     const state = makeState(20, 20);
     const { result, refusals } = run(state, plan());
     expect(result.budget).toBe('adapted');
@@ -138,7 +138,7 @@ describe('complete stencils under regional budgets', () => {
     expect(result.result.placed).toBe(256);
   });
 
-  it('retains a glyph counter and its size while thinning the surrounding strokes', () => {
+  it('[GEN-12] retains a glyph counter and its size while thinning the surrounding strokes', () => {
     const stencil = slab(16);
     for (let y = 4; y < 12; y++) for (let x = 4; x < 12; x++) stencil.coverage[y * 16 + x] = 0;
     const source: StencilPlan = { ...plan(), stencil, read: 'shape', objectPalette: undefined, fill: { kind: 'object', catalogId: flower.catalogId } };

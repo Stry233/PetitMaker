@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 /** Curve-handle projection, drag behavior, and zoom-scaled hit targets. */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { render, act, screen } from '@testing-library/react';
+import { render, act, screen, waitFor } from '@testing-library/react';
 import { CurveHandles } from '../../../../ui/chrome/floating/CurveHandles';
 import { I18nProvider } from '../../../../i18n/context';
 import {
@@ -149,14 +149,14 @@ describe('what is on screen', () => {
     expect(b.top).toBeCloseTo(a.top, 5);         // same row
   });
 
-  it('goes away when the session ends', () => {
+  it('goes away when the session ends', async () => {
     render(<I18nProvider><CurveHandles /></I18nProvider>);
     openSession([{ x: 1, y: 1 }, { x: 5, y: 1 }]);
     expect(screen.getAllByLabelText(/^Curve point /)).toHaveLength(2);
+    expect(screen.queryByTestId('curve-handles')).not.toBeNull();
     act(() => { endCurveSession(); });
-    // AnimatePresence holds the node for its fade, so what is asserted is that the session is gone
-    // and the overlay is on its way out — not that the DOM emptied synchronously.
-    expect(getCurveSession()).toBeNull();
+    // AnimatePresence holds the node for its fade, so the overlay leaves once the fade completes.
+    await waitFor(() => expect(screen.queryByTestId('curve-handles')).toBeNull());
   });
 });
 

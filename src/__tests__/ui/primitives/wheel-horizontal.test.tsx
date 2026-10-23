@@ -116,7 +116,7 @@ describe('useWheelToHorizontal over pointer-transparent space', () => {
     return { row, map, mapWheel };
   }
 
-  it('scrolls an overflowing row from a wheel over its gap and keeps the map out of it', () => {
+  it('[UI-14] scrolls an overflowing row from a wheel over its gap and keeps the map out of it', () => {
     const { row, map, mapWheel } = mountScene({ scrollWidth: 600, clientWidth: 200 });
     expect(wheel(map, { deltaY: 50 })).toBe(true);
     expect(row.scrollLeft).toBe(50);
@@ -131,7 +131,7 @@ describe('useWheelToHorizontal over pointer-transparent space', () => {
     expect(mapWheel).not.toHaveBeenCalled();
   });
 
-  it('holds the wheel at either stop so it never chains to the map', () => {
+  it('[UI-14] holds the wheel at either stop so it never chains to the map', () => {
     const { row, map, mapWheel } = mountScene({ scrollWidth: 600, clientWidth: 200 });
     expect(wheel(map, { deltaY: -50 })).toBe(true);
     row.scrollLeft = 400;
@@ -140,7 +140,7 @@ describe('useWheelToHorizontal over pointer-transparent space', () => {
     expect(mapWheel).not.toHaveBeenCalled();
   });
 
-  it('leaves the map its wheel when the row fits', () => {
+  it('[UI-14] leaves the map its wheel when the row fits', () => {
     const { row, map, mapWheel } = mountScene({ scrollWidth: 200, clientWidth: 200 });
     expect(wheel(map, { deltaY: 50 })).toBe(false);
     expect(row.scrollLeft).toBe(0);

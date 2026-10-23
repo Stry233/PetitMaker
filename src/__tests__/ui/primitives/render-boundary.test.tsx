@@ -56,7 +56,7 @@ describe('a boundary around a lazily loaded surface', () => {
     expect(screen.queryByText(FAILED)).toBeNull();
   });
 
-  it('offers a reload when the chunk fails', () => {
+  it('[UI-22] offers a reload when the chunk fails', () => {
     const reload = vi.fn();
     vi.stubGlobal('location', { reload });
     show(<RenderBoundary fallback={<ChunkNotice />}><Boom /></RenderBoundary>);
@@ -81,7 +81,7 @@ describe('a boundary around a lazily loaded surface', () => {
 describe('a boundary whose fallback retries', () => {
   const retrying = (retry: () => void) => <SurfaceNotice onRetry={retry} />;
 
-  it('mounts the subtree again on retry and keeps the fallback while it still throws', () => {
+  it('[UI-22] mounts the subtree again on retry and keeps the fallback while it still throws', () => {
     show(<RenderBoundary fallback={retrying}><Flaky /></RenderBoundary>);
     expect(screen.getByText(SURFACE_FAILED)).not.toBeNull();
     fireEvent.click(screen.getByRole('button', { name: RETRY }));

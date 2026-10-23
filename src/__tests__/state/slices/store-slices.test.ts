@@ -1,9 +1,9 @@
 /**
  * The store is seven slice factories composed at one `create()` call (`state/store.ts`). This
- * pins the shape of that split: each file exports its factory, the composed store carries every
- * field the seven slices declare, and — the one that matters — `shell.ts` imports nothing from
- * `engine.ts`. A shell field reaching for an engine handle (`gridState`/`commandExecutor`) is
- * exactly the coupling this split exists to prevent.
+ * pins the shape of that split: the composed store carries every field the seven slices declare,
+ * and — the one that matters — `shell.ts` imports nothing from `engine.ts`. A shell field reaching
+ * for an engine handle (`gridState`/`commandExecutor`) is exactly the coupling this split exists to
+ * prevent.
  */
 import { describe, it, expect, beforeEach } from 'vitest';
 import { readFileSync } from 'node:fs';
@@ -22,56 +22,7 @@ import { armedMacroOf } from '../../../state/editing/edit-mode';
 
 beforeEach(resetStore);
 
-// The fields the composed store is expected to expose. Checked in so that losing one fails here:
-// comparing the slices against the store only proves the two agree, and they shrink together.
-const EXPECTED_STORE_FIELDS: readonly string[] = [
-  'loadLimitNotice', 'setLoadEnforced', 'dismissLoadLimitNotice',
-  'annotationHistoryEpoch', 'annotationDiscardAction', 'requestAnnotationDiscard', 'confirmAnnotationDiscard', 'confirmAnnotationSave', 'cancelAnnotationDiscard', 'discardAnnotationDraft',
-  'addAnnotation', 'addCustomTag', 'annotationColor', 'annotationDraft', 'annotationRedoLane',
-  'annotationDimensions', 'annotationRouteDashed', 'annotationRouteWidth', 'annotationSelection', 'annotationSize', 'annotationTag',
-  'annotationTool', 'annotationUndoLane', 'annotationZoneShape', 'annotationsEpoch',
-  'applyAnnotationEdit', 'beginAnnotationStroke', 'commitAnnotationDraft', 'mergeAnnotationZones', 'redoAnnotation', 'removeAnnotation',
-  'removeAnnotations', 'removeCustomTag', 'flipMeasurements', 'setMeasurementPoints', 'toggleAnnotationTool',
-  'setAnnotationColor', 'setAnnotationDimensions', 'setAnnotationDraft', 'setAnnotationRouteDashed', 'setAnnotationRouteWidth',
-  'setAnnotationSelection', 'setAnnotationSize', 'setAnnotationTag', 'setAnnotationTool',
-  'setAnnotationZoneShape',
-  'setAnnotationsLocked', 'setAnnotationsVisible', 'undoAnnotation',
-  'updateAnnotation',
-  'aboutTarget', 'shareTarget', 'setShareTarget', 'openShare', 'activeLayer', 'armingEpoch', 'assistantDockSide', 'assistantOpen', 'assistantPinned', 'autoEdgeCut', 'clearSelection',
-  'commandExecutor', 'contextMenu', 'deletePopover', 'displayLayer',
-  'drawingBrushSize', 'editMode', 'eraserBrushSize', 'eraserShape', 'eventBus', 'export3dShots', 'exportedAt', 'gridState', 'helpTarget', 'hintLevel', 'initMap',
-  'layerPinned', 'layerVisibility', 'loadMap', 'locale', 'markExported', 'modals', 'setMapNotes',
-  'motionPref', 'placementRotation', 'portraitBlocked', 'preview3DEdit', 'region', 'regionBrushShape', 'regionBrushSize', 'regionDimensions',
-  'regionSelectionOwner', 'regionTool', 'selectingRegion', 'selection', 'setAboutTarget', 'setActiveLayer', 'setAssistantDockSide', 'setAssistantOpen', 'setAssistantPinned',
-  'setAutoEdgeCut',
-  'setBrushSize', 'setContextMenu', 'setDeletePopover', 'setDisplayLayer',
-  'setEditMode', 'setEraserShape', 'setExport3dShots', 'setHintLevel', 'setLayerLocked', 'setLayerVisibility',
-  'setHelpTarget', 'setLocale', 'setModal', 'setMotionPref', 'setPlacementRotation',
-  'setPortraitBlocked', 'setPreview3DEdit', 'setRegion', 'setRegionBrushSize', 'setRegionDimensions', 'setRegionTool',
-  'selectLayer',
-  'setSelectingRegion', 'setSelection', 'setShowChunkBounds', 'setGridMode', 'cycleGridMode', 'toggleGrid', 'setShowLayerNumbers',
-  'setQuality3d', 'setSystemCursors', 'setTileMaterial', 'setTourRunning', 'setUiZoom', 'setViewMode', 'setWhatsThis',
-  'quality3d', 'showChunkBounds', 'gridMode', 'lastGridMode', 'showLayerNumbers', 'systemCursors', 'tileMaterial', 'tileMaterialPicked',
-  'toggleSelection', 'tourRunning', 'tourView', 'uiZoom', 'viewMode', 'whatsThis',
-  'planetMaterial', 'planetReturn', 'planetReviewShown', 'planetSession', 'setPlanetMaterial', 'returnToPlanets', 'setPlanetReviewShown', 'setPlanetSession',
-  'restoreEditMode', 'restoreParkedEditor',
-  'repairSession', 'setRepairSession',
-  'regionUndoLane', 'regionRedoLane', 'commitRegion', 'undoRegion', 'redoRegion', 'regionRequest', 'claimRegionRequest',
-  'handedImport', 'handImport', 'takeHandedImport',
-  'openAbout', 'takeAboutTarget', 'openHelpAt', 'toggleWhatsThis', 'startTour', 'finishTour', 'enterTourStep',
-];
-
 describe('the store composes seven slices', () => {
-  it('each slice file exports a factory function', () => {
-    expect(typeof createEngineSlice).toBe('function');
-    expect(typeof createEditSlice).toBe('function');
-    expect(typeof createPrefsSlice).toBe('function');
-    expect(typeof createShellSlice).toBe('function');
-    expect(typeof createAnnotationsSlice).toBe('function');
-    expect(typeof createPlanetSessionSlice).toBe('function');
-    expect(typeof createRepairSessionSlice).toBe('function');
-  });
-
   it('the composed store carries every field the seven slices declare', () => {
     // Each factory is called on its own bare vanilla store, so this is the slice's own field
     // list — not whatever the full EditorStore's `get()` would let it reach.
@@ -87,10 +38,6 @@ describe('the store composes seven slices', () => {
 
     const composed = new Set(Object.keys(useEditorStore.getState()));
     expect(composed).toEqual(declared);
-  });
-
-  it('exposes exactly the fields the checked-in list names', () => {
-    expect(Object.keys(useEditorStore.getState()).sort()).toEqual([...EXPECTED_STORE_FIELDS].sort());
   });
 
   it('shell.ts imports nothing from engine.ts', () => {

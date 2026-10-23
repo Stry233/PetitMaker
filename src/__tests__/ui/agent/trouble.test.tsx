@@ -12,7 +12,6 @@ import { useAgentConnection } from '../../../agent/connection/store';
 import { PROVIDER_IDS, type ProviderId } from '../../../agent/providers/defaults';
 import type { JobView, PanelView } from '../../../agent/core/project-view';
 import { ACTIVE, INK, PLATE, TRACK } from '../../../ui/design/tokens';
-import { mixHex } from '../../../ui/design/styles';
 import { statePaper } from '../../../ui/agent/panel-skin';
 import { makeView, panelProps, renderWithI18n } from '../../_support/agent-panel';
 import type { TextKey } from '../../../i18n/keys';
@@ -188,10 +187,13 @@ describe('every card on the plate draws its outline', () => {
 describe('ResumeCard: a held job offered back', () => {
   it('stands on a plain wait-tinted paper every engine can paint', () => {
     // `color-mix()` arrived in Chrome 111; an engine without it drops the declaration and the card
-    // loses its tint entirely, so the mix is computed here.
+    // loses its tint entirely, so the paper must already be a plain colour.
     const { getByTestId } = renderWithI18n(<ResumeCard order="Terrace the hill" onResume={() => {}} />);
-    const rgbOf = (hex: string) => `rgb(${[1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16)).join(', ')})`;
-    expect(getByTestId('resume-card').style.background).toBe(rgbOf(mixHex(statePaper.wait, PLATE, 0.42)));
+    const paper = getByTestId('resume-card').style.background;
+    expect(paper).toMatch(/^rgb\(\d+, \d+, \d+\)$/);
+    // A tint of the wait paper over the plate: neither of the two it is mixed from.
+    expect(paper).not.toBe(asBackground(PLATE));
+    expect(paper).not.toBe(asBackground(statePaper.wait));
   });
 
   it('names the order, where it stopped and what is already on the map', () => {

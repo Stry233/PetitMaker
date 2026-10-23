@@ -4,12 +4,8 @@ import { TerrainType } from '../../../../core/model/types';
 import { makeState, setTerrain } from '../../../_support/map-state';
 import { roadLookup } from '../../../../state/object-index';
 
-/**
- * Waterfall-frame: the cap mountains flanking a waterfall face keep their
- * corners on the flow side square — cutting them breaks the fall's frame.
- * (The bank lock already covers the caps' water-facing corners; the flow-side
- * corners border open lower ground and would otherwise read as free convex corners.)
- */
+/** Waterfall-frame: a cap mountain flanking a waterfall face keeps its corner at the fall's lip
+ *  square, and its flow-side corner away from the water stays free. */
 describe('waterfall-side corner locking', () => {
   function waterfallSouth() {
     const state = makeState(12, 12);
@@ -22,15 +18,21 @@ describe('waterfall-side corner locking', () => {
     return state;
   }
 
-  it('locks the cap mountains’ south (flow-side) corners', () => {
+  it('locks each cap’s corner at the lip and leaves its outer flow-side corner free', () => {
     const state = waterfallSouth();
     const west = computeLockedCorners(state, roadLookup(state), 4, 5, 'terrain');
     const east = computeLockedCorners(state, roadLookup(state), 6, 5, 'terrain');
-    // corner order [TL, TR, BL, BR] — south side = BL(2), BR(3)
-    expect(west[2]).toBe(true);
+    // corner order [TL, TR, BL, BR]; south side = BL(2), BR(3)
+    expect([west[2], west[3]]).toEqual([false, true]);
+    expect([east[2], east[3]]).toEqual([true, false]);
+  });
+
+  it('locks the lip corner even where the fall lands in water on its other edge', () => {
+    // The bank lock frees a corner with water on both edges; the lip still stays square.
+    const state = waterfallSouth();
+    for (const x of [4, 5, 6]) setTerrain(state, x, 6, TerrainType.Water, 0);
+    const west = computeLockedCorners(state, roadLookup(state), 4, 5, 'terrain');
     expect(west[3]).toBe(true);
-    expect(east[2]).toBe(true);
-    expect(east[3]).toBe(true);
   });
 
   it('locks the falling water itself whole: no corner of a face cell is cuttable', () => {

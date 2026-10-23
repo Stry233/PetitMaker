@@ -82,7 +82,7 @@ function tierAt(stage: number, d: number, ringWidth: number): number {
 
 /** The catalog ids of one category that read as one tier, minus the grand specimen: a stand has one
  *  of those or none, so the species that marks it must never be handed out by the ordinary draw.
- *  Empty only if the table and the catalog have drifted apart, which `succession.test.ts` fails the
+ *  Empty only if the table and the catalog have drifted apart, which `succession.slow.test.ts` fails the
  *  build on. */
 function tierPool(category: CategoryId, palette: SuccessionPalette, tier: number): string[] {
   return getPlaceableByCategory(category)

@@ -24,7 +24,7 @@ describe('DrawingTool: mountain builds to the selected layer', () => {
     tool.onPointerUp(cell(m(x, y)), point(m(x, y)), ctx);
   }
 
-  it('builds a cell up to the selected layer, auto-filling the column below', () => {
+  it('[EDIT-05] builds a cell up to the selected layer, auto-filling the column below', () => {
     const state = makeState(10, 10);
     brushAt(state, exec(state), { x: 5, y: 5 }, 2); // select layer 2
     // The cell becomes a solid column of height 2 (occupies layers 1..2).
@@ -32,7 +32,7 @@ describe('DrawingTool: mountain builds to the selected layer', () => {
     expect(elevAt(state, 5, 5)).toBe(2);
   });
 
-  it('caps an unsupported N>=4 pillar at the highest valid layer (warns)', () => {
+  it('[EDIT-07] caps an unsupported N>=4 pillar at the highest valid layer (warns)', () => {
     const state = makeState(10, 10);
     brushAt(state, exec(state), { x: 5, y: 5 }, 4); // select layer 4, no 3x3 base
     // V-MTN-03 reverts only the illegal top — a lone pillar settles at layer 3.
@@ -48,7 +48,7 @@ describe('DrawingTool: mountain builds to the selected layer', () => {
     expect(elevAt(state, 4, 4)).toBe(1);   // a corner of the platform stays at 1
   });
 
-  it('never lowers — a lower floor over taller terrain stacks, never drops', () => {
+  it('[EDIT-06] never lowers — a lower floor over taller terrain stacks, never drops', () => {
     const state = makeState(10, 10);
     const ex = exec(state);
     brushAt(state, ex, { x: 5, y: 5 }, 3);  // lone column to layer 3
@@ -69,7 +69,7 @@ describe('DrawingTool: mountain auto-stacking', () => {
     tool.onPointerUp(cell(m(x, y)), point(m(x, y)), ctx);
   }
 
-  it('stacks one layer higher when painting over a mountain at the floor', () => {
+  it('[EDIT-06] stacks one layer higher when painting over a mountain at the floor', () => {
     const state = makeState(10, 10);
     const ex = exec(state);
     brushAt(state, ex, { x: 5, y: 5 }, 1); // fresh → layer 1
@@ -77,7 +77,7 @@ describe('DrawingTool: mountain auto-stacking', () => {
     expect(elevAt(state, 5, 5)).toBe(2);
   });
 
-  it('keeps climbing on repeated paints over the same spot', () => {
+  it('[EDIT-06] keeps climbing on repeated paints over the same spot', () => {
     const state = makeState(10, 10);
     const ex = exec(state);
     brushAt(state, ex, { x: 5, y: 5 }, 1); // 1
@@ -86,7 +86,7 @@ describe('DrawingTool: mountain auto-stacking', () => {
     expect(elevAt(state, 5, 5)).toBe(3);
   });
 
-  it('drops back to the floor on fresh ground (jump back)', () => {
+  it('[EDIT-06] drops back to the floor on fresh ground (jump back)', () => {
     const state = makeState(10, 10);
     const ex = exec(state);
     brushAt(state, ex, { x: 5, y: 5 }, 1);
@@ -144,7 +144,7 @@ describe('DrawingTool: mountain auto-stacking', () => {
 // A fast freehand drag fires few pointer samples; the brush must fill the whole path between them so the
 // stroke is a continuous edge-connected band — not isolated blocks joined by a diagonal.
 describe('DrawingTool: fast-drag continuity', () => {
-  it('a single far move paints every cell on the 4-connected path (no gaps)', () => {
+  it('[EDIT-04] a single far move paints every cell on the 4-connected path (no gaps)', () => {
     const state = makeState(12, 12);
     const ex = exec(state);
     const tool = new DrawingTool();
@@ -161,7 +161,7 @@ describe('DrawingTool: fast-drag continuity', () => {
 // Atomic undo: with auto-trim on, the trim/fill commands fold into the
 // last block entry of the stroke — undo steps are block creations only.
 describe('DrawingTool: auto-trim undo folding (ATOMIC UNDO)', () => {
-  it('a click with auto-trim on undoes in ONE step (block + its trims together)', () => {
+  it('[EDIT-19] a click with auto-trim on undoes in ONE step (block + its trims together)', () => {
     const state = makeState(10, 10);
     const ex = exec(state);
     const tool = new DrawingTool();

@@ -46,7 +46,7 @@ const unlockedUnder = (state: GridState) => [...state.objects.values()].filter((
 const bed = (id: string, x: number, y: number, catalogId = BED): PlacedObject => ({ id, catalogId, position: { x, y }, rotation: 0, elevation: 0 });
 
 describe('the compatibility report of a save written before the plaza moved', () => {
-  it('takes off the 88 flowerbeds under the plaza and the house whose doorstep breaks the door rule, and plans a place for each', () => {
+  it('[PLAN-27] takes off the 88 flowerbeds under the plaza and the house whose doorstep breaks the door rule, and plans a place for each', () => {
     const { state, saved, cleared } = loadedSave();
     const report = cleared.report!;
     expect(cleared.objects).toBe(89);
@@ -69,7 +69,7 @@ describe('the compatibility report of a save written before the plaza moved', ()
     expect(ruleIds(state)).toEqual([]);
   });
 
-  it('applies the plan as one undo step: all 89 placed, none under the plaza, the map legal', () => {
+  it('[PLAN-29] applies the plan as one undo step: all 89 placed, none under the plaza, the map legal', () => {
     const { state, saved, cleared } = loadedSave();
     const ex = createExecutor(state, rules());
     expect(applyRelocation(ex, state, cleared.report!.plan)).toEqual({ moved: 89, removed: 0, unplanned: 0 });
@@ -176,7 +176,7 @@ describe('planRelocation', () => {
     expect(b).not.toEqual(at);
   });
 
-  it('finds no place for an object the map may hold only one of, and landing the plan leaves it off', () => {
+  it('[PLAN-29] finds no place for an object the map may hold only one of, and landing the plan leaves it off', () => {
     const { state, cleared } = loadedSave();
     applyRelocation(createExecutor(state, rules()), state, cleared.report!.plan);
     const house = [...state.objects.values()].find((o) => o.catalogId === 'building-myhouse')!;

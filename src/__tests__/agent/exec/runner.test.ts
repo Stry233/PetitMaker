@@ -437,7 +437,7 @@ describe('exec/runner', () => {
     expect(useAgentSession.getState().live).toBeNull();
   });
 
-  it('send while running queues a steer, never a second runJob', async () => {
+  it('[ASST-13] send while running queues a steer, never a second runJob', async () => {
     const adapter = createScriptedAdapter([
       toolTurn([{ callId: 'c1', name: 'inspect_region', args: { x1: 0, y1: 0, x2: 1, y2: 1 } }]),
       textTurn('Done now. Anything else?'),
@@ -652,7 +652,7 @@ describe('exec/runner', () => {
   }]);
   const eventsOfTurn = (turn: ScriptedTurn): StreamEvent[] => (turn as { events: StreamEvent[] }).events;
 
-  it('tightening oversight mid-run gates the NEXT write', async () => {
+  it('[ASST-15] tightening oversight mid-run gates the NEXT write', async () => {
     const cfg = makeCfg({ oversight: 'yolo' });
     cfg.scripted = createScriptedAdapter([
       writeCall('c1', 2),
@@ -708,7 +708,7 @@ describe('exec/runner', () => {
     expect(eventsOf(useAgentSession.getState().log)).toHaveLength(before);
   });
 
-  it('a throw during the job redacts a leaked key before it reaches the incident', async () => {
+  it('[ASST-04] a throw during the job redacts a leaked key before it reaches the incident', async () => {
     const leak = 'sk-abcdefghijklmnopqrstuvwx';
     // A misbehaving adapter (the "should be impossible" case the runner's own catch defends
     // against): a real adapter's `stream()` contract never throws, but a buggy one might, and its
@@ -809,7 +809,7 @@ describe('exec/runner', () => {
     expect((order2 as { region?: unknown } | undefined)?.region).toBeUndefined();
   });
 
-  it('stop aborts: outcome aborted, no adapter call after', async () => {
+  it('[ASST-12] stop aborts: outcome aborted, no adapter call after', async () => {
     const adapter = createScriptedAdapter([textTurn('never gets here')]);
     const runner = createRunner(makeCfg({ scripted: adapter }));
 
@@ -1049,7 +1049,7 @@ describe('exec/runner', () => {
     expect(runner2.active()).toBe(false);
   });
 
-  it('a composed strict-oversight + region-lock job: the gated write straying outside the region is refused with OUT OF REGION, detail.regionBlocked, and no change outside the region', async () => {
+  it('[ASST-11] a composed strict-oversight + region-lock job: the gated write straying outside the region is refused with OUT OF REGION, detail.regionBlocked, and no change outside the region', async () => {
     const state = makeState(20, 20);
     const exec = makeExecutor(state);
     const region: { x: number; y: number }[] = [];
@@ -1110,7 +1110,7 @@ describe('exec/runner: a running job keeps the connection it launched with', () 
     ];
   }
 
-  it('sends every turn of the job on the launch model, however the armed one moves', async () => {
+  it('[ASST-14] sends every turn of the job on the launch model, however the armed one moves', async () => {
     const adapter = createScriptedAdapter(threeTurnJob());
     const cfg = makeCfg({ scripted: adapter, model: 'model-a' });
     const runner = createRunner(cfg);
@@ -1123,7 +1123,7 @@ describe('exec/runner: a running job keeps the connection it launched with', () 
     expect(runner.active()).toBe(false);
   });
 
-  it('gives the next order the newly armed model, so the change is applied and not dropped', async () => {
+  it('[ASST-14] gives the next order the newly armed model, so the change is applied and not dropped', async () => {
     const adapter = createScriptedAdapter([...threeTurnJob(), textTurn('Second order done. Anything else?')]);
     const cfg = makeCfg({ scripted: adapter, model: 'model-a' });
     const runner = createRunner(cfg);
@@ -1318,7 +1318,7 @@ describe('pause reaches the loop from every moment the dock offers it', () => {
   }]);
   const streamOf = (turn: ScriptedTurn): StreamEvent[] => (turn as { events: StreamEvent[] }).events;
 
-  it('lands from a press while the turn is streaming, before its calls run', async () => {
+  it('[ASST-12] lands from a press while the turn is streaming, before its calls run', async () => {
     const runner = createRunner(makeCfg({
       scripted: createScriptedAdapter([
         // The press arrives as the turn begins, which is a phase the dock draws a pause in.
@@ -1362,7 +1362,7 @@ describe('pause reaches the loop from every moment the dock offers it', () => {
     expect(ran).not.toContain('c2');
   });
 
-  it('lands from a press taken between turns, and resume carries the job on', async () => {
+  it('[ASST-12] lands from a press taken between turns, and resume carries the job on', async () => {
     const runner = createRunner(makeCfg({
       scripted: createScriptedAdapter([
         paint('c1', 2),

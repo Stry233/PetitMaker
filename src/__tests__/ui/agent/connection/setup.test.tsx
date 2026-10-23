@@ -11,7 +11,6 @@ import { framerMotion, seconds } from '../../../../ui/design/motion';
 import { runnerSettings, useAgentConnection } from '../../../../agent/connection/store';
 import { forgetRosters } from '../../../../agent/connection/model-roster';
 import { PROVIDER_IDS, PROVIDER_META, type ProviderId } from '../../../../agent/providers/defaults';
-import type { Locale } from '../../../../core/model/locale';
 import { renderWithI18n } from '../../../_support/agent-panel';
 
 const backing = new Map<string, string>();
@@ -328,7 +327,7 @@ describe('the field never leaves while the hands are moving', () => {
     expect(phaseOf()).toBe('manage');
     expect(listModels).toHaveBeenCalledWith({ provider: 'claude', apiKey: KEY.claude });
   });
-  it('keeps ambiguous credentials local until an explicit provider selection', async () => {
+  it('[ASST-02] keeps ambiguous credentials local until an explicit provider selection', async () => {
  vi.useFakeTimers(); const listModels = vi.fn((_cfg: { provider: ProviderId; apiKey: string; region?: 0 | 1 }) => Promise.resolve(['m']));
  renderWithI18n(<SetupScreen listModels={listModels} />);
  fireEvent.change(screen.getByTestId('setup-key-input'), { target: { value: KEY.ambiguous } });
@@ -1237,60 +1236,9 @@ describe('a step change is a movement', () => {
     expect(seconds('panel.setup.step')).toBe(seconds('panel.height'));
   });
 
-  /** The frame's zoom is divided back out. Framer measures a layout move in page px and applies it as
-   *  a transform read in the frame's own, so an uncorrected travel is `zoom` times too long. */
-  it('carries the frame\'s own transform template', () => {
-    expect(stepSlide(false, template).transformTemplate).toBe(template);
-  });
-
   /** And nothing moves under reduced motion: the step is said by what the groups hold. */
   it('takes nothing at all under reduced motion', () => {
     expect(stepSlide(true, template)).toEqual({});
-  });
-});
-
-/* ── the copy ──────────────────────────────────────────────── */
-
-describe('setup copy, in every locale', () => {
-  const KEYS = [
-    'agent.setup_say_key', 'agent.setup_key_placeholder',
-    'agent.setup_custom_endpoint', 'agent.setup_pick_provider', 'agent.setup_say_custom',
-    'agent.setup_note_custom', 'agent.setup_endpoint_placeholder', 'agent.setup_endpoint_invalid',
-    'agent.setup_endpoint_check', 'agent.setup_model_placeholder',
-    'agent.setup_model_pick', 'agent.setup_models_unavailable',
-    'agent.setup_manage_endpoint', 'agent.setup_list_unavailable',
-    'agent.setup_give_address',
-    'agent.setup_done',
-    'agent.setup_default_model_entry', 'agent.setup_back', 'agent.setup_use_this_key',
-    'agent.setup_gateway_fits',
-    'agent.setup_row_any', 'agent.setup_row_any_sub',
-    'agent.setup_row_checking', 'agent.setup_row_no_answer', 'agent.setup_row_pinned',
-    'agent.setup_row_pinned_checking', 'agent.setup_row_provider', 'agent.setup_row_refused',
-    'agent.setup_row_sofar', 'agent.setup_row_two',
-    'agent.setup_note_partial', 'agent.setup_note_pinned_checking',
-    'agent.setup_note_replaces', 'agent.setup_note_shaped', 'agent.setup_note_unknown',
-    'agent.setup_key_refused',
-  ];
-  const locales = Object.keys(translations) as Locale[];
-
-  it('is present in all seven and carries no em dash or dot separator', () => {
-    for (const loc of locales) {
-      for (const key of KEYS) {
-        const value = translations[loc][key];
-        expect(value, `${loc}/${key}`).toBeTruthy();
-        expect(value, `${loc}/${key}`).not.toMatch(/[—·•]/);
-      }
-    }
-  });
-
-  /** The two `{name}` sentences are the only interpolated ones here, and a locale that dropped the
-   *  token would render a sentence with the provider missing rather than throwing. */
-  it('keeps the {name} token in both notes, in every locale', () => {
-    for (const loc of locales) {
-      for (const key of ['agent.setup_note_shaped', 'agent.setup_note_pinned_checking']) {
-        expect(translations[loc][key], `${loc}/${key}`).toContain('{name}');
-      }
-    }
   });
 });
 

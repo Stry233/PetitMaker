@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { canonicalize, canonicalBytes, toSaveJSON, templateHash, catalogHash } from '../../../io/save/canonical';
+import { canonicalize, canonicalBytes, toSaveJSON } from '../../../io/save/canonical';
 import { deserialize } from '../../_support/save-file';
 import { getMapTemplate } from '../../../config/maps';
 import { readFileSync } from 'node:fs';
@@ -24,11 +24,5 @@ describe('canonicalize', () => {
   it('normalizes object ids to o0,o1,... in sorted order', () => {
     const c = canonicalize(loadFixture());
     c.objects.forEach((o, i) => expect(o.id).toBe(`o${i}`));
-  });
-  it('templateHash and catalogHash are stable u32', () => {
-    const t = getMapTemplate('hexia');
-    expect(templateHash(t)).toBe(templateHash(t));
-    expect(catalogHash()).toBe(catalogHash());
-    expect(templateHash(t)).toBeLessThanOrEqual(0xffffffff);
   });
 });

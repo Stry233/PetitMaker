@@ -13,7 +13,7 @@
  * (`state/slices/edit.ts`), and `MacroTool` reads it through the context seam.
  *
  * The whole-map press's own half of the same rule is pinned on the shell surface it runs from, in
- * `ui/shell/bars/terrain/terrain-bar.test.tsx` — there is no tool under that gesture to drive.
+ * `ui/shell/bars/terrain/terrain-bar.slow.test.tsx` — there is no tool under that gesture to drive.
  */
 import { placeObjectCommand } from '../../../../core/model/command-build';
 import { describe, expect, it } from 'vitest';

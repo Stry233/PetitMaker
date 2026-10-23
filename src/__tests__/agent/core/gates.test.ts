@@ -14,16 +14,16 @@ describe('shouldGate', () => {
     expect(shouldGate({ ...base, isWrite: false, oversight: 'strict' })).toBe(false);
   });
 
-  it('yolo never gates', () => {
+  it('[ASST-15] yolo never gates', () => {
     expect(shouldGate({ ...base, oversight: 'yolo' })).toBe(false);
   });
 
-  it('strict gates every write, wide or narrow', () => {
+  it('[ASST-15] strict gates every write, wide or narrow', () => {
     expect(shouldGate({ ...base, oversight: 'strict', isWide: true })).toBe(true);
     expect(shouldGate({ ...base, oversight: 'strict', isWide: false })).toBe(true);
   });
 
-  it('checkpoint gates every wide write and no narrow one', () => {
+  it('[ASST-15] checkpoint gates every wide write and no narrow one', () => {
     expect(shouldGate({ ...base, oversight: 'checkpoint', isWide: true })).toBe(true);
     expect(shouldGate({ ...base, oversight: 'checkpoint', isWide: false })).toBe(false);
   });

@@ -31,7 +31,7 @@ describe('the game profile landmarks', () => {
     expect(ANCHOR_LANDMARK.ground).toBe('grass');
   });
 
-  it('gives every landmark item the profile footprint', () => {
+  it('[PLAN-05] gives every landmark item the profile footprint', () => {
     for (const spec of LANDMARKS) {
       const item = getCatalogItem(spec.id)!;
       expect({ width: item.width, height: item.height, maxCount: item.maxCount }).toEqual({ width: spec.width, height: spec.height, maxCount: 1 });
@@ -72,7 +72,7 @@ describe('the built-in planets follow the layout sheet', () => {
     expect(t.zones.flat()).not.toContain(3);
   });
 
-  it('opens a fresh map with every landmark locked, the station reaching past the saved cells', () => {
+  it('[PLAN-02] opens a fresh map with every landmark locked, the station reaching past the saved cells', () => {
     const t = getMapTemplate('tafa');
     const state = createGridState(t);
     for (const spec of LANDMARKS) expect(state.objects.get(spec.id)).toMatchObject({ locked: true, catalogId: spec.id });
@@ -91,7 +91,7 @@ describe('landmark ids and upgrades', () => {
     expect(planetTemplateId({ ...coast, landmarks: [plaza] })).not.toBe(a);
   });
 
-  it('regrows a plaza stored at an earlier footprint about its centre and renames the planet', () => {
+  it('[PLAN-05] regrows a plaza stored at an earlier footprint about its centre and renames the planet', () => {
     const base = planetFixture();
     const old = { ...landmarkAt(12, 3), width: ANCHOR_LANDMARK.width + 1, height: ANCHOR_LANDMARK.height + 1 };
     const body = { ...base, landmarks: [old] };

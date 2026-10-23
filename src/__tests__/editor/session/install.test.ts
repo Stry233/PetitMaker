@@ -1,81 +1,98 @@
 // @vitest-environment jsdom
-/** The editor session's wiring: when an autosave is scheduled, and the restore of a saved session. */
-import { afterEach, describe, expect, it, vi } from 'vitest';
+/** The editor session's wiring: when the session is autosaved, and the restore of a saved session. */
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act } from '@testing-library/react';
 import { useEditorStore } from '../../../state/store';
 import { makeState } from '../../_support/map-state';
 import { installEditorSession } from '../../../editor/session/install';
-import { restoreSession } from '../../../editor/session/restore';
+import { readRestoreOffer, restoreSession } from '../../../editor/session/restore';
 import { autosave } from '../../../editor/session/autosave';
-import { host } from '../../../editor/host/host';
+import { editorPort } from '../../../editor/session/context';
+import { loadMap, newMap } from '../../../editor/operations';
+import { createAutosave, readAutosave } from '../../../io/storage/autosave';
+import { AUTOSAVE_DEBOUNCE_MS } from '../../../io/storage/facts';
 import { listPlanets } from '../../../io/storage/planet-library';
+import { PREFS } from '../../../platform/storage/prefs';
+import { takeParkedCamera } from '../../../view/shared/viewport/parked-camera';
 import { createGridState } from '../../../core/model/template';
+import { placeObjectCommand } from '../../../core/model/command-build';
+import { candidateObject } from '../../../tools/objects';
+import { getCatalogItem } from '../../../state/catalog';
+import type { PersistedCamera } from '../../../io/save/format';
 import { planetFixture } from '../../_support/planet';
 import { versionStore } from '../../../state/stylize-versions';
-
-vi.mock('../../../editor/session/autosave', () => ({ autosave: { schedule: vi.fn() } }));
-vi.mock('../../../editor/session/editor-tools', () => ({ startEditorTools: () => () => {} }));
-vi.mock('../../../view/shared/overlay/selection-view-sync', () => ({ installSelectionViewSync: () => () => {} }));
-vi.mock('../../../view/shared/overlay/overlay-view-sync', () => ({ installOverlayViewSync: () => () => {} }));
-vi.mock('../../../editor/operations/map', () => ({ loadMap: (_host: unknown, state: ReturnType<typeof makeState>) => useEditorStore.setState({ gridState: state }) }));
-vi.mock('../../../editor/host/host', () => ({ host: {
-  camera: { queue: vi.fn() },
-  planetFrame: { show: vi.fn(), flash: vi.fn() },
-  planetReview: { show: vi.fn() },
-} }));
+import { builtMap } from '../../spec/files/_files';
 
 let stops: (() => void)[] = [];
 const install = (): void => { stops.push(installEditorSession({ frameFlashMs: 0 })); };
 const uninstall = (): void => { for (const stop of stops.splice(0)) stop(); };
-afterEach(() => { uninstall(); vi.clearAllMocks(); });
+const store = () => useEditorStore.getState();
+const stored = (): string | null => localStorage.getItem(PREFS.autosave.key);
+const settle = (): void => { vi.advanceTimersByTime(AUTOSAVE_DEBOUNCE_MS); };
+
+/** A session an earlier visit left in this browser: a built map, autosaved with `camera`. */
+function waitingSession(camera?: PersistedCamera): string {
+  const w = builtMap();
+  createAutosave({ camera: () => camera, history: () => undefined }).schedule(w.state);
+  settle();
+  return stored()!;
+}
+
+beforeEach(() => { localStorage.clear(); vi.useFakeTimers(); });
+afterEach(() => {
+  uninstall();
+  autosave.clear();
+  useEditorStore.setState({ planetSession: null });
+  vi.useRealTimers();
+  localStorage.clear();
+});
 
 describe('installEditorSession autosave triggers', () => {
-  it('distinguishes initialization and remounts from replacing an active map', () => {
-    const initial = makeState();
-    useEditorStore.setState({ gridState: initial, planetSession: null });
+  it('[FILE-17] never lets the empty starting map overwrite a waiting session, through remounts, while a replacement map is saved', () => {
+    const session = waitingSession();
+    newMap(editorPort, 'hexia');
     // StrictMode's double effect installs, stops and installs again.
     install(); uninstall(); install();
-    expect(vi.mocked(autosave.schedule).mock.calls.every(([, reason]) => reason === 'initialize')).toBe(true);
-    vi.mocked(autosave.schedule).mockClear();
-    const replacement = makeState();
-    act(() => useEditorStore.setState({ gridState: replacement }));
-    expect(autosave.schedule).toHaveBeenCalledExactlyOnceWith(replacement);
-    uninstall();
-    vi.mocked(autosave.schedule).mockClear();
-    install();
-    expect(autosave.schedule).toHaveBeenCalledExactlyOnceWith(replacement, 'initialize');
+    settle();
+    expect(stored()).toBe(session);
+    act(() => newMap(editorPort, 'tafa'));
+    settle();
+    expect(stored()).not.toBe(session);
+    expect(readAutosave()?.state.template.id).toBe('tafa');
   });
 
-  it('treats the first grid installation as initialization', () => {
-    useEditorStore.setState({ gridState: null, planetSession: null });
+  it('[FILE-17] treats the first map installed after none as the starting map', () => {
+    const session = waitingSession();
+    useEditorStore.setState({ gridState: null, commandExecutor: null, planetSession: null });
     install();
-    const initial = makeState();
-    act(() => useEditorStore.setState({ gridState: initial }));
-    expect(autosave.schedule).toHaveBeenCalledExactlyOnceWith(initial, 'initialize');
+    act(() => newMap(editorPort, 'hexia'));
+    settle();
+    expect(stored()).toBe(session);
   });
 
-  it('persists captions as well as annotations when the map reference stays the same', () => {
-    const map = makeState();
-    useEditorStore.setState({ gridState: map, annotationsEpoch: 0 });
+  it('[FILE-16] saves a new title and new annotations on the same map', () => {
+    newMap(editorPort, 'hexia');
     install();
-    vi.mocked(autosave.schedule).mockClear();
-    act(() => useEditorStore.getState().setMapNotes({ title: 'Garden' }));
-    expect(autosave.schedule).toHaveBeenLastCalledWith(map);
-    vi.mocked(autosave.schedule).mockClear();
-    act(() => useEditorStore.setState({ annotationsEpoch: 1 }));
-    expect(autosave.schedule).toHaveBeenLastCalledWith(map);
+    act(() => store().setMapNotes({ title: 'Garden' }));
+    settle();
+    expect(readAutosave()?.state.notes?.title).toBe('Garden');
+    act(() => store().addAnnotation({ kind: 'zone', id: 'zone-1', cells: [{ x: 30, y: 30 }], color: '#FF8A7A', tag: null, num: 1, size: 'm' }));
+    settle();
+    expect(readAutosave()?.state.annotations?.items.map((a) => a.id)).toEqual(['zone-1']);
   });
-  it('schedules no autosave while a planet session is open', () => {
-    const map = makeState();
-    useEditorStore.setState({ gridState: map, planetSession: null });
+
+  it('keeps the stored session through a planet session\'s map and edits', () => {
+    const session = waitingSession();
+    newMap(editorPort, 'hexia');
     install();
     const parked = {} as NonNullable<ReturnType<typeof useEditorStore.getState>['planetSession']>['parked'];
     act(() => useEditorStore.setState({ planetSession: { entryId: null, name: '', nameReviewed: true, parked } }));
-    vi.mocked(autosave.schedule).mockClear();
-    act(() => useEditorStore.setState({ gridState: makeState() }));
-    act(() => useEditorStore.getState().eventBus.emit('cells-changed', { cells: [] } as never));
-    expect(autosave.schedule).not.toHaveBeenCalled();
-    act(() => useEditorStore.setState({ planetSession: null }));
+    const scratch = createGridState(planetFixture());
+    act(() => loadMap(editorPort, scratch));
+    const tree = candidateObject(getCatalogItem('tree-apple')!, { x: 38, y: 26 }, 0, scratch, { id: 'tree' });
+    act(() => { expect(store().commandExecutor!.execute(placeObjectCommand(tree)).success).toBe(true); });
+    settle();
+    expect(stored()).toBe(session);
   });
 });
 
@@ -92,14 +109,16 @@ describe('installEditorSession stylize takes', () => {
 });
 
 describe('restoreSession', () => {
-  it('installs the saved map, then parks its camera on it', () => {
-    useEditorStore.setState({ gridState: makeState() });
-    const map = makeState();
-    const camera = { view2d: { zoom: 2, x: 40, y: 30 } };
-    vi.mocked(host.camera.queue).mockImplementationOnce(() => { expect(useEditorStore.getState().gridState).toBe(map); });
-    restoreSession({ state: map, camera });
-    expect(useEditorStore.getState().gridState).toBe(map);
-    expect(host.camera.queue).toHaveBeenCalledWith(camera);
+  it('[FILE-17] parks the saved cameras on the restored map, where each view takes its own', () => {
+    const camera = { view2d: { zoom: 2, x: 40, y: 30 }, view3d: { az: 30, el: 25, dist: 0.6, tx: 2, tz: -3 } };
+    waitingSession(camera);
+    newMap(editorPort, 'hexia');
+    const startup = store().gridState;
+    restoreSession(readRestoreOffer()!);
+    const restored = store().gridState!;
+    expect(restored).not.toBe(startup);
+    expect(takeParkedCamera(restored, 'view2d')).toEqual(camera.view2d);
+    expect(takeParkedCamera(restored, 'view3d')).toEqual(camera.view3d);
   });
   it('adds the planet of an accepted restore to the library', () => {
     localStorage.clear();

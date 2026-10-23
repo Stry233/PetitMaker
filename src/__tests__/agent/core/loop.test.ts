@@ -231,7 +231,7 @@ describe('runJob core flows', () => {
     expect(executor.calls).toEqual([]); // no filing ever reached the executor
   });
 
-  it('update_plan gates first under checkpoint oversight; a later wide tool gates on its own', async () => {
+  it('[ASST-16] update_plan gates first under checkpoint oversight; a later wide tool gates on its own', async () => {
     const log = createLog(() => 0);
     seedOrder(log, 'build a town');
     const adapter = createScriptedAdapter([

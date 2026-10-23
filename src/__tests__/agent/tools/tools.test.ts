@@ -188,7 +188,7 @@ describe('agent tools', () => {
     if (!r.isError) expect(r.content).toMatch(/span=\d/);
   });
 
-  it('placed objects undo as one step', async () => {
+  it('[ASST-07] placed objects undo as one step', async () => {
     const { state, exec, deps } = setup();
     await executeToolCall(call('place_object', { catalogId: 'building-myhouse', x: 3, y: 3 }), deps);
     expect(state.objects.size).toBe(1);
@@ -399,7 +399,7 @@ describe('place_object strips coatings by the placer\'s plan', () => {
 
   it('clears the road a solid cannot stand on, in the placement\'s own undo step', async () => {
     const { state, exec, deps } = setup(12, 12);
-    expect((await executeToolCall(call('place_object', { catalogId: 'path-overgrown-dirt', x: 5, y: 5 }), deps)).isError).toBe(false);
+    expect((await executeToolCall(call('place_object', { catalogId: 'path-cobblestone', x: 5, y: 5 }), deps)).isError).toBe(false);
     const road = coatingIds(state);
     const tree = placeObjectCommand({ id: 'probe', catalogId: 'tree-apple', position: { x: 5, y: 5 }, rotation: 0, elevation: 0 });
     expect(coatingStripFor(state, tree.object).map(o => o.id)).toEqual(road);
@@ -595,7 +595,7 @@ describe('clear_area, skills, delegation stub', () => {
 
   it('scatter fill skips road cells instead of standing objects on them', async () => {
     const s = setup(30, 30);
-    const road = await executeToolCall(call('build_road', { x1: 10, y1: 12, x2: 19, y2: 12, width: 1, smooth: 'off' }), s.deps);
+    const road = await executeToolCall(call('build_road', { catalogId: 'path-cobblestone', x1: 10, y1: 12, x2: 19, y2: 12, width: 1, smooth: 'off' }), s.deps);
     expect(road.isError, road.content).toBe(false);
     const treeId = getCatalogByCategory(ItemCategory.Tree)[0]!.id;
     const r = await executeToolCall(call('scatter_objects', { catalogIds: [treeId], count: 30, rect: { x1: 10, y1: 11, x2: 19, y2: 13 }, pattern: 'fill' }), s.deps);
@@ -887,7 +887,7 @@ describe('rejection diagnostics', () => {
 });
 
 describe('subagent schema set', () => {
-  it('the surface carries no procedural generator: composing is the agent\'s job', () => {
+  it('[ASST-20] the surface carries no procedural generator: composing is the agent\'s job', () => {
     expect(wireSchemas().map((s) => s.name)).not.toContain('run_generator');
   });
 

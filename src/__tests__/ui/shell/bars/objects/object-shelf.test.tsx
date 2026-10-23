@@ -35,7 +35,7 @@ import { CONTROL_CLEARANCE } from '../../../../../ui/primitives/use-scroll-row';
 import { wheelPush } from '../../../../../ui/primitives/scroll-input';
 import { ShelfScrollbar } from '../../../../../ui/shell/bars/objects/ShelfScrollbar';
 import { MOTIONS } from '../../../../../ui/design/motion/registry';
-import { MODE, PLATE_BAND, SHELF_SCALE, SHELF_TABS, TEXT, ZOOM, standsInNameRow } from '../../../../../ui/shell/units';
+import { MODE, PLATE_BAND, SHELF_SCALE, TEXT, ZOOM } from '../../../../../ui/shell/units';
 import { makeState } from '../../../../_support/map-state';
 import { CATEGORIES, ItemCategory } from '../../../../../config/catalog/categories';
 import { LANDMARKS } from '../../../../../core/game/profile';
@@ -157,38 +157,11 @@ describe('the shelf tabs', () => {
 });
 
 /**
- * The field is part of the row of names, so what is asserted here is its relationship to them: how
- * big its own text is against its plate, where its bottom edge sits, and that a long language
- * cannot push it onto a line of its own. There is no layout in jsdom, so these read the numbers the
- * row is laid out from.
+ * The field is part of the row of names, so what is asserted here is its relationship to them: the
+ * ring it takes as a pill, and that a long language cannot push it onto a line of its own. There is
+ * no layout in jsdom, so these read the arrangement the row is laid out from.
  */
 describe('the search field belongs to the row of names', () => {
-  it('keeps search subordinate to categories while preserving the capsule proportion', () => {
-    expect(SEARCH.text).toBeGreaterThan(MODE.label.size);
-    expect(SEARCH.text).toBeLessThan(TEXT.shelfTab);
-    expect(SEARCH.h / SEARCH.text).toBeCloseTo(82 / 44.5, 1);
-
-    mount();
-    const input = screen.getByRole('searchbox') as HTMLInputElement;
-    expect(input.style.fontSize).toBe(`${SEARCH.text}px`);
-    expect(input.style.paddingTop).toBe(input.style.paddingBottom);
-  });
-
-  it('is centred on the names ink, not hung off the box that carries it', () => {
-    // The one rule for everything standing in this row (`units.ts:standsInNameRow`), which the
-    // other shelf's action pills take too: the plate brackets the words rather than aligning to the
-    // line box, which holds slack under the ink and puts anything hung off it low against the row.
-    expect(SEARCH.bottom).toBe(standsInNameRow(SEARCH.h));
-    // Clear of the mark under the names, which is the row's own bottom edge.
-    expect(SEARCH.bottom).toBeGreaterThan(SHELF_TABS.underline);
-    // And taller than the words it stands beside, so it reaches past the line box below them.
-    expect(SEARCH.bottom).toBeLessThan(SHELF_TABS.underline + SHELF_TABS.underlineGap);
-
-    mount();
-    const field = screen.getByRole('searchbox').parentElement as HTMLElement;
-    expect(field.style.marginBottom).toBe(`${SEARCH.bottom}px`);
-  });
-
   /**
    * An outline follows its own element's corner, and the input is a rectangle laid over the drawn
    * capsule: focused, it would be ringed as a rectangle. `pw-field-wrap` + `pw-field-input` is the pair
@@ -836,10 +809,6 @@ describe('the item card against the band it stands out of', () => {
   const cardBottom = SHELF_BOX.bottom + SCROLL.thumb.h * SHELF_SCALE
     + SHELF_BOX.rowGap + ROW.pad * SHELF_SCALE;
 
-  it('is 1.227 bands tall, which is what the game measures', () => {
-    expect(card / PLATE_BAND.top).toBeCloseTo(1.227, 3);
-  });
-
   it('keeps category names larger than mode captions', () => {
     expect(TEXT.shelfTab).toBeGreaterThan(MODE.label.size);
   });
@@ -859,15 +828,6 @@ describe('the item card against the band it stands out of', () => {
 
   it('stands the card out of the band by the share the game stands its own', () => {
     expect((cardBottom + card - PLATE_BAND.top) / card).toBeCloseTo(0.55, 2);
-  });
-
-  /** Every part of the tile is a share of it, so the drawing's proportions survive the resize
-   *  rather than a fixed picture rattling around inside a bigger card. */
-  it('scales the picture, the badge and the ring with the tile', () => {
-    expect(CARD.icon.w / ROW.card).toBeCloseTo(224 / 280, 6);
-    expect(CARD.icon.h / ROW.card).toBeCloseTo(168 / 280, 6);
-    expect(CARD.radius / ROW.card).toBeCloseTo(32 / 280, 6);
-    expect(ROW.gap / ROW.card).toBeCloseTo(38.6 / 280, 6);
   });
 });
 

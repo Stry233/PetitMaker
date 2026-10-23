@@ -3,6 +3,8 @@
  * adjusted on the way. Every reader throws `ImportError`; the import surfaces translate its code.
  */
 
+import type { SectionKey } from './sections';
+
 export type ImportErrorCode =
   | 'malformed'             // a save or planet file whose structure or field values are wrong
   | 'not-an-image'          // bytes are not a recognized or decodable image container
@@ -21,7 +23,7 @@ export class ImportError extends Error {
 
 /** What a successful read reports to the import UI, which translates each kind. */
 export type ImportWarning =
-  | { kind: 'dropped-section'; section: string }
+  | { kind: 'dropped-section'; section: SectionKey }
   /** A built-in planet changed since the share code was made, but the map still lays on it. */
   | { kind: 'template-drift' }
   /** The catalog changed since the share code was made. */

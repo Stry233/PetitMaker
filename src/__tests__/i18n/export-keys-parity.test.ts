@@ -18,7 +18,7 @@ const KEYS = [
   'export.tok_ai','export.tok_proc',
   'export.footer_fill','export.footer_fill_hint','export.footer_insert','export.footer_ph','export.footer_slash_hint','export.badge_help','export.badge_why',
   'toast.exported_image','toast.exported_embedded',
-  'import.title','import.drop','import.paste_hint','import.busy','import.note','import.success','import.warn_template','import.warn_catalog','import.warn_section','import.warn_modified','import.fail_none','import.fail_future','import.fail_corrupt','import.fail_generic',
+  'import.title','import.drop','import.paste_hint','import.busy','import.note','import.success','import.warn_template','import.warn_catalog','import.warn_section','import.warn_modified','import.fail_none','import.fail_future','import.fail_corrupt','import.fail_generic','import.fail_file','import.fail_planet','import.fail_too_large','import.fail_unsupported','import.fail_image',
   'export.badge_ai','export.badge_proc',
   'export.json_core','export.json_core_desc','export.json_notes','export.json_notes_desc',
   'export.json_generation','export.json_generation_desc','export.json_no_generation',

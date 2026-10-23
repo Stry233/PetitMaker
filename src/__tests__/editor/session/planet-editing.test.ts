@@ -117,7 +117,7 @@ describe('planet editing', () => {
     stopPlanetEditing();
   });
 
-  it('finish saves the cropped planet and leaves the map untouched', () => {
+  it('[PLAN-09, PLAN-17] finish saves the cropped planet and leaves the map untouched', () => {
     const grid = store().gridState;
     const executor = store().commandExecutor;
     startPlanetEditing(null);
@@ -136,7 +136,7 @@ describe('planet editing', () => {
     expect(autosave.isSuspended()).toBe(false);
   });
 
-  it('finish replaces the planet being edited, or adds a copy', () => {
+  it('[PLAN-17] finish replaces the planet being edited, or adds a copy', () => {
     const saved = savePlanet('Bay', planetFixture());
     if (!saved.ok) throw new Error('fixture save failed');
     startPlanetEditing(saved.entry);
@@ -149,14 +149,14 @@ describe('planet editing', () => {
     expect(listPlanets().map((e) => e.name)).toEqual(['Cove', 'Cove copy']);
   });
 
-  it('finish refuses a planet with no ground and stays in the session', () => {
+  it('[PLAN-17] finish refuses a planet with no ground and stays in the session', () => {
     startPlanetEditing(null);
     expect(finishPlanetEditing('Bay', false)).toEqual({ ok: false, reason: 'empty' });
     expect(store().planetSession).not.toBeNull();
     expect(autosave.isSuspended()).toBe(true);
   });
 
-  it('keeps an unchecked name through a save under its default name, and shows it once the check approves', () => {
+  it('[PLAN-22] keeps an unchecked name through a save under its default name, and shows it once the check approves', () => {
     const saved = savePlanet('Harbour', planetFixture(), { nameReviewed: false });
     if (!saved.ok) throw new Error('fixture save failed');
     const fallback = defaultPlanetName('en', 0);
@@ -170,7 +170,7 @@ describe('planet editing', () => {
     expect(shownPlanetName(listPlanets()[0]!.template, 'en')).toBe('Harbour');
   });
 
-  it('shows an unchecked name in the session once the check approves it, and saves a typed name as checked', () => {
+  it('[PLAN-22] shows an unchecked name in the session once the check approves it, and saves a typed name as checked', () => {
     const saved = savePlanet('Harbour', planetFixture(), { nameReviewed: false });
     if (!saved.ok) throw new Error('fixture save failed');
     startPlanetEditing(saved.entry);
@@ -204,7 +204,7 @@ describe('planet editing', () => {
     expect(store().gridState!.cells[gy + 29]![gx + 10]!.zone).toBe(CellZone.Beach);
   });
 
-  it('a save the library cannot hold keeps the session open', () => {
+  it('[PLAN-17] a save the library cannot hold keeps the session open', () => {
     startPlanetEditing(null);
     paint(island());
     vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new DOMException('full', 'QuotaExceededError'); });

@@ -56,7 +56,7 @@ describe('menus owned by a modal', () => {
     expect(document.activeElement).toBe(trigger);
   });
 
-  it('dismisses only the foreground surface on each Escape', () => {
+  it('[UI-12] dismisses only the foreground surface on each Escape', () => {
     const close = vi.fn();
     render(<Fixture close={close} />);
     fireEvent.click(screen.getByRole('button', { name: 'Pick' }));
@@ -83,7 +83,7 @@ describe('a press outside a floating surface', () => {
     return <><button type="button" onPointerDown={beneath} onClick={beneath}>Map</button><div ref={root}><button type="button">Inside</button></div></>;
   }
 
-  it('puts the surface away and reaches nothing beneath it, press or click', () => {
+  it('[UI-12] puts the surface away and reaches nothing beneath it, press or click', () => {
     const close = vi.fn();
     const beneath = vi.fn();
     render(<Floating close={close} beneath={beneath} />);

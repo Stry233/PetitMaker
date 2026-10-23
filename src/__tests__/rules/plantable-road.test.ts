@@ -1,10 +1,8 @@
 /**
- * Some road surfaces support flowers and crops, and the
- * editor grants that through the road's `plantable` trait — the dirt road today. Flora and a
- * plantable road coexist on a cell, in both orders of arrival: placing flora keeps the road it
- * lands on, and painting the road under standing flora keeps the flowers. Everything else keeps
- * the coating discipline: a tree or building still strips or is refused, and a stone road still
- * cannot carry a flower.
+ * Some road surfaces support flowers, crops and trees, and the editor grants that through the
+ * road's `plantable` trait, which the dirt road carries. A plant and a plantable road coexist on a
+ * cell in both orders of arrival: placing a plant keeps the road it lands on, and painting the road
+ * under a standing plant keeps the plant. A stone road carries no plant.
  */
 import { describe, it, expect } from 'vitest';
 import { CommandType, type GridState, type PlacedObject } from '../../core/model/types';
@@ -25,14 +23,15 @@ const at = (id: string, catalogId: string, x: number, y: number): PlacedObject =
   ({ id, catalogId, position: { x, y }, rotation: 0, elevation: 0 });
 
 describe('standsOnCoating', () => {
-  it('grants flora on a plantable coating, and nothing else', () => {
+  it('grants flowers and trees on a plantable coating, and neither on any other', () => {
     const daisy = getCatalogItem('flower-daisy')!;
     const tree = getCatalogItem('tree-apple')!;
     const dirt = getCatalogItem('path-overgrown-dirt')!;
     const cobblestone = getCatalogItem('path-cobblestone')!;
     expect(standsOnCoating(daisy, dirt)).toBe(true);
+    expect(standsOnCoating(tree, dirt)).toBe(true);
     expect(standsOnCoating(daisy, cobblestone)).toBe(false);
-    expect(standsOnCoating(tree, dirt)).toBe(false);
+    expect(standsOnCoating(tree, cobblestone)).toBe(false);
     expect(standsOnCoating(undefined, dirt)).toBe(false);
   });
 });

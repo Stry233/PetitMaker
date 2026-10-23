@@ -125,7 +125,7 @@ export const BUILD_PAGES: readonly HelpPage[] = [
       },
       { kind: 'prose', anchor: 'objects-bridge', titleKey: 'help.objects.bridge_t', bodyKeys: ['help.objects.bridge_b1', 'help.objects.bridge_b2'] },
       {
-        kind: 'prose', anchor: 'objects-ramp', titleKey: 'help.objects.ramp_t', bodyKeys: ['help.objects.ramp_b1'],
+        kind: 'prose', anchor: 'objects-ramp', titleKey: 'help.objects.ramp_t', bodyKeys: ['help.objects.ramp_b1', 'help.objects.ramp_b2'],
         figure: { kind: 'demo', scene: 'ramp' },
       },
       {

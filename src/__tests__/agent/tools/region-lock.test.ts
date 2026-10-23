@@ -107,7 +107,7 @@ describe('objects are measured by their footprint', () => {
   }
   const strays = (content: string) => [...content.matchAll(/\((\d+),(\d+)\)/g)].map((m) => ({ x: Number(m[1]), y: Number(m[2]) }));
 
-  it('refuses an object whose anchor is inside but whose body is outside', () => {
+  it('[ASST-11] refuses an object whose anchor is inside but whose body is outside', () => {
     // A building whose corner is inside and whose body is outside is outside.
     const free = grassWorld([]);
     expect(runStroke(free.deps, [{ type: CommandType.PlaceObject, object: cabin(4, 4) }], (n) => `ok ${n}`).isError, 'the cabin stands there unconfined').toBe(false);

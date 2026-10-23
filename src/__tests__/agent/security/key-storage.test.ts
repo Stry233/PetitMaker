@@ -15,7 +15,7 @@ vi.stubGlobal('localStorage', {
 describe('agent key storage', () => {
   beforeEach(() => backing.clear());
 
-  it('round-trips and obfuscates keys (raw key not in storage)', () => {
+  it('[ASST-03] round-trips and obfuscates keys (raw key not in storage)', () => {
     const s = loadAgentSettings();
     s.keys.openai = 'sk-test-123';
     s.provider = 'openai';

@@ -4,7 +4,7 @@
  *  - keyboard only: open a doc, reach the language toggle, Escape closes, focus returns to the
  *    element focused when the modal mounted (ModalShell's trap is unit-tested in `modal-shell.test`);
  *  - accessible names for the back button, the language selector and the "open page" link;
- *  - WCAG contrast of `PROSE` text and the About footer's `textSecondary` on `panelCream`;
+ *  - WCAG contrast of `PROSE` text, and of the About view's small print on the surface it renders on;
  *  - the React table wrapper's `overflow-x: auto`, matching the static pages' `.tbl`;
  *  - reduced motion: with `MotionGlobalConfig.skipAnimations` the About view swap is synchronous;
  *  - heading hierarchy: one h1 per doc, and no level skipped going deeper.
@@ -23,7 +23,7 @@ import { TourOverlay } from '../../ui/chrome/tour/TourOverlay';
 import { SHELL_TOUR_STEPS } from '../../ui/shell/tour/tour-steps';
 import { startTour } from '../../ui/chrome/tour/use-tour';
 import { useEditorStore } from '../../state/store';
-import { MUTED, ON_DARK, PLATE, SURFACE_SECONDARY, TEXT_PRIMARY, TEXT_SECONDARY } from '../../ui/design/tokens';
+import { MUTED, ON_DARK, PLATE, SURFACE_SECONDARY, TEXT_PRIMARY } from '../../ui/design/tokens';
 import { setStoreState } from '../_support/store';
 
 // ── WCAG 2.x relative-luminance contrast ratio, computed from the hex tokens
@@ -67,6 +67,27 @@ function renderedHex(value: string): string {
   return hex[0];
 }
 
+/** The nearest value `read` gives on `el` or an ancestor, which is how an inherited colour and the
+ *  surface showing through transparent boxes resolve. */
+function nearest(el: HTMLElement, read: (at: HTMLElement) => string | null): string {
+  for (let at: HTMLElement | null = el; at; at = at.parentElement) {
+    const value = read(at);
+    if (value) return value;
+  }
+  throw new Error(`nothing set above ${el.tagName}`);
+}
+
+/** The contrast of `el`'s text, opacity aside: its inherited inline `color` against the nearest
+ *  solid inline background under it. */
+function renderedContrast(el: HTMLElement): number {
+  const ink = nearest(el, (at) => at.style.color || null);
+  const ground = nearest(el, (at) => {
+    const bg = at.style.backgroundColor || at.style.background;
+    return /^(rgb\(|#)/.test(bg) ? bg : null;
+  });
+  return contrastRatio(renderedHex(ink), renderedHex(ground));
+}
+
 function renderModal(onClose: () => void = () => {}) {
   return render(
     <I18nProvider>
@@ -99,12 +120,6 @@ afterEach(() => {
 describe('contrast — WCAG AA (>=4.5:1) for body text against panelCream', () => {
   it('PROSE body text (TEXT_PRIMARY) passes against panelCream', () => {
     expect(contrastRatio(TEXT_PRIMARY, PLATE)).toBeGreaterThanOrEqual(AA_BODY_TEXT);
-  });
-
-  it('the raw textSecondary token FAILS at 4.5:1 against panelCream (why it cannot be used for small body text)', () => {
-    // The About footer's small-print disclaimer therefore takes `MUTED` instead;
-    // putting textSecondary back there trips this file rather than failing AA silently.
-    expect(contrastRatio(TEXT_SECONDARY, PLATE)).toBeLessThan(AA_BODY_TEXT);
   });
 
   it('MUTED (the token used for the About footer disclaimer/© line) passes against panelCream', () => {
@@ -146,39 +161,34 @@ describe('contrast — WCAG AA (>=4.5:1) for body text against panelCream', () =
     }
   });
 
-  it('the rendered About-modal disclaimer text is NOT set in the failing textSecondary color', () => {
+  it('the rendered About-modal disclaimer passes AA against the surface it sits on', () => {
     renderModal();
-    const disclaimer = screen.getByText(LEGAL_DISCLAIMER_MATCH());
-    const style = disclaimer.getAttribute('style') ?? '';
-    expect(style).not.toContain(TEXT_SECONDARY);
+    expect(renderedContrast(screen.getByText(LEGAL_DISCLAIMER_MATCH()))).toBeGreaterThanOrEqual(AA_BODY_TEXT);
   });
 
-  // These small-text elements use the darker brown required for AA contrast on the About surface.
-  it('the tagline is NOT set in the failing textSecondary color', () => {
+  it('the tagline passes AA against the surface it sits on', () => {
     renderModal();
-    const tagline = screen.getByText('Map Editor');
-    expect(tagline.getAttribute('style') ?? '').not.toContain(TEXT_SECONDARY);
+    expect(renderedContrast(screen.getByText('Map Editor'))).toBeGreaterThanOrEqual(AA_BODY_TEXT);
   });
 
-  it('the version-card lines are NOT set in the failing textSecondary color', () => {
+  it('the version-card line passes AA against the surface it sits on', () => {
     renderModal();
-    const versionLine = screen.getByText(/^Version /);
-    expect(versionLine.getAttribute('style') ?? '').not.toContain(TEXT_SECONDARY);
+    expect(renderedContrast(screen.getByText(/^Version /))).toBeGreaterThanOrEqual(AA_BODY_TEXT);
   });
 
-  it('both section titles (Team, Legal & policies) are NOT set in the failing textSecondary color', () => {
+  it('both section titles (Team, Legal & policies) pass AA against the surface they sit on', () => {
     renderModal();
     for (const title of [screen.getByText('Team'), screen.getByText('Legal & policies')]) {
-      expect(title.getAttribute('style') ?? '').not.toContain(TEXT_SECONDARY);
+      expect(renderedContrast(title), title.textContent ?? '').toBeGreaterThanOrEqual(AA_BODY_TEXT);
     }
   });
 
-  it('the ICP filing link (legally-mandated) is NOT set in the failing textSecondary color', () => {
+  it('the ICP filing link (legally-mandated) passes AA against the surface it sits on', () => {
     LEGAL.icpNumber = '京ICP备12345678号';
     LEGAL.icpUrl = 'https://beian.miit.gov.cn/';
     renderModal();
     const filingLink = screen.getByRole('link', { name: /京ICP备12345678号/ });
-    expect(filingLink.getAttribute('style') ?? '').not.toContain(TEXT_SECONDARY);
+    expect(renderedContrast(filingLink)).toBeGreaterThanOrEqual(AA_BODY_TEXT);
   });
 });
 

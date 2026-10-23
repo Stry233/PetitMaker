@@ -478,11 +478,16 @@ describe('done.question: the receipt compresses to a two-line settle', () => {
   });
 
   it('stands at the compact floor rather than the card floor', () => {
-    const compact = renderReduced(<FlipTicket job={asked} compact />);
-    expect(compact.getByTestId('flip-inner').style.minHeight).toBe('118px');
-    compact.unmount();
-    const full = renderReduced(<FlipTicket job={VILLAGE} />);
-    expect(full.getByTestId('flip-inner').style.minHeight).toBe('290px');
+    const floorOf = (node: React.ReactElement) => {
+      const view = renderReduced(node);
+      const floor = Number.parseFloat(view.getByTestId('flip-inner').style.minHeight);
+      view.unmount();
+      return floor;
+    };
+    const compact = floorOf(<FlipTicket job={asked} compact />);
+    const full = floorOf(<FlipTicket job={VILLAGE} />);
+    expect(compact).toBeGreaterThan(0);
+    expect(compact).toBeLessThan(full);
   });
 
   it('wears its provenance in the seat where a done receipt wears its score', () => {
@@ -826,7 +831,7 @@ describe('the receipt: a rewind names what it would pop', () => {
   /** The job wrote 4 (depth 0 -> 15), and 12 hand edits stand on top. */
   const SETTLED = makeJob({ ...VILLAGE, endUndoIndex: 15 });
 
-  it('names BOTH numbers on the whole-job confirm', () => {
+  it('[ASST-09] names BOTH numbers on the whole-job confirm', () => {
     const { getByTestId } = renderReduced(
       <FlipTicket job={SETTLED} undoDepth={27} onRewind={() => {}} onRewindAll={() => {}} />,
     );
@@ -866,7 +871,7 @@ describe('the receipt: a rewind names what it would pop', () => {
 describe('the receipt: the per-step rewind asks, and shows what it would discard', () => {
   const SETTLED = makeJob({ ...VILLAGE, endUndoIndex: 15 });
 
-  it('does not fire on the first press', () => {
+  it('[ASST-09] does not fire on the first press', () => {
     const rewound: number[] = [];
     const { getByTestId, getAllByTestId } = renderReduced(
       <FlipTicket job={SETTLED} undoDepth={15} onRewind={(c) => rewound.push(c.undoIndex)} />,

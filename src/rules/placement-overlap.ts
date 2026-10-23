@@ -10,7 +10,7 @@
 import { CommandType, type GridState, type PlacedObject, type StrokeScope } from '../core/model/types';
 import { bodyEvidence } from '../core/grid/footprint';
 import { rectIntersection, rectsOverlap } from '../core/grid/rect';
-import { isBridge, isCoating, isCoatingItem, standsOnCoating, coatingLayer } from '../core/model/traits';
+import { isCoating, isCoatingItem, isCrossing, standsOnCoating, coatingLayer } from '../core/model/traits';
 import { getCatalogItem } from '../state/catalog';
 import { objectElevation, objectRect } from '../state/object-geometry';
 import { entriesCovering, getObjectIndex, type ObjectIndexEntry } from '../state/object-index';
@@ -29,8 +29,9 @@ export function placementBlockers(object: PlacedObject, state: GridState): Objec
     if (entry.coating && !coating) continue;
     if (coating && entry.coating && coatingLayer(candidate) !== coatingLayer(entry.item)) continue;
     if (coating && candidate && standsOnCoating(entry.item, candidate)) continue;
-    // Pavement follows the ground beneath the deck; bridge landings and ramps remain occupied.
-    if (coating && isBridge(entry.item) && elevation < entry.obj.elevation) continue;
+    // Pavement may run on the ground below a crossing's deck; a bridge's landings and a ramp's top
+    // stand at the deck and remain occupied.
+    if (coating && isCrossing(entry.item) && elevation < entry.obj.elevation) continue;
     if (rectsOverlap(rect, entry.rect)) blockers.push(entry);
   }
   return blockers;

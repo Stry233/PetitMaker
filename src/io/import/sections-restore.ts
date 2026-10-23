@@ -12,6 +12,7 @@ import { isGenerationConfig } from '../save/generation-record';
 import { ELEVATION_MAX } from '../../core/game/profile';
 import { persistedCamera, readParsedSaveCamera, readView2d } from '../save/camera';
 import type { PersistedCamera } from '../save/format';
+import type { SectionKey } from '../save/sections';
 
 export interface SectionRestoreDeps {
   executor: { restoreHistory(entries: HistoryEntry[]): void } | null;
@@ -21,13 +22,13 @@ export interface SectionRestoreDeps {
   setCamera: (c: PersistedCamera) => void;
 }
 
-export interface SectionRestoreResult { restored: string[]; dropped: string[] }
+export interface SectionRestoreResult { restored: SectionKey[]; dropped: SectionKey[] }
 
 /** Best-effort restore of the optional top-level sections a "keep everything" export may
  *  carry. Each section is independent: a throw or shape mismatch drops just that section. */
 export function applyOptionalSections(raw: unknown, deps: SectionRestoreDeps): SectionRestoreResult {
-  const restored: string[] = [];
-  const dropped: string[] = [];
+  const restored: SectionKey[] = [];
+  const dropped: SectionKey[] = [];
   if (!raw || typeof raw !== 'object') return { restored, dropped };
   const obj = raw as Record<string, unknown>;
 

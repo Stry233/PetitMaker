@@ -29,7 +29,7 @@ describe('the terrain cells a footprint rests on', () => {
 });
 
 describe('the built-in planets', () => {
-  it.each(['hexia', 'tafa'])('%s lays an ordinary layer-1 mountain on the cells the plaza rests on, and the plaza stands on it', (id) => {
+  it.each(['hexia', 'tafa'])('[PLAN-04] %s lays an ordinary layer-1 mountain on the cells the plaza rests on, and the plaza stands on it', (id) => {
     const t = getMapTemplate(id);
     const plaza = templateAnchor(t)!;
     expect(plaza).toMatchObject({ x: 79, y: 64, width: 20, height: 27 });
@@ -65,7 +65,7 @@ describe('a landmark on a custom planet', () => {
     expect(objectElevation(flat, plaza)).toBe(2);
   });
 
-  it('opens from a planet file that stored a landmark height, the height ignored', () => {
+  it('[PLAN-04] opens from a planet file that stored a landmark height, the height ignored', () => {
     const t = planetFixture({ plaza: landmarkAt(12.5, 3) });
     const stored = serializeTemplate(t);
     const legacy = { ...stored, landmarks: stored.landmarks!.map((l) => ({ ...l, elevation: 1 })) };

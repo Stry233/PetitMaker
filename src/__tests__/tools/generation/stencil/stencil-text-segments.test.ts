@@ -6,7 +6,7 @@ import { scriptOf, textMinBox } from '../../../../tools/generation/stencil/stenc
 const sequences = ['e\u0301', '👍🏽', '👩‍🌾', '👨‍👩‍👧‍👦', '🇨🇳', '1️⃣', '1⃣', '🏴\u{e0067}\u{e0062}\u{e0065}\u{e006e}\u{e0067}\u{e007f}'];
 
 describe('text graphemes', () => {
-  it.each(sequences)('keeps %s intact when counting and truncating input', glyph => {
+  it.each(sequences)('[GEN-15] keeps %s intact when counting and truncating input', glyph => {
     expect(graphemes(glyph)).toEqual([glyph]);
     expect(limitTextGraphemes(glyph.repeat(7), 6)).toBe(glyph.repeat(6));
     expect(textMinBox(glyph).width).toBe(textMinBox(glyph).height);

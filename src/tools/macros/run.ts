@@ -14,6 +14,7 @@ import { raiseTerrain, type RaiseSteepness } from './terrain/raise';
 import { layRoadNetwork } from './roads/roads';
 import { runOnScratch, type ScratchRun } from './runtime/scratch';
 import { mapFingerprint } from '../../core/model/fingerprint';
+import { cellKey } from '../../core/grid/rect';
 import { buildRiver } from './terrain/river';
 import type { CurveAnchor } from '../../core/base/spline';
 import { PLACEMENT_GRID, TERRAIN_GRID } from '../../core/game/profile';
@@ -246,6 +247,14 @@ function aimedCells(ctx: MacroContext, at: MacroCoord, radius: number): MacroCoo
   return circleCells(at, radius, radius).filter((c) => c.x >= 0 && c.y >= 0 && c.x < width && c.y < height);
 }
 
+/** The cells of `cells` inside the painted region; all of them when none is painted. A planting
+ *  analyses only the cells it is handed, so every footprint it lays stays inside them. */
+function withinRegion(cells: MacroCoord[], region: readonly MacroCoord[] | undefined): MacroCoord[] {
+  if (!region?.length) return cells;
+  const inside = new Set(region.map((c) => cellKey(c.x, c.y)));
+  return cells.filter((c) => inside.has(cellKey(c.x, c.y)));
+}
+
 /**
  * The design a macro runs, as a function over whatever context it is handed. `buildMacroRun` runs
  * it on a clone for the press, the worker and the preview alike, so a preview is never a picture
@@ -291,7 +300,7 @@ function buildMacro(
       case 'patch-tree':
       case 'patch-flora': {
         const opts = request.opts, radius = heldRadius(opts);
-        const cells = aimedCells(scratch, at!, radius);
+        const cells = withinRegion(aimedCells(scratch, at!, radius), opts.region);
         if (cells.length === 0) return;
         plantScopedPatch(scratch, {
           cells, density: PLANTING_DENSITY, seed: opts.seed, radius,

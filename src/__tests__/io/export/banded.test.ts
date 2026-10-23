@@ -82,7 +82,7 @@ async function decodeRgba(blob: Blob, w: number, h: number): Promise<Uint8Array>
 }
 
 describe('rendering in bands', () => {
-  it('assembles columns and bands into the one picture, painting each tile in its own window', async () => {
+  it('[FILE-30] assembles columns and bands into the one picture, painting each tile in its own window', async () => {
     const { make, windows } = namingSurface();
     const w = 700, h = 450;
     const limits = { maxDim: 300, maxArea: 300 * 120 };

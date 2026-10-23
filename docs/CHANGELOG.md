@@ -4,6 +4,18 @@ All notable changes to PetitMaker are documented here.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.35] - 2026-10-22
+
+### Fixed
+
+- Fixed trees being kept off the roads flowers can be planted on: such a road could not be laid under a tree, and placing a tree on one removed the road.
+- Fixed Edge Cut doing nothing on the corners of a mountain beside a waterfall that face away from the water.
+- Fixed roads being refused under a ramp. The cells at a ramp's lower end can now take a road.
+- Fixed Smart planting placing plants outside a painted region.
+- Fixed importing a map file, a file that is too large or a file of another kind failing with a message about an image. The message now says whether the file is damaged, too large, made for a planet this version does not have, or not a map file or Share Image at all.
+- Fixed importing a damaged Share Image reporting that it holds no map data, and a Share Image made by a newer version failing without asking you to update.
+- Fixed the warning about a part of a map file that could not be restored naming that part by an internal word instead of its name in the export window.
+
 ## [1.7.109] - 2026-10-17
 
 ### Added

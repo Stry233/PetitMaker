@@ -74,7 +74,7 @@ export function scanText(file: string, src: string): string[] {
 }
 
 describe('no dot separator in user-facing text', () => {
-  it('no locale string carries one', () => {
+  it('[UI-05] no locale string carries one', () => {
     const problems: string[] = [];
     for (const [locale, table] of TABLES) {
       for (const [key, value] of Object.entries(table)) {
@@ -86,7 +86,7 @@ describe('no dot separator in user-facing text', () => {
     expect(problems.join('\n')).toBe('');
   });
 
-  it('no locale string carries an em dash', () => {
+  it('[UI-05] no locale string carries an em dash', () => {
     const problems: string[] = [];
     for (const [locale, table] of TABLES) {
       for (const [key, value] of Object.entries(table)) {

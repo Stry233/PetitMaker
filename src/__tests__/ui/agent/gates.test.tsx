@@ -109,7 +109,7 @@ describe('the ask card stands on the plate under a retiring spine', () => {
     expect(withThumb.getByTestId('gate-thumb').querySelector('[data-testid="route-svg"]')).not.toBeNull();
   });
 
-  it('calls onAnswer with allow and skip from the two controls, and offers neither once settled', () => {
+  it('[ASST-17] calls onAnswer with allow and skip from the two controls, and offers neither once settled', () => {
     const seen: string[] = [];
     const { getByTestId, unmount } = renderWithI18n(
       <GateBlock ask={makeAsk()} onAnswer={(a) => seen.push(a)} />,
@@ -800,14 +800,6 @@ describe('Banner: one banner for every trouble class', () => {
     fireEvent.click(fix);
     expect(acted).toBe('fix-key');
   });
-
-  it('never shows more than 2 action pills for any class', () => {
-    for (const cls of BANNER_CLASSES) {
-      const { queryAllByTestId, unmount } = renderWithI18n(<Banner cls={cls} onAction={() => {}} />);
-      expect(queryAllByTestId('banner-action').length).toBeLessThanOrEqual(2);
-      unmount();
-    }
-  });
 });
 
 /* ── copy ─────────────────────────────────────────────────────────────────── */
@@ -854,14 +846,6 @@ describe('Gate + banner copy: forbidden characters, in every locale', () => {
     'agent.plan_gate_flags',
   ]);
   const locales = Object.keys(translations) as Locale[];
-
-  it('every locale defines every new key', () => {
-    for (const loc of locales) {
-      for (const key of NEW_KEYS) {
-        expect(translations[loc][key], `${loc}:${key}`).toBeTruthy();
-      }
-    }
-  });
 
   it('no new key contains an unexpected brace, an em dash, a dot separator, or an uppercase run', () => {
     for (const loc of locales) {

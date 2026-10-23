@@ -1802,17 +1802,6 @@ describe('panel copy, in every locale', () => {
       }
     }
   });
-
-  /** The disconnected rest and credential form use distinct status messages; neither claims the
-   * panel is ready for orders. */
-  it('says not connected at the keyless rest, and awake once the form is asking', () => {
-    const { getByTestId } = renderWithI18n(
-      <PanelShell {...panelProps({ view: makeView(), connected: false, now: 0, ...VERBS })} />,
-    );
-    expect(getByTestId('dock-sentence').textContent).toBe(translations.en['agent.dock_disconnected']);
-    fireEvent.click(getByTestId('dream-connect'));
-    expect(getByTestId('dock-sentence').textContent).toBe(translations.en['agent.dock_setup_awake']);
-  });
 });
 
 /**

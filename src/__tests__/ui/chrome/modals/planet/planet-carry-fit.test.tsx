@@ -35,11 +35,4 @@ describe('the carry step fit', () => {
     expect(fits[0]).toEqual(planetBounds({ template: target, dropped }));
     cleanup();
   });
-
-  it('holds both pictures pending, with no fit, until the transfer is worked out', () => {
-    seen.length = 0;
-    render(<I18nProvider><PlanetCarryStep target={getMapTemplate('tafa')} preview={null} carry="carry" onCarry={() => {}} labelledBy="x" /></I18nProvider>);
-    expect(seen.map((p) => [p.pending, p.fit])).toEqual([[true, undefined], [true, undefined]]);
-    cleanup();
-  });
 });

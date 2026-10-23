@@ -15,7 +15,6 @@ import { append } from '../../../agent/core/log';
 import type { JobView, OpRow, PanelView } from '../../../agent/core/project-view';
 import { useAgentSession } from '../../../agent/session/store';
 import { translations } from '../../_support/locale-tables';
-import type { Locale } from '../../../core/model/locale';
 import { useEditorStore } from '../../../state/store';
 import { AnswerPaper, isAnswerJob } from '../../../ui/agent/record/AnswerPaper';
 import { CharacterHost } from '../../../ui/agent/character/CharacterHost';
@@ -512,25 +511,6 @@ describe('a dance only for built things', () => {
 /* ── the words, in every locale ────────────────────────────────────────────── */
 
 describe('the answer family speaks every locale', () => {
-  const KEYS = [
-    'agent.answer_stamp_answered', 'agent.answer_stamp_asking', 'agent.answer_stamp_ended',
-    'agent.answer_reads', 'agent.answer_silent',
-    'agent.action_file_away', 'agent.dock_no_edits', 'agent.dock_reads',
-    'agent.history_answered', 'agent.history_ended',
-  ];
-
-  it('defines every one of them, in all seven, with the count token intact', () => {
-    for (const loc of Object.keys(translations) as Locale[]) {
-      for (const key of KEYS) {
-        const value = translations[loc][key];
-        expect(value, `${loc}/${key}`).toBeTruthy();
-      }
-      for (const key of ['agent.answer_reads', 'agent.dock_reads']) {
-        expect(translations[loc][key], `${loc}/${key}`).toContain('{n}');
-      }
-    }
-  });
-
   /** The paper's own text is the model's, never re-run through the dictionary: a summary logged in
    *  one language must not be half-translated by a later locale switch. */
   it('renders the model\'s words verbatim under a different locale', () => {

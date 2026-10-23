@@ -12,8 +12,10 @@ import { I18nProvider, translateFor } from '../../../../i18n/context';
 import { useEditorStore } from '../../../../state/store';
 import { createDefaultRegistry } from '../../../../rules';
 import { createGrid } from '../../../../core/model/grid-model';
+import { createGridState } from '../../../../core/model/template';
+import { templateAnchor } from '../../../../core/model/landmarks';
 import { MAP_TEMPLATES } from '../../../../config/maps';
-import { CommandType, TerrainType, type GridState } from '../../../../core/model/types';
+import { CommandType, TerrainType, type GridState, type MacroCoord } from '../../../../core/model/types';
 import { translations } from '../../../../i18n/translations';
 import type { Locale } from '../../../../core/model/locale';
 import { newMap, transferMap } from '../../../../editor/operations';
@@ -45,7 +47,7 @@ vi.mock('../../../../editor/session/planet-editing', async (importOriginal) => (
   startPlanetEditing: vi.fn(() => false),
 }));
 
-function world({ built = true }: { built?: boolean } = {}) {
+function world({ built = true, at = { x: 40, y: 60 } }: { built?: boolean; at?: MacroCoord } = {}) {
   const state: GridState = {
     template: HEXIA, cells: createGrid(HEXIA), objects: new Map(), objectsVersion: 0, cellsVersion: 0, lockedLayers: new Set(),
   };
@@ -55,7 +57,7 @@ function world({ built = true }: { built?: boolean } = {}) {
     useEditorStore.getState().setModal('newProject', true);
     if (built) {
       executor.execute({
-        type: CommandType.PaintTerrain, cells: [{ x: 40, y: 60 }],
+        type: CommandType.PaintTerrain, cells: [at],
         terrainType: TerrainType.Mountain, elevation: 1,
       });
     }
@@ -233,23 +235,44 @@ describe('saved planets', () => {
   };
   beforeEach(() => { localStorage.clear(); });
 
-  it('opens a saved planet from its template', async () => {
+  /** `verb` as the editor runs it, for its next call: these tests read the map that opens. */
+  const realVerb = async (verb: 'newMap' | 'transferMap') => {
+    const real = await vi.importActual<typeof import('../../../../editor/operations')>('../../../../editor/operations');
+    if (verb === 'newMap') vi.mocked(newMap).mockImplementationOnce(real.newMap);
+    else vi.mocked(transferMap).mockImplementationOnce(real.transferMap);
+  };
+  /** The cells standing as the one painted in `world`. */
+  const paintedCells = (state: GridState) => state.cells.flat()
+    .filter((c) => c.terrain?.type === TerrainType.Mountain && c.terrain.elevation === 1).length;
+
+  it('[PLAN-23] opens a saved planet at once when there is nothing to carry', async () => {
     world({ built: false });
     const entry = bay();
+    await realVerb('newMap');
     render(<I18nProvider><Windows /></I18nProvider>);
     fireEvent.click(screen.getByTestId(`planet-${entry.entryId}`));
     await press();
-    expect(newMap).toHaveBeenCalledWith(editorPort, entry.template);
+    const opened = useEditorStore.getState().gridState!;
+    expect(opened.template.id).toBe(entry.template.id);
+    expect([opened.template.width, opened.template.height]).toEqual([entry.template.width, entry.template.height]);
   });
 
-  it('carries the build to a saved planet by its template', async () => {
-    world();
+  it('[PLAN-23] carries the build to a saved planet', async () => {
+    // A few cells beside the Neighbor Center, where the saved planet has land too (PLAN-24).
+    const plaza = templateAnchor(HEXIA)!;
+    world({ at: { x: Math.round(plaza.x + plaza.width + 3), y: Math.round(plaza.y + plaza.height / 2) } });
     const entry = bay();
+    const seen = heard();
+    await realVerb('transferMap');
     render(<I18nProvider><Windows /></I18nProvider>);
     fireEvent.click(screen.getByTestId(`planet-${entry.entryId}`));
     await next();
     await press();
-    expect(vi.mocked(transferMap).mock.calls[0]![2]).toEqual({ target: entry.template, carry: true });
+    const opened = useEditorStore.getState().gridState!;
+    expect(opened.template.id).toBe(entry.template.id);
+    expect(paintedCells(createGridState(entry.template)), 'the saved planet opens bare').toBe(0);
+    expect(paintedCells(opened), 'the painted cell came along').toBe(1);
+    expect(seen).toEqual([{ kind: 'transferred', detail: [{ key: 'arrival.transferred' }] }]);
   });
 
   it('New planet closes the window and opens the planet editor', () => {

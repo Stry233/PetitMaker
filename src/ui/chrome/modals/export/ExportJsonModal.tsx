@@ -11,6 +11,7 @@ import { onAfterPaint } from '../../../../platform/async/after-paint';
 import { useT } from '../../../../i18n/context';
 import { useEditorStore } from '../../../../state/store';
 import type { SectionKey, SectionSizes } from '../../../../io/save/sections';
+import { SECTION_LABELS } from '../../../../io/save/facts';
 import {
   effectiveSections, estimatedTotal, initialSections, jsonReviewParts, measureJsonSections, RECENT_HISTORY_STEPS, sectionsReducer,
   writeJsonExport, type HistoryDepth,
@@ -38,17 +39,17 @@ import { AnimatedTotal, NotesFields, notesByteLen, rowDesc, SectionRow } from '.
 import type { I18nKey } from '../../../../i18n/keys';
 import { useSettledValue } from '../../../primitives/use-settled-value';
 
-interface RowSpec { key: SectionKey; label: I18nKey; desc: I18nKey; hint?: I18nKey }
+interface RowSpec { key: SectionKey; desc: I18nKey; hint?: I18nKey }
 
 /** The plain rows, in the panel's order; the hint is what a row says while the map cannot carry it. */
 const PLAIN_ROWS: readonly RowSpec[] = [
-  { key: 'generation', label: 'export.json_generation', desc: 'export.json_generation_desc', hint: 'export.json_no_generation' },
-  { key: 'provenance', label: 'export.json_provenance', desc: 'export.json_provenance_desc', hint: 'export.json_no_provenance' },
+  { key: 'generation', desc: 'export.json_generation_desc', hint: 'export.json_no_generation' },
+  { key: 'provenance', desc: 'export.json_provenance_desc', hint: 'export.json_no_provenance' },
 ];
 const LATE_ROWS: readonly RowSpec[] = [
-  { key: 'session', label: 'export.json_session', desc: 'export.json_session_desc' },
-  { key: 'stats', label: 'export.json_stats', desc: 'export.json_stats_desc' },
-  { key: 'catalog', label: 'export.json_catalog', desc: 'export.json_catalog_desc' },
+  { key: 'session', desc: 'export.json_session_desc' },
+  { key: 'stats', desc: 'export.json_stats_desc' },
+  { key: 'catalog', desc: 'export.json_catalog_desc' },
 ];
 
 /** The save-file panel. Expensive section measurement runs only while open. */
@@ -127,10 +128,10 @@ export function ExportJsonPanel({ open, onDone }: { open: boolean; onDone: () =>
     });
   }
 
-  const row = ({ key, label, desc, hint }: RowSpec) => {
+  const row = ({ key, desc, hint }: RowSpec) => {
     const unavailable = (key === 'generation' && !available.generation) || (key === 'provenance' && !available.provenance);
     return (
-      <SectionRow key={key} name={t(label)} desc={t(desc)} {...(hint ? { hint: t(hint) } : {})}
+      <SectionRow key={key} name={t(SECTION_LABELS[key])} desc={t(desc)} {...(hint ? { hint: t(hint) } : {})}
         checked={sections[key] && !unavailable} disabled={unavailable} onToggle={() => dispatch({ type: 'toggle', key })} bytes={shown?.[key]} />
     );
   };
@@ -147,10 +148,10 @@ export function ExportJsonPanel({ open, onDone }: { open: boolean; onDone: () =>
       <ScrollArea gutter="stable" style={{ flex: '1 1 auto' }}
         contentStyle={{ display: 'flex', flexDirection: 'column', gap: 14, padding: CONTROL_CLEARANCE }}>
         <SectionRow name={t('export.json_core')} desc={t('export.json_core_desc')} checked disabled onToggle={() => {}} bytes={shown?.core} />
-        {row({ key: 'annotations', label: 'export.json_annotations', desc: 'export.json_annotations_desc' })}
+        {row({ key: 'annotations', desc: 'export.json_annotations_desc' })}
         {/* The expanding fields share the row's flex item, so a collapsed editor adds no gap. */}
         <div>
-          <SectionRow name={t('export.json_notes')} desc={t('export.json_notes_desc')} checked={sections.notes} disabled={attribution.locked}
+          <SectionRow name={t(SECTION_LABELS.notes)} desc={t('export.json_notes_desc')} checked={sections.notes} disabled={attribution.locked}
             onToggle={() => { dispatch({ type: 'toggle', key: 'notes' }); setComposing(false); }} bytes={shown ? notesBytes : undefined} />
           <Expand open={sections.notes}>
             <NotesFields notes={notesVal} onChange={setMapNotes} titleLocked={attribution.titleLocked} descriptionLocked={attribution.descriptionLocked}
@@ -159,7 +160,7 @@ export function ExportJsonPanel({ open, onDone }: { open: boolean; onDone: () =>
         </div>
         {PLAIN_ROWS.map(row)}
         <div>
-          {row({ key: 'history', label: 'export.json_history', desc: 'export.json_history_desc' })}
+          {row({ key: 'history', desc: 'export.json_history_desc' })}
           <Expand open={sections.history}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '8px 0 4px' }}>
               <SegmentedControl<HistoryDepth>

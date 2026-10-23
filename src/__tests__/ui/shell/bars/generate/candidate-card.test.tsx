@@ -20,14 +20,14 @@ function mount() {
 }
 
 describe('custom text input', () => {
-  it('limits pasted text at complete grapheme boundaries', () => {
+  it('[GEN-15] limits pasted text at complete grapheme boundaries', () => {
     const { input } = mount();
     const atLimit = 'A'.repeat(TEXT_MAX_CHARS - 6) + '\u{1f469}\u200d\u{1f33e}\u{1f44d}\u{1f3fd}\u{1f1e8}\u{1f1f3}1\ufe0f\u20e3e\u0301\u8c37';
     fireEvent.change(input, { target: { value: atLimit + 'A' } });
     expect(input.value).toBe(atLimit);
   });
 
-  it('preserves IME preedit and uses Enter to select a character before confirming text', () => {
+  it('[GEN-15] preserves IME preedit and uses Enter to select a character before confirming text', () => {
     const { input, commit } = mount();
     fireEvent.compositionStart(input);
     fireEvent.change(input, { target: { value: 'xingbugudi' } });

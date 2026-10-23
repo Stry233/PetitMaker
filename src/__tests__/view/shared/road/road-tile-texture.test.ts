@@ -40,12 +40,19 @@ describe('road tile texture', () => {
     expect([dx, dy, dw, dh]).toEqual([0, 0, ROAD_TEXTURE_SIZE, ROAD_TEXTURE_SIZE]);
   });
 
-  it('returns undefined before load and dedups callbacks per url', () => {
-    __resetRoadTileCache();
-    const ready = vi.fn();
-    expect(roadTileCanvas('/x/a.png', ready)).toBeUndefined();
-    expect(roadTileCanvas('/x/a.png', ready)).toBeUndefined(); // second ask: same in-flight load
-    expect(ready).not.toHaveBeenCalled(); // jsdom never fires Image load; no throw is the point
+  it('loads a url once however many surfaces ask, and tells each of them when the art lands', () => {
+    const loads = stubImageLoads();
+    const first = vi.fn();
+    const second = vi.fn();
+    expect(roadTileCanvas('/x/a.png', first)).toBeUndefined();
+    expect(roadTileCanvas('/x/a.png', second)).toBeUndefined();
+    expect(loads, 'the second ask joined the load already in flight').toHaveLength(1);
+
+    loads[0]!.onload!();
+    expect(first).toHaveBeenCalledTimes(1);
+    expect(second).toHaveBeenCalledTimes(1);
+    expect(roadTileCanvas('/x/a.png'), 'the art is the answer from here on').toBeDefined();
+    expect(loads, 'and asking again loads nothing').toHaveLength(1);
   });
 
   it('answers a waiter on a failed load, and the next ask loads again', async () => {

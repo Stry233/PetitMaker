@@ -89,9 +89,9 @@ describe('V-PLACE-OVERLAP: solid footprints never overlap', () => {
     expect(placementOverlapRule.validate(place(at('t', 'tree-apple', 5, 5)), state)).toEqual([]);
   });
 
-  it('lets a road run under a structure that keeps roads, and refuses one under a tree', () => {
+  it('lets a road run under a structure that keeps roads, and refuses a road a tree cannot stand on under one', () => {
     expect(placementOverlapRule.validate(place(at('r', 'path-garden-stone', 12, 12)), withObjects(cabin))).toEqual([]);
-    expect(placementOverlapRule.validate(place(at('r', 'path-garden-stone', 5, 5)), withObjects(at('t', 'tree-apple', 5, 5)))).toHaveLength(1);
+    expect(placementOverlapRule.validate(place(at('r', 'path-cobblestone', 5, 5)), withObjects(at('t', 'tree-apple', 5, 5)))).toHaveLength(1);
   });
 
   it('refuses a second road on the same road layer', () => {

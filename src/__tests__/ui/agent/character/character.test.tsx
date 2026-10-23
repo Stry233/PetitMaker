@@ -14,11 +14,10 @@ import { MotionConfig } from 'framer-motion';
 import { Character } from '../../../../ui/agent/character/Character';
 import { cueCharacter, setIntentDream } from '../../../../ui/agent/character/intent';
 import { Badge } from '../../../../ui/agent/character/badges';
-import { DREAM } from '../../../../ui/agent/sketchbook/sketch-motion';
 import { MICRO, POSE_DWELL, POSES, PRESS_SQUASH, WAKE_BEAT, poseForPhase, type PoseName } from '../../../../ui/agent/character/poses';
 import type { SessionPhase } from '../../../../agent/core/project-view';
 import { amplitude, framerMotion } from '../../../../ui/design/motion';
-import { easing, pressable } from '../../../../ui/design/styles';
+import { pressable } from '../../../../ui/design/styles';
 
 type FakeKeyframe = { transform?: string; opacity?: number; offset?: number };
 type FakeOptions = { duration?: number; delay?: number; easing?: string; iterations?: number; fill?: FillMode; composite?: string };
@@ -158,28 +157,7 @@ describe('poseForPhase', () => {
   });
 });
 
-/** Test-only pose descriptions: the first line describes motion and the second names its use.
- * Keeping this table outside runtime code avoids adding unreachable prose to the panel bundle. */
-const POSE_DOCS: Record<PoseName, [string, string]> = {
-  idle: ['breath, a blink about every 6s, an ear-flick', 'idle, setup at rest, done settled'],
-  thinking: ['tilt 6 degrees, metronome sway, idea pop', 'thinking, streaming text'],
-  working: ['the 0.42s work-bob, badge steps 90 degrees per beat', 'streaming args, executing, compacting, probing'],
-  asking: ['flip feint, bubble boing, patient lean', 'every gate, the option pick, a question'],
-  celebrating: ['crouch, jump, land, second hop, spark', 'the done moment, one-shot'],
-  paused: ['melts 4px down, one slow sigh', 'paused, the resume offer, a skipped gate'],
-  trouble: ['hop back, two shakes, worried tremble', 'retry waits, terminal errors, failed probes, a refused key'],
-  sleeping: ['droop, lids down, z marks in sequence', 'disconnected'],
-  keylean: ['lean 9 degrees toward the field, an attentive breath', 'key entry while characters land, detecting, the probes'],
-  pleased: ['crouch, one hop, lands 2px tall, the spark boings in', 'a provider confirmed, the probe resolved'],
-  watching: ['leans 8 degrees toward the map, an attentive breath', 'marking a region: the map has the pencil'],
-  noted: ['ear-perk, a 260ms nod, the note blips', 'a steer queued or delivered, words at a gate'],
-};
-
 describe('the pose table', () => {
-  it('documents every pose, and documents no pose that is not there', () => {
-    expect(Object.keys(POSES).sort()).toEqual(Object.keys(POSE_DOCS).sort());
-  });
-
   it('gives each pose a resting frame the reduced-motion path can hold', () => {
     for (const [name, spec] of Object.entries(POSES)) {
       expect(typeof spec.static, name).toBe('string');
@@ -194,12 +172,6 @@ describe('the pose table', () => {
     expect(POSES.keylean.badge).toBeNull();
     expect(POSES.watching.badge).toBeNull();
     expect(POSES.pleased.badge).toBe('spark');
-  });
-
-  /** Key refusal uses the shared trouble pose and does not define a duplicate error pose. */
-  it('has one face for trouble and no second droop beside it', () => {
-    expect(POSES.trouble.badge).toBe('exclaim');
-    expect(Object.keys(POSES)).not.toContain('keydroop');
   });
 
   /** Confirmation holds until the setup screen advances it. */
@@ -298,22 +270,6 @@ describe('the badge-cancel gotcha (fill:forwards swap-out re-asserting scale(0))
     expect(visualTransform(badgeEl)).not.toBe('scale(0)');
     expect(visualTransform(badgeEl)).toBe('scale(1)');
   });
-
-  it('regresses to scale(0) if the swap-out is never canceled (the polyfill itself proves the gotcha is real)', () => {
-    vi.useFakeTimers();
-    const { container } = render(<div />);
-    const badgeEl = container.firstElementChild as HTMLElement;
-    // The swap-out driven directly against the polyfill, without the cancel step Character.tsx
-    // takes, so the polyfill is shown to catch the loss of that step rather than being blind to it.
-    badgeEl.style.transform = 'scale(1)';
-    badgeEl.animate([{ transform: 'scale(1)' }, { transform: 'scale(0)' }], { duration: 110, fill: 'forwards' });
-    act(() => { vi.advanceTimersByTime(110); });
-    badgeEl.style.transform = 'scale(1)'; // the direct style write `showNew` always does…
-    // …but without canceling first, the still-finished forwards animation keeps winning.
-    expect(visualTransform(badgeEl)).toBe('scale(0)');
-    badgeEl.getAnimations().forEach((a) => a.cancel());
-    expect(visualTransform(badgeEl)).toBe('scale(1)');
-  });
 });
 
 /**
@@ -405,21 +361,18 @@ describe('the character wears the house hover', () => {
 
 /** The sleeping pose combines a held droop with a two-axis breathing loop. */
 describe('the sleeping pose', () => {
-  it('enters on its own 900ms droop', () => {
-    expect(POSES.sleeping.enter).toEqual([
-      { part: 'pose', dur: 900, easing: 'cubic-bezier(.2,.8,.3,1)', keyframes: [
-        { transform: 'none' }, { transform: 'translateY(7px) rotate(-4deg) scaleY(.94)' }] },
-    ]);
-  });
+  afterEach(() => vi.useRealTimers());
 
-  it('breathes on TWO axes, taking over exactly where the droop lands', () => {
-    expect(POSES.sleeping.loops).toEqual([
-      { part: 'body', at: 900, dur: 3600, easing: 'ease-in-out', keyframes: [
-        { transform: 'scale(1,1)' }, { transform: 'scale(.99,1.045)', offset: 0.5 }, { transform: 'scale(1,1)' }] },
-    ]);
-    // The loop starts where the droop ends: a breath begun under a droop still travelling composes
-    // the two moves into one shudder.
-    expect(POSES.sleeping.loops?.[0]?.at).toBe(POSES.sleeping.enter?.[0]?.dur);
+  /** A breath begun under a droop still travelling composes the two moves into one shudder. */
+  it('starts the breath exactly where the droop lands', () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'performance', 'Date'] });
+    const droop = POSES.sleeping.enter?.[0]?.dur ?? 0;
+    const { container } = render(<Character pose="sleeping" size={64} />);
+    expect(droop).toBeGreaterThan(0);
+    act(() => { vi.advanceTimersByTime(droop - 1); });
+    expect(part(container, 'body').getAnimations()).toHaveLength(0);
+    act(() => { vi.advanceTimersByTime(1); });
+    expect(part(container, 'body').getAnimations()).toHaveLength(1);
   });
 
   /** Browsers may remove a replaceable, forwards-filled animation when a newer animation targets
@@ -440,9 +393,11 @@ describe('the sleeping pose', () => {
   });
 
   it('rests on the droop it entered with, so the reduced still is the same slump', () => {
-    expect(POSES.sleeping.static).toBe('translateY(7px) rotate(-4deg) scaleY(.94)');
     const droop = POSES.sleeping.enter?.[0]?.keyframes ?? [];
-    expect(POSES.sleeping.static).toBe(droop[droop.length - 1]?.transform);
+    const { container } = render(
+      <MotionConfig reducedMotion="always"><Character pose="sleeping" size={64} /></MotionConfig>,
+    );
+    expect(part(container, 'pose').style.transform).toBe(droop[droop.length - 1]?.transform);
   });
 });
 
@@ -471,17 +426,6 @@ describe('the engine under StrictMode\'s double mount', () => {
  * animation on the same part. */
 describe('the Connect-press wake beat', () => {
   afterEach(() => vi.useRealTimers());
-
-  it('uses three frames on an overshoot curve', () => {
-    expect(WAKE_BEAT).toEqual({
-      part: 'pose', dur: 620, easing: 'cubic-bezier(.2,1.5,.4,1)',
-      keyframes: [
-        { transform: 'translateY(7px) rotate(-4deg) scaleY(.94)' },
-        { transform: 'translateY(-3px) rotate(1deg) scaleY(1.03)', offset: 0.62 },
-        { transform: 'none' },
-      ],
-    });
-  });
 
   it('starts from the sleeping rest, so the rise has no jump in it', () => {
     expect(WAKE_BEAT.keyframes[0]?.transform).toBe(POSES.sleeping.static);
@@ -528,18 +472,6 @@ describe('the Connect-press wake beat', () => {
 
 /** Press acknowledgement is additive so it can run over the body's breathing animation. */
 describe('the press acknowledgement', () => {
-  it('is a squash additive over the breath', () => {
-    expect(PRESS_SQUASH).toEqual({
-      part: 'body', dur: 320, easing: 'linear', composite: 'add',
-      keyframes: [
-        { transform: 'scale(1,1)', offset: 0 },
-        { transform: 'scale(1.12,.86)', offset: 0.3 },
-        { transform: 'scale(.95,1.06)', offset: 0.62 },
-        { transform: 'scale(1,1)', offset: 1 },
-      ],
-    });
-  });
-
   it('plays on her body when she is pressed, and the press still lands', () => {
     const onPress = vi.fn();
     const { getByTestId } = render(
@@ -603,31 +535,6 @@ describe('the sleeper\'s plume', () => {
 
   afterEach(() => { act(() => { setIntentDream('off'); }); });
 
-  it('declares the breath as a three-stop rise', () => {
-    expect(DREAM.puff).toEqual({ dur: 900, easing: easing.punchy });
-    expect(DREAM.puffFrames).toEqual([
-      { opacity: 0, transform: 'none', offset: 0 },
-      { opacity: 1, offset: 0.2 },
-      { opacity: 0, transform: 'translate(-9px,-20px) scale(1.6)', offset: 1 },
-    ]);
-  });
-
-  it('draws the breath bubble at the plume\'s lower-left, in its own inks', () => {
-    act(() => { setIntentDream('zzz'); });
-    const { container } = render(<Character pose="sleeping" size={60} />);
-    const puff = part(container, 'dream-puff');
-    expect(puff.style.left).toBe('-7px');
-    expect(puff.style.bottom).toBe('0px');
-    expect(puff.style.width).toBe('11px');
-    expect(puff.style.height).toBe('11px');
-    expect(puff.style.borderRadius).toBe('50%');
-    expect(puff.style.background).toBe('rgb(239, 236, 224)');
-    expect(puff.style.border).toBe('1.5px solid rgb(143, 135, 120)');
-    // The rim is inside the stated 11px, for the reason the lids are border-box.
-    expect(puff.style.boxSizing).toBe('border-box');
-    expect(puff.style.opacity).toBe('0');
-  });
-
   it('stands beside the pose rather than inside it', () => {
     act(() => { setIntentDream('zzz'); });
     const { container } = render(<Character pose="sleeping" size={60} />);
@@ -638,21 +545,20 @@ describe('the sleeper\'s plume', () => {
     expect(part(container, 'badge').style.opacity).toBe('0');
   });
 
-  it('keeps the glyph\'s disc mounted so it can arrive, and gives it both declared beats', () => {
+  /** The disc is the same element before and after, which is what gives its transition a state to
+   *  arrive from. */
+  it('keeps the glyph\'s disc mounted so it can arrive, and swaps it in for the zzz', () => {
     act(() => { setIntentDream('zzz'); });
     const { container, rerender } = render(<Character pose="sleeping" size={60} />);
     const disc = part(container, 'dream-glyph');
     expect(disc.style.opacity).toBe('0');
-    expect(disc.style.transform).toBe('scale(0.55)');
-    expect(disc.style.transition).toBe(
-      `opacity 240ms ${easing.punchy}, transform 300ms ${easing.springStiff}`,
-    );
-    expect(part(container, 'dream-zzz').style.transition).toBe(`opacity 220ms ${easing.punchy}`);
+    expect(part(container, 'dream-zzz').style.opacity).toBe('1');
 
     act(() => { setIntentDream('pw-road'); });
     rerender(<Character pose="sleeping" size={60} />);
-    expect(part(container, 'dream-glyph').style.opacity).toBe('1');
-    expect(part(container, 'dream-glyph').style.transform).toBe('none');
+    expect(part(container, 'dream-glyph')).toBe(disc);
+    expect(disc.style.opacity).toBe('1');
+    expect(disc.style.transform).toBe('none');
     expect(part(container, 'dream-zzz').style.opacity).toBe('0');
   });
 

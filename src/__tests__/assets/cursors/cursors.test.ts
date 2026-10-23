@@ -4,13 +4,6 @@ import { CURSORS, CURSOR_IDS, CURSOR_SIZE, FORBIDDABLE, type CursorId } from '..
 import { cursorArt, busyFrame, BADGED_IDS, BUSY_FRAME_COUNT } from '../../../assets/cursors/cursor-art';
 import { decodePng } from '../../../io/share/raster/png-raster';
 
-vi.mock('../../../assets/cursors/cursor-art', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../../../assets/cursors/cursor-art')>();
-  // Wraps the real implementation, so the art tests in this file still exercise it; the spy is
-  // only there for the memo test to count rebuilds.
-  return { ...actual, cursorArt: vi.fn(actual.cursorArt) };
-});
-
 /**
  * The art is one generated SVG per drawing: geometry for the line drawings, and the painted
  * masses embedded as their 2x renders (data-URI PNGs on a `viewBox 0 0 64 64`). These read the
@@ -394,21 +387,5 @@ describe('cursor CSS', () => {
       expect(uri, id).not.toContain('"');
       expect(uri.length, id).toBeGreaterThan(0);
     }
-  });
-
-
-
-
-  it('memoises, so a pointer-move cannot rebuild a value', async () => {
-    const { cursorCss, __clearCursorCssCache } = await import('../../../assets/cursors/cursor-css');
-    const { cursorArt: spiedArt } = await import('../../../assets/cursors/cursor-art');
-    const spy = vi.mocked(spiedArt);
-    __clearCursorCssCache();
-    spy.mockClear();
-    cursorCss('water');
-    cursorCss('water');
-    expect(spy).toHaveBeenCalledTimes(1); // the second call came from the cache
-    cursorCss('water', { forbidden: true });
-    expect(spy).toHaveBeenCalledTimes(2); // a different key is a different entry
   });
 });

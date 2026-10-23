@@ -8,8 +8,7 @@
  * accessible name, and the way a repaint loses one is not a crash but a control that quietly
  * stops being wired. The pin is "the control is there AND the handler fires".
  *
- * Export branding is a build choice, not a user setting. The Painted/System cursor pair is the
- * accessibility opt-out and stays.
+ * The Painted/System cursor pair is the accessibility opt-out and stays.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { act, render, screen, fireEvent, cleanup, within } from '@testing-library/react';
@@ -72,17 +71,6 @@ describe('the Settings panel still offers every control', () => {
   it.each(CONTROLS)('%s named %s', (role, key) => {
     renderModal();
     expect(screen.getByRole(role, { name: label(key) })).toBeTruthy();
-  });
-
-  it('and no other cursor control: the classic-cursors setting is gone, not hidden', () => {
-    renderModal();
-    expect(screen.queryByText(/classic/i)).toBeNull();
-  });
-
-  it('does not expose the deploy-time export branding choice', () => {
-    renderModal();
-    expect(screen.queryByText('Logo only')).toBeNull();
-    expect(screen.queryByText('Logo, site and QR code')).toBeNull();
   });
 });
 

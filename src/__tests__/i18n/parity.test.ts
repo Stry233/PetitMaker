@@ -42,7 +42,7 @@ const placeholders = (s: string, omitLandmark = false): string[] => {
 };
 
 describe('i18n locale parity', () => {
-  it('every locale defines exactly the en key set (no missing, no extra)', () => {
+  it('[UI-01] every locale defines exactly the en key set (no missing, no extra)', () => {
     for (const loc of otherLocales) {
       const missing = enKeys.filter((k) => !(k in translations[loc]));
       const extra = Object.keys(translations[loc]).filter((k) => !(k in translations[EN]) && pluralBase(k) === null);
@@ -80,14 +80,14 @@ describe('i18n locale parity', () => {
     }
   });
 
-  it('no locale leaves a value blank', () => {
+  it('[UI-01] no locale leaves a value blank', () => {
     for (const loc of [EN, ...otherLocales]) {
       const blank = Object.entries(translations[loc]).filter(([, v]) => typeof v !== 'string' || v.trim() === '').map(([k]) => k);
       expect({ locale: loc, blank }).toEqual({ locale: loc, blank: [] });
     }
   });
 
-  it('interpolation placeholders ({x}) match en for every key', () => {
+  it('[UI-01] interpolation placeholders ({x}) match en for every key', () => {
     for (const loc of otherLocales) {
       for (const k of enKeys) {
         const v = translations[loc][k];

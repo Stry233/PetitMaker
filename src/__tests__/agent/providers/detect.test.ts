@@ -28,7 +28,7 @@ describe('providers/detect: detectProviderFromKey', () => {
     expect(detectProviderFromKey('0123456789abcdef0123456789abcdef.AbCdEfGh12345678')).toBe('zhipu');
   });
 
-  it('returns null for a bare sk-<32hex> key: ambiguous among deepseek/openai/qwen/moonshot/custom', () => {
+  it('[ASST-02] returns null for a bare sk-<32hex> key: ambiguous among deepseek/openai/qwen/moonshot/custom', () => {
     expect(detectProviderFromKey('sk-0123456789abcdef0123456789abcdef')).toBeNull();
   });
 

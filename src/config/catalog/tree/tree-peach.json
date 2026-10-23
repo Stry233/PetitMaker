@@ -31,6 +31,9 @@
       "type": "flat"
     },
     {
+      "type": "growsOnPlantable"
+    },
+    {
       "type": "exclusionRadius",
       "radius": 1
     }

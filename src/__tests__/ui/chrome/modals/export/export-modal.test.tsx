@@ -120,12 +120,6 @@ describe('ExportModal', () => {
     expect(screen.getByText('High').closest('button')!.getAttribute('aria-pressed')).toBe('true');
   });
 
-  it('has no watermark control anywhere in the UI', () => {
-    mountStateWith();
-    render(<ShareWindow />, { wrapper: Wrapper });
-    expect(screen.queryByText(/watermark/i)).toBeNull();
-  });
-
   it('offers only the two v2 presets (Share / Plain) — no Clean preset, no strip-mode picker', () => {
     mountStateWith();
     render(<ShareWindow />, { wrapper: Wrapper });

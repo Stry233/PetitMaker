@@ -1,7 +1,7 @@
 import { isRecord } from '../../core/base/guards';
 import { isCustomTemplate, upgradeLandmarks } from '../../core/model/planet';
 import type { MapTemplate } from '../../core/model/types';
-import { resolveTemplate } from '../../config/maps/resolve';
+import { resolveTemplate, UnknownTemplateError } from '../../config/maps/resolve';
 import { parseStoredTemplate } from './planet-codec';
 import { migrateToCurrent, type RawSave, type SaveFile } from './format';
 import { earlierLandmarks, type EarlierLandmark } from './format/earlier-landmarks';
@@ -52,7 +52,13 @@ function landmarksAsSaved(raw: RawSave, template: MapTemplate, version: number):
 function templateOfSave(raw: unknown): MapTemplate {
   const r = raw as { templateId?: string; template?: unknown };
   const stored = storedTemplateOf(r);
-  return stored ? upgradeLandmarks(stored) : resolveTemplate(r.templateId);
+  if (stored) return upgradeLandmarks(stored);
+  try {
+    return resolveTemplate(r.templateId);
+  } catch (e) {
+    if (e instanceof UnknownTemplateError) throw new ImportError('incompatible-template', e.message);
+    throw e;
+  }
 }
 
 /** The custom planet a save embeds, as stored, when it is the one the save names; otherwise

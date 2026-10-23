@@ -6,8 +6,7 @@
  *    element's containing block (and her dust puff's offset parent);
  *  - the character's layer stands outside the frame's `zoom`, since a fixed element in a zoomed
  *    subtree would land at zoom times its measured position (as `narrow-viewport.test.tsx` argues).
- * jsdom lays nothing out, so this asserts which elements exist, what they carry, and the column's
- * width arithmetic.
+ * jsdom lays nothing out, so this asserts which elements exist and what they carry.
  */
 import { describe, it, expect, beforeAll, beforeEach, afterEach } from 'vitest';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
@@ -15,10 +14,7 @@ import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { I18nProvider, translate } from '../../../i18n/context';
 import { useEditorStore } from '../../../state/store';
 import { TOUR_SEEN_KEY } from '../../../ui/chrome/tour/use-tour';
-import { PANEL_WIDTH } from '../../../ui/agent/panel-skin';
-import { PANEL_COLUMN_W, PANEL_LEFT } from '../../../ui/shell/panel-frame';
-import { MODES, MODE_PLATE, MODE_PLATE_ID } from '../../../ui/shell/frame';
-import { EDGE_LEFT, MODE } from '../../../ui/shell/units';
+import { MODE_PLATE, MODE_PLATE_ID } from '../../../ui/shell/frame';
 import { Shell } from '../../../ui/shell/Shell';
 import { UiPreviewProvider } from '../../../ui/design/preview';
 import { deskSeat } from '../../../ui/agent/character/seat';
@@ -61,20 +57,6 @@ beforeEach(() => {
   useEditorStore.getState().setEditMode({ mode: null });
 });
 afterEach(cleanup);
-
-describe('the panel column', () => {
-  /** The panel's width is the mode row's: the column lines up with the row above it at both edges,
-   *  so the arithmetic lives here and `ui/agent/panel-skin.ts:PANEL_WIDTH` re-exports it rather than
-   *  standing a second constant beside it. */
-  it('is exactly as wide as the row of mode blocks', () => {
-    expect(PANEL_COLUMN_W).toBe(MODES.length * MODE.size + (MODES.length - 1) * MODE.gap);
-    expect(PANEL_COLUMN_W).toBe(PANEL_WIDTH);
-  });
-
-  it('stands on the same left margin as the blocks above it', () => {
-    expect(PANEL_LEFT).toBe(EDGE_LEFT);
-  });
-});
 
 describe("the character's entrance", () => {
   it('is a box in the assistant block, and the block draws no picture of its own there', () => {

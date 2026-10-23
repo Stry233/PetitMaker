@@ -1,10 +1,9 @@
 // @vitest-environment jsdom
 /**
  * The generation orchestrator against a fake dialect: capture -> letterbox -> assembled image set
- * -> prompt -> generate -> crop back, plus the one-shot judge/correction pass. No real network, no
- * real map: a fake `EngineDeps.captureMap` and a hand-built `GridState` (`_helpers.ts`'s
- * `makeState`) stand in, and the canvas 2d context is spied the way `normalize.test.ts` and
- * `semantic.test.ts` already do.
+ * -> prompt -> generate -> crop back. No real network, no real map: a fake `EngineDeps.captureMap`
+ * and a hand-built `GridState` (`_helpers.ts`'s `makeState`) stand in, and the canvas 2d context is
+ * spied the way `normalize.test.ts` and `semantic.test.ts` already do.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { runEngine, type EngineDeps } from '../../../../pipelines/stylize/engine/run';
@@ -17,7 +16,6 @@ import { STYLIZE_TRUST } from '../../../../pipelines/stylize/prompt/compile';
 
 const CAPTURED_URL = 'data:image/png;base64,CAPTURED';
 const OUTPUT_URL = 'data:image/png;base64,iVBOR09VVFBVVA==';
-const RETRY_URL = 'data:image/png;base64,iVBOR1JFVFJZ';
 const PAINTED_URL = 'data:image/png;base64,PAINTED';
 
 function cfg(): DialectConfig {
@@ -51,7 +49,7 @@ function stubBrowser(): void {
     onerror: (() => void) | null = null;
     set src(v: string) {
       if (v === CAPTURED_URL) { this.width = 400; this.height = 200; }
-      else if (v === OUTPUT_URL || v === RETRY_URL) { this.width = 400; this.height = 400; }
+      else if (v === OUTPUT_URL) { this.width = 400; this.height = 400; }
       else { this.width = 400; this.height = 200; }
       queueMicrotask(() => this.onload?.());
     }
@@ -132,39 +130,6 @@ describe('runEngine', () => {
     expect(cropDraw.slice(1)).toEqual([0, 100, 400, 200, 0, 0, 400, 200]);
   });
 
-  it('a judge returning clauses triggers exactly one corrective retry, re-anchored on the original images', async () => {
-    const generate = vi.fn()
-      .mockResolvedValueOnce(OUTPUT_URL)
-      .mockResolvedValueOnce(RETRY_URL);
-    const judge = vi.fn(async () => ['fix the bridge position']);
-    const dialect = fakeDialect({ maxImages: 1, generate, judge });
-    const deps = baseDeps({ dialect });
-    const recipe: Recipe = { conditions: { style: false, layout: false }, judge: true };
-
-    await runEngine(deps, 'watercolor', undefined, recipe);
-
-    expect(judge).toHaveBeenCalledTimes(1);
-    expect(generate).toHaveBeenCalledTimes(2);
-    const firstImages = generate.mock.calls[0]![1].images;
-    const secondReq = generate.mock.calls[1]![1];
-    expect(secondReq.images).toEqual(firstImages);
-    expect(secondReq.prompt).toContain('<visual_feedback>');
-    expect(secondReq.prompt).toContain('fix the bridge position');
-  });
-
-  it('a judge returning no clauses causes no retry', async () => {
-    const generate = vi.fn().mockResolvedValueOnce(OUTPUT_URL);
-    const judge = vi.fn(async () => []);
-    const dialect = fakeDialect({ maxImages: 1, generate, judge });
-    const deps = baseDeps({ dialect });
-    const recipe: Recipe = { conditions: { style: false, layout: false }, judge: true };
-
-    await runEngine(deps, 'watercolor', undefined, recipe);
-
-    expect(judge).toHaveBeenCalledTimes(1);
-    expect(generate).toHaveBeenCalledTimes(1);
-  });
-
   it('an aborted dialect call propagates rather than being swallowed', async () => {
     const abortError = new DOMException('aborted', 'AbortError');
     const dialect = fakeDialect({ maxImages: 1, generate: vi.fn(async () => { throw abortError; }) });
@@ -201,11 +166,5 @@ describe('resolveRecipe', () => {
   it('turns on the style capability once maxImages >= 2', () => {
     expect(resolveRecipe(fakeDialect({ maxImages: 1 })).conditions.style).toBe(false);
     expect(resolveRecipe(fakeDialect({ maxImages: 2 })).conditions.style).toBe(true);
-  });
-
-  it('gates judge on both the caller asking and the dialect supporting it', () => {
-    expect(resolveRecipe(fakeDialect({ canJudge: false }), { judge: true }).judge).toBe(false);
-    expect(resolveRecipe(fakeDialect({ canJudge: true }), { judge: true }).judge).toBe(true);
-    expect(resolveRecipe(fakeDialect({ canJudge: true })).judge).toBe(false);
   });
 });

@@ -20,11 +20,18 @@ export interface ImportSuccess { ok: true; state: GridState; warnings: ImportWar
 export interface ImportFailure { ok: false; error: ImportError }
 export type ImportResult = ImportSuccess | ImportFailure;
 
+/** The refusal for each way a share image yields no payload. */
+const GLYPH_REFUSALS = {
+  nothing: () => new ImportError('no-payload', 'No share code found in this image.'),
+  damaged: () => new ImportError('decode-failed', 'The share code in this image could not be recovered.'),
+  newer: () => new ImportError('future-version', 'The share code in this image was written by a newer build.'),
+} as const;
+
 export async function importFromRaster(rgba: Uint8Array, width: number, height: number, ownership?: PixelOwnership): Promise<ImportResult> {
   try {
-    const payload = await decodeGlyphAsync(rgba, width, height, ownership);
-    if (!payload) return { ok: false, error: new ImportError('no-payload', 'No share code found in this image.') };
-    const dec = await decodeMapPayload(payload); // throws corrupt / future-version / decode-failed
+    const read = await decodeGlyphAsync(rgba, width, height, ownership);
+    if (!read.payload) return { ok: false, error: GLYPH_REFUSALS[read.found]() };
+    const dec = await decodeMapPayload(read.payload); // throws corrupt / future-version / decode-failed
     // A carried planet's landmarks take the profile's footprints, and the map the planet's new id.
     const planet = dec.template && upgradeLandmarks(dec.template);
     const templateId = planet ? planet.id : dec.canonical.templateId;

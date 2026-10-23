@@ -33,14 +33,14 @@ describe('planet files and videos without planet import', () => {
     expect(await classifyImportFile(new File([], 'share.png', { type: 'image/png' }))).toBe('map');
   });
 
-  it('refuses a dropped video with the map import message and no redirect card', async () => {
+  it('refuses a dropped video as neither a map file nor a share image, with no redirect card', async () => {
     const toasts: string[] = [];
     const stop = setToastPresenter((text) => toasts.push(text));
     try {
       render(<MotionConfig reducedMotion="always"><I18nProvider><DropImportOverlay /></I18nProvider></MotionConfig>);
       const e = (type: string) => Object.assign(new Event(type, { bubbles: true, cancelable: true }), { dataTransfer: { types: ['Files'], files: [videoFile()] } });
       act(() => { window.dispatchEvent(e('dragenter')); window.dispatchEvent(e('drop')); });
-      await waitFor(() => expect(toasts).toContain(translate('import.fail_generic')));
+      await waitFor(() => expect(toasts).toContain(translate('import.fail_unsupported')));
       expect(screen.queryByTestId('import-redirect')).toBeNull();
       expect(useEditorStore.getState().handedImport).toBeNull();
       expect(useEditorStore.getState().modals.newProject).toBe(false);

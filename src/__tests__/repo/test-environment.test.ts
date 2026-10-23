@@ -1,12 +1,13 @@
 /**
- * How `npm run test:run` splits the unit files. A file runs in Node unless it opens with a
- * `// @vitest-environment jsdom` docblock, and a file in a shared folder runs in a module graph it
- * shares with the other files of its worker unless it shows a sign of needing a fresh one.
+ * How the unit files split. A file runs in Node unless it opens with a `// @vitest-environment jsdom`
+ * docblock, a file in a shared folder runs in a module graph it shares with the other files of its
+ * worker unless it shows a sign of needing a fresh one, and a `.slow.` file runs in the slow tier
+ * instead of `npm run test:run`.
  */
 import { describe, it, expect } from 'vitest';
 import { globSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-import { NEEDS_ISOLATION, SHARED_UNIT_FILES } from '../../../vitest.config';
+import { NEEDS_ISOLATION, SHARED_UNIT_FILES, SLOW, UNIT_EXCLUDE } from '../../../vitest.config';
 
 const ROOT = resolve(__dirname, '../../..');
 const UNIT = globSync(['src/**/*.test.{ts,tsx}', 'scripts/**/*.test.{ts,tsx,mts}'], { cwd: ROOT })
@@ -41,5 +42,19 @@ describe('shared module graphs', () => {
   it('keeps the editing tools, the editor layer, the view input layer and the UI isolated', () => {
     const interactive = /^src\/__tests__\/(editor|ui|view\/interaction|tools\/(?!generation\/|placement\/))/;
     expect(SHARED_UNIT_FILES.filter((p) => interactive.test(p))).toEqual([]);
+  });
+});
+
+describe('test tiers', () => {
+  const slow = UNIT.filter((p) => /\.slow\./.test(p));
+
+  it('keeps the slow tier out of the fast projects and nowhere else', () => {
+    expect(SLOW.every((glob) => UNIT_EXCLUDE.includes(glob))).toBe(true);
+    expect(SHARED_UNIT_FILES.filter((p) => /\.slow\./.test(p))).toEqual([]);
+    expect(slow.filter((p) => !globSync(SLOW, { cwd: ROOT }).map((q) => q.split('\\').join('/')).includes(p))).toEqual([]);
+  });
+
+  it('names a withheld slow test so the export still withholds it', () => {
+    expect(UNIT.filter((p) => /\.internal\.slow\./.test(p))).toEqual([]);
   });
 });

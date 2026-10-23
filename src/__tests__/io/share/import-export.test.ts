@@ -1,5 +1,5 @@
 // Raster-first orchestration tests exercise a rendered PetitGlyph directly. The full PNG and
-// composition path is covered separately by e2e.test.ts.
+// composition path is covered separately by e2e.slow.test.ts.
 import { describe, it, expect } from 'vitest';
 import { buildShareCode, type ShareCode } from '../../../io/share/export';
 import { importFromRaster } from '../../../io/share/import';

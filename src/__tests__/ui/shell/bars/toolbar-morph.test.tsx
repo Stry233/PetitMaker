@@ -12,7 +12,6 @@ import { useEditorStore } from '../../../../state/store';
 import { createDefaultRegistry } from '../../../../rules';
 import { EditToolbar } from '../../../../ui/shell/bars/EditToolbar';
 import { Shell } from '../../../../ui/shell/Shell';
-import { MOTIONS } from '../../../../ui/design/motion/registry';
 import { makeTemplate } from '../../../_support/map-state';
 import { setStoreState } from '../../../_support/store';
 
@@ -110,13 +109,5 @@ describe('a switch between toolbars', () => {
     act(() => { state().setEditMode({ mode: 'road' }); });
     expect(bars()[0]).toBe(pills);
     expect(slot('road-styles')).not.toBeNull();
-  });
-});
-
-describe('the switch motions', () => {
-  it('declares the morph and the plate slide as informing motions', () => {
-    for (const id of ['tool.control.morph', 'tool.highlight.slide', 'tool.control.enter', 'tool.control.leave'] as const) {
-      expect(MOTIONS[id].tier).toBe('inform');
-    }
   });
 });

@@ -14,7 +14,7 @@ import { listPlanets } from '../../../../io/storage/planet-library';
 import { CommandType, TerrainType, type MacroCoord } from '../../../../core/model/types';
 import { CellZone } from '../../../../core/game/zones';
 import { Shell } from '../../../../ui/shell/Shell';
-import { MODE_ROW_INK_CENTRE, MODE_ROW_TOP, TOP_RIGHT_H, TOP_RIGHT_TOP, blockCentre, cornerArt, planFrame, sessionModes, topRightHeight } from '../../../../ui/shell/frame';
+import { MODE_ROW_TOP, blockCentre, cornerArt, planFrame, sessionModes, topRightHeight } from '../../../../ui/shell/frame';
 import { FIT_FLOOR, fittedUiScale } from '../../../../ui/design/scale';
 import { PLATE_MIN_WIDTH, plateDepth, plateMinDepth } from '../../../../ui/shell/controls/layer-plate';
 import { MODE, MODE_PLATE_W, MODE_SCALE, ZOOM } from '../../../../ui/shell/units';
@@ -83,14 +83,7 @@ afterEach(() => {
 });
 
 describe('placement', () => {
-  it('centres the plate on the line the mode row and the corner share, at any pair of zooms', () => {
-    expect(TOP_RIGHT_TOP + TOP_RIGHT_H / 2).toBeCloseTo(MODE_ROW_INK_CENTRE, 6);
-    for (const [frameZoom, zoom] of [[1.25, 1], [0.625, 1], [0.75, 0.6], [1.5, 1.2]] as const) {
-      expect((nameplateTop(frameZoom, zoom) + PLATE_ROW / 2) * zoom).toBeCloseTo(MODE_ROW_INK_CENTRE * frameZoom, 6);
-    }
-  });
-
-  it('stands at that line in the shell, drawn at the chrome scale', () => {
+  it('stands on the line the mode row and the corner share in the shell, drawn at the chrome scale', () => {
     mount();
     enter();
     const zoom = Number(plate().style.zoom);

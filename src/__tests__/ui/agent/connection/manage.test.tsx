@@ -26,7 +26,6 @@ import { NO_ENDPOINT_ADDRESS } from '../../../../agent/core/errors';
 import { PROVIDER_IDS, PROVIDER_META, type ProviderId } from '../../../../agent/providers/defaults';
 import { radii } from '../../../../ui/design/styles';
 import { roleFont } from '../../../../ui/design/text-weight';
-import type { Locale } from '../../../../core/model/locale';
 import { setToastPresenter } from '../../../../platform/channels/toast-bus';
 
 const backing = new Map<string, string>();
@@ -97,14 +96,6 @@ describe('what stands behind the gear', () => {
     mount();
     expect(screen.getByTestId('manage-model-label').textContent)
       .toBe(translations.en['agent.setup_manage_model']);
-  });
-
-  /** Destructive details live in confirmation prompts, and endpoint verification runs automatically. */
-  it('carries no standing explainer prose and no check button', () => {
-    mount({ jobCount: 3 });
-    for (const id of ['manage-forget-note', 'manage-clear-note', 'manage-endpoint-check']) {
-      expect(screen.queryByTestId(id), id).toBeNull();
-    }
   });
 
   /** Oversight lives here and nowhere else, and this is the half of that rule this file can hold
@@ -885,35 +876,5 @@ describe('the dropdowns on this card are the house menu', () => {
     const own = [...screen.getByTestId('manage-screen').querySelectorAll<HTMLElement>('*')]
       .filter((el) => getComputedStyle(el).position === 'fixed');
     expect(own, 'the manage card mounts no floating surface itself').toEqual([]);
-  });
-});
-
-describe('manage copy, in every locale', () => {
-  const KEYS = [
-    'agent.setup_manage_forget_key', 'agent.setup_manage_forget_q',
-    'agent.setup_manage_clear_jobs', 'agent.setup_manage_clear_q',
-    'agent.setup_manage_stop_job', 'agent.setup_manage_set_aside',
-    'agent.dock_connection', 'agent.action_cancel', 'agent.setup_oversight',
-    'agent.setup_manage_endpoint', 'agent.setup_manage_model',
-    'agent.setup_list_unavailable', 'agent.setup_manage_model_needs_endpoint',
-  ];
-  const locales = Object.keys(translations) as Locale[];
-
-  it('is present in all seven and carries no em dash or dot separator', () => {
-    for (const loc of locales) {
-      for (const key of KEYS) {
-        const value = translations[loc][key];
-        expect(value, `${loc}/${key}`).toBeTruthy();
-        expect(value, `${loc}/${key}`).not.toMatch(/[—·•]/);
-      }
-    }
-  });
-
-  it('keeps the {n} token in both counted lines', () => {
-    for (const loc of locales) {
-      for (const key of ['agent.setup_manage_clear_jobs', 'agent.setup_manage_clear_q']) {
-        expect(translations[loc][key], `${loc}/${key}`).toContain('{n}');
-      }
-    }
   });
 });

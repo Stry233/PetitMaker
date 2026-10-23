@@ -34,8 +34,11 @@ describe('printConsoleBanner', () => {
   });
 
   it('prints nothing at import time', async () => {
+    // The static import above already evaluated the module; a fresh registry evaluates it again here.
+    vi.resetModules();
     const log = vi.spyOn(console, 'log').mockImplementation(() => {});
-    await import('../../../ui/app/console-banner');
+    const fresh = await import('../../../ui/app/console-banner');
+    expect(fresh.printConsoleBanner).not.toBe(printConsoleBanner);
     expect(log).not.toHaveBeenCalled();
   });
 });

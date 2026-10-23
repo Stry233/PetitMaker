@@ -62,7 +62,7 @@ describe('plaza in the planet session', () => {
     expect(plaza()).toMatchObject({ width: ANCHOR_LANDMARK.height, height: ANCHOR_LANDMARK.width, rotation: 90 });
   });
 
-  it('refuses a second plaza', () => {
+  it('[PLAN-13] refuses a second plaza', () => {
     placeSessionLandmark({ x: 20.5, y: 20 }, 0);
     const r = placeSessionLandmark({ x: 45, y: 20 }, 0);
     expect(r.success).toBe(false);
@@ -70,7 +70,7 @@ describe('plaza in the planet session', () => {
     expect(plaza()!.position).toEqual({ x: 20.5, y: 20 });
   });
 
-  it('refuses a plaza over sea', () => {
+  it('[PLAN-14] refuses a plaza over sea', () => {
     const r = placeSessionLandmark({ x: 150, y: 150 }, 0);
     expect(r.success).toBe(false);
     expect(r.errors.map((e) => e.ruleId)).toContain('V-ZONE-01');
@@ -89,7 +89,7 @@ describe('plaza in the planet session', () => {
     expect(Number.isInteger(p.position.x * 2) && Number.isInteger(p.position.y * 2)).toBe(true);
   });
 
-  it('turns through all four rotations back to the start', () => {
+  it('[PLAN-14] turns through all four rotations back to the start', () => {
     placeSessionLandmark({ x: 20.5, y: 20 }, 0);
     for (const r of [90, 180, 270, 0]) {
       expect(rotateSessionLandmark(editorPort).success).toBe(true);
@@ -98,7 +98,7 @@ describe('plaza in the planet session', () => {
     expect(plaza()!.position).toEqual({ x: 20.5, y: 20 });
   });
 
-  it('refuses a rotation whose footprint would cover sea and leaves the plaza unchanged', () => {
+  it('[PLAN-14] refuses a rotation whose footprint would cover sea and leaves the plaza unchanged', () => {
     leavePlanetSession(editorPort);
     enterPlanetSession(editorPort, null);
     paintGround(rect(10, 10, 24, 40));
@@ -191,7 +191,7 @@ describe('plaza in the planet session', () => {
     expect(plaza()).toMatchObject({ rotation: 90, width: ANCHOR_LANDMARK.height });
   });
 
-  it('moves on the half-cell grid', () => {
+  it('[PLAN-14] moves on the half-cell grid', () => {
     placeSessionLandmark({ x: 20.5, y: 20 }, 0);
     const exec = store().commandExecutor!, gs = store().gridState!;
     const { cmd, errors } = planObjectMove(exec, gs, plaza()!, 30, 25.5);
@@ -253,7 +253,7 @@ describe('plaza outside the planet session', () => {
     expect(plaza()).toEqual(before);
   });
 
-  it('the finished map still refuses removing or moving the plaza', () => {
+  it('[PLAN-03] the finished map still refuses removing or moving the plaza', () => {
     const exec = store().commandExecutor!;
     const p = plaza()!;
     expect(p.locked).toBe(true);
@@ -261,7 +261,7 @@ describe('plaza outside the planet session', () => {
     expect(plaza()).toEqual(p);
   });
 
-  it('refuses dragging the locked plaza on a finished map', () => {
+  it('[PLAN-03] refuses dragging the locked plaza on a finished map', () => {
     const exec = store().commandExecutor!;
     const p = plaza()!;
     const { errors } = planObjectMove(exec, store().gridState!, p, p.position.x + 1, p.position.y);

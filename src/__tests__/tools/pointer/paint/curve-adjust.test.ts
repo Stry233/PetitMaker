@@ -69,7 +69,7 @@ describe('the session opens', () => {
     expect(isCurveSessionOpen()).toBe(false);
   });
 
-  it('and closes on a click elsewhere, which does nothing but dismiss', () => {
+  it('[EDIT-37] and closes on a click elsewhere, which does nothing but dismiss', () => {
     const { state, ctx, tool } = world();
     draw(tool, ctx, [{ x: 4, y: 4 }, { x: 12, y: 10 }]);
     const after = painted(state);
@@ -80,7 +80,7 @@ describe('the session opens', () => {
 });
 
 describe('moving an anchor', () => {
-  it('re-lays the curve through the new position and clears the old path', () => {
+  it('[EDIT-37] re-lays the curve through the new position and clears the old path', () => {
     const { state, ctx, tool } = world();
     draw(tool, ctx, [{ x: 4, y: 10 }, { x: 12, y: 10 }, { x: 20, y: 10 }]);
     expect(isMountain(state, 12, 10)).toBe(true);
@@ -89,7 +89,7 @@ describe('moving an anchor', () => {
     expect(isMountain(state, 12, 10), 'the old one').toBe(false);
   });
 
-  it('does not stack the mountain twice where the paths overlap', () => {
+  it('[EDIT-37] does not stack the mountain twice where the paths overlap', () => {
     // Restore-then-relay, not patch: painting over the standing path would raise those cells again.
     const { state, ctx, tool } = world();
     draw(tool, ctx, [{ x: 4, y: 10 }, { x: 12, y: 10 }, { x: 20, y: 10 }]);
@@ -98,7 +98,7 @@ describe('moving an anchor', () => {
     expect(state.cells[10]?.[4]?.terrain?.elevation, 'an endpoint both paths cover').toBe(endElev);
   });
 
-  it('restores what a cell held BEFORE the curve, not bare ground', () => {
+  it('[EDIT-37] restores what a cell held BEFORE the curve, not bare ground', () => {
     const { state, ctx, tool } = world();
     // Lay a mountain shelf first with a separate straight curve, then draw over part of it.
     draw(tool, ctx, [{ x: 2, y: 6 }, { x: 30, y: 6 }]);
@@ -122,7 +122,7 @@ describe('moving an anchor', () => {
 });
 
 describe('direction handles', () => {
-  it('bend the curve without moving the anchor', () => {
+  it('[EDIT-37] bend the curve without moving the anchor', () => {
     const { state, ctx, tool } = world();
     draw(tool, ctx, [{ x: 4, y: 10 }, { x: 12, y: 10 }, { x: 20, y: 10 }]);
     const straight = painted(state);
@@ -133,7 +133,7 @@ describe('direction handles', () => {
 });
 
 describe('history', () => {
-  it('gives each tweak its own undo step, back to the curve as first drawn', () => {
+  it('[EDIT-37] gives each tweak its own undo step, back to the curve as first drawn', () => {
     const { state, executor, ctx, tool } = world();
     draw(tool, ctx, [{ x: 4, y: 10 }, { x: 12, y: 10 }, { x: 20, y: 10 }]);
     const afterDraw = executor.historyDepth();
@@ -172,7 +172,7 @@ describe('history', () => {
 });
 
 describe('escape', () => {
-  it('puts the handles away without undoing the curve', () => {
+  it('[EDIT-37] puts the handles away without undoing the curve', () => {
     // The curve is real terrain by the time the handles are up; Escape dismisses them, it is not
     // an undo. Same outcome as clicking off the curve.
     const { state, ctx, tool } = world();
@@ -183,7 +183,7 @@ describe('escape', () => {
     expect(painted(state)).toBe(laid);
   });
 
-  it('still abandons a curve that is only part-drawn, painting nothing', () => {
+  it('[EDIT-36] still abandons a curve that is only part-drawn, painting nothing', () => {
     const { state, ctx, tool } = world();
     click(tool, ctx, { x: 4, y: 10 });
     click(tool, ctx, { x: 12, y: 10 });
@@ -240,7 +240,7 @@ describe('a tweak the rules refuse', () => {
   const water = (state: ReturnType<typeof makeState>) =>
     state.cells.flat().filter((c) => c?.terrain?.type === TerrainType.Water).length;
 
-  it('reverts the map AND the anchors, rather than leaving handles on a curve that is gone', () => {
+  it('[EDIT-38] reverts the map AND the anchors, rather than leaving handles on a curve that is gone', () => {
     // `commitStroke` stops reverting as soon as the state is legal, which for a stroke that
     // restores and then re-lays can leave the restore standing and the new curve gone. The handles
     // must never describe a curve the map does not have.
@@ -267,7 +267,7 @@ describe('a tweak the rules refuse', () => {
     expect(state.cells[24]?.[12]?.terrain?.type).toBe(TerrainType.Water);
   });
 
-  it('does not leave a dead entry in history for a refused tweak', () => {
+  it('[EDIT-38] does not leave a dead entry in history for a refused tweak', () => {
     const { executor, ctx, tool } = waterWorld();
     draw(tool, ctx, [{ x: 10, y: 20 }, { x: 20, y: 20 }]);
     const depth = executor.historyDepth();
@@ -275,7 +275,7 @@ describe('a tweak the rules refuse', () => {
     expect(executor.historyDepth()).toBe(depth);
   });
 
-  it('reverts a tweak that could lay nothing at all', () => {
+  it('[EDIT-38] reverts a tweak that could lay nothing at all', () => {
     // The other failure: every command refused pre-command, so the stroke removes the standing curve
     // and lays no new one. No post-stroke violation is reported for that, only an empty result.
     const { state, ctx, tool } = world();

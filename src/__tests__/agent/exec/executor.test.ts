@@ -27,7 +27,7 @@ describe('exec/executor', () => {
     expect(exec.historyDepth()).toBe(before);
   });
 
-  it('paint_terrain lands one undo step and the result carries detail.cells', async () => {
+  it('[ASST-07] paint_terrain lands one undo step and the result carries detail.cells', async () => {
     const { exec, deps } = setup();
     const executor = createExecutor(deps);
     const before = exec.historyDepth();
@@ -48,7 +48,7 @@ describe('exec/executor', () => {
     }
   });
 
-  it('wide access is exactly the five wide names, delegation and history among them', () => {
+  it('[ASST-16] wide access is exactly the five wide names, delegation and history among them', () => {
     const { deps } = setup();
     const executor = createExecutor(deps);
     const wide = wireSchemas().filter((s) => executor.facts.access(s.name) === 'wide').map((s) => s.name).sort();
@@ -66,7 +66,7 @@ describe('exec/executor', () => {
     expect(ask('place_object')).toBe(false); // an ordinary write still rides through checkpoint
   });
 
-  it('describe renders a localized one-liner, never raw JSON', () => {
+  it('[ASST-17] describe renders a localized one-liner, never raw JSON', () => {
     const { deps } = setup();
     const executor = createExecutor(deps);
     const line = executor.describe({ name: 'place_object', args: { catalogId: 'building-myhouse', x: 3, y: 4 } });

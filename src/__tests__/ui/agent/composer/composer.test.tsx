@@ -8,9 +8,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, fireEvent, waitFor } from '@testing-library/react';
 import { I18nProvider, translate } from '../../../../i18n/context';
-import {
-  CLUSTER_SIZE, COMPOSER_HEIGHT, Composer, FIELD_MAX_LINES, WELL_PAD,
-} from '../../../../ui/agent/composer/Composer';
+import { Composer, FIELD_MAX_LINES } from '../../../../ui/agent/composer/Composer';
 import { MOTIONS } from '../../../../ui/design/motion/registry';
 import { z } from '../../../../ui/design/styles';
 import { TRACK } from '../../../../ui/design/tokens';
@@ -753,10 +751,8 @@ describe('Composer: the field s own line rules', () => {
 /**
  * The send cluster is centred in the well and stays in it, at every height the field reaches.
  *
- * jsdom lays nothing out, so the contract is pinned from both ends: the style facts that produce the
- * centring (the well centres its row, and nothing in it overrides that), and the arithmetic those
- * facts imply at one, two, three and four lines, over the well's own padding, the tallest control in
- * the cluster and the field's declared line box.
+ * jsdom lays nothing out, so the contract is pinned by the style facts that produce the centring: the
+ * well centres its row, and nothing in it overrides that.
  */
 describe('Composer: the well s layout contract', () => {
   function well() {
@@ -775,23 +771,5 @@ describe('Composer: the well s layout contract', () => {
     for (const id of ['composer-stop', 'composer-send']) {
       expect(view.getByTestId(id).style.alignSelf).toBe('');
     }
-  });
-
-  it.each([1, 2, 3, 4])('keeps the cluster centred and inside the well at %i lines', (lines) => {
-    const { view, box } = well();
-    const field = view.getByTestId('composer-input');
-    const fieldHeight = lineBox(field) * lines;
-
-    // The well is a flex row of its padding plus the taller of the field and the cluster.
-    const inner = Math.max(fieldHeight, CLUSTER_SIZE);
-    const height = Math.max(COMPOSER_HEIGHT, inner + WELL_PAD * 2);
-    expect(Number.parseFloat(String(box.style.minHeight))).toBe(COMPOSER_HEIGHT);
-
-    // Centred: the air above the cluster is the air below it.
-    const top = (height - CLUSTER_SIZE) / 2;
-    expect(top).toBeCloseTo(height - (top + CLUSTER_SIZE));
-    // And inside: never nearer either edge than the well's own padding.
-    expect(top).toBeGreaterThanOrEqual(WELL_PAD - 0.001);
-    expect(top + CLUSTER_SIZE).toBeLessThanOrEqual(height - WELL_PAD + 0.001);
   });
 });

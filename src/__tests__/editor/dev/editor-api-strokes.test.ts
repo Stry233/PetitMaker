@@ -15,6 +15,7 @@ import { describe, it, expect } from 'vitest';
 import { EditorAPI } from '../../../editor/dev/editor-api';
 import { CommandExecutor } from '../../../core/commands/command-executor';
 import { TerrainType } from '../../../core/model/types';
+import { hasTrait } from '../../../core/model/traits';
 import type { GridState } from '../../../core/model/types';
 import { getPlaceableByCategory } from '../../../state/catalog';
 import { makeState, setTerrain, makeExecutor } from '../../_support/map-state';
@@ -27,7 +28,8 @@ function world(): { state: GridState; executor: CommandExecutor; api: EditorAPI 
 }
 
 const tree = (): string => getPlaceableByCategory(ItemCategory.Tree)[0]!.id;
-const road = (): string => getPlaceableByCategory(ItemCategory.Road)[0]!.id;
+/** A road no plant may stand on. */
+const road = (): string => getPlaceableByCategory(ItemCategory.Road).find((r) => !hasTrait(r, 'plantable'))!.id;
 
 describe('EditorAPI writes commit their stroke', () => {
   it('paints as one undo entry', () => {

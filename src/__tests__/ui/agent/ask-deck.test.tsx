@@ -6,7 +6,6 @@ import { cleanup, fireEvent, within } from '@testing-library/react';
 import { AskDeck, deckRuns } from '../../../ui/agent/record/AskDeck';
 import { GateBlock } from '../../../ui/agent/record/GateBlock';
 import { PanelShell } from '../../../ui/agent/PanelShell';
-import { LINE, PLATE } from '../../../ui/design/tokens';
 import { useEditorStore } from '../../../state/store';
 import { useAgentConnection } from '../../../agent/connection/store';
 import { PROVIDER_IDS, type ProviderId } from '../../../agent/providers/defaults';
@@ -30,12 +29,6 @@ beforeEach(() => {
     oversight: 'checkpoint', customBaseUrl: '', keyed: ['claude'], hydrated: true,
   });
 });
-
-/** jsdom re-serializes every colour as `rgb(...)`, so a token compared as a hex never matches. */
-function rgb(hex: string): string {
-  const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
-  return `rgb(${r}, ${g}, ${b})`;
-}
 
 let seq = 0;
 function ask(over: Partial<AskRecord> = {}): AskRecord {
@@ -163,14 +156,6 @@ describe('the deck, collapsed and expanded', () => {
     expect(getByTestId('gate-verdict').getAttribute('data-verdict')).toBe('declined');
     expect(getAllByTestId('ask-deck-edge').length).toBe(2);
     expect(queryByTestId('gate-block')).toBeNull();
-  });
-
-  it('wears the settled-card plate and spine', () => {
-    const { getByTestId } = renderWithI18n(deckOf([answered(), answered(), answered()]));
-    const face = getByTestId('ask-deck-face');
-    expect(face.style.background).toBe(rgb(PLATE));
-    expect(face.style.borderLeft).toContain('5px');
-    expect(face.style.borderLeft).toContain(rgb(LINE));
   });
 
   it('fans the cards into the list in place on a press, and restacks on a second', () => {

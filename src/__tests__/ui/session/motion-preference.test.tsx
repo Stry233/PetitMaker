@@ -35,7 +35,7 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals());
 
 describe('useMotionEnabled publishes the effective preference', () => {
-  it('"reduced" reduces both gates even when the OS asks for nothing', () => {
+  it('[UI-08] "reduced" reduces both gates even when the OS asks for nothing', () => {
     mockOsPrefers(false);
     useEditorStore.setState({ motionPref: 'reduced' });
     renderHook(() => useMotionEnabled());
@@ -43,7 +43,7 @@ describe('useMotionEnabled publishes the effective preference', () => {
     expect(attr()).toBe('1');
   });
 
-  it('"full" keeps motion on even when the OS asks for reduce', () => {
+  it('[UI-08] "full" keeps motion on even when the OS asks for reduce', () => {
     mockOsPrefers(true);
     useEditorStore.setState({ motionPref: 'full' });
     renderHook(() => useMotionEnabled());
@@ -52,7 +52,7 @@ describe('useMotionEnabled publishes the effective preference', () => {
     expect(attr()).toBe('0');
   });
 
-  it('"system" follows the OS, both ways', () => {
+  it('[UI-08] "system" follows the OS, both ways', () => {
     mockOsPrefers(true);
     useEditorStore.setState({ motionPref: 'system' });
     const a = renderHook(() => useMotionEnabled());

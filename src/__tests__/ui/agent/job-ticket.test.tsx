@@ -472,7 +472,7 @@ describe('OpRow: a reverted row', () => {
 
   /** A region rollback is refused work rather than broken work: the outline shield in the revert
    *  ink, its own chip, and the sentence open on arrival. */
-  it('renders a region-blocked row with the shield, the kept-in-region chip and its reason', () => {
+  it('[ASST-11] renders a region-blocked row with the shield, the kept-in-region chip and its reason', () => {
     const op = makeOp({
       name: 'place_object',
       status: 'blocked',
@@ -734,10 +734,12 @@ describe('JobTicket: the order line and the region it was filed under', () => {
 
 describe('JobTicket: a job on hold', () => {
   it('freezes the tape while the work is held', () => {
+    const running = renderWithI18n(<JobTicket job={makeJob({ ops: [makeOp()] })} live />);
+    expect(running.getByTestId('tape-stripes').classList.contains('pw-stripe-drift')).toBe(true);
+    running.unmount();
+
     const held = renderWithI18n(<JobTicket job={makeJob({ ops: [makeOp()] })} live held />);
-    const fill = held.getByTestId('tape-bar').firstElementChild as HTMLElement;
-    expect(fill.style.opacity).toBe('0.45');
-    expect(fill.className).not.toContain('pw-stripes');
+    expect(held.getByTestId('tape-stripes').classList.contains('pw-stripe-drift')).toBe(false);
   });
 
   it('marks where a paused job stopped, by stage where it filed a plan', () => {

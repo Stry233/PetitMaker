@@ -31,7 +31,7 @@ describe('smart construction', () => {
   /**
    * Being in this table is not the same as being reachable: an entry under a surface with no bar
    * mounting the control is offered by the table and drawn by nobody. The surfaces offering macros
-   * are the ones whose bars render it, which `terrain-bar.test.tsx` (the pill on each terrain bar)
+   * are the ones whose bars render it, which `terrain-bar.slow.test.tsx` (the pill on each terrain bar)
    * and `object-shelf.test.tsx` (the planting card) press.
    */
   it('offers macros only on the surfaces whose bars draw the control', () => {

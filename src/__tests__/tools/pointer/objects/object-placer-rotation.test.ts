@@ -39,7 +39,7 @@ function arm(id: string): void {
 }
 
 describe('ObjectPlacerTool: rotating the ghost before placement', () => {
-  it('the rotate shortcut turns the pending rotation, and the ghost footprint swaps with it', () => {
+  it('[EDIT-31] the rotate shortcut turns the pending rotation, and the ghost footprint swaps with it', () => {
     arm(HOUSE);
     try {
       const state = makeState(30, 30);
@@ -106,7 +106,7 @@ describe('ObjectPlacerTool: rotating the ghost before placement', () => {
     }
   });
 
-  it('the rotation persists across consecutive placements, and resets when the armed item changes', () => {
+  it('[EDIT-31] the rotation persists across consecutive placements, and resets when the armed item changes', () => {
     // building-stall (unlike `HOUSE`) has no maxCount, so it can actually land twice — the point of
     // the persistence check (placing several fences at the same angle).
     const STALL = 'building-stall';

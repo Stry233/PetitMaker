@@ -67,7 +67,7 @@ describe('ModalShell — Escape to close', () => {
 });
 
 describe('ModalShell — stacked Escape', () => {
-  it('Escape closes only the TOP shell when two are stacked', () => {
+  it('[UI-12] Escape closes only the TOP shell when two are stacked', () => {
     const onCloseLower = vi.fn();
     const onCloseUpper = vi.fn();
     render(

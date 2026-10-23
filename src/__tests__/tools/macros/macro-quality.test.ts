@@ -1,6 +1,6 @@
 /**
  * A gimmick is a testable thing: output that never varies, ignores its context, or is quietly
- * empty. These are the generator's own design-quality probes (`tools/generation/design-quality.test.ts`)
+ * empty. These are the generator's own design-quality probes (`tools/generation/design-quality.slow.test.ts`)
  * applied to the macros.
  *
  * Seven of them were written failing and marked with vitest's `it.fails` rather than softened, which

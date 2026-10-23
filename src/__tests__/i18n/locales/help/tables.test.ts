@@ -18,13 +18,13 @@ describe('the Help tables', () => {
     return [...all.filter((t) => !resolved(t)), ...(skipResolved ? [] : new Set(all.filter(resolved)))].sort();
   };
 
-  it('holds every locale to the en key set', () => {
+  it('[UI-01] holds every locale to the en key set', () => {
     for (const locale of LOCALES) {
       expect(Object.keys(HELP_TABLES[locale]).sort(), locale as string).toEqual([...enKeys].sort());
     }
   });
 
-  it('holds every value to the en placeholder set', () => {
+  it('[UI-01] holds every value to the en placeholder set', () => {
     for (const locale of LOCALES) {
       for (const key of enKeys) {
         const skip = RESOLVED_DIFFERS[key]?.includes(locale) ?? false;

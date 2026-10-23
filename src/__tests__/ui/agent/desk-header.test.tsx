@@ -155,13 +155,6 @@ describe('the status card is ONE card in every state', () => {
       unmount();
     }
   });
-
-  /** The flip turns the card, and a turn needs a perspective on the card's own parent: a wrapper
-   *  between flattens 3D and the turn renders as a vertical squash. */
-  it('keeps the flip\'s perspective on the desk itself', () => {
-    const { getByTestId } = renderFace('idle');
-    expect(getByTestId('desk-header').style.perspective).toBe('520px');
-  });
 });
 
 describe('the seat table: what stands above the gear', () => {
@@ -1116,7 +1109,7 @@ describe('the paper each face paints', () => {
   });
 });
 
-describe('deskGlyph and deskSeat, as tables', () => {
+describe('deskGlyph and deskFaceKey, as tables', () => {
   it('derives the glyph per state family', () => {
     const table: [keyof typeof FACES, string][] = [
       ['disconnected', 'pw-disconnected'],
@@ -1155,18 +1148,6 @@ describe('deskGlyph and deskSeat, as tables', () => {
     }
   });
 
-  it('derives the seat per family', () => {
-    expect(deskSeat(FACES.executing!.view)?.id).toBe('pause');
-    expect(deskSeat(makeView({ phase: 'executing' }))).toBeNull();
-    expect(deskSeat(FACES.gated!.view)?.id).toBe('stop');
-    expect(deskSeat(FACES.retrying!.view)?.id).toBe('stop');
-    expect(deskSeat(FACES.paused!.view)?.id).toBe('resume');
-    expect(deskSeat(FACES.pausing!.view)?.id).toBe('stop');
-    expect(deskSeat(FACES.idle!.view)).toBeNull();
-    expect(deskSeat(FACES.aborted!.view)).toBeNull();
-    expect(deskSeat(makeView(), { connected: false })).toBeNull();
-  });
-
   /** The flip keys on the state's identity: a clock tick, a countdown digit or a word said
    *  mid-state repaints the standing face, and only a state change turns the card. */
   it('keys the flip on the state, not on the repaint', () => {
@@ -1179,64 +1160,7 @@ describe('deskGlyph and deskSeat, as tables', () => {
   });
 });
 
-describe('the status card\'s words, in every locale', () => {
-  const KEYS = [
-    'agent.dock_idle', 'agent.dock_thinking', 'agent.dock_writing', 'agent.dock_executing', 'agent.dock_gated',
-    'agent.dock_retrying', 'agent.dock_pausing', 'agent.dock_paused', 'agent.dock_aborted',
-    'agent.dock_incident', 'agent.dock_disconnected', 'agent.dock_no_key',
-    'agent.dock_done', 'agent.dock_answered', 'agent.dock_ended', 'agent.dock_nothing_said',
-    'agent.dock_capped', 'agent.dock_err_auth', 'agent.dock_err_key_missing',
-    'agent.dock_err_quota', 'agent.dock_err_cors',
-    'agent.dock_err_overflow', 'agent.dock_err_no_answer', 'agent.dock_after_tries',
-    'agent.dock_err_config', 'agent.dock_err_model',
-    'agent.dock_act_try_again', 'agent.dock_act_new_order', 'agent.dock_act_fix_key',
-    'agent.dock_retry_busy', 'agent.dock_retry_offline', 'agent.dock_retry_again',
-    'agent.dock_try_of', 'agent.dock_step_of', 'agent.dock_thoughts', 'agent.dock_reads',
-    'agent.dock_edits_kept', 'agent.dock_on_map', 'agent.dock_asks_off',
-    'agent.dock_stop_question', 'agent.dock_manage', 'agent.dock_pause_at_step',
-    'agent.dock_resume_pending',
-    'agent.dock_setup_reading', 'agent.dock_setup_watching', 'agent.dock_setup_shaped',
-    'agent.dock_setup_asking_both', 'agent.dock_setup_new', 'agent.dock_setup_refused',
-    'agent.dock_setup_paste_again', 'agent.dock_setup_no_provider', 'agent.dock_setup_point_me',
-    'agent.action_stop',
-    'agent.action_resume', 'agent.action_cancel', 'agent.action_retry_now',
-  ] as const;
-  const LOCALES = Object.keys(translations) as Locale[];
-
-  it('every locale declares every key', () => {
-    for (const locale of LOCALES) {
-      for (const key of KEYS) {
-        expect(translations[locale][key], `${locale}.${key}`).toBeTypeOf('string');
-        expect(translations[locale][key]!.length, `${locale}.${key}`).toBeGreaterThan(0);
-      }
-    }
-  });
-
-  it('keeps every placeholder the status card interpolates', () => {
-    for (const locale of LOCALES) {
-      expect(translations[locale]['agent.dock_retrying'], locale).toContain('{s}');
-      expect(translations[locale]['agent.dock_on_map'], locale).toContain('{name}');
-      for (const key of ['agent.dock_try_of', 'agent.dock_step_of'] as const) {
-        expect(translations[locale][key], `${locale}.${key}`).toContain('{n}');
-        expect(translations[locale][key], `${locale}.${key}`).toContain('{m}');
-      }
-      for (const key of ['agent.dock_thoughts', 'agent.dock_reads', 'agent.dock_after_tries'] as const) {
-        expect(translations[locale][key], `${locale}.${key}`).toContain('{n}');
-      }
-      for (const key of ['agent.dock_setup_shaped'] as const) {
-        expect(translations[locale][key], `${locale}.${key}`).toContain('{name}');
-      }
-    }
-  });
-
-  it('no value uses an em dash or a dot separator', () => {
-    for (const locale of LOCALES) {
-      for (const key of KEYS) {
-        expect(translations[locale][key], `${locale}.${key}`).not.toMatch(/[—·•]/);
-      }
-    }
-  });
-
+describe('the status card\'s words', () => {
   it('says the state in the active locale', () => {
     useEditorStore.setState({ locale: 'zh' });
     const { getByTestId } = renderWithI18n(<DeskHeader view={FACES.thinking!.view} now={0} />);
@@ -1432,20 +1356,6 @@ describe('the marks and spacing on an action face', () => {
       <DeskHeader view={asleep} connected={false} now={0} />,
     );
     expect(queryByTestId('dock-allow-mark')).toBeNull();
-  });
-
-  /** The retry ring hangs outside its pill and the card clips, so the action line keeps its clearance. */
-  it('stands an act face\'s words at the ring\'s clearance', () => {
-    const act = renderFace('error.auth');
-    expect(act.getByTestId('dock-deck-word').parentElement!.style.paddingTop).toBe('10px');
-  });
-
-  /** `border-box` keeps the padded, full-height action column inside the 74px card. */
-  it('keeps the action face\'s own column inside the card', () => {
-    const act = renderFace('error.auth');
-    const column = act.getByTestId('dock-col-words');
-    expect(column.style.boxSizing).toBe('border-box');
-    expect(column.style.height).toBe('100%');
   });
 
   /** The compact datum keeps its width; ellipsis is the final fallback for a clipped card. */

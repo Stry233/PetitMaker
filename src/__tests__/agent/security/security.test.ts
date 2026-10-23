@@ -10,7 +10,7 @@ import { deleteVault, openSecret, sealSecret } from '../../../platform/storage/v
 import { newSealState } from '../../../agent/security/key-storage';
 
 describe('toRawFailure', () => {
-  it('scrubs the live key out of a provider error message', () => {
+  it('[ASST-04] scrubs the live key out of a provider error message', () => {
     const err = new Error('401 Unauthorized for token gw_7f3a2b1c');
     expect(toRawFailure(err, false, ['gw_7f3a2b1c']).message)
       .toBe('401 Unauthorized for token <redacted-key>');
@@ -21,10 +21,10 @@ describe('sanitizeEndpointUrl', () => {
   it('adds https to scheme-less input', () => {
     expect(sanitizeEndpointUrl('gateway.example.edu/api')).toBe('https://gateway.example.edu/api');
   });
-  it('upgrades non-loopback http to https (keys must not travel cleartext)', () => {
+  it('[ASST-06] upgrades non-loopback http to https (keys must not travel cleartext)', () => {
     expect(sanitizeEndpointUrl('http://gateway.example.edu/api')).toBe('https://gateway.example.edu/api');
   });
-  it('allows http for loopback (local Ollama etc.)', () => {
+  it('[ASST-06] allows http for loopback (local Ollama etc.)', () => {
     expect(sanitizeEndpointUrl('http://localhost:11434/v1')).toBe('http://localhost:11434/v1');
     expect(sanitizeEndpointUrl('http://127.0.0.1:8080/v1')).toBe('http://127.0.0.1:8080/v1');
   });
@@ -36,7 +36,7 @@ describe('sanitizeEndpointUrl', () => {
   it('trims trailing slashes', () => {
     expect(sanitizeEndpointUrl('https://host/api/')).toBe('https://host/api');
   });
-  it('drops credentials embedded in the URL', () => {
+  it('[ASST-06] drops credentials embedded in the URL', () => {
     // A password here would sit in a field persisted in the clear beside a key the vault seals,
     // and a browser refuses to fetch a URL carrying credentials.
     expect(sanitizeEndpointUrl('https://user:hunter2@gateway.example.edu/v1'))
@@ -64,7 +64,7 @@ describe('sanitizeEndpointUrl', () => {
 });
 
 describe('endpointUrlLooksUsable', () => {
-  it('accepts https anywhere and http only on loopback', () => {
+  it('[ASST-06] accepts https anywhere and http only on loopback', () => {
     expect(endpointUrlLooksUsable(' https://gateway.example.edu/v1 ')).toBe(true);
     expect(endpointUrlLooksUsable('http://localhost:11434/v1')).toBe(true);
     expect(endpointUrlLooksUsable('http://127.0.0.1')).toBe(true);

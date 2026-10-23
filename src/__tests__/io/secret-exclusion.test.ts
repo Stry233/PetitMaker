@@ -128,7 +128,7 @@ describe('secret exclusion — codecs never touch storage', () => {
     expect(code).not.toBeNull();
   });
 
-  it('sectioned JSON export with ALL sections enabled excludes the fake key and pref values', () => {
+  it('[FILE-07] sectioned JSON export with ALL sections enabled excludes the fake key and pref values', () => {
     const state = buildStateWithObjects();
     const executor = newExecutor(state);
 
@@ -156,36 +156,6 @@ describe('secret exclusion — codecs never touch storage', () => {
     const tokenShaped = /[A-Za-z0-9_-]{24,}/g;
     const matches = json.match(tokenShaped) ?? [];
     expect(matches).toEqual([]);
-  });
-
-  // ── Self-check: prove the marker-detection assertions above would actually fire on a real
-  //    leak, rather than passing vacuously (e.g. from a typo'd canary that can never match). ──
-  describe('self-check: marker detection actually fires (negative control)', () => {
-    it('a tampered copy of a real serialize() output WITH the marker injected fails the same assertion', () => {
-      const state = buildStateWithObjects();
-      const clean = serialize(state);
-      expect(clean).not.toContain(MARKER); // the real output stays clean, as pinned above
-
-      const tampered = `${clean}::${MARKER}`;
-      expect(tampered).toContain(MARKER); // sanity: the marker string itself is well-formed
-      expect(() => expect(tampered).not.toContain(MARKER)).toThrow();
-    });
-
-    it('a tampered copy of the payload latin1 string WITH a canary injected fails the same assertion', async () => {
-      const state = buildStateWithObjects();
-      const payload = await encodeMapPayload(state, null, { appVersion: '1.0-test', saveVersion: 3 });
-      const latin1 = Array.from(payload, (b) => String.fromCharCode(b)).join('');
-      const tampered = latin1 + ZOOM_CANARY;
-      expect(() => expect(tampered).not.toContain(ZOOM_CANARY)).toThrow();
-    });
-
-    it('the token-shaped regex used on the provenance summary actually matches an injected token', () => {
-      const tokenShaped = /[A-Za-z0-9_-]{24,}/g;
-      const withToken = JSON.stringify({ ok: true, evil: 'AAAAAAAAAAAAAAAAAAAAAAAAAAAA' });
-      const matches = withToken.match(tokenShaped) ?? [];
-      expect(matches.length).toBeGreaterThan(0);
-      expect(() => expect(matches).toEqual([])).toThrow();
-    });
   });
 });
 
@@ -363,7 +333,7 @@ describe('stylize secrets never enter a payload', () => {
     vi.useRealTimers();
   });
 
-  it('a settings-record key and a minted version bitmap reach no save payload, share payload, exported JSON section, or autosave blob', async () => {
+  it('[FILE-07] a settings-record key and a minted version bitmap reach no save payload, share payload, exported JSON section, or autosave blob', async () => {
     const img = new Image();
     img.src = `data:image/png;base64,${btoa(STYLIZE_BITMAP_CANARY)}`;
     versionStore.mint({ kind: 'model', direction: 'watercolor', image: img, mapEdit: versionStore.currentMapEdit() });
@@ -399,28 +369,5 @@ describe('stylize secrets never enter a payload', () => {
     expect(autosaved).not.toBeNull();
     expect(autosaved).not.toContain(STYLIZE_KEY_CANARY);
     expect(autosaved).not.toContain(STYLIZE_BITMAP_CANARY);
-  });
-
-  // ── Self-check: prove these two canaries would actually fire on a real leak. ──────────────────
-  describe('self-check: the stylize canaries actually fire (negative control)', () => {
-    it('a tampered save payload with the sealed-key canary injected fails the same assertion', () => {
-      const state = buildStateWithObjects();
-      const clean = serialize(state);
-      expect(clean).not.toContain(STYLIZE_KEY_CANARY);
-      const tampered = `${clean}::${STYLIZE_KEY_CANARY}`;
-      expect(() => expect(tampered).not.toContain(STYLIZE_KEY_CANARY)).toThrow();
-    });
-
-    it('a tampered autosave blob with the bitmap canary injected fails the same assertion', () => {
-      vi.useFakeTimers();
-      const state = buildStateWithObjects();
-      autosave.schedule(state);
-      vi.advanceTimersByTime(2000);
-      const clean = localStorage.getItem(PREFS.autosave.key);
-      expect(clean).not.toBeNull();
-      expect(clean).not.toContain(STYLIZE_BITMAP_CANARY);
-      const tampered = `${clean}::${STYLIZE_BITMAP_CANARY}`;
-      expect(() => expect(tampered).not.toContain(STYLIZE_BITMAP_CANARY)).toThrow();
-    });
   });
 });

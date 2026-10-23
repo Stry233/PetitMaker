@@ -197,7 +197,7 @@ describe('applyMacro', () => {
 
   // A macro is the generator's machinery invoked at a point, so Clear has to take it back the same
   // way it takes back a run, while a hand placement inside the same ground survives.
-  it('attributes what it laid to the generator, and Clear takes it back', () => {
+  it('[GEN-10] attributes what it laid to the generator, and Clear takes it back', () => {
     const { kit, state } = setup();
     place(kit, 'building-myhouse', 2, 2);
     applyMacro(kit, 'patch-tree', { seed: 7, at: { x: 20, y: 20 }, radius: 10 });

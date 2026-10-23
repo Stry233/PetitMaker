@@ -147,7 +147,7 @@ describe('agent session persist', () => {
     expect(eventsOf(revived!)).toHaveLength(2);
   });
 
-  it('appends a paused event on load when the last job is still active, and does not double it up', () => {
+  it('[ASST-12] appends a paused event on load when the last job is still active, and does not double it up', () => {
     const log = createLog(() => 1);
     append(log, { kind: 'order', text: 'build', mapContext: 'ctx' });
     saveLog(log);

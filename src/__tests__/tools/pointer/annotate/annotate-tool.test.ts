@@ -193,10 +193,11 @@ describe('zones', () => {
     expect(s().annotationDraft?.kind).toBe('zone');
   });
 
-  it('Escape drops the draft and Discard leaves no note behind', () => {
+  it('Escape drops a zone draft waiting for Done and leaves no note behind', () => {
     drag(tool, [3, 3], [7, 3]);
-    expect(s().annotationDraft).not.toBeNull();
-    s().setAnnotationDraft(null);
+    expect(s().annotationDraft?.kind).toBe('zone');
+    expect(tool.cancelPending(liveCtx()), 'Escape had a draft to drop').toBe(true);
+    expect(s().annotationDraft).toBeNull();
     expect(items()).toHaveLength(0);
   });
 

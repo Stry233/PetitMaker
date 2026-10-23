@@ -79,7 +79,7 @@ describe('the generation record follows undo and redo', () => {
     expect(kit().state.generation).toEqual(first);
   }, 60000);
 
-  it('an undone Clear gives the recipe back, and redo drops it again', async () => {
+  it('[GEN-10] an undone Clear gives the recipe back, and redo drops it again', async () => {
     await generateMap(kit(), { config: config(11), region: null });
     const recipe = kit().state.generation;
     clearGenerated(kit(), { region: null });

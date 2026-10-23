@@ -18,6 +18,21 @@ import { BlockRecovery, type RecoveryBudget } from './recovery';
 
 const ERASURE_CONFIDENCE = 0.2;
 const HEADER_ERASURE_CONFIDENCE = 0.15;
+const NEWEST_PROFILE = Math.max(...GLYPH_PROFILES.map((profile) => profile.id));
+
+/** What a read found: the payload, or why there is none. A header that passes its Reed-Solomon check
+ *  is a PetitGlyph, so `damaged` is a code whose payload could not be recovered and `newer` one whose
+ *  header names a version or profile this build does not know; `nothing` found no such header. */
+export type GlyphRead = { payload: Uint8Array } | { payload: null; found: 'nothing' | 'damaged' | 'newer' };
+
+/** The headers the finder candidates of one read carried. */
+interface HeaderEvidence { known: boolean; newer: boolean }
+
+/** A Reed-Solomon-valid header this build cannot parse because a later build wrote it. */
+function isNewerHeader(bytes: Uint8Array): boolean {
+  const version = bytes[HEADER_OFFSET.version]!;
+  return version > HEADER_VERSION || (version === HEADER_VERSION && bytes[HEADER_OFFSET.tier]! > NEWEST_PROFILE);
+}
 
 interface Component { minx: number; maxx: number; miny: number; maxy: number; count: number }
 interface Geometry { ox: number; oy: number; module: number }
@@ -271,7 +286,7 @@ function decodeCurrent(
   return recoverCurrent(img, { geometry, header, centroids, recovery }, still, { attempts: 1000 });
 }
 
-function decodeAt(img: Raster, geometry: Geometry, current: CurrentCandidate[]): Uint8Array | null {
+function decodeAt(img: Raster, geometry: Geometry, current: CurrentCandidate[], evidence: HeaderEvidence): Uint8Array | null {
   const { ox, oy, module } = geometry;
   const ink = sampleRect(img, { x0: ox, y0: oy, w: FINDER * module, h: FINDER * module });
   const paper = sampleRect(img, { x0: ox + 80 * module, y0: oy + module, w: module, h: module });
@@ -310,7 +325,11 @@ function decodeAt(img: Raster, geometry: Geometry, current: CurrentCandidate[]):
   const headerBytes = rsDecode(encodedHeader, HEADER_NSYM, byteErasures);
   if (!headerBytes || headerBytes.length < HEADER_BYTES) return null;
   const header = parseHeader(headerBytes);
-  if (!header) return null;
+  if (!header) {
+    if (isNewerHeader(headerBytes)) evidence.newer = true;
+    return null;
+  }
+  evidence.known = true;
 
   const centroids: RGB[] = [];
   for (let i = 0; i < header.palette.length; i++) {
@@ -385,6 +404,18 @@ function recoverCurrent(
 
 /** Decode a v1, v2, or v3 PetitGlyph from a larger RGBA image. */
 export function decodeGlyph(rgba: Uint8Array, width: number, height: number): Uint8Array | null {
+  return readGlyph(rgba, width, height).payload;
+}
+
+/** Read a PetitGlyph from a larger RGBA image, saying why when there is no payload. */
+export function readGlyph(rgba: Uint8Array, width: number, height: number): GlyphRead {
+  const evidence: HeaderEvidence = { known: false, newer: false };
+  const payload = searchGlyph(rgba, width, height, evidence);
+  if (payload) return { payload };
+  return { payload: null, found: evidence.known ? 'damaged' : evidence.newer ? 'newer' : 'nothing' };
+}
+
+function searchGlyph(rgba: Uint8Array, width: number, height: number, evidence: HeaderEvidence): Uint8Array | null {
   if (!Number.isSafeInteger(width) || !Number.isSafeInteger(height) || width <= 0 || height <= 0
     || width * height * 4 !== rgba.length) return null;
   const img: Raster = { rgba, width, height };
@@ -397,7 +428,7 @@ export function decodeGlyph(rgba: Uint8Array, width: number, height: number): Ui
   const current: CurrentCandidate[] = [];
   for (const geometry of candidates) {
     try {
-      const payload = decodeAt(img, geometry, current);
+      const payload = decodeAt(img, geometry, current, evidence);
       if (payload) return payload;
     } catch {
       // A malformed candidate does not prevent testing the remaining finder pairs.

@@ -8,7 +8,7 @@ import { ELEVATION_MAX, layerNumber } from '../../core/game/profile';
 const tFor = (locale: Locale) => (key: TextKey, params?: Record<string, string | number>) => translateFor(locale, key, params);
 
 describe('rule refusal copy', () => {
-  it('leads a toast with the category in each locale’s own punctuation', () => {
+  it('[UI-05] leads a toast with the category in each locale’s own punctuation', () => {
     expect(ruleToast(tFor('en'), 'error.zone_restricted')).toBe('Placement: zone is not buildable');
     expect(ruleToast(tFor('fr'), 'error.layer_locked')).toBe('Calque : ce calque est verrouillé');
     expect(ruleToast(tFor('zh'), 'error.elevation_limit', { max: layerNumber(ELEVATION_MAX) })).toBe(`高度：最高为第 ${layerNumber(ELEVATION_MAX)} 层`);

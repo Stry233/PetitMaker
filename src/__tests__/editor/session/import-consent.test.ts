@@ -119,7 +119,7 @@ const PATHS: Record<string, () => Promise<void>> = {
 };
 
 describe.each(Object.keys(PATHS))('opening %s with landmark conflicts', (path) => {
-  it('leaves the open map untouched while the choice is asked and after it is cancelled', async () => {
+  it('[PLAN-28, PLAN-31] leaves the open map untouched while the choice is asked and after it is cancelled', async () => {
     const before = openMap();
     await PATHS[path]!();
     expect(store().repairSession?.phase).toBe('choose');
@@ -134,7 +134,7 @@ describe.each(Object.keys(PATHS))('opening %s with landmark conflicts', (path) =
     expect(schedule).not.toHaveBeenCalled();
   });
 
-  it('brings the open map back as it was when the hand repair is cancelled', async () => {
+  it('[PLAN-31] brings the open map back as it was when the hand repair is cancelled', async () => {
     const before = openMap();
     await PATHS[path]!();
     repairByHand();
@@ -167,7 +167,7 @@ const EXPORTED: Record<string, () => Promise<string>> = {
 };
 
 describe.each(Object.keys(PATHS))('Export first while opening %s', (path) => {
-  it('downloads the map as it came and leaves the choice, the open map and its exported mark as they were', async () => {
+  it('[PLAN-31] downloads the map as it came and leaves the choice, the open map and its exported mark as they were', async () => {
     const before = openMap();
     const exportedAt = store().exportedAt;
     await PATHS[path]!();

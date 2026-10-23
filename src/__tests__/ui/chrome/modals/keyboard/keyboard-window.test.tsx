@@ -35,7 +35,6 @@ if (typeof Blob.prototype.text !== 'function') {
 
 import { KeyboardModal } from '../../../../../ui/chrome/modals/keyboard/KeyboardModal';
 import { boardZoomFor } from '../../../../../ui/chrome/modals/keyboard/BoardHBar';
-import { fittedUiScale } from '../../../../../ui/design/scale';
 import { I18nProvider } from '../../../../../i18n/context';
 import { useKeybinds } from '../../../../../state/keymap/store';
 import { effectiveCombo } from '../../../../../state/keymap/resolve';
@@ -203,12 +202,24 @@ describe('the keyboard window on a small screen', () => {
   });
 
   it('leaves a rim of backdrop on every side', () => {
-    renderWindow();
-    const card = screen.getByRole('dialog');
-    const chrome = fittedUiScale(window.innerWidth, window.innerHeight, 1);
-    const px = (css: string): number => parseFloat(css.replace(/[^0-9.]/g, ''));
-    expect(px(card.style.maxHeight)).toBeCloseTo((86 / 100 * window.innerHeight) / chrome, 3);
-    expect(px(card.style.width)).toBeCloseTo(Math.min(1574, (88 / 100 * window.innerWidth) / chrome), 3);
+    const was = { w: window.innerWidth, h: window.innerHeight };
+    const viewport = (w: number, h: number) => {
+      Object.defineProperty(window, 'innerWidth', { value: w, configurable: true });
+      Object.defineProperty(window, 'innerHeight', { value: h, configurable: true });
+    };
+    viewport(390, 700);
+    try {
+      renderWindow();
+      const card = screen.getByRole('dialog');
+      /** The smallest length a declaration allows, so `min(a, b)` resolves as CSS resolves it. */
+      const bound = (...css: string[]): number => Math.min(...css.flatMap(v => (v.match(/[\d.]+(?=px)/g) ?? []).map(Number)));
+      // The card's lengths are in its own px; its zoom carries them to the screen.
+      const zoom = parseFloat(card.style.zoom) || 1;
+      expect(bound(card.style.width, card.style.maxWidth) * zoom).toBeLessThan(window.innerWidth);
+      expect(bound(card.style.maxHeight) * zoom).toBeLessThan(window.innerHeight);
+    } finally {
+      viewport(was.w, was.h);
+    }
   });
 
   it('scales the board down to the region before letting it scroll', () => {

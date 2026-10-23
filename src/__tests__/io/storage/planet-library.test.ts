@@ -80,7 +80,7 @@ describe('the planet library', () => {
     expect(adoptPlanet(planetFixture()).name).toBe('Bay');
   });
 
-  it('renames, duplicates and removes entries', () => {
+  it('[PLAN-19] renames, duplicates and removes entries', () => {
     const saved = savePlanet('Bay', planetFixture());
     if (!saved.ok) throw new Error('save failed');
     const id = saved.entry.entryId;
@@ -175,7 +175,7 @@ describe('the planet library', () => {
     off(); offAfter();
   });
 
-  it('keeps an adopted name unreviewed until its check is settled, and a written name reviewed', () => {
+  it('[PLAN-22] keeps an adopted name unreviewed until its check is settled, and a written name reviewed', () => {
     const bay = adoptPlanet(planetFixture(), 'Bay');
     expect(listPlanets()[0]!.nameReviewed).toBe(false);
     expect(settlePlanetName(bay.entryId, 'Other', null)).toBe(false);
@@ -244,7 +244,7 @@ describe('the planet library when storage fails', () => {
     expect(listPlanets()[0]).toMatchObject({ name: 'Bay', nameReviewed: false });
   });
 
-  it('a map on a custom planet still imports when the library cannot take its planet', async () => {
+  it('[PLAN-21] a map on a custom planet still imports when the library cannot take its planet', async () => {
     const state = createGridState(planetFixture());
     const json = serialize(state);
     full();

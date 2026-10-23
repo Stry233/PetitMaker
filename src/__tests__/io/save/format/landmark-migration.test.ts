@@ -72,7 +72,7 @@ describe('the v2 to v3 landmark migration', () => {
     expect(createDefaultRegistry().validatePostStroke(state)).toEqual([]);
   });
 
-  it('lays the station where its template does and never where a save placed one', () => {
+  it('[PLAN-02] lays the station where its template does and never where a save placed one', () => {
     const { state } = load(parseSave(legacy));
     expect(state.objects.has('placed-station')).toBe(false);
     const station = state.objects.get(STATION.id)!;
@@ -104,7 +104,7 @@ describe('custom planets stored before the profile footprint', () => {
     return { ...body, id: planetTemplateId(body) };
   }
 
-  it('read from a planet file of version 1 with the plaza at the profile footprint and a new id', () => {
+  it('[PLAN-05] read from a planet file of version 1 with the plaza at the profile footprint and a new id', () => {
     const stored = earlier();
     const { plaza, landmarks: _landmarks, ...rest } = { ...serializeTemplate(stored), plaza: { ...serializeTemplate(stored).landmarks![0]!, id: undefined } };
     const file = JSON.stringify({ format: 'petitmaker.planet', version: 1, name: 'Old', template: { ...rest, plaza } });
@@ -114,7 +114,7 @@ describe('custom planets stored before the profile footprint', () => {
     expect(template.id).toBe(planetTemplateId(template));
   });
 
-  it('reopen a save made on them under the new id', () => {
+  it('[PLAN-05] reopen a save made on them under the new id', () => {
     const stored = earlier();
     const raw = JSON.parse(serialize(createGridState(stored)));
     const { template } = parseSave(raw);

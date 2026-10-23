@@ -39,7 +39,7 @@ describe('saves on a custom planet', () => {
     raw.template.zones = raw.template.zones.replace(/2/, '7');
     expect(() => parseSave(raw)).toThrow();
   });
-  it('reports a failed import for an invalid embedded template', async () => {
+  it('[PLAN-08] reports a failed import for an invalid embedded template', async () => {
     const raw = JSON.parse(serialize(createGridState(planetFixture())));
     raw.template.zones = raw.template.zones.replace(/2/, '7');
     expect((await inspectImportFile(jsonFile(JSON.stringify(raw)), 'map.json')).status).toBe('failed');

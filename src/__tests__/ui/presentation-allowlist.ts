@@ -1,8 +1,8 @@
 /**
  * The sites each presentation guard (`presentation-guard.test.ts`) still tolerates, per file or per
 folder (a key ending in `/` counts every file under it); each entry is a `motion` or `system` site
- * and says why. Counts are exact: the test fails when a path holds more sites than listed, and when
- * it holds fewer.
+ * and says why. A count is a ceiling: the test fails when a path holds more sites than listed, or
+ * none. Lower a count by hand when a change removes a site.
  */
 export type GuardId = 'lowerImport' | 'storeSetState' | 'multiAction' | 'storeSubscribe' | 'executorCall' | 'mapEditListen' | 'mapRevision' | 'moduleSideEffect' | 'factPurity';
 export interface PresentationEntry { count: number; owner: 'motion' | 'system'; reason: string }

@@ -4,12 +4,15 @@ import { join } from 'node:path';
 import { configDefaults, defineConfig } from 'vitest/config';
 import react from '@vitejs/plugin-react';
 
-// Browser journeys and timing benches each run as their own project, outside `npm run test:run`.
+// Browser journeys, timing benches and the slow tier each run as their own project, outside `npm run test:run`.
 const E2E = ['**/*.e2e.*'];
 const PERF = ['src/__tests__/perf/**/*.perf.test.ts'];
+/** Files that take ten seconds or more on a hosted runner; they run nightly and before a publication.
+ *  A withheld one is `<name>.slow.internal.test.*`, keeping `.internal.test.` whole for the export. */
+export const SLOW = ['src/**/*.slow.test.*', 'src/**/*.slow.internal.test.*', 'scripts/**/*.slow.test.*'];
 // The public snapshot omits release-tooling tests, so the script patterns simply match nothing there.
 const UNIT = ['src/**/*.test.ts', 'src/**/*.test.tsx', 'scripts/**/*.test.mts', 'scripts/**/*.test.ts', 'scripts/**/*.test.tsx'];
-const UNIT_EXCLUDE = [...configDefaults.exclude, ...E2E, ...PERF];
+export const UNIT_EXCLUDE = [...configDefaults.exclude, ...E2E, ...PERF, ...SLOW];
 
 /**
  * Test folders whose files may share one module graph per worker. Editing tools, the editor layer, the
@@ -38,7 +41,7 @@ const ROOT = import.meta.dirname;
 /** Unit test files that share one module graph per worker; every other unit file runs isolated. */
 export const SHARED_UNIT_FILES = globSync(SHARED_FOLDERS.map((dir) => `${dir}*.test.{ts,tsx,mts}`), { cwd: ROOT })
   .map((p) => p.split('\\').join('/'))
-  .filter((p) => !/\.e2e\./.test(p) && !NEEDS_ISOLATION.test(readFileSync(join(ROOT, p), 'utf8')))
+  .filter((p) => !/\.(e2e|slow)\./.test(p) && !NEEDS_ISOLATION.test(readFileSync(join(ROOT, p), 'utf8')))
   .sort();
 
 export default defineConfig({
@@ -46,8 +49,12 @@ export default defineConfig({
   test: {
     globals: true,
     // A worker peaks near 0.8 GB, so twelve keep a full run near 10 GB; on a shared machine more
-    // workers add contention faster than throughput.
-    maxWorkers: Math.min(12, Math.max(1, availableParallelism() - 1)),
+    // workers add contention faster than throughput. A hosted runner for a private repository has two
+    // cores and runs nothing else, so CI takes them all.
+    maxWorkers: process.env.CI ? availableParallelism() : Math.min(12, Math.max(1, availableParallelism() - 1)),
+    // Both cores of that runner are busy, so a test runs three to four times slower there than on a
+    // workstation; the default 5 s would time out a test that takes 1.5 s locally.
+    ...(process.env.CI ? { testTimeout: 20_000 } : {}),
     // Files that need a DOM open with a `// @vitest-environment jsdom` docblock; jsdom setup costs
     // most of a small file's run time, so it is not the default.
     environment: 'node',
@@ -58,11 +65,14 @@ export default defineConfig({
       // Reduced-motion tests set the preference explicitly; Framer's device advisory is expected.
       if (log.startsWith('You have Reduced Motion enabled on your device.')) return false;
     },
+    // Forked processes, not worker threads: under threads the files that open the assistant panel in
+    // a beforeAll hang on the hosted Linux runners, while the two pools tie on a workstation.
     projects: [
       // `npm run test:run` runs both unit projects; together they hold every unit file exactly once.
       { extends: true, test: { name: 'unit-isolated', include: UNIT, exclude: [...UNIT_EXCLUDE, ...SHARED_UNIT_FILES] } },
       // Modules load once per worker instead of once per file, which saves the import cost.
       { extends: true, test: { name: 'unit-shared', include: SHARED_UNIT_FILES, exclude: UNIT_EXCLUDE, isolate: false } },
+      { extends: true, test: { name: 'slow', include: SLOW, exclude: [...configDefaults.exclude, ...E2E, ...PERF] } },
       { extends: true, test: { name: 'e2e', include: E2E.map((p) => `src/${p}`) } },
       // The benches keep the DOM environment their recorded baselines were taken in.
       { extends: true, test: { name: 'perf', include: PERF, environment: 'jsdom' } },

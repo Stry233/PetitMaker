@@ -33,17 +33,21 @@ export interface ImportPreview {
 }
 
 /** The result of reading a file without touching the editor; `commit` installs the decoded map. */
+/** Why a file was not read: neither a map save nor a share image, over the import limit, or refused
+ *  by the reader of `source` (absent when no reader was reached). */
+export type ImportRefusal =
+  | { status: 'unsupported' }
+  | { status: 'too-large' }
+  | { status: 'failed'; code?: ImportErrorCode; source?: ImportPreview['source'] };
+
 export type ImportInspection =
   | { status: 'ready'; preview: ImportPreview; commit: (deps: ImportFileDeps) => FileImportOutcome }
-  | { status: 'unsupported' }
-  | { status: 'failed'; code?: ImportErrorCode };
+  | ImportRefusal;
 
 export type FileImportOutcome =
   | { status: 'imported'; source: 'json'; warnings: ImportWarning[]; notes?: MapNotes }
   | { status: 'imported'; source: 'raster'; warnings: ImportWarning[]; notes?: MapNotes }
-  /** Neither a `.json` nor a decodable-image name/type — e.g. a dropped `.txt`. */
-  | { status: 'unsupported' }
-  | { status: 'failed'; code?: ImportErrorCode };
+  | ImportRefusal;
 
 export interface ImportFileDeps {
   /** Installs the map with a fresh executor and rule registry. */
@@ -81,10 +85,12 @@ function parseJson(text: string): unknown {
 /** Decodes without installing. What the file is comes from `classifyImportFile`'s own decision;
  *  an input the readers refuse returns a failure outcome, and anything else they throw is logged. */
 export async function inspectImportFile(file: File | Blob, name: string): Promise<ImportInspection> {
+  if (file.size > MAX_IMPORT_BYTES) return { status: 'too-large' };
+  let reader: ImportPreview['source'] | undefined;
   try {
-    if (file.size > MAX_IMPORT_BYTES) return { status: 'failed' };
     const source = await classifyImportSource(file, name);
     if (source === 'map-save') {
+      reader = 'json';
       const text = await readBlob(file, 'text');
       const parsed = parseSave(parseJson(text));
       // Modified exports remain importable with a warning; files without a checksum stay silent.
@@ -101,21 +107,22 @@ export async function inspectImportFile(file: File | Blob, name: string): Promis
 
     if (source !== 'map-image') return { status: 'unsupported' };
 
+    reader = 'raster';
     // An image the browser cannot decode is an ordinary refusal, not a fault.
     const raster = await readRasterImage(file).catch(() => null);
-    if (!raster) return { status: 'failed' };
+    if (!raster) return { status: 'failed', source: reader };
     const result = await importFromRaster(raster.pixels, raster.width, raster.height, {
       recoverPixels: async () => (await readRasterImage(file)).pixels,
     });
-    if (!result.ok) return { status: 'failed', code: result.error.code };
+    if (!result.ok) return { status: 'failed', code: result.error.code, source: reader };
     if (result.state.imageAttribution && await isOwnImageExport(result.state)) delete result.state.imageAttribution;
     const warnings: ImportWarning[] = [...result.warnings];
     if (result.cleared) warnings.push(...clearanceWarnings(result.cleared));
     return readyImport('raster', result.state, warnings, () => warnings, result.cleared?.report);
   } catch (e) {
-    if (e instanceof ImportError) return { status: 'failed', code: e.code };
+    if (e instanceof ImportError) return { status: 'failed', code: e.code, ...(reader ? { source: reader } : {}) };
     console.error('[import] unexpected failure', e);
-    return { status: 'failed' };
+    return { status: 'failed', ...(reader ? { source: reader } : {}) };
   }
 }
 

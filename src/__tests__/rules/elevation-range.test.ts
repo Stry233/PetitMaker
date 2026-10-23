@@ -17,7 +17,7 @@ describe('V-MTN-01: Elevation Range', () => {
       expect(elevationRangeRule.validate(paintCmd([{ x: 5, y: 5 }], TerrainType.Mountain, e), state)).toHaveLength(0);
     }
   });
-  it(`rejects elevation ${ELEVATION_MAX + 1}`, () => {
+  it(`[V-MTN-01] rejects elevation ${ELEVATION_MAX + 1}`, () => {
     expect(elevationRangeRule.validate(paintCmd([{ x: 5, y: 5 }], TerrainType.Mountain, ELEVATION_MAX + 1), makeState())).toHaveLength(1);
   });
   it('rejects negative elevation', () => {

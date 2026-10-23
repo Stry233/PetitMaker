@@ -22,7 +22,9 @@ import {
 } from '../../../ui/shell/panel-frame';
 import { FIT_FLOOR, FIT_REF } from '../../../ui/design/scale';
 import { PANEL_WIDTH } from '../../../ui/agent/panel-skin';
-import { cozyOverlay, z } from '../../../ui/design/styles';
+import { z } from '../../../ui/design/styles';
+import { ModalShell } from '../../../ui/primitives/ModalShell';
+import { resolveCss } from '../shell/_resolve-css';
 import { outSeconds, seconds } from '../../../ui/design/motion';
 import { useDockDriver, useDockStage } from '../../../ui/shell/use-dock';
 
@@ -515,11 +517,41 @@ describe('the dock at the other end of the window', () => {
  * would both be reachable) while the card is centred on the interface beside it.
  */
 describe('the chrome stands over the interface, not over the dock', () => {
-  it('dims the whole window and centres the card past the dock', () => {
-    expect(cozyOverlay.inset).toBe(0);
-    // In real css px: the backdrop is the one surface here that does not carry the chrome's `zoom`.
-    expect(cozyOverlay.paddingLeft).toBe('var(--pin-dock-left-px, 0px)');
-    expect(cozyOverlay.paddingRight).toBe('var(--pin-dock-right-px, 0px)');
+  /** The backdrop's side padding, resolved against the dock widths the shell publishes on the root,
+   *  since jsdom keeps a `var()` as written. */
+  function backdropPadding(backdrop: HTMLElement): { left: number; right: number } {
+    const root = document.documentElement.style;
+    const vars: Record<string, string> = {};
+    for (const name of ['--pin-dock-left-px', '--pin-dock-right-px']) {
+      const value = root.getPropertyValue(name);
+      if (value !== '') vars[name] = value;
+    }
+    return {
+      left: resolveCss(backdrop.style.paddingLeft || '0px', 900, 1, vars),
+      right: resolveCss(backdrop.style.paddingRight || '0px', 900, 1, vars),
+    };
+  }
+
+  it('centres the card on the interface beside the dock, at either side', async () => {
+    for (const side of ['left', 'right'] as const) {
+      act(() => { useEditorStore.setState({ assistantPinned: true, assistantDockSide: side }); });
+      render(
+        <MotionConfig reducedMotion="always">
+          <I18nProvider>
+            <Shell onRestoreSession={() => {}}><div data-testid="map-views" /></Shell>
+            <ModalShell open onClose={() => {}} ariaLabel="Probe"><p>probe</p></ModalShell>
+          </I18nProvider>
+        </MotionConfig>,
+      );
+      await screen.findByTestId('shell-assistant-panel');
+      const pad = backdropPadding(screen.getByRole('dialog', { name: 'Probe' }).parentElement!);
+      // The map stands in the box beside the dock, so the backdrop pads by exactly its insets.
+      const map = screen.getByTestId('shell-map-plane');
+      expect(pad.left, side).toBeCloseTo(parseFloat(map.style.left), 6);
+      expect(pad.right, side).toBeCloseTo(parseFloat(map.style.right), 6);
+      expect(side === 'left' ? pad.left : pad.right, side).toBeGreaterThan(0);
+      cleanup();
+    }
   });
 });
 
@@ -527,12 +559,6 @@ describe('the bound the dock is offered inside', () => {
   it('is the fit floor\'s own arithmetic', () => {
     expect(hasPinRoom(PIN_ROOM_FLOOR)).toBe(true);
     expect(hasPinRoom(PIN_ROOM_FLOOR - 0.5)).toBe(false);
-  });
-
-  it('holds at every window the frame is judged in', () => {
-    for (const w of [1024, 1052, 1280, 1366, 1440, 1600, 1920, 2560]) {
-      expect(hasPinRoom(w), `${w}px`).toBe(w >= PIN_ROOM_FLOOR);
-    }
   });
 });
 

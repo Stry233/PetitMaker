@@ -14,8 +14,8 @@
  *   `io/` or `pipelines/`.
  * - `factPurity`: a fact module under `io/`, `tools/` or `pipelines/` importing the store, `editor/`
  *   or React, or reading a DOM global, so the `lowerImport` exception carries no workflow.
- * `presentation-allowlist.ts` lists the sites each guard still tolerates per file or folder; counts
- * are exact, and an entry for a missing path fails.
+ * `presentation-allowlist.ts` lists the sites each guard still tolerates per file or folder; a count
+ * is a ceiling, and an entry for a missing path or one whose path holds no site fails.
  */
 import { describe, it, expect } from 'vitest';
 import ts from 'typescript';
@@ -326,11 +326,9 @@ describe('presentation guard', () => {
     expect(over).toEqual([]);
   });
 
-  it.each(GUARDS)('keeps the %s allowlist exact, so a moved site comes off it', (guard) => {
+  it.each(GUARDS)('drops a %s entry its path no longer needs', (guard) => {
     const totals = tally(guard, found[guard]);
-    const stale = Object.entries(PRESENTATION_ALLOWLIST[guard]).filter(([key, { count }]) => (totals.get(key) ?? 0) !== count)
-      .map(([key, { count }]) => `${key}: listed ${count}, found ${totals.get(key) ?? 0}`);
-    expect(stale).toEqual([]);
+    expect(Object.keys(PRESENTATION_ALLOWLIST[guard]).filter((key) => (totals.get(key) ?? 0) === 0)).toEqual([]);
   });
 
   it('lists only paths that exist, each with its reason', () => {

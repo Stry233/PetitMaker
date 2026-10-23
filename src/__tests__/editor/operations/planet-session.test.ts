@@ -80,7 +80,7 @@ describe('planet session', () => {
   beforeEach(() => { localStorage.clear(); newMap(editorPort, 'hexia'); });
   afterEach(() => { leavePlanetSession(editorPort); host.camera.takeQueued(); });
 
-  it('leave restores the same executor and undo stack', () => {
+  it('[PLAN-09] leave restores the same executor and undo stack', () => {
     const s = store();
     s.commandExecutor!.execute({ type: CommandType.PaintTerrain, cells: [{ x: 80, y: 40 }], terrainType: TerrainType.Mountain, elevation: 1 });
     const executor = s.commandExecutor, grid = s.gridState, undo = executor!.historyDepth();
@@ -95,7 +95,7 @@ describe('planet session', () => {
     expect(store().planetSession).toBeNull();
   });
 
-  it('leave restores selection, layers, edit mode and view mode', () => {
+  it('[PLAN-09] leave restores selection, layers, edit mode and view mode', () => {
     const s = store();
     s.setEditMode({ mode: 'water', arm: { kind: 'erase' } });
     s.setActiveLayer(2);
@@ -137,7 +137,7 @@ describe('planet session', () => {
     expect(store().region).toBe(region);
   });
 
-  it('parks the cameras it is given and returns them on leave', () => {
+  it('[PLAN-09] parks the cameras it is given and returns them on leave', () => {
     const camera = { x: 3, y: 4, zoom: 2 };
     enterPlanetSession(editorPort, null, { view2d: camera });
     expect(store().planetSession!.parked.camera2d).toEqual(camera);
@@ -160,7 +160,7 @@ describe('planet session', () => {
     expect(second).not.toBe(first);
   });
 
-  it('opens a new planet as a blank sea canvas in mountain mode under the planet rules', () => {
+  it('[PLAN-09] opens a new planet as a blank sea canvas in mountain mode under the planet rules', () => {
     enterPlanetSession(editorPort, null);
     const s = store();
     expect(isPlanetCanvasId(s.gridState!.template.id)).toBe(true);
@@ -205,7 +205,7 @@ describe('planet session', () => {
     expect(store().gridState).toBe(grid);
   });
 
-  it('opens a saved planet with its shore derived on the canvas and with a movable plaza', () => {
+  it('[PLAN-09] opens a saved planet with its shore derived on the canvas and with a movable plaza', () => {
     enterPlanetSession(editorPort, entryOf(shoredPlanet()));
     const s = store();
     expect(s.planetSession).toMatchObject({ entryId: 'e1', name: 'Bay' });
@@ -217,7 +217,7 @@ describe('planet session', () => {
     expect(plaza.position.x % 1).toBe(0.5);
   });
 
-  it('keeps the shore rim live around ground edits, undo and redo, outside the history', () => {
+  it('[PLAN-10, PLAN-12] keeps the shore rim live around ground edits, undo and redo, outside the history', () => {
     enterPlanetSession(editorPort, null);
     const cells = () => store().gridState!.cells;
     const executor = store().commandExecutor!;
@@ -234,7 +234,7 @@ describe('planet session', () => {
     expect(cells()[9]![9]!.zone).toBe(CellZone.Void);
   });
 
-  it('lays the rim over sand painted beside grass and gives the sand back when the grass goes', () => {
+  it('[PLAN-12] lays the rim over sand painted beside grass and gives the sand back when the grass goes', () => {
     enterPlanetSession(editorPort, null);
     const executor = store().commandExecutor!;
     paintGround(rect(10, 10, 3, 3));
@@ -327,7 +327,7 @@ describe('planet session', () => {
     state.cells[y]![x]!.zone = CellZone.Grass;
   });
 
-  it('a saved planet reopened and finished unchanged keeps its id', () => {
+  it('[PLAN-06] a saved planet reopened and finished unchanged keeps its id', () => {
     const planet = shoredPlanet();
     expect(validatePlanetTemplate(planet)).toBeNull();
     enterPlanetSession(editorPort, entryOf(planet));
@@ -338,7 +338,7 @@ describe('planet session', () => {
     expect(t.zones).toEqual(planet.zones);
   });
 
-  it('records a pond on the drawn ground as water, with grass under it and no rim around it', () => {
+  it('[PLAN-11] records a pond on the drawn ground as water, with grass under it and no rim around it', () => {
     enterPlanetSession(editorPort, null);
     paintGround(rect(100, 100, 40, 30));
     const plain = sessionPlanet(store().gridState!)!.template;
@@ -356,7 +356,7 @@ describe('planet session', () => {
     expect(sessionPlanet(store().gridState!)!.template.id).toBe(t.id);
   });
 
-  it('crops the drawn ground to whole chunks with a derived shore and no plaza', () => {
+  it('[PLAN-07] crops the drawn ground to whole chunks with a derived shore and no plaza', () => {
     enterPlanetSession(editorPort, null);
     paintGround(rect(100, 100, 50, 40));
     const t = sessionPlanet(store().gridState!)!.template;

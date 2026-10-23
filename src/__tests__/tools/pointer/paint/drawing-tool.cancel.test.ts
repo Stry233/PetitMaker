@@ -26,7 +26,7 @@ const mountains = (state: ReturnType<typeof makeState>) =>
   state.cells.flat().filter((c) => c?.terrain?.type === TerrainType.Mountain).length;
 
 describe('cancelling a terrain brush press', () => {
-  it('takes back a freehand stroke already on the map, with nothing to redo', () => {
+  it('[EDIT-23] takes back a freehand stroke already on the map, with nothing to redo', () => {
     const w = world('free');
     w.down({ x: 5, y: 5 });
     for (let x = 6; x < 12; x++) w.move({ x, y: 5 });
@@ -37,7 +37,7 @@ describe('cancelling a terrain brush press', () => {
     expect(w.executor.canRedo()).toBe(false);
   });
 
-  it('keeps the strokes before the cancelled one', () => {
+  it('[EDIT-23] keeps the strokes before the cancelled one', () => {
     const w = world('free');
     w.down({ x: 2, y: 2 }); w.up({ x: 2, y: 2 });
     const kept = JSON.stringify(w.state.cells);
@@ -47,7 +47,7 @@ describe('cancelling a terrain brush press', () => {
     expect(w.executor.historyDepth()).toBe(1);
   });
 
-  it.each(['line', 'rect', 'circle'] as const)('lays nothing for a cancelled %s, and the next release starts afresh', (mode) => {
+  it.each(['line', 'rect', 'circle'] as const)('[EDIT-23] lays nothing for a cancelled %s, and the next release starts afresh', (mode) => {
     const w = world(mode);
     w.down({ x: 3, y: 3 });
     w.move({ x: 9, y: 7 });
@@ -61,7 +61,7 @@ describe('cancelling a terrain brush press', () => {
     expect(w.executor.historyDepth()).toBe(1);
   });
 
-  it('drops only the anchor the cancelled press added to a curve', () => {
+  it('[EDIT-23] drops only the anchor the cancelled press added to a curve', () => {
     const w = world('curve');
     const click = (c: MacroCoord) => { w.down(c); w.up(c); };
     click({ x: 2, y: 2 });
@@ -75,7 +75,7 @@ describe('cancelling a terrain brush press', () => {
     expect(w.state.cells[3]![15]!.terrain).toBeNull();
   });
 
-  it('Escape drops a curve in progress without touching history', () => {
+  it('[EDIT-36] Escape drops a curve in progress without touching history', () => {
     const w = world('curve');
     for (const c of [{ x: 2, y: 2 }, { x: 8, y: 9 }]) { w.down(c); w.up(c); }
     expect(w.tool.cancelPending(w.ctx)).toBe(true);

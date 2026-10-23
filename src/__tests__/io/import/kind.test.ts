@@ -15,7 +15,7 @@ const HEXIA = MAP_TEMPLATES['hexia']!;
 const mapJson = () => serialize({ template: HEXIA, cells: createGrid(HEXIA), objects: new Map(), objectsVersion: 0, cellsVersion: 0, lockedLayers: new Set() });
 
 describe('import file kinds', () => {
-  it('reads MP4, QuickTime and Matroska containers by their first bytes', async () => {
+  it('[FILE-28] reads MP4, QuickTime and Matroska containers by their first bytes', async () => {
     expect(await classifyImportFile(file(isoBox('ftyp', 'isom'), 'clip.bin'))).toBe('video');
     expect(await classifyImportFile(file(isoBox('ftyp', 'qt  '), 'clip'))).toBe('video');
     expect(await classifyImportFile(file(isoBox('moov'), 'old-recording'))).toBe('video');
@@ -33,7 +33,7 @@ describe('import file kinds', () => {
     expect(await classifyImportFile(file(new Uint8Array(16), 'clip', 'video/webm'))).toBe('video');
   });
 
-  it('tells a planet file from a map save by its format, whatever the file is called', async () => {
+  it('[FILE-28] tells a planet file from a map save by its format, whatever the file is called', async () => {
     const planet = writePlanetFile('Bay', planetFixture());
     expect(await classifyImportFile(file(planet, 'Bay.planet.json', 'application/json'))).toBe('planet');
     expect(await classifyImportFile(file(planet, 'Bay.txt'))).toBe('planet');
@@ -46,13 +46,13 @@ describe('import file kinds', () => {
     expect(await classifyImportFile(file('{ not json', 'broken.json'))).toBe('map');
   });
 
-  it('reads a share image as a map', async () => {
+  it('[FILE-28] reads a share image as a map', async () => {
     const png = bytes([0x89], 'PNG', [0x0d, 0x0a, 0x1a, 0x0a]);
     expect(await classifyImportFile(file(png, 'share.png', 'image/png'))).toBe('map');
     expect(await classifyImportFile(file(png, 'share.webp'))).toBe('map');
   });
 
-  it('names anything else unknown', async () => {
+  it('[FILE-28] names anything else unknown', async () => {
     expect(await classifyImportFile(file('hello', 'notes.txt', 'text/plain'))).toBe('unknown');
     expect(await classifyImportFile(file(new Uint8Array([1, 2, 3]), 'blob'))).toBe('unknown');
     expect(await classifyImportFile(file('', ''))).toBe('unknown');

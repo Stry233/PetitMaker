@@ -1,0 +1,89 @@
+// Integration test through the real CommandExecutor — the path the shelf uses. This is the
+// invariant a unit-level plan check cannot see: generated terrain must actually commit (every
+// PaintTerrain passes the pre-command rules, no-floating V-MTN-02/V-WTR-01 included) and the
+// post-stroke pass must be clean, on a synthetic grid as well as on the shipped maps
+// (`real-map-generate.slow.test.ts` is the same question asked of those).
+//
+// Object placements are a different matter and are counted, not required: the pipeline seats every
+// object by probing through `tryPlace`, so a refusal is how it finds out that a spot will not do.
+// The refusals a run collected come back as `GenerateResult.skipped`, and the designer's own probes
+// are where a run is held to zero of them on ground where every placement should be legal.
+import { describe, it, expect, vi } from 'vitest';
+
+// Synchronous generation through the real executor; several seconds per case.
+vi.setConfig({ testTimeout: 60_000 });
+import { makeState, makeExecutor } from '../../_support/map-state';
+import { generateTerrain } from '../../../tools/generation';
+import { CommandType, TerrainType } from '../../../core/model/types';
+import { defaultConfig, type GenerateConfig, type PlanetKind } from '../../../tools/generation/recipe';
+
+interface Outcome { placedLayers: number; terrainRejects: number; postViol: number; mtn: number; water: number; ground: number; }
+
+function commit(mode: PlanetKind, seed: number, size = 48): Outcome {
+  const state = makeState(size, size);
+  const exec = makeExecutor(state);
+  // No richness override — exercise the shelf's own default. 48² is small for a designed planet
+  // (its places are 9 to 21 cells across), which is the point: the terrain must commit even where
+  // the composition is cramped.
+  const config: GenerateConfig = defaultConfig('designed', { mode, maxElevation: 6, seed });
+  let terrainRejects = 0;
+  const start = exec.beginStroke();
+  const res = generateTerrain({ state, execute: (cmd) => {
+    const r = exec.execute(cmd);
+    if (!r.success && (cmd.type === CommandType.PaintTerrain || cmd.type === CommandType.TrimCorners)) terrainRejects++;
+    return r;
+  }, reg: exec.getRegistry() }, config);
+  const postViol = start.commit().length;
+  let mtn = 0, water = 0, ground = 0;
+  for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
+    const c = state.cells[y]![x]!; if (c.zone !== 2 /* Grass */) continue;
+    const t = c.terrain;
+    if (!t) ground++;
+    else if (t.type === TerrainType.Mountain) mtn++;
+    else if (t.type === TerrainType.Water) water++;
+    // A ground-islet edge-cut (None + corners) is a rounded shoreline: it exists only where ground
+    // pokes into water. It counts as water here, so a body reads at its whole extent whichever way
+    // its notches were cut.
+    else if (t.type === TerrainType.None && t.corners?.some((k) => k !== 'square')) water++;
+  }
+  return { placedLayers: res.placed, terrainRejects, postViol, mtn, water, ground };
+}
+
+const SEEDS = [66, 1, 2, 7, 13, 42, 99, 100];
+
+describe('generation through the real CommandExecutor', () => {
+  it('commits cleanly for every planet kind × seed — no refused terrain, no post-stroke violations', () => {
+    for (const mode of ['earth', 'water', 'mixed'] as const) {
+      for (const seed of SEEDS) {
+        const o = commit(mode, seed);
+        expect(o.terrainRejects, `${mode} seed ${seed} refused terrain`).toBe(0);
+        expect(o.postViol, `${mode} seed ${seed} post-stroke violations`).toBe(0);
+        expect(o.placedLayers, `${mode} seed ${seed} produced no terrain`).toBeGreaterThan(0);
+        expect(o.ground, `${mode} seed ${seed} left no buildable land`).toBeGreaterThan(0);
+        expect(o.mtn, `${mode} seed ${seed} has no relief`).toBeGreaterThan(0);
+      }
+    }
+  });
+
+  /**
+   * The three kinds are a water scale and nothing else (`pipeline.ts:WATER_SCALE`: earth 0, mixed 1,
+   * water 1.5), so that ordering is the whole of what they promise. It is claimed per seed rather
+   * than as a batch mean, and as `<=` on the wet end because the budget saturates: on a grid this
+   * small there is often no more room for water, so water and mixed come out equal.
+   *
+   * Earth is dry, and this is the surface that can still ask for it: the shelf offers one planet kind
+   * and `generate-shelf.ts:RECIPE_MODE` answers `mixed` for every one, so a kind other than mixed reaches
+   * the engine only from a recipe saved before the kinds collapsed. It is dry by gate and not by luck — every
+   * water pass, the landmark figure included, sits behind `waterScale > 0` in `terrain-sculpt.ts`.
+   */
+  it('the planet kinds order by how much water they hold, and earth holds none', () => {
+    for (const seed of SEEDS) {
+      const earth = commit('earth', seed).water;
+      const mixed = commit('mixed', seed).water;
+      const water = commit('water', seed).water;
+      expect(earth, `seed ${seed}: earth is not dry`).toBe(0);
+      expect(mixed, `seed ${seed}: mixed holds no water`).toBeGreaterThan(0);
+      expect(water, `seed ${seed}: the water kind holds less than mixed`).toBeGreaterThanOrEqual(mixed);
+    }
+  });
+});

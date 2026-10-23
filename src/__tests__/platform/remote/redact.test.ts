@@ -3,7 +3,7 @@ import { describe, it, expect } from 'vitest';
 import { redactSecrets } from '../../../platform/remote/redact';
 
 describe('redactSecrets', () => {
-  it('scrubs key-shaped tokens of every supported provider format', () => {
+  it('[ASST-04] scrubs key-shaped tokens of every supported provider format', () => {
     const text = [
       'error for key sk-0123456789abcdef0123456789abcdef please retry',
       'sk-ant-api03-AbCdEf123456789xyz failed',
@@ -23,7 +23,7 @@ describe('redactSecrets', () => {
     expect(redactSecrets('pplx-0123456789abcdefghij rejected')).toBe('<redacted-key> rejected');
   });
 
-  it('scrubs a named secret whose shape matches no pattern', () => {
+  it('[ASST-04] scrubs a named secret whose shape matches no pattern', () => {
     const text = 'gateway refused token gw_7f3a2b1c for model x';
     expect(redactSecrets(text, ['gw_7f3a2b1c'])).toBe('gateway refused token <redacted-key> for model x');
   });

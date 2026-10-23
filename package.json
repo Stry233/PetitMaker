@@ -1,7 +1,7 @@
 {
   "name": "petitmaker",
   "private": true,
-  "version": "1.7.109",
+  "version": "1.8.35",
   "type": "module",
   "homepage": "https://petitmaker.cc/",
   "repository": {
@@ -21,6 +21,11 @@
     "preview": "vite preview",
     "test": "vitest --project 'unit-*'",
     "test:run": "vitest run --project 'unit-*'",
+    "test:slow": "vitest run --project slow",
+    "test:all": "vitest run --project 'unit-*' --project slow",
+    "test:spec": "vitest run --project 'unit-*' --project slow src/__tests__/spec",
+    "spec:report": "node scripts/spec-report.mts",
+    "check": "npm run lint && npm run build && npm run test:run",
     "test:related": "vitest related --run --project 'unit-*'",
     "test:changed": "vitest run --project 'unit-*' --changed",
     "test:e2e": "vitest run --project e2e --no-file-parallelism",

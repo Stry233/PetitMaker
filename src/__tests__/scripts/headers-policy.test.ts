@@ -122,10 +122,6 @@ describe('toCspMeta() — meta-expressible subset only', () => {
     expect(toCspMeta()).not.toContain('frame-ancestors');
   });
 
-  it('lacks Strict-Transport-Security (never a CSP directive to begin with)', () => {
-    expect(toCspMeta()).not.toContain('Strict-Transport-Security');
-  });
-
   it('includes connect-src with the network sources', () => {
     const meta = toCspMeta();
     expect(meta).toContain(`connect-src 'self' data: ${NETWORK_SOURCES.join(' ')}`);

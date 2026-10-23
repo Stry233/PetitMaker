@@ -151,7 +151,7 @@ describe('computeComposition', () => {
     const c = computeComposition(o, 1.2, [], { layerCount: 1, mapPx: { w: 1000, h: 800 } });
     expect(c.width).toBe(RESOLUTION_WIDTHS.high);
   });
-  it('original mode: a device ceiling below the desktop one shrinks the composition too', () => {
+  it('[FILE-30] original mode: a device ceiling below the desktop one shrinks the composition too', () => {
     const o: ExportOptions = { ...base, resolution: 'original' };
     const mapPx = { w: 10848, h: 9838 }; // a 169x140 map at native density
     const webkit = { maxDim: 16384, maxArea: 4096 * 4096 };

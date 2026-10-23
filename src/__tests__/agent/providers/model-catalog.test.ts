@@ -2,8 +2,76 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { DEPLOY_TARGETS } from '../../../platform/build/deploy-targets';
 import { assistantModels, ensureModelCatalog, modelCapabilities, MODEL_CATALOG_URL, parseModelCatalog, rememberNativeModels, __resetModelCatalog, suggestedModels } from '../../../agent/providers/model-catalog';
 import { reasoningBody, thinkingChoices } from '../../../agent/providers/reasoning';
-import { PROVIDER_IDS, QUIRKS } from '../../../agent/providers/defaults';
+import { PROVIDER_IDS, QUIRKS, type ProviderId } from '../../../agent/providers/defaults';
+import { buildAdapter } from '../../../agent/providers/connect';
+import type { AdapterRequest, ThinkingChoice } from '../../../agent/core/adapter';
+import type { StreamEvent } from '../../../agent/core/types';
 import snapshot from '../../../agent/providers/model-catalog.snapshot.json';
+
+/** The request bodies the SDKs were handed, newest last. */
+const { sent } = vi.hoisted(() => ({ sent: [] as Record<string, unknown>[] }));
+
+/** Both SDKs, reduced to keeping the body each request carried and answering with a turn that ends at once. */
+vi.mock('openai', () => {
+  const ended = { [Symbol.asyncIterator]: () => ({ next: async () => ({ done: true, value: undefined }) }) };
+  const keep = async (body: Record<string, unknown>) => { sent.push(body); return ended; };
+  class MockOpenAI {
+    chat = { completions: { create: keep } };
+    responses = { create: keep };
+  }
+  return { default: MockOpenAI };
+});
+vi.mock('@anthropic-ai/sdk', () => {
+  class MockAnthropic {
+    messages = {
+      stream: (body: Record<string, unknown>) => {
+        sent.push(body);
+        return {
+          [Symbol.asyncIterator]: () => ({ next: async () => ({ done: true, value: undefined }) }),
+          finalMessage: async () => ({ content: [], stop_reason: 'end_turn', usage: { input_tokens: 0, output_tokens: 0 } }),
+        };
+      },
+    };
+  }
+  return { default: MockAnthropic };
+});
+
+/** The body `id`'s adapter sends for one turn of a reasoning model at `thinking`. */
+async function bodySent(id: ProviderId, thinking: ThinkingChoice): Promise<Record<string, unknown>> {
+  sent.length = 0;
+  const adapter = buildAdapter({ providerId: id, apiKey: 'sk-test', customBaseUrl: 'https://gateway.example/v1' });
+  const request: AdapterRequest = {
+    system: 'You plan maps.', messages: [], tools: [], model: 'model-x', sameModel: true,
+    capabilities: { reasoning: true }, thinking,
+  };
+  const events: StreamEvent[] = [];
+  for await (const event of adapter.stream(request, new AbortController().signal)) events.push(event);
+  expect(sent, `${id} sent one request`).toHaveLength(1);
+  return sent[0]!;
+}
+
+/** Each platform's own request field for a high effort, as its API reference spells it. */
+const EFFORT_WIRE: Record<ProviderId, Record<string, unknown>> = {
+  claude: { output_config: { effort: 'high' } },
+  openai: { reasoning: { effort: 'high' } },
+  deepseek: { reasoning_effort: 'high', thinking: { type: 'enabled' } },
+  gemini: { reasoning_effort: 'high', extra_body: { google: { thinking_config: { include_thoughts: true } } } },
+  openrouter: { reasoning: { effort: 'high' } },
+  zhipu: { reasoning_effort: 'high', thinking: { type: 'enabled' } },
+  qwen: { enable_thinking: true, reasoning_effort: 'high' },
+  moonshot: { reasoning_effort: 'high', thinking: { type: 'enabled' } },
+  doubao: { reasoning_effort: 'high', thinking: { type: 'enabled' } },
+  perplexity: { reasoning_effort: 'high' },
+  custom: { reasoning_effort: 'high' },
+};
+
+/** And for a token budget, on the platforms whose API takes one. */
+const BUDGET_WIRE: Partial<Record<ProviderId, Record<string, unknown>>> = {
+  claude: { thinking: { type: 'enabled', budget_tokens: 4096 } },
+  gemini: { extra_body: { google: { thinking_config: { include_thoughts: true, thinking_budget: 4096 } } } },
+  openrouter: { reasoning: { max_tokens: 4096 } },
+  qwen: { enable_thinking: true, thinking_budget: 4096 },
+};
 
 const data = {
   openai: { models: {
@@ -100,12 +168,17 @@ describe('thinking controls', () => {
     expect(reasoningBody(QUIRKS.qwen.thinkingWire, { budget: 4096 })).toEqual({ enable_thinking: true, thinking_budget: 4096 });
     expect(reasoningBody(QUIRKS.claude.thinkingWire, { effort: 'high' })).toEqual({ output_config: { effort: 'high' } });
   });
-  it('speaks each platform\'s own thinking wire', () => {
-    expect(Object.fromEntries(PROVIDER_IDS.map((id) => [id, QUIRKS[id].thinkingWire]))).toEqual({
-      claude: 'anthropic', openai: 'effort', deepseek: 'toggle', gemini: 'gemini', openrouter: 'openrouter',
-      zhipu: 'toggle', qwen: 'qwen', moonshot: 'toggle', doubao: 'toggle', perplexity: 'effort', custom: 'effort',
-    });
-    expect(PROVIDER_IDS.filter((id) => QUIRKS[id].thinkingBudgets)).toEqual(['claude', 'gemini', 'openrouter', 'qwen']);
+  it('sends a chosen effort in each platform\'s own request field', async () => {
+    for (const id of PROVIDER_IDS) expect(await bodySent(id, { effort: 'high' }), id).toMatchObject(EFFORT_WIRE[id]);
+  });
+  it('offers a token budget only where the platform takes one, and sends it in that platform\'s field', async () => {
+    const caps = { reasoning: true, budget: { min: 1024, max: 8192 } };
+    const offering = PROVIDER_IDS.filter((id) => thinkingChoices(caps, id).length > 0);
+    expect(new Set(offering)).toEqual(new Set(Object.keys(BUDGET_WIRE)));
+    for (const id of offering) {
+      expect(thinkingChoices(caps, id), id).toContainEqual({ budget: 4096 });
+      expect(await bodySent(id, { budget: 4096 }), id).toMatchObject(BUDGET_WIRE[id]!);
+    }
   });
   it('writes native Gemini, OpenRouter and DeepSeek request fields', () => {
     expect(reasoningBody(QUIRKS.gemini.thinkingWire, { effort: 'low' }, { reasoning: true })).toEqual({ reasoning_effort: 'low', extra_body: { google: { thinking_config: { include_thoughts: true } } } });

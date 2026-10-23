@@ -47,7 +47,7 @@ export function overlappingCoatings(gs: GridState, footprint: MacroCoord[], laye
 
 /**
  * The coatings on `cells` that laying `item` there replaces: its own layer for a coating, every
- * coating it cannot stand on for a solid (flora keeps a plantable road, a structure with
+ * coating it cannot stand on for a solid (a plant keeps a plantable road, a structure with
  * `coatingSupport` keeps its road), nothing for a crossing, which may stand over pavement. With no
  * item, every coating on `layer` (or on any layer).
  */

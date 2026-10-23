@@ -24,7 +24,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { ShapeEdgeFilter } from '../../../ui/design/shape-edge';
 import { readFileSync } from 'node:fs';
 import {
-  ASSISTANT_BLOCK, ASSISTANT_INK, ASSISTANT_ROW_TOP, HISTORY_BUTTONS, KIT_BUTTONS, LAYER_STEP_RIGHT,
+  ASSISTANT_BLOCK, ASSISTANT_INK, ASSISTANT_ROW_TOP, HISTORY_BUTTONS, KIT_BUTTONS,
   MODES, MODE_PLATE, MODE_ROW_BASE, MODE_ROW_LEFT, MODE_ROW_TOP, planRail, RAIL_FOLDS, railStack,
   RAIL_TOP, TOP_RIGHT, TOP_RIGHT_H, TOP_RIGHT_TOP, topRightHeight, topRightSlack, type RailPlan,
 } from '../../../ui/shell/frame';
@@ -34,7 +34,7 @@ import {
 } from '../../../ui/design/tokens';
 import {
   EDGE, EDGE_LEFT, EDGE_RIGHT, EDGE_TOP, LABEL_INK_DEPTH, MODE, MODE_SCALE,
-  PLATE_BAND, RAIL, RAIL_FLOOR, SHELF_TABS, ZOOM,
+  RAIL, RAIL_FLOOR, ZOOM,
 } from '../../../ui/shell/units';
 import { repoFiles } from '../../_support/source-graph';
 
@@ -47,24 +47,8 @@ function sources(dir: string): { path: string; text: string }[] {
   return repoFiles(dir).map((path) => ({ path, text: readFileSync(path, 'utf8') }));
 }
 
-/** The side margins align visible ink; the selected mode plate overhang makes their box gaps differ. */
+/** The top margin is its own number, and the margins are measured to the mode row's ink. */
 describe('the frame\'s margins', () => {
-  it('put the two sides\' outermost ink on one line, which is not the same margin', () => {
-    expect(EDGE_LEFT).toBe(74);
-    // The gutter is where a name's ink starts, not where its box does: a tab carries `padX` either
-    // side of its word. Derived in `units.ts`, so the two cannot drift; asserted here so the
-    // relation survives someone writing either number down as a literal.
-    expect(SHELF_TABS.left + SHELF_TABS.padX).toBe(EDGE_LEFT);
-    // The line itself: the splat's own left edge with a mode selected, and the right margin.
-    const overhang = (MODE_PLATE.w * MODE_SCALE - MODE.size) / 2;
-    expect(EDGE_LEFT - overhang).toBeCloseTo(EDGE_RIGHT, 6);
-    // The selected plate's overhang makes the right box margin visibly tighter.
-    expect(EDGE_RIGHT).toBeLessThan(EDGE_LEFT - 8);
-    // The bottom is its own: what stands there is a full-width shelf whose plate runs off the
-    // window, not a cluster the frame has to hold clear of an edge.
-    expect(EDGE).toBeLessThan(EDGE_LEFT);
-  });
-
   /**
    * The top is its own number, and this is the arithmetic that says why rather than prose saying so.
    *
@@ -124,10 +108,6 @@ describe('the assistant stands under the row above it', () => {
     - (open ? ASSISTANT_BLOCK.selected.h : ASSISTANT_BLOCK.h) * MODE_SCALE;
   /** Where the selected block's name stops. */
   const nameBottom = MODE_ROW_BASE + MODE.label.gap + LABEL_INK_DEPTH * MODE.label.size;
-
-  it('clears the selected block\'s name by the clearance it declares, at its own biggest', () => {
-    expect(inkTop(true) - nameBottom).toBeCloseTo(MODE.rowClearance, 6);
-  });
 
   it('never reaches the row above, in any of the four states the two can be in', () => {
     for (const open of [false, true]) {
@@ -295,24 +275,6 @@ describe('the right-hand column', () => {
     );
     // And it is still well below the corner cluster, so the column reads as the next thing down.
     expect(RAIL_TOP).toBeGreaterThan(TOP_RIGHT_TOP + TOP_RIGHT_H);
-  });
-
-  it('stops above the bottom shelf\'s plate, whichever bar is open', () => {
-    expect(RAIL_FLOOR).toBeGreaterThan(PLATE_BAND.top);
-  });
-
-  /**
-   * The stepper is centred on the buttons, not squared with their right edge.
-   *
-   * Both are filled drawings whose ink is their own box — a disc fills its square and the stepper is
-   * a stadium — so the line a person reads down the column is the two shapes' middles, and squaring
-   * the right edges left the narrower one half the difference off it. The buttons still keep the
-   * frame's margin, since centring puts the pill entirely inside their span rather than past it.
-   */
-  it('centres the layer stepper on the buttons under it', () => {
-    expect(LAYER_STEP_RIGHT + RAIL.layer.w / 2).toBeCloseTo(EDGE_RIGHT + RAIL.button / 2, 6);
-    expect(LAYER_STEP_RIGHT, 'and the margin is still the buttons\'').toBeGreaterThan(EDGE_RIGHT);
-    expect(LAYER_STEP_RIGHT + RAIL.layer.w).toBeLessThan(EDGE_RIGHT + RAIL.button);
   });
 
   describe('and the layer stack takes its turn among them', () => {

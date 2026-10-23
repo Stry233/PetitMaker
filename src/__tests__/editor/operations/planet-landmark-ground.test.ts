@@ -75,14 +75,14 @@ describe('landmarks in the planet session', () => {
     }
   });
 
-  it('place the plaza on flat ground at layer 0, laying no terrain', () => {
+  it('[PLAN-04, PLAN-13] place the plaza on flat ground at layer 0, laying no terrain', () => {
     expect(placeSessionLandmark({ x: 50.5, y: 45.5 }, 0).success).toBe(true);
     const plaza = store().gridState!.objects.get(ANCHOR_LANDMARK.id)!;
     expect(mountains().size).toBe(0);
     expect(objectElevation(store().gridState!, plaza)).toBe(0);
   });
 
-  it('move and turn the plaza in half cells, leaving the terrain as it is', () => {
+  it('[PLAN-14] move and turn the plaza in half cells, leaving the terrain as it is', () => {
     expect(placeSessionLandmark({ x: 50, y: 45 }, 0).success).toBe(true);
     expect(drag(ANCHOR_LANDMARK.id, { x: 50.5, y: 45 })).toBe(true);
     expect(store().gridState!.objects.get(ANCHOR_LANDMARK.id)!.position).toEqual({ x: 50.5, y: 45 });
@@ -95,7 +95,7 @@ describe('landmarks in the planet session', () => {
     expect(mountains().size).toBe(0);
   });
 
-  it('move the station half a cell along the coast, with no support beneath it', () => {
+  it('[PLAN-15] move the station half a cell along the coast, with no support beneath it', () => {
     expect(placeSessionLandmark({ x: 60, y: 102 }, 0, STATION.id).success).toBe(true);
     expect(drag(STATION.id, { x: 60.5, y: 102 })).toBe(true);
     const station = store().gridState!.objects.get(STATION.id)!;

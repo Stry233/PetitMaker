@@ -69,7 +69,7 @@ describe('importFile routing', () => {
   });
 
   it('reports an unreadable file from the inspection alone', async () => {
-    expect(await inspectImportFile(jsonFile('{not json'), 'map.json')).toEqual({ status: 'failed', code: 'malformed' });
+    expect(await inspectImportFile(jsonFile('{not json'), 'map.json')).toEqual({ status: 'failed', code: 'malformed', source: 'json' });
     expect(await inspectImportFile(new File(['x'], 'notes.txt', { type: 'text/plain' }), 'notes.txt')).toEqual({ status: 'unsupported' });
   });
 
@@ -81,7 +81,7 @@ describe('importFile routing', () => {
   it('reports a save from a newer build by its code', async () => {
     const future = JSON.parse(serialize(makeState())) as { version: number };
     future.version = CURRENT_VERSION + 1;
-    expect(await inspectImportFile(jsonFile(JSON.stringify(future)), 'map.json')).toEqual({ status: 'failed', code: 'future-version' });
+    expect(await inspectImportFile(jsonFile(JSON.stringify(future)), 'map.json')).toEqual({ status: 'failed', code: 'future-version', source: 'json' });
   });
 
   it('logs a failure no reader raised as an import error', async () => {
@@ -89,7 +89,7 @@ describe('importFile routing', () => {
     vi.mocked(importFromRaster).mockRejectedValue(new TypeError('decoder bug'));
     vi.stubGlobal('createImageBitmap', vi.fn().mockResolvedValue({ width: 2, height: 2 } as unknown as ImageBitmap));
     stubCanvasContext({ drawImage: vi.fn(), getImageData: () => ({ data: new Uint8ClampedArray(2 * 2 * 4) }) });
-    expect(await inspectImportFile(new File(['x'], 'map.png', { type: 'image/png' }), 'map.png')).toEqual({ status: 'failed' });
+    expect(await inspectImportFile(new File(['x'], 'map.png', { type: 'image/png' }), 'map.png')).toEqual({ status: 'failed', source: 'raster' });
     expect(error).toHaveBeenCalledWith('[import] unexpected failure', expect.any(TypeError));
     error.mockRestore();
     vi.unstubAllGlobals();
@@ -143,7 +143,7 @@ describe('importFile routing', () => {
   it('fails without crashing on unparsable JSON', async () => {
     const deps = makeDeps();
     const outcome = await importFile(jsonFile('{not json'), 'map.json', deps);
-    expect(outcome).toEqual({ status: 'failed', code: 'malformed' });
+    expect(outcome).toEqual({ status: 'failed', code: 'malformed', source: 'json' });
     expect(deps.loadMap).not.toHaveBeenCalled();
   });
 
@@ -152,7 +152,7 @@ describe('importFile routing', () => {
     const save = JSON.parse(serialize(makeState()));
     save.version = CURRENT_VERSION + 1;
     const outcome = await importFile(jsonFile(JSON.stringify(save)), 'map.json', deps);
-    expect(outcome).toEqual({ status: 'failed', code: 'future-version' });
+    expect(outcome).toEqual({ status: 'failed', code: 'future-version', source: 'json' });
     expect(deps.loadMap).not.toHaveBeenCalled();
   });
 
@@ -203,23 +203,11 @@ describe('importFile routing', () => {
     }
   });
 
-  it('passes a raster catalog-drift warning through', async () => {
-    vi.stubGlobal('createImageBitmap', vi.fn().mockResolvedValue({ width: 2, height: 2 } as unknown as ImageBitmap));
-    stubCanvasContext({
-      drawImage: vi.fn(), getImageData: () => ({ data: new Uint8ClampedArray(2 * 2 * 4) }),
-    });
-    vi.mocked(importFromRaster).mockResolvedValue({ ok: true, state: makeState(), warnings: [{ kind: 'catalog-drift' }], provenance: null } as unknown as RasterImportResult);
-
-    const outcome = await importFile(new File(['x'], 'map.png', { type: 'image/png' }), 'map.png', makeDeps());
-    expect(outcome).toEqual({ status: 'imported', source: 'raster', warnings: [{ kind: 'catalog-drift' }] });
-    vi.unstubAllGlobals();
-  });
-
-  it('rejects a file past the import byte cap without reading it', async () => {
+  it('[FILE-13] rejects a file past the import byte cap without reading it', async () => {
     const text = vi.fn(async () => '{}');
     const huge = { type: 'application/json', size: MAX_IMPORT_BYTES + 1, text } as unknown as File;
     const deps = makeDeps();
-    expect(await importFile(huge, 'map.json', deps)).toEqual({ status: 'failed' });
+    expect(await importFile(huge, 'map.json', deps)).toEqual({ status: 'too-large' });
     expect(text).not.toHaveBeenCalled();
     expect(deps.loadMap).not.toHaveBeenCalled();
   });
@@ -232,24 +220,10 @@ describe('importFile routing', () => {
     vi.mocked(importFromRaster).mockResolvedValue({ ok: false, error: { code: 'no-payload', message: '' } } as unknown as RasterImportResult);
     const deps = makeDeps();
     const outcome = await importFile(new File(['x'], 'map.png', { type: 'image/png' }), 'map.png', deps);
-    expect(outcome).toEqual({ status: 'failed', code: 'no-payload' });
+    expect(outcome).toEqual({ status: 'failed', code: 'no-payload', source: 'raster' });
     expect(close).toHaveBeenCalled();
     const [, width, height] = vi.mocked(importFromRaster).mock.calls[0]!;
     expect(width * height).toBeLessThanOrEqual(64 * 1024 * 1024);
-    expect(deps.loadMap).not.toHaveBeenCalled();
-    vi.unstubAllGlobals();
-  });
-
-  it('surfaces a raster decode failure with its import error code, without loading a map', async () => {
-    vi.stubGlobal('createImageBitmap', vi.fn().mockResolvedValue({ width: 2, height: 2 } as unknown as ImageBitmap));
-    stubCanvasContext({
-      drawImage: vi.fn(), getImageData: () => ({ data: new Uint8ClampedArray(2 * 2 * 4) }),
-    });
-    vi.mocked(importFromRaster).mockResolvedValue({ ok: false, error: { code: 'no-payload' } } as unknown as RasterImportResult);
-
-    const deps = makeDeps();
-    const outcome = await importFile(new File(['x'], 'map.png', { type: 'image/png' }), 'map.png', deps);
-    expect(outcome).toEqual({ status: 'failed', code: 'no-payload' });
     expect(deps.loadMap).not.toHaveBeenCalled();
     vi.unstubAllGlobals();
   });

@@ -4,7 +4,7 @@ import { TerrainType } from '../../core/model/types';
 import { makeState, setTerrain, paintCmd } from '../_support/map-state';
 
 describe('V-MTN-02: No Floating Mountain', () => {
-  it('allows mountain at elevation 1 (ground support)', () => {
+  it('[V-MTN-02] allows mountain at elevation 1 (ground support)', () => {
     expect(mountainFloatingRule.validate(paintCmd([{ x: 5, y: 5 }], TerrainType.Mountain, 1), makeState())).toHaveLength(0);
   });
   it('allows mountain at elevation 3 with elevation 2 below', () => {
@@ -12,7 +12,7 @@ describe('V-MTN-02: No Floating Mountain', () => {
     setTerrain(state, 5, 5, TerrainType.Mountain, 2);
     expect(mountainFloatingRule.validate(paintCmd([{ x: 5, y: 5 }], TerrainType.Mountain, 3), state)).toHaveLength(0);
   });
-  it('rejects mountain at elevation 3 with nothing below', () => {
+  it('[V-MTN-02] rejects mountain at elevation 3 with nothing below', () => {
     expect(mountainFloatingRule.validate(paintCmd([{ x: 5, y: 5 }], TerrainType.Mountain, 3), makeState())).toHaveLength(1);
   });
   it('allows mountain at elevation 2 over water at elevation 1 (water IS terrain)', () => {
@@ -29,7 +29,7 @@ describe('V-WTR-01: No Floating Water', () => {
   it('allows water at elevation 0', () => {
     expect(waterFloatingRule.validate(paintCmd([{ x: 5, y: 5 }], TerrainType.Water, 0), makeState())).toHaveLength(0);
   });
-  it('allows water at elevation 1', () => {
+  it('[V-WTR-01] allows water at elevation 1', () => {
     expect(waterFloatingRule.validate(paintCmd([{ x: 5, y: 5 }], TerrainType.Water, 1), makeState())).toHaveLength(0);
   });
   it('allows water at elevation 2 with mountain at elevation 1', () => {
@@ -37,7 +37,7 @@ describe('V-WTR-01: No Floating Water', () => {
     setTerrain(state, 5, 5, TerrainType.Mountain, 1);
     expect(waterFloatingRule.validate(paintCmd([{ x: 5, y: 5 }], TerrainType.Water, 2), state)).toHaveLength(0);
   });
-  it('rejects water at elevation 2 with nothing below', () => {
+  it('[V-WTR-01] rejects water at elevation 2 with nothing below', () => {
     expect(waterFloatingRule.validate(paintCmd([{ x: 5, y: 5 }], TerrainType.Water, 2), makeState())).toHaveLength(1);
   });
 });

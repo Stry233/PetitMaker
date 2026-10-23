@@ -78,7 +78,7 @@ describe('clearUnderLandmarks', () => {
     expect(state.provenance!.objectTaint.has('under')).toBe(true);
   });
 
-  it('holds a map with nothing under its landmarks to the same rules: refused terrain goes back to the template\'s and a refused object comes off', () => {
+  it('[PLAN-27] holds a map with nothing under its landmarks to the same rules: refused terrain goes back to the template\'s and a refused object comes off', () => {
     const state = hexia();
     const sea = { x: 1, y: 1 };
     expect(isBuildableZone(state.cells[sea.y]![sea.x]!.zone)).toBe(false);

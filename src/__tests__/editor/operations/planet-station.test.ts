@@ -44,7 +44,7 @@ describe('the station in the planet session', () => {
   });
   afterEach(() => { leavePlanetSession(editorPort); host.camera.takeQueued(); });
 
-  it('is on the session shelf beside the plaza and stands with its north edge on the shore', () => {
+  it('[PLAN-15] is on the session shelf beside the plaza and stands with its north edge on the shore', () => {
     const r = placeSessionLandmark({ x: 50.5, y: 82 }, 0, STATION.id);
     expect(r.success).toBe(true);
     expect(store().gridState!.objects.get(STATION.id)).toMatchObject(
@@ -52,7 +52,7 @@ describe('the station in the planet session', () => {
     );
   });
 
-  it('is refused on grass and out at sea, with the coast refusal', () => {
+  it('[PLAN-15] is refused on grass and out at sea, with the coast refusal', () => {
     const onGrass = placeSessionLandmark({ x: 50.5, y: 70 }, 0, STATION.id);
     expect(onGrass.success).toBe(false);
     expect(onGrass.errors.map((e) => e.message)).toContain('error.landmark_coast');
@@ -61,7 +61,7 @@ describe('the station in the planet session', () => {
     expect(store().gridState!.objects.has(STATION.id)).toBe(false);
   });
 
-  it('is placed at most once, keeps its facing and may be taken off again', () => {
+  it('[PLAN-13, PLAN-15] is placed at most once, keeps its facing and may be taken off again', () => {
     expect(placeSessionLandmark({ x: 50.5, y: 82 }, 0, STATION.id).success).toBe(true);
     expect(placeSessionLandmark({ x: 70.5, y: 82 }, 0, STATION.id).success).toBe(false);
     expect(turnsInSession(store().gridState!.objects.get(STATION.id), true)).toBe(false);
@@ -84,7 +84,7 @@ describe('the station in the planet session', () => {
 });
 
 describe('the station on a built-in planet', () => {
-  it('is locked: removing it is refused and nothing is built over it', () => {
+  it('[PLAN-03] is locked: removing it is refused and nothing is built over it', () => {
     const state = createGridState(getMapTemplate('tafa'));
     const exec = createExecutor(state, createDefaultRegistry());
     const station = state.objects.get(STATION.id)!;

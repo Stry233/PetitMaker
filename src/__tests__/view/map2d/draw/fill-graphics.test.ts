@@ -13,13 +13,14 @@ import * as PIXI from 'pixi.js-legacy';
 import { FillGraphics } from '../../../../view/map2d/draw/fill-graphics';
 
 /** A 2D context that logs every draw with the style state in force at that moment. */
-function recordingContext(): { ops: string[]; ctx: CanvasRenderingContext2D } {
+function recordingContext(): { ops: string[]; fillWrites: () => number; ctx: CanvasRenderingContext2D } {
   const ops: string[] = [];
   let fill = '';
+  let fillWrites = 0;
   let alpha = 1;
   let path: string[] = [];
   const ctx = {
-    set fillStyle(v: string) { fill = v; },
+    set fillStyle(v: string) { fill = v; fillWrites++; },
     get fillStyle() { return fill; },
     set globalAlpha(v: number) { alpha = v; },
     get globalAlpha() { return alpha; },
@@ -40,18 +41,18 @@ function recordingContext(): { ops: string[]; ctx: CanvasRenderingContext2D } {
     stroke: () => ops.push(`stroke ${path.join(' ')}`),
     arc: (x: number, y: number, r: number) => path.push(`A${x},${y},${r}`),
   };
-  return { ops, ctx: ctx as unknown as CanvasRenderingContext2D };
+  return { ops, fillWrites: () => fillWrites, ctx: ctx as unknown as CanvasRenderingContext2D };
 }
 
 function harness() {
-  const { ops, ctx } = recordingContext();
+  const { ops, fillWrites, ctx } = recordingContext();
   const renderer = {
     canvasContext: { activeContext: ctx, setContextTransform: vi.fn(), setBlendMode: vi.fn() },
     plugins: {},
   } as unknown as PIXI.CanvasRenderer;
   const plugin = new PIXI.CanvasGraphicsRenderer(renderer);
   (renderer as unknown as { plugins: Record<string, unknown> }).plugins = { graphics: plugin };
-  return { ops, renderer, plugin };
+  return { ops, fillWrites, renderer, plugin };
 }
 
 /** What pixi's own renderer makes of this content — the reference log. */
@@ -65,15 +66,18 @@ function reference(build: (g: PIXI.Graphics) => void, tint?: number): string[] {
   return ops;
 }
 
-/** What FillGraphics makes of it, plus whether it handed the work back to pixi. */
-function replayed(build: (g: PIXI.Graphics) => void, tint?: number): { ops: string[]; delegated: boolean } {
-  const { ops, renderer, plugin } = harness();
+/** What FillGraphics makes of it, how often it set the fill style, and whether it handed the work back to pixi. */
+function replayed(
+  build: (g: PIXI.Graphics) => void,
+  tint?: number,
+): { ops: string[]; fillWrites: number; delegated: boolean } {
+  const { ops, fillWrites, renderer, plugin } = harness();
   const spy = vi.spyOn(plugin, 'render');
   const g = new FillGraphics();
   if (tint !== undefined) g.tint = tint;
   build(g);
   g._renderCanvas(renderer);
-  return { ops, delegated: spy.mock.calls.length > 0 };
+  return { ops, fillWrites: fillWrites(), delegated: spy.mock.calls.length > 0 };
 }
 
 /* The terrain's own shape: half-tile quadrant rects in long same-colour runs, with the odd
@@ -111,10 +115,12 @@ describe('FillGraphics — the Canvas2D fill replay', () => {
     expect(ref).not.toEqual(reference(terrainLike));
   });
 
-  it('writes the style once per RUN, not once per item', () => {
-    const { ops } = replayed(terrainLike);
-    const fills = ops.map((o) => o.split('fill=')[1]);
-    expect(new Set(fills).size).toBeLessThan(fills.length);
+  it('sets the fill style once per run of one colour, not once per item', () => {
+    const ref = reference(terrainLike);
+    const colours = ref.map((o) => o.split('fill=')[1]!.split(' ')[0]);
+    const runs = colours.filter((c, i) => i === 0 || c !== colours[i - 1]).length;
+    expect(runs).toBeLessThan(ref.length);
+    expect(replayed(terrainLike).fillWrites).toBe(runs);
   });
 
   const unsupported: Array<[string, (g: PIXI.Graphics) => void]> = [

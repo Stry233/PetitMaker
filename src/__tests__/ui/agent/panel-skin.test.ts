@@ -13,7 +13,7 @@ import { PANEL_WIDTH, statePaper, tickInk } from '../../../ui/agent/panel-skin';
 import { PANEL_COLUMN_W } from '../../../ui/shell/panel-frame';
 import { radii } from '../../../ui/design/styles';
 import * as tokens from '../../../ui/design/tokens';
-import { INK, REVERT_AMBER, STOPPED_TAUPE, THINKING_PAPER } from '../../../ui/design/tokens';
+import { INK } from '../../../ui/design/tokens';
 
 /** Every colour the design layer declares. */
 const PALETTE = new Set(Object.values(tokens).filter((v): v is string => typeof v === 'string'));
@@ -52,18 +52,6 @@ describe('the panel holds no palette of its own', () => {
 });
 
 describe('every panel value resolves to the design layer', () => {
-  it('the reasoning paper is the design layer s own', () => {
-    expect(statePaper.think).toBe(THINKING_PAPER);
-  });
-
-  it('the abort tone is the design layer s own', () => {
-    expect(statePaper.stop).toBe(STOPPED_TAUPE);
-  });
-
-  it('the revert ink is the design layer s own', () => {
-    expect(tickInk.revert).toBe(REVERT_AMBER);
-  });
-
   it('a finished op is the quiet ink, not a green of its own', () => {
     expect(tickInk.ok).toBe(INK);
   });

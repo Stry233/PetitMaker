@@ -1,6 +1,7 @@
 import type { Stroke } from '../../../core/commands/command-executor';
 import type { MacroCoord } from '../../../core/model/types';
 import { mapVersionKey } from '../../../core/model/grid-model';
+import { cellKey } from '../../../core/grid/rect';
 import { mixedCellSet } from '../../../core/grid/grids';
 import { adjustContext } from '../paint/curve-session';
 import { onBuildableGround, type MacroToolContext } from './tool-context';
@@ -36,7 +37,10 @@ interface Spray {
   timer: ReturnType<typeof setInterval>;
 }
 
-interface GhostRequest { coord: MacroCoord; key: string; ctx: MacroToolContext; id: MacroId; seed: number; radius: number }
+interface GhostRequest { coord: MacroCoord; key: string; ctx: MacroToolContext; id: MacroId; seed: number; radius: number; region?: MacroCoord[] }
+
+/** The painted region a planting keeps to, when one is painted. */
+const regionOf = (ctx: MacroToolContext): { region?: MacroCoord[] } => (ctx.arming.region?.length ? { region: [...ctx.arming.region] } : {});
 
 /** A planting hold: bursts at the pointer while it is held, staged around an anchor that moves on
  *  after `SPRAY_STEP` cells, settling as one undo entry; with nothing held, the hover ghost. */
@@ -66,9 +70,9 @@ export class PlantingSpray {
       return;
     }
     const radius = sprayRadius(ctx.arming.brushSize), seed = this.seeds.peek();
-    const key = [id, seed, radius, coord.x, coord.y, mapVersionKey(ctx.state)].join('|');
+    const key = [id, seed, radius, coord.x, coord.y, mapVersionKey(ctx.state), ctx.arming.region?.map(p => cellKey(p.x, p.y)).join(';')].join('|');
     if (key === this.ghostKey) { this.ghosts.drop(); return; }
-    this.ghosts.ask({ coord, key, ctx, id, seed, radius });
+    this.ghosts.ask({ coord, key, ctx, id, seed, radius, ...regionOf(ctx) });
   }
 
   /** End the hold in progress; it settles once its bursts in flight land. */
@@ -96,6 +100,7 @@ export class PlantingSpray {
       ...(spray.stage > 1 ? { stage: spray.stage } : {}),
       ...(spray.anchorSeed !== seed ? { anchorSeed: spray.anchorSeed } : {}),
       ...(heldIds.length ? { heldIds } : {}),
+      ...regionOf(ctx),
     };
     const after = (outcome: MacroOutcome): void => {
       spray.changes += outcome.changes; spray.pending--;
@@ -131,7 +136,8 @@ export class PlantingSpray {
   }
 
   private showGhost(ask: GhostRequest, fresh: () => boolean): Promise<void> {
-    return previewMacroAsync(ask.ctx.macroContext, ask.id, { seed: ask.seed, at: ask.coord, radius: ask.radius }).then(preview => {
+    const opts = { seed: ask.seed, at: ask.coord, radius: ask.radius, ...(ask.region ? { region: ask.region } : {}) };
+    return previewMacroAsync(ask.ctx.macroContext, ask.id, opts).then(preview => {
       if (!fresh() || this.ghosts.hasWaiting()) return;
       this.ghostKey = ask.key;
       if (!preview.added.length && !preview.removed.length && !preview.blocked.length) ask.ctx.overlay.clearGhost();

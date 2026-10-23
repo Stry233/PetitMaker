@@ -93,7 +93,7 @@ describe('share codes on custom planets', () => {
     expect(out.template?.id).toBe(state.template.id);
   });
 
-  it('opens a file whose planet is not in the library', async () => {
+  it('[PLAN-21] opens a file whose planet is not in the library', async () => {
     const state = createGridState(planetFixture());
     const code = await buildShareCode(exportable(state), null, META, 1600);
     raster.current = { pixels: code!.rgba, width: code!.width, height: code!.height };
@@ -109,7 +109,7 @@ describe('share codes on custom planets', () => {
     expect(listPlanets().map((e) => e.template.id)).toEqual([state.template.id]);
   });
 
-  it('decodes a share image without adding its planet to the library', async () => {
+  it('[PLAN-21] decodes a share image without adding its planet to the library', async () => {
     const state = createGridState(planetFixture());
     const code = await buildShareCode(exportable(state), null, META, 1600);
     const png = await encodePng({ width: code!.width, height: code!.height, data: code!.rgba });
@@ -205,7 +205,7 @@ describe('the template record', () => {
     expect(corrupt(() => decodeTemplateRecord(bytes))).toBe(true);
   });
 
-  it('rejects a frame whose template record was altered', async () => {
+  it('[PLAN-08] rejects a frame whose template record was altered', async () => {
     const t = planetFixture();
     const bytes = await encodeMapPayload(createGridState(t), null, META);
     const record = encodeTemplateRecord(t);

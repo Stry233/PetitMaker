@@ -133,7 +133,7 @@ function aroundPlaza(state: GridState): MacroCoord[] {
 }
 
 describe('Maze endpoints: no walk-around', () => {
-  it('gives no walkable route that skips the maze between the panel\'s default ends', () => {
+  it('[GEN-07] gives no walkable route that skips the maze between the panel\'s default ends', () => {
     for (const seed of [1, 7, 42, 99, 2026]) {
       const { state, fp, gates, violations } = mazeOnIsland(seed, regionCells());
       expect(violations, `seed ${seed} post-stroke violations`).toEqual([]);
@@ -222,7 +222,7 @@ describe('Maze endpoints', () => {
    * "one route between any two of its cells", so what is asserted is that the maze plus its one hole
    * is one — connected, with a vertex more than it has edges.
    */
-  it('leaves exactly one route from the way in to a destination inside', () => {
+  it('[GEN-07] leaves exactly one route from the way in to a destination inside', () => {
     const state = islandState();
     const region = regionCells();
     const exec = makeExecutor(state);

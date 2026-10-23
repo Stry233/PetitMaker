@@ -42,7 +42,7 @@ function makeDeps(over: { exec: CommandExecutor; undoFloor?: () => number }): Ag
 const call = (name: string, input: Record<string, unknown>) => ({ id: 'c1', name, input });
 
 describe('agent undo floor', () => {
-  it('undoes only the entries the job itself pushed', async () => {
+  it('[ASST-08] undoes only the entries the job itself pushed', async () => {
     const { exec, undoCalls } = fakeExecutor(5);
     const deps = makeDeps({ exec, undoFloor: () => 3 });
     const r = await executeToolCall(call('undo', { steps: 10 }), deps);
@@ -82,7 +82,7 @@ describe('agent undo floor', () => {
 });
 
 describe('jobUndoFloor', () => {
-  it('is the undo index the running job checkpointed', () => {
+  it('[ASST-08] is the undo index the running job checkpointed', () => {
     const log = createLog();
     append(log, { kind: 'order', text: 'build a village', mapContext: '' });
     expect(jobUndoFloor(log)).toBe(0);

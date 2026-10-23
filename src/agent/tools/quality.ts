@@ -1,7 +1,7 @@
 /**
  * Map quality analyzer for the agent's evaluate_map tool: grades the current
  * map on the dimensions the procedural generator treats as design quality
- * (mirrors the probes in design-quality.test.ts). Pure reads, no commands and
+ * (mirrors the probes in design-quality.slow.test.ts). Pure reads, no commands and
  * no mutation; it scores through the map readings in `tools/reading`, which the generator shares.
  * Scores are 0-10 with actionable hints for the LLM.
  */

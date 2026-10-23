@@ -121,14 +121,6 @@ describe('BuildChecklist — supply shelves', () => {
     expect(count.style.fontVariantNumeric).toBe('tabular-nums');
   });
 
-  it('lays item rows out in a CSS grid inside the card, not a single column', () => {
-    renderChecklist();
-    const buildingCard = screen.getByTestId(`checklist-card-${ItemCategory.Building}`);
-    const grid = buildingCard.lastElementChild as HTMLElement;
-    expect(grid.style.display).toBe('grid');
-    expect(grid.style.gridTemplateColumns).toContain('auto-fill');
-  });
-
   it('roads keep their cell counts, wearing the same card treatment', () => {
     renderChecklist();
     const roadCard = screen.getByTestId('checklist-card-roads');
@@ -144,12 +136,6 @@ describe('BuildChecklist — supply shelves', () => {
     expect(within(terrainCard).getByText('Layer 2')).toBeTruthy();
     // Compact: header + one flex-wrap row of chips, no per-layer block taking its own line.
     expect(terrainCard.children).toHaveLength(2);
-  });
-
-  it('carries no instructional sentences — the headings alone carry the meaning', () => {
-    renderChecklist();
-    expect(screen.queryByText(/rebuild it again by hand/i)).toBeNull();
-    expect(screen.queryByText(/a block needs something under it/i)).toBeNull();
   });
 });
 

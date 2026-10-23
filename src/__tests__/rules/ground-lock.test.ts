@@ -6,7 +6,7 @@ import { createDefaultRegistry } from '../../rules/index';
 import { makeState, paintCmd } from '../_support/map-state';
 
 describe('V-GROUND-LOCK', () => {
-  it('the default registry refuses any command carrying ground', () => {
+  it('[V-GROUND-LOCK] the default registry refuses any command carrying ground', () => {
     const state = makeState();
     const cmd = { ...paintCmd([{ x: 1, y: 1 }], TerrainType.Mountain, 0), ground: CellZone.Void as const };
     expect(groundLockRule.validate(cmd, state)).toHaveLength(1);

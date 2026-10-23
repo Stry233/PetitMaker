@@ -25,7 +25,7 @@ describe('exportableState', () => {
     expect(exportableState(state, TEST_NAMING)).toBe(state);
   });
 
-  it('names a custom planet by its default name until its name is approved', () => {
+  it('[FILE-32] names a custom planet by its default name until its name is approved', () => {
     const template = { ...planetFixture(), name: { en: 'Bay' } };
     const state = createGridState(template);
     const entry = adoptPlanet(template);
@@ -36,7 +36,7 @@ describe('exportableState', () => {
     expect(state.template.name.en).toBe('Bay');
   });
 
-  it('keeps only the custom tags the text check approved', () => {
+  it('[FILE-32] keeps only the custom tags the text check approved', () => {
     const state = createGridState(getMapTemplate('hexia'));
     state.annotations = {
       items: [], visible: true, locked: false,

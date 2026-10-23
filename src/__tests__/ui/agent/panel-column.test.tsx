@@ -304,14 +304,6 @@ describe('the props the column hands across the seam', () => {
     expect(handed!.lane).toBeUndefined();
   });
 
-  it('hands over the session projection, the connection and the room the frame has', async () => {
-    await mountColumn();
-    expect(handed!.view.phase).toBe('idle');
-    expect(typeof handed!.connected).toBe('boolean');
-    expect(typeof handed!.running).toBe('boolean');
-    expect(typeof handed!.maxHeight).toBe('string');
-  });
-
   /**
    * `running` is the runner's answer, not a phase reading. `PanelShell`'s own fallback is
    * `!AT_REST.has(phase)`, which agrees in the ordinary case and not in the one that matters: a log

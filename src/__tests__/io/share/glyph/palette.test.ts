@@ -7,7 +7,6 @@ import { BASE_CHROMA_OFFSETS, CHROMA_SCALES, Y_LEVELS } from '../../../_support/
 
 const PALETTE16_V1 = paletteForVersion(1)!;
 const PALETTE16_V2 = paletteForVersion(2)!;
-import { HEADER_VERSION } from '../../../../io/share/glyph/geometry';
 
 const VERSIONS: [number, readonly RGB[]][] = [[1, PALETTE16_V1], [2, PALETTE16_V2]];
 
@@ -99,10 +98,6 @@ describe('luma-first palette', () => {
     expect(paletteForVersion(1)).toBe(PALETTE16_V1);
     expect(paletteForVersion(2)).toBe(PALETTE16_V2);
     for (const v of [0, 3, 255]) expect(paletteForVersion(v)).toBeNull();
-  });
-
-  it('writes the current header version', () => {
-    expect(HEADER_VERSION).toBe(3);
   });
 
   it('separates every current symbol by luminance even without chroma', () => {

@@ -76,7 +76,7 @@ describe('describeToolCall (human-readable approvals)', () => {
       .toContain('(1,2)→(9,9)');
   });
 
-  it('never emits JSON braces for any write tool with typical inputs', () => {
+  it('[ASST-17] never emits JSON braces for any write tool with typical inputs', () => {
     for (const name of TOOL_NAMES.filter((n) => writesMap(TOOL_FACTS, n))) {
       const text = describeToolCall({ name, input: { x: 1, y: 2, w: 3, h: 4, catalogId: 'path-overgrown-dirt', theme: 'farm' } }, en);
       expect(text).not.toMatch(/[{}"]/);
@@ -138,7 +138,7 @@ describe('describeToolCall (human-readable approvals)', () => {
     }
   });
 
-  it('the localized line never borrows the English words', () => {
+  it('[ASST-17] the localized line never borrows the English words', () => {
     const zh = describeToolCall({ name: 'paint_terrain', input: { rect: { x1: 2, y1: 2, x2: 8, y2: 6 }, terrain: 'mountain', elevation: 3 } }, tr('zh'));
     expect(zh).toBe(`${tr('zh')(toolVerbKey('paint_terrain'))} (第 4 层山体，(2,2)→(8,6))`);
     expect(describeToolCall({ name: 'build_road_network', input: {} }, tr('zh'))).toBe(`${tr('zh')(toolVerbKey('build_road_network'))} (连通所有建筑)`);

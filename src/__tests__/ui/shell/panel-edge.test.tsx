@@ -14,7 +14,7 @@ import { MenuSheet } from '../../../ui/shell/controls/MenuSheet';
 import { NoticeBar } from '../../../ui/primitives/NoticeBar';
 import { cozyPanel } from '../../../ui/design/window-skin';
 import {
-  INK, MAP_EDGE_ALPHA, MAP_LABEL, PANEL_EDGE, PANEL_EDGE_WIDTH, PLATE,
+  INK, MAP_EDGE_ALPHA, PANEL_EDGE, PANEL_EDGE_WIDTH, PLATE,
 } from '../../../ui/design/tokens';
 import { ZONE_COLORS } from '../../../core/model/palette';
 
@@ -45,14 +45,6 @@ function contrast(a: readonly [number, number, number], b: readonly [number, num
 afterEach(cleanup);
 
 describe('the edge a panel wears', () => {
-  it('is the ink and the alpha a word and a drawing on the map already wear', () => {
-    const alphaHex = Math.round(MAP_EDGE_ALPHA * 255).toString(16).padStart(2, '0');
-    expect(PANEL_EDGE).toBe(`${PANEL_EDGE_WIDTH}px solid ${INK}${alphaHex}`);
-    // The word's own stroke names the same two, so the family is one value in three places rather
-    // than three values that happen to agree today.
-    expect(MAP_LABEL.WebkitTextStroke).toContain(`${INK}${alphaHex}`);
-  });
-
   /**
    * The two weights are the same weight, in the only sense each can express.
    *

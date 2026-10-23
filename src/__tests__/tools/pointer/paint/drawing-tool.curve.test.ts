@@ -37,7 +37,7 @@ const painted = (state: ReturnType<typeof makeState>) =>
 beforeEach(() => { /* each test builds its own world */ });
 
 describe('placing anchors', () => {
-  it('paints nothing until the curve is finished, however many anchors are placed', () => {
+  it('[EDIT-36] paints nothing until the curve is finished, however many anchors are placed', () => {
     const { state, ctx, tool } = world();
     click(tool, ctx, { x: 2, y: 2 });
     click(tool, ctx, { x: 8, y: 9 });
@@ -46,7 +46,7 @@ describe('placing anchors', () => {
     expect(painted(state)).toBe(0);
   });
 
-  it('commits on a double-click, and the painted path reaches every anchor', () => {
+  it('[EDIT-36] commits on a double-click, and the painted path reaches every anchor', () => {
     const { state, ctx, tool } = world();
     const anchors = [{ x: 2, y: 2 }, { x: 8, y: 9 }, { x: 15, y: 3 }];
     for (const a of anchors) click(tool, ctx, a);
@@ -135,7 +135,7 @@ describe('editing a placed anchor', () => {
 });
 
 describe('taking it back', () => {
-  it('Escape abandons the whole curve, painting nothing', () => {
+  it('[EDIT-36] Escape abandons the whole curve, painting nothing', () => {
     const { state, ctx, tool } = world();
     click(tool, ctx, { x: 2, y: 2 });
     click(tool, ctx, { x: 9, y: 9 });
@@ -145,7 +145,7 @@ describe('taking it back', () => {
     expect(tool.cancelPending(ctx)).toBe(false);
   });
 
-  it('Delete takes back the last anchor only', () => {
+  it('[EDIT-36] Delete takes back the last anchor only', () => {
     const { state, ctx, tool } = world();
     click(tool, ctx, { x: 2, y: 2 });
     click(tool, ctx, { x: 10, y: 2 });

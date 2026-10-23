@@ -10,13 +10,13 @@ beforeEach(() => {
 });
 
 describe('handing a file to the window that reads it', () => {
-  it('opens Import planet over Change Planet for a video and closes Import map', () => {
+  it('[FILE-28] opens Import planet over Change Planet for a video and closes Import map', () => {
     store().setModal('import', true);
     store().handImport({ kind: 'video', file });
     expect(store().modals).toMatchObject({ import: false, newProject: true, planetImport: true });
   });
 
-  it('opens Change Planet alone for a planet file and Import map alone for a map', () => {
+  it('[FILE-28] opens Change Planet alone for a planet file and Import map alone for a map', () => {
     store().handImport({ kind: 'planet', file });
     expect(store().modals).toMatchObject({ import: false, newProject: true, planetImport: false });
     store().handImport({ kind: 'map', file });

@@ -78,7 +78,7 @@ function reachableFromOutside(state: ReturnType<typeof makeState>, w: number, h:
 }
 
 describe('Maze gates', () => {
-  it('lets a walker in from outside and reach every passage', () => {
+  it('[GEN-07] lets a walker in from outside and reach every passage', () => {
     const state = makeState(24, 24);
     const { gates } = generateMaze({ state, execute: simpleExecutor(state) }, {
       seed: 42, maxElevation: 1, corridorWidth: 1, region: gateRegionCells(), mazeGates: {

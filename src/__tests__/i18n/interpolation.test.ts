@@ -50,7 +50,7 @@ describe('translateFor interpolation', () => {
 });
 
 describe('number params', () => {
-  it('group five-digit integers in each locale, leave shorter integers alone and write fractions with the locale decimal mark', () => {
+  it('[UI-06] group five-digit integers in each locale, leave shorter integers alone and write fractions with the locale decimal mark', () => {
     expect(formatNumber('en', 10000)).toBe('10,000');
     expect(formatNumber('id', 10000)).toBe('10.000');
     expect(formatNumber('ru', 10000)).toMatch(/^10\s000$/);
@@ -60,7 +60,7 @@ describe('number params', () => {
     expect(formatNumber('en', 2.6)).toBe('2.6');
   });
 
-  it('stay as written when they are identifiers, such as a recipe seed', () => {
+  it('[UI-06] stay as written when they are identifiers, such as a recipe seed', () => {
     expect(translateFor('en', ONCE, { section: 24680 })).toBe('Section 24680 failed');
   });
 
@@ -76,7 +76,7 @@ describe('number params', () => {
 describe('plural forms', () => {
   const ru = (n: number | string) => translateFor('ru', 'units.cells', { n });
 
-  it('pick the variant the locale selects for {n}, the bare key being the other form', () => {
+  it('[UI-06] pick the variant the locale selects for {n}, the bare key being the other form', () => {
     expect(translateFor('en', 'units.cells', { n: 1 })).toBe('1 cell');
     expect(translateFor('en', 'units.cells', { n: 0 })).toBe('0 cells');
     expect(translateFor('fr', 'units.cells', { n: 0 })).toBe('0 case');

@@ -110,7 +110,7 @@ afterEach(() => {
 });
 
 describe('the rotate command with an item armed', () => {
-  it('turns the ghost, with no pointer event behind the key', () => {
+  it('[EDIT-31] turns the ghost, with no pointer event behind the key', () => {
     arm(ROTATABLE);
 
     pressRotate();
@@ -119,7 +119,7 @@ describe('the rotate command with an item armed', () => {
     expect(lastGhostRotation(), 'the ghost redrew at the new orientation').toBe(90);
   });
 
-  it('turns it again, quarter by quarter, and wraps', () => {
+  it('[EDIT-31] turns it again, quarter by quarter, and wraps', () => {
     arm(ROTATABLE);
 
     for (const expected of [90, 180, 270, 0]) {

@@ -54,3 +54,11 @@ __setSequentialIds();
 
 // The editor loads a locale's strings when it first shows it; tests read every locale at once.
 for (const [locale, table] of Object.entries(LOCALE_TABLES)) registerLocaleTable(locale as keyof typeof LOCALE_TABLES, table);
+
+// A hosted runner runs a test three to four times slower than a workstation (`vitest.config.ts`
+// raises the test timeout there), so Testing Library's waits for a window or a lazy chunk get the
+// same headroom; a workstation keeps the 1 s default that flags a slow surface early.
+if (process.env.CI && typeof document !== 'undefined') {
+  const { configure } = await import('@testing-library/react');
+  configure({ asyncUtilTimeout: 4_000 });
+}

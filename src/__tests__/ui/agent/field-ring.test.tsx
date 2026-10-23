@@ -16,7 +16,7 @@ import { useEditorStore } from '../../../state/store';
 import { SetupScreen } from '../../../ui/agent/connection/SetupScreen';
 import { ManageScreen } from '../../../ui/agent/connection/ManageScreen';
 import {
-  Composer, COMPOSER_HEIGHT, PILL_RADIUS, WELL_LEAD_IN, WELL_PAD,
+  Composer, FIELD_MAX_LINES, PILL_RADIUS, WELL_LEAD_IN, WELL_PAD,
 } from '../../../ui/agent/composer/Composer';
 import { useAgentConnection } from '../../../agent/connection/store';
 import { FIELD_INPUT_CLASS, FIELD_WRAP_CLASS } from '../../../ui/design/focus-source';
@@ -122,18 +122,32 @@ function cornerInsetAt(radius: number, y: number): number {
 }
 
 describe('the composer\'s text stays inside the pill it is written in', () => {
-  it('holds the corner at half the RESTING height, so it cannot grow with the box', () => {
-    expect(PILL_RADIUS).toBe(COMPOSER_HEIGHT / 2);
+  /** jsdom lays nothing out, so the field's measured height is supplied through `scrollHeight`. */
+  it('holds the corner at half the resting height while the field grows', () => {
+    reset();
+    mount(
+      <Composer route="order" running={false} onSend={vi.fn()} onStop={vi.fn()} onDropSuggestion={vi.fn()} />,
+    );
+    const resting = Number.parseFloat(screen.getByTestId('composer-well').style.minHeight);
+    expect(screen.getByTestId('composer-well').style.borderRadius).toBe(`${resting / 2}px`);
+
+    const field = screen.getByTestId('composer-input');
+    const line = Number.parseFloat(field.style.fontSize) * Number(field.style.lineHeight);
+    const own = Object.getOwnPropertyDescriptor(Element.prototype, 'scrollHeight');
+    Object.defineProperty(Element.prototype, 'scrollHeight', {
+      configurable: true,
+      get(this: Element) { return this.tagName === 'TEXTAREA' ? line * FIELD_MAX_LINES : 0; },
+    });
+    try {
+      fireEvent.change(field, { target: { value: 'an order long enough to fill the field' } });
+    } finally {
+      if (own) Object.defineProperty(Element.prototype, 'scrollHeight', own);
+    }
+    expect(field.style.height).toBe(`${Math.ceil(line * FIELD_MAX_LINES)}px`);
+    expect(screen.getByTestId('composer-well').style.borderRadius).toBe(`${resting / 2}px`);
   });
 
   it('covers the corner with the field\'s lead-in, at every height the well reaches', () => {
     expect(cornerInsetAt(PILL_RADIUS, WELL_PAD)).toBeLessThanOrEqual(WELL_LEAD_IN);
-  });
-
-  /** The defect, stated: a corner that tracks the box's height outgrows the lead-in as soon as the
-   *  field takes a second line, and the opening characters of the first one are drawn outside it. */
-  it('would not cover it if the corner tracked the box\'s height', () => {
-    const twoLines = COMPOSER_HEIGHT * 2;
-    expect(cornerInsetAt(twoLines / 2, WELL_PAD)).toBeGreaterThan(WELL_LEAD_IN);
   });
 });

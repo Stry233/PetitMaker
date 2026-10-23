@@ -1,6 +1,6 @@
 import { TerrainType, type GridState } from '../../model/types';
 import { getCell } from '../../model/grid-model';
-import { DIRECTION_SIDE, NEIGHBORS4, SIDES, SIDE_DELTA, type Side } from '../../grid/directions';
+import { DIRECTION_SIDE, SIDES, SIDE_DELTA, type Side } from '../../grid/directions';
 import { CORNERS, cornersOnSide } from '../../model/corners';
 import { terrainSolidAt, solidTopOf, structuralTop } from '../terrain/terrain-surface';
 import type { RoadLookup } from '../../model/road-lookup';
@@ -64,15 +64,17 @@ export function computeLockedCorners(
       }
     }
     if (type === TerrainType.Mountain) {
-      // Waterfall-frame: any cardinal water neighbour at this cap's exact elevation with a capped
-      // waterfall face locks this mountain's corners on the face's flow side.
-      for (const [dx, dy] of NEIGHBORS4) {
+      // Waterfall-frame: a water neighbour at this cap's exact elevation with a capped waterfall face
+      // locks the cap's corners that lie both on the face's flow side and on the side facing that
+      // water, the lip of the fall; the cap's corners away from the water cut as usual.
+      for (const side of SIDES) {
+        const [dx, dy] = SIDE_DELTA[side];
         const n = getCell(state.cells, x + dx, y + dy)?.terrain;
         if (!n || n.type !== TerrainType.Water || n.patchOnly || n.elevation !== elevation) continue;
         for (const face of waterfallFacesAt(state, x + dx, y + dy)) {
-          const [a, b] = cornersOnSide(DIRECTION_SIDE[face.flowDirection]);
-          locked[a] = true;
-          locked[b] = true;
+          for (const i of cornersOnSide(DIRECTION_SIDE[face.flowDirection])) {
+            if (CORNERS[i]!.sides.includes(side)) locked[i] = true;
+          }
         }
       }
     }

@@ -360,7 +360,7 @@ describe('the key is not in the store', () => {
 describe('revoking the armed key ends the job that was running on it', () => {
   beforeEach(() => setLiveJobStop(undefined));
 
-  it('aborts BEFORE the key is cleared, so the abort can still be shown', async () => {
+  it('[ASST-05] aborts BEFORE the key is cleared, so the abort can still be shown', async () => {
     await useAgentConnection.getState().hydrate();
     useAgentConnection.getState().connectKey('claude', 'sk-ant-api03-secret');
 
@@ -374,7 +374,7 @@ describe('revoking the armed key ends the job that was running on it', () => {
     expect(useAgentConnection.getState().keyed).toEqual([]);
   });
 
-  it('leaves the job alone when the key dropped is not the one it runs on', async () => {
+  it('[ASST-05] leaves the job alone when the key dropped is not the one it runs on', async () => {
     await useAgentConnection.getState().hydrate();
     useAgentConnection.getState().connectKey('openai', 'sk-proj-other');
     useAgentConnection.getState().connectKey('claude', 'sk-ant-api03-secret'); // arms claude
